@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+*.swp
+
+# Logs
+*.log
+firebase-debug.log
+firestore-debug.log
+
+# Editor / local Claude state
+.claude/settings.local.json
+.claude/worktrees/
+
+# Node (if tooling is added later)
+node_modules/
+npm-debug.log*
+
+# Env / secrets
+.env
+.env.*
+*.pem
