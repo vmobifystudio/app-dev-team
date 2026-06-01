@@ -1,7 +1,7 @@
 # Android Conventions
 
-Mined from AI Baby Growth Android, GPS Map Camera, and LifeOS (flagship tier), with utility-tier
-notes from ZipMaker and Photo Recovery. Pair with `ui-design:mobile-android-design` (Material 3 /
+Mined from our internal flagship Android apps, with utility-tier notes from our internal utility
+apps. Pair with `ui-design:mobile-android-design` (Material 3 /
 Compose) for current UI API details.
 
 ## Architecture (flagship)
@@ -93,7 +93,7 @@ baseline, `abortOnError = true`; detekt + ktlint.
 - Signing from env or a gitignored `keystore.properties`; fall through to unsigned so CI compiles.
 - **Never** commit `google-services.json`, keystores, or API keys.
 
-## Utility-tier deltas (ZipMaker / Photo Recovery)
+## Utility-tier deltas
 
 Activity-based or MVVM+Koin, ViewBinding (no Compose), AGP 8.11.x, minSdk 23. Shared `ads/`
 module (`AdUnits.kt`, `AppOpenAdManager`, `InterstitialPool`, native loaders, `AdsSuppression`),

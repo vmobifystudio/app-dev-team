@@ -46,6 +46,6 @@ The studio captures screenshots from a seeded build, not by hand:
 
 ## Reference artifacts in the corpus
 
-`Docs/APP_STORE_READINESS_PLAN.md` (AI Baby iOS), `Project Docs/16_RELEASE_CHECKLIST.md` +
-`09_COMPETITIVE_ANALYSIS.md` + `docs/PLAY_DATA_SAFETY.md` (GPS Map Camera),
-`docs/RELEASE_CHECKLIST.md` + `PLAY_DATA_SAFETY_ALIGNMENT.md` (LifeOS).
+Internal apps carry reference artifacts worth mirroring: an `APP_STORE_READINESS_PLAN.md`, a
+`RELEASE_CHECKLIST.md`, a `COMPETITIVE_ANALYSIS.md`, and a `PLAY_DATA_SAFETY.md` /
+`PLAY_DATA_SAFETY_ALIGNMENT.md`.

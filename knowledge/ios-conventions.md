@@ -1,6 +1,6 @@
 # iOS Conventions
 
-Mined from AI Baby Growth Tracker and GPS Camera iOS. These are house law for new iOS apps.
+Mined from our internal iOS apps. These are house law for new iOS apps.
 Pair with the Axiom iOS skills (`axiom-ios-ui`, `axiom-ios-concurrency`, `axiom-ios-data`,
 `axiom-swiftui-26-ref`, etc.) for the up-to-date API details.
 

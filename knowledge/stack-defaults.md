@@ -9,7 +9,7 @@ with a written reason, but these are the starting point — they reflect what's 
 |---|---|---|
 | Language | Swift 6.0, strict concurrency `complete` | Every `@unchecked Sendable` needs an inline justification |
 | UI | SwiftUI only | UIKit only via a wrapper for a specific gap (e.g. haptics) |
-| Min target | iOS 18.0 (utility) / latest-1 for flagship | GPS Camera = 18.0; AI Baby = 26.0 |
+| Min target | iOS 18.0 (utility) / latest-1 for flagship | e.g. utility apps = 18.0; flagship = 26.0 |
 | Project gen | **XcodeGen** (`project.yml` is source of truth) | `.xcodeproj` is git-ignored, never hand-edited |
 | Architecture | MVVM + Service + Repository | `View → ViewModel → Service → Repository → Persistence` |
 | State | `@Observable` + `@MainActor` on ViewModels only | **No Combine / @Published / ObservableObject** |
@@ -40,7 +40,7 @@ with a written reason, but these are the starting point — they reflect what's 
 | Monetization | Play Billing 8.3.0; AdMob + mediation for ad apps | See `monetization.md` |
 | Versioning | `version.properties`, `versionCode = MAJOR*10000 + MINOR*100 + PATCH` | |
 
-## Android (utility tier — ZipMaker / Photo Recovery)
+## Android (utility tier)
 
 Leaner: Kotlin (±Java), ViewBinding (no Compose), MVVM+Koin or Activity-based, AGP 8.11.x,
 minSdk 23, ad-first monetization (AdMob + Meta mediation, UMP). Shared "Mobify Studio DNA":

@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Four new roles: `aso-specialist`, `devops-engineer`, `monetization-engineer`, `data-analyst`.
 - `/app-run` — mostly-autonomous driver (scope-lock and ship are the only human gates).
 - `/app-learn` — mines shipped apps into the living House Knowledge Base.
-- `knowledge/` — Mobify Studio house conventions mined from 7 shipped apps.
+- `knowledge/` — Mobify Studio house conventions mined from our internal shipped apps.
 - `house-conventions` skill — agents load the relevant house pack before working.
 - Skill wiring: IC agents now route through the installed Axiom iOS, ui-design Android,
   ASO, and monetization skills; iOS code review runs Axiom auditor agents as a gate.

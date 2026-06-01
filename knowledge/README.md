@@ -1,8 +1,7 @@
 # Mobify Studio — House Knowledge Base
 
 These packs encode how Mobify Studio actually builds and ships mobile apps. They were mined
-from 7 shipped apps (AI Baby Growth Tracker iOS, GPS Camera iOS, AI Baby Growth Android,
-GPS Map Camera, LifeOS, ZipMaker, Photo Recovery) and are the **default conventions** every
+from our internal shipped apps and are the **default conventions** every
 agent in this plugin reads before working.
 
 ## Packs
@@ -30,17 +29,17 @@ This KB improves after every shipped app:
 - `/app-learn <path-to-app>` re-mines a (new or existing) app and folds net-new learnings back
   into these packs, printing a diff summary.
 - **Conflicts are flagged, never silently overwritten.** When two apps disagree (e.g. analytics
-  default opt-in vs opt-out — a real disagreement found between AI Baby Android's code and its
+  default opt-in vs opt-out — a real disagreement found between one internal app's code and its
   CLAUDE.md), the pack records both and the studio's chosen default, and surfaces the conflict
   for a human decision.
 - The studio's portable standards artifact `iOS_GENERIC_RULES_AND_LEARNINGS.md`
-  (from AI Baby Growth Tracker) is the spiritual ancestor of these packs; keep them in that
-  spirit — concrete, example-driven, "the 12 mistakes that cost the most."
+  (distilled from an internal flagship app) is the spiritual ancestor of these packs; keep them
+  in that spirit — concrete, example-driven, "the 12 mistakes that cost the most."
 
 ## Tiers
 
 Some packs distinguish two app archetypes the studio ships:
-- **Flagship** — content/AI/subscription apps (AI Baby, GPS Camera, LifeOS, GPS Map Camera):
-  modern Compose/SwiftUI, multi-module, high test coverage, subscription-first.
-- **Utility** — single-purpose tools (ZipMaker, Photo Recovery): leaner, ad-first monetization,
-  faster to ship. The plugin defaults to **Flagship** rules unless a project declares itself a utility.
+- **Flagship** — content/AI/subscription apps: modern Compose/SwiftUI, multi-module, high test
+  coverage, subscription-first.
+- **Utility** — single-purpose tools: leaner, ad-first monetization, faster to ship. The plugin
+  defaults to **Flagship** rules unless a project declares itself a utility.

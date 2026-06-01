@@ -8,8 +8,8 @@ funnel-oriented.**
 - Analytics is wrapped by a consent gate decorator (`AnalyticsGate` / `ConsentGatedAnalytics`)
   that reads **live consent at call time** and drops every event/screen/userId/userProperty call
   when consent is false — and also forces the SDK's `setEnabled(false)`.
-- Default is **OFF/false**. (Note: a real conflict exists in the studio's history — AI Baby
-  Android's `AnalyticsGate` doc says default opt-in `false` while its CLAUDE.md §L says opt-out
+- Default is **OFF/false**. (Note: a real conflict exists in the studio's history — one internal
+  Android app's `AnalyticsGate` doc says default opt-in `false` while its CLAUDE.md §L says opt-out
   `true`. The house default is **opt-in / OFF**; flag any project that wants otherwise.)
 - Crash reporting (Crashlytics) follows the same consent posture.
 
@@ -42,7 +42,7 @@ Live in `core/domain/analytics` (Android) so events are a shared contract; Fireb
 
 ## Funnels, retention, guardrails
 
-Define for each app (see LifeOS `ANALYTICS_METRICS_SPEC.md` as the template):
+Define for each app (use an internal app's `ANALYTICS_METRICS_SPEC.md` as the template):
 - The activation funnel (e.g. onboarding → first core action → first value moment → paywall → purchase).
 - D1/D3/D7 retention cohorts.
 - Data-quality guardrails (missing > 2%/day, duplicate > 1%/session, late-arriving > 10min flagged).

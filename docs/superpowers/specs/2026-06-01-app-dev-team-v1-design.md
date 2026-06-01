@@ -18,7 +18,7 @@ The plugin must:
 - Leverage the user's already-installed skill ecosystem (~150 Axiom iOS skills, `ui-design`
   Android/Material skills, `aso-screenshots`, `admob-android-integration`, `ui-ux-pro-max`)
   as the team's hands — not re-implement that knowledge.
-- Encode Mobify Studio's real house conventions, mined from 7 shipped apps, into a living
+- Encode Mobify Studio's real house conventions, mined from our internal shipped apps, into a living
   knowledge base that every agent reads before working.
 - Stay dependency-free (native Claude Code subagents + commands + skills + docs-as-memory).
   No external MCP is required to operate.
@@ -48,7 +48,7 @@ v0.1.0 already provides, and we keep:
 
 1. **Skill leverage** — agents don't currently route through the installed Axiom/UI/ASO
    skills. v1 wires every IC agent to the right skills and audit agents.
-2. **No house learnings** — nothing mines the 7 shipped apps. v1 adds a living KB.
+2. **No house learnings** — nothing mines our internal shipped apps. v1 adds a living KB.
 3. **Thin autonomy** — handoffs are command-triggered and doc-based with no continuous
    loop. v1 adds an autonomous driver + standup loop.
 4. **Missing go-to-market roles** — ASO, DevOps/git, monetization, analytics are not
@@ -124,8 +124,8 @@ command.
   - `knowledge/aso.md` (screenshot/keyword/listing patterns)
   - `knowledge/git-workflow.md` (branch model, commit/PR conventions)
   - `knowledge/analytics.md` (standard events, KPIs)
-- Initial mine targets the 7 apps in `~/Documents/Mobify Studio Apps` (6 have `CLAUDE.md`;
-  LifeOS also has `docs/ARCHITECTURE.md`).
+- Initial mine targets our internal apps corpus (most have `CLAUDE.md`; some also have
+  `docs/ARCHITECTURE.md`).
 - `house-conventions` skill: agents invoke it to load the relevant pack(s) before working,
   so output matches the studio's established style.
 - **Living/auto-updated:** at the end of `/app-ship` (or via `/app-learn --from <new app>`),
@@ -185,5 +185,5 @@ commands/{app-run,app-learn}.md
 - `/app-run "<idea>"` produces, with only scope-lock + ship interaction, a building
   iOS and/or Android project whose conventions visibly match the house KB.
 - Every IC agent demonstrably invokes the correct installed skill for its task.
-- The KB is generated from the real 7 apps and is re-mineable after each ship.
+- The KB is generated from our real internal apps and is re-mineable after each ship.
 - The plugin installs and runs with zero external MCP dependencies.

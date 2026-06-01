@@ -1,7 +1,7 @@
 # Git Workflow, Versioning & CI
 
-The studio's source-control and release discipline, mined from all 7 apps. The flagship apps
-converged on this model (GPS Map Camera locked it 2026-05-23).
+The studio's source-control and release discipline, mined from our internal apps. The flagship
+apps converged on this model.
 
 ## Branch model
 
@@ -21,9 +21,9 @@ converged on this model (GPS Map Camera locked it 2026-05-23).
 Two accepted styles (pick one per project, record it in the project `CLAUDE.md`):
 
 - **Conventional Commits:** `type(scope): description` — types `feat|fix|refactor|chore|docs|test|style|perf`,
-  scope = module name. (ZipMaker, GPS Camera, both AI Baby apps.)
+  scope = module name. (Used by most internal apps.)
 - **`[Module] Imperative description`** — e.g. `[GrowthEngine] Implement WHO percentile calc`,
-  optional sprint prefix `[S3][Growth] …`. (AI Baby iOS.)
+  optional sprint prefix `[S3][Growth] …`. (Used by some internal flagship apps.)
 
 Reference the ticket/issue ID. One logical change per commit; no unrelated cleanup mixed in.
 Use a co-author trailer. This plugin's own merge gate is owned by the `tech-manager` — only it

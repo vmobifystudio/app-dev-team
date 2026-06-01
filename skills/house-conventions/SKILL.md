@@ -5,7 +5,7 @@ description: Use before writing any code, spec, or store asset on a Mobify Studi
 
 # House conventions
 
-The plugin ships a House Knowledge Base under `knowledge/` mined from 7 shipped Mobify Studio
+The plugin ships a House Knowledge Base under `knowledge/` mined from our internal shipped
 apps. This skill is how an agent loads the right pack before working, so what it produces looks
 like the studio's other apps — same architecture, same monetization patterns, same store hygiene.
 

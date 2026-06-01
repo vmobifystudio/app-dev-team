@@ -1,40 +1,189 @@
 <div align="center">
 
-# 📱 app-dev-team
+# 🏗️ AI App Studio
 
-**An autonomous mobile-app development team for [Claude Code](https://claude.com/claude-code).**
+**Describe your app idea in one line. Get a shipped iOS & Android app.**
 
-Give it a one-line idea. A 17-role team — exec, management, engineering, design, growth, and
-release — takes it from scope to a shipped iOS/Android app, working in parallel, reviewing and
-fixing its own code, reporting via daily standups, and stopping for you at only two gates:
-**scope-lock** and **ship**.
+AI App Studio is a *team* of 17 AI specialists — a CEO, product manager, designers, iOS/Android
+engineers, a code reviewer, QA, and a release manager — that works like a real software studio.
+It takes your idea from **scope → design → code → review → store**, building in parallel, reviewing
+and fixing its own work, and stopping for you at only the two moments that matter:
+**what we're building** and **whether to ship**.
 
 [![version](https://img.shields.io/badge/version-1.1.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-lightgrey)]()
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A2BE2)]()
 
+*Ships as the **`app-dev-team`** Claude Code plugin — see [Install](#install).*
+
 </div>
 
 ---
 
-## Why this exists
+## 30-second version
 
-Most "AI builds your app" demos are a single agent improvising. Real software gets built by a
-**team with roles, handoffs, conventions, and a review gate**. This plugin models that:
+```
+# In Claude Code, from an empty folder:
+/app-run "A habit tracker for new parents, iOS + Android, freemium"
+```
 
-- **A real org chart.** CEO sets vision, CPO writes the PRD, CTO picks the stack, a tech-lead turns
-  it into impl specs, a tech-manager runs the board, and a pod of specialist engineers ships it.
-- **It uses your skills as hands.** iOS work routes through the **Axiom** skill ecosystem (~150
-  skills: SwiftUI 26, Swift concurrency, SwiftData, build-fixing, App Store submission, IAP…),
-  Android through **Material 3 / Compose** skills, store work through **ASO** skills. The team
-  doesn't re-invent that knowledge — it *wields* it.
-- **It builds the way you already build.** A **House Knowledge Base** (`knowledge/`) — mined from
-  7 shipped apps — encodes your real architecture, monetization, analytics, ASO, and git
-  conventions. New apps come out in *your* house style, not generic AI defaults. And it's
-  **living**: every shipped app folds its learnings back in.
-- **Zero external dependencies.** Pure Claude Code — subagents, commands, skills, and
-  docs-as-shared-memory. Nothing to install on a server. Anyone can clone and run it.
+That one command spins up the whole studio. It pauses **once** so you can approve the plan, then
+builds the app autonomously — parallel engineers, automated code review, QA, and a bug-fix loop —
+giving you a short standup after each round, and pauses **again** only when it's ready to ship.
+
+Already have an app? Point it at your existing code instead and it works in reverse — reads the
+codebase, grades it against professional standards, and closes the gaps:
+
+```
+/app-onboard      # understand the existing app
+/app-audit        # score it, list the issues, fix them
+```
+
+---
+
+## What it actually does
+
+Most "AI builds your app" tools are a **single agent improvising** — it writes some code, forgets
+the plan, and leaves you to be the project manager. Real apps aren't built that way. They're built
+by a **team** with roles, handoffs, conventions, and a review gate.
+
+AI App Studio models that team. Each role is a focused AI specialist that does one job well and
+hands off to the next:
+
+```mermaid
+flowchart TD
+    idea([💡 Your one-line idea])
+
+    subgraph EXEC["🎩 Executive — decides what and why"]
+        direction LR
+        CEO[CEO<br/>vision and goals]
+        CPO[CPO<br/>product spec]
+        CTO[CTO<br/>tech and architecture]
+    end
+
+    subgraph MGMT["🗂️ Management — plans and coordinates"]
+        direction LR
+        TL[Tech Lead<br/>build specs]
+        TM[Tech Manager<br/>runs the board · merge gate]
+    end
+
+    subgraph ENG["⚙️ Engineering — builds and verifies"]
+        direction LR
+        IOS[iOS dev]
+        AND[Android dev]
+        BE[Backend dev]
+        MON[Monetization]
+        REV[Code Reviewer]
+        QA[QA]
+    end
+
+    subgraph GROW["🎨 Design and Growth"]
+        direction LR
+        UX[UX Designer]
+        ASO[Store Listing]
+        DATA[Analytics]
+    end
+
+    subgraph REL["🚀 Platform and Release"]
+        direction LR
+        OPS[DevOps]
+        SEC[Security]
+        RM[Release Manager]
+    end
+
+    idea --> EXEC --> MGMT --> ENG --> GROW --> REL --> ship([📦 Shipped app on the store])
+```
+
+The engineers work **in parallel**. The code reviewer is a real gate — nothing merges until it
+passes (and on iOS it runs ~25 specialist auditors for accessibility, concurrency, security, and
+more). QA files bugs, the team fixes them in a loop, and you get a daily standup the whole way.
+
+---
+
+## How it runs — the autonomy model
+
+You stay in control at exactly two gates. Everything between them runs on its own.
+
+```mermaid
+flowchart LR
+    A([💡 idea]) --> B["/app-init<br/>vision · spec · architecture"]
+    B --> G1{{"🔒 GATE 1<br/>scope-lock<br/><i>you approve the plan</i>"}}
+    G1 --> C["/app-plan<br/>parallel board"]
+    C --> D["/app-build loop<br/>parallel devs → code review →<br/>merge → QA → bug fixes → standup"]
+    D --> E["ship-readiness<br/>store assets · security · analytics"]
+    E --> G2{{"🚀 GATE 2<br/>ship<br/><i>you confirm</i>"}}
+    G2 --> F([📦 store upload])
+
+    style G1 fill:#fde68a,stroke:#b45309,color:#000
+    style G2 fill:#bbf7d0,stroke:#15803d,color:#000
+```
+
+**"Mostly autonomous" means it shows you the seams.** It never invents intent when a requirement is
+ambiguous — it writes the blocker into the standup and surfaces it to you verbatim, instead of
+guessing and building the wrong thing.
+
+### Two ways in: new app or existing app
+
+```mermaid
+flowchart TD
+    Q{What are you<br/>starting from?}
+    Q -->|"empty folder<br/>(new app)"| GF["/app-init → /app-build → /app-ship"]
+    Q -->|"existing codebase<br/>(your app today)"| BF["/app-onboard → /app-audit → fix gaps"]
+    GF --> S([📦 shipped app])
+    BF --> S2([✅ healthier, audited app])
+
+    style GF fill:#dbeafe,stroke:#1d4ed8,color:#000
+    style BF fill:#fae8ff,stroke:#a21caf,color:#000
+```
+
+`/app-run` auto-detects which path you're on, so you can always just start there.
+
+---
+
+## Use cases — who this is for
+
+| You are… | You use it to… |
+|---|---|
+| 🚀 **An indie founder / solopreneur** | Turn an idea into a real, store-ready iOS + Android app without hiring a team — and without being the project manager. |
+| 🧑‍💻 **A developer who's stretched thin** | Offload the scaffolding, boilerplate, store setup, and the boring-but-critical review/QA passes, so you focus on the hard parts. |
+| 🏢 **A small studio shipping many apps** | Encode your house conventions once; every new app comes out in *your* style, not generic AI defaults — and the studio improves after each ship. |
+| 🛠️ **A team with an existing app** | Onboard the codebase, audit it against professional standards (accessibility, security, performance, store readiness), and get a prioritized fix list. |
+| 📚 **Someone learning to build apps** | Watch a structured team make decisions — read the vision, PRD, architecture, and reviews it writes, like a senior team thinking out loud. |
+| ⏱️ **Anyone validating an idea fast** | Go from "what if there was an app that…" to a working build you can put in front of users. |
+
+---
+
+## Why this helps
+
+- **You don't have to be the project manager.** The studio drives itself. You give the idea, approve
+  the plan, and confirm the ship — it handles the 100 steps in between.
+- **It catches its own mistakes.** Code is reviewed before it merges, QA files bugs, and the team
+  fixes them in a loop. On iOS, ~25 specialist auditors check accessibility, data races, security,
+  memory, and App Store rejection risks automatically.
+- **It builds it the right way, not just *a* way.** A built-in **House Knowledge Base** encodes
+  proven architecture, monetization, analytics, and store conventions — so output is production-grade,
+  not a throwaway prototype.
+- **It's honest about ambiguity.** When something is unclear, it stops and asks instead of guessing —
+  so you never discover three days later that it built the wrong thing.
+- **It's transparent.** Every decision is written to plain Markdown docs (vision, PRD, architecture,
+  reviews, standups). Nothing is a black box; you can read, edit, or override any of it.
+
+## Why it's better than a single AI agent
+
+| | 🤖 One AI agent improvising | 🏗️ **AI App Studio** |
+|---|---|---|
+| **Structure** | One context doing everything; forgets the plan | 17 focused roles with clear handoffs and ownership |
+| **Code review** | None — it ships whatever it wrote | A real review gate; nothing merges until it passes |
+| **Quality bar** | Generic AI defaults | Your house conventions + ~25 iOS specialist auditors |
+| **Parallelism** | Sequential, slow | Engineers build features in parallel |
+| **Ambiguity** | Guesses and moves on | Stops, writes the blocker, asks you |
+| **Existing apps** | Starts from scratch | Onboards, audits, and remediates what you already have |
+| **Memory** | Forgets between steps | Shared Markdown docs are the team's long-term memory |
+| **Gets better** | Same every time | Living knowledge base improves after each shipped app |
+| **Dependencies** | Varies | Zero — pure Claude Code, clone and run |
+
+---
 
 ## Install
 
@@ -45,7 +194,10 @@ This repo is its own Claude Code **marketplace**, so installing is two commands.
 /plugin install app-dev-team@mobify-studio
 ```
 
-The plugin is enabled automatically — its 17 agents, 9 commands, and skills are now available.
+> 💡 **AI App Studio** is the friendly name for the **`app-dev-team`** plugin — that's the ID you
+> install and the command prefix (`/app-*`) you'll use.
+
+The plugin is enabled automatically — its 17 agents, 11 commands, and skills are now available.
 Run `/plugin` anytime to browse, enable/disable, or remove it. To update later, re-run
 `/plugin marketplace add vmobifystudio/app-dev-team` and reinstall.
 
@@ -68,6 +220,8 @@ git clone https://github.com/vmobifystudio/app-dev-team
 
 `/plugin marketplace add` also accepts a full git URL (`https://…/app-dev-team.git`) for non-GitHub hosts.
 </details>
+
+---
 
 ## Quickstart
 
@@ -100,32 +254,7 @@ localization, lint, missing analytics) are automated; **risky changes** (migrati
 concurrency rewrites, billing logic) get a written plan and only proceed with your approval.
 `/app-run` does this automatically when it detects a non-empty app directory.
 
-## The autonomy model
-
-```
-            ┌─────────────── GATE 1: scope-lock (you approve) ───────────────┐
- idea ─▶ /app-init ─▶ vision + PRD + architecture + impl specs + CLAUDE.md ───┘
-                                       │
-                                       ▼
-                          /app-plan  →  parallel board
-                                       │
-                  ┌────────────────────▼─────────────────────┐
-                  │  /app-build loop (autonomous)             │
-                  │   parallel devs ─▶ streaming code review  │
-                  │   (Axiom audits on iOS) ─▶ merge gate     │
-                  │   ─▶ QA ─▶ bug loop ─▶ daily standup      │
-                  │   escalates ONLY blockers + cap-hits      │
-                  └────────────────────┬─────────────────────┘
-                                       ▼
-        ship-readiness: ASO assets · security (MASVS) · analytics verified
-                                       │
-            ┌─────────────── GATE 2: ship (you confirm) ─────────────────────┐
-            └────────────── /app-ship ─▶ store upload ───────────────────────┘
-```
-
-"Mostly autonomous" means the team drafts and ships most of the work and **shows you the seams** —
-it never invents intent when a requirement is ambiguous; it writes the blocker to the standup and
-surfaces it verbatim.
+---
 
 ## The roster (17 agents)
 
@@ -170,8 +299,9 @@ files — add, remove, or retune them.
 
 ## The House Knowledge Base (`knowledge/`)
 
-Mined from 7 shipped Mobify Studio apps (AI Baby Growth iOS + Android, GPS Camera iOS, GPS Map
-Camera, LifeOS, ZipMaker, Photo Recovery). Every build agent reads the relevant pack first:
+Mined from our internal shipped apps, this is the studio's accumulated taste — the architecture,
+monetization, analytics, and store conventions that make output production-grade instead of generic.
+Every build agent reads the relevant pack first:
 
 | Pack | Encodes |
 |---|---|
