@@ -1,7 +1,7 @@
 ---
 description: Run code review on a specific branch or open PR-equivalent
 argument-hint: <branch name or ticket ID>
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
 ---
 
 # /app-review — Review a branch

@@ -49,7 +49,7 @@ Bug fix tickets use the form `BUG-NNN-fix` and reference the originating `BUG-NN
 Analytics rule: every P0 feature gets a paired `APP-NNN-analytics` ticket so the events named in the architecture doc actually get implemented.
 
 ## Parallel execution
-You spawn IC agents in parallel using the Agent tool when their tickets have no dependency on each other. Default parallelism:
+You spawn IC agents in parallel using the subagent tool (`Task`/`Agent`) when their tickets have no dependency on each other. Default parallelism:
 - 1 iOS dev + 1 Android dev + 1 backend dev working on independent features
 - code-reviewer queues PRs and reviews them as they land
 - qa-engineer writes test plans against PRD acceptance criteria

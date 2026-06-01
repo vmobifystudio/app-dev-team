@@ -1,7 +1,7 @@
 ---
 description: Plan the next sprint — tech-manager turns backlog + impl specs into a parallelizable board
 argument-hint: [sprint number or feature focus, optional]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
 ---
 
 # /app-plan — Plan the next sprint

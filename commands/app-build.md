@@ -1,7 +1,7 @@
 ---
 description: Run the sprint — launch developer agents in parallel, review each PR, gate to QA, surface bugs back into the loop
 argument-hint: [ticket IDs, optional — defaults to all ready tickets]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
 ---
 
 # /app-build — Execute the sprint

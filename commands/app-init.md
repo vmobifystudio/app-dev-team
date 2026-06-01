@@ -1,7 +1,7 @@
 ---
 description: Start a new mobile app project — runs requirements intake, then CEO vision, then PRD + architecture in parallel
 argument-hint: [one-line idea, optional]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
 ---
 
 # /app-init — Kick off a new app project

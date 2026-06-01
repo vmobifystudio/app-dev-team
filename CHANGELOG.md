@@ -17,6 +17,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   and git-strategy doc seeded from the House KB.
 - Repo hygiene: LICENSE, CONTRIBUTING, CHANGELOG, .gitignore.
 
+### Fixed (post-review, plugin-validator + skill-reviewer)
+- Subagent tool naming: all spawning commands now list both `Task, Agent` in `allowed-tools`,
+  so orchestration works regardless of the runtime's tool name.
+- `house-conventions` skill: defined the pack path (`${CLAUDE_PLUGIN_ROOT}/knowledge/…` with a
+  glob fallback) and made it fail-closed (stop + blocker) instead of silently using defaults.
+- `house-conventions`: added Flagship/Utility tier selection and tied learnings to the real
+  `docs/daily/…` run-fragment convention.
+- Added `model:` to `release-manager` (sonnet) and `security-reviewer` (opus); removed tracked
+  `.DS_Store` files.
+
 ## [0.1.0]
 
 ### Added

@@ -1,7 +1,7 @@
 ---
 description: Mine a shipped app's conventions into the living House Knowledge Base — adds net-new learnings to knowledge/*.md and flags conflicts for human decision
 argument-hint: <path to a shipped app> [more paths...]   (defaults to the just-shipped project)
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
 ---
 
 # /app-learn — Grow the House Knowledge Base

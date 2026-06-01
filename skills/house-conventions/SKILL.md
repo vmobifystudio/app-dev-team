@@ -16,8 +16,12 @@ and prevents a whole class of "this doesn't match how we build" rework.
 
 ## Procedure
 
-1. Identify what you're about to do and load the matching pack(s) from the plugin's `knowledge/`
-   directory (resolve the plugin root; the packs sit at `<plugin>/knowledge/*.md`):
+1. Identify what you're about to do and load the matching pack(s). The packs live at
+   **`${CLAUDE_PLUGIN_ROOT}/knowledge/<pack>.md`**. If `CLAUDE_PLUGIN_ROOT` is not set in your
+   environment, glob for `**/knowledge/stack-defaults.md` inside the plugin install and read the
+   packs from that directory. If you genuinely cannot locate the packs, **STOP and report a
+   blocker** — do not silently proceed on generic defaults; that is exactly the failure this skill
+   exists to prevent.
 
    | You are about to… | Read |
    |---|---|
@@ -33,12 +37,16 @@ and prevents a whole class of "this doesn't match how we build" rework.
    engineering principles, `CLAUDE.md`) explicitly overrides a specific rule — a project may be
    stricter, never sloppier.
 
-3. If the pack and the project docs **conflict**, the project docs win for that project, but
-   write one line to your run fragment noting the divergence so the `tech-manager` can decide
-   whether the KB or the project is wrong.
+   **Tier:** default to the **Flagship** rules in each pack. If the project declares itself a
+   *utility* app (in its `docs/` or `CLAUDE.md`), apply the **Utility** branch where a pack defines
+   one (e.g. ad-first monetization, leaner stack) — see `knowledge/README.md` §Tiers.
 
-4. If you discover a genuinely new, reusable convention while working, note it in your handoff
-   under `LEARNING:` so `/app-learn` can fold it back into the KB after ship.
+3. If the pack and the project docs **conflict**, the project docs win for that project, but
+   write one line to your per-run fragment (`docs/daily/<today>-<agent>-<ticket>.md`) noting the
+   divergence so the `tech-manager` can decide whether the KB or the project is wrong.
+
+4. If you discover a genuinely new, reusable convention while working, add a `LEARNING:` line to
+   that same fragment so `/app-learn` can fold it back into the KB after ship.
 
 ## Anti-patterns
 

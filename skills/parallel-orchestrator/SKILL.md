@@ -1,6 +1,6 @@
 ---
 name: parallel-orchestrator
-description: Use to actually launch multiple developer agents in parallel via the Agent tool, given a sprint plan and board. Triggers from /app-build or when the tech-manager says "spawn the pod". Encapsulates the rules for safe concurrent agent execution.
+description: Use to actually launch multiple developer agents in parallel via the subagent tool (Task/Agent), given a sprint plan and board. Triggers from /app-build or when the tech-manager says "spawn the pod". Encapsulates the rules for safe concurrent agent execution.
 ---
 
 # Parallel orchestrator
@@ -17,7 +17,7 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 
 2. **Group by owner.** One agent invocation per owner, batched. iOS dev gets all their ready tickets in one prompt; same for Android; same for backend.
 
-3. **Launch in a single message.** Use the Agent tool with multiple invocations in the same assistant message so they run concurrently. This is the critical step — sequential launches give up the parallelism we just earned.
+3. **Launch in a single message.** Use the subagent tool (`Task`/`Agent`) with multiple invocations in the same assistant message so they run concurrently. This is the critical step — sequential launches give up the parallelism we just earned.
 
 4. **Each agent prompt** includes:
    - The ticket ID(s)
