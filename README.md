@@ -9,7 +9,7 @@ release — takes it from scope to a shipped iOS/Android app, working in paralle
 fixing its own code, reporting via daily standups, and stopping for you at only two gates:
 **scope-lock** and **ship**.
 
-[![version](https://img.shields.io/badge/version-1.0.0-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.1.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-lightgrey)]()
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A2BE2)]()
@@ -83,6 +83,23 @@ loop — streaming a standup after each round, and pauses again only at **ship**
 
 Prefer to drive manually? Use the granular commands below.
 
+### Already have an app? (brownfield)
+
+Point it at an existing codebase and it works the other direction — read the code, grade it against
+your standards, and close the gaps:
+
+```
+# from your existing app's repo root, in Claude Code:
+/app-onboard          # detect stack, reverse-engineer as-built architecture + CLAUDE.md
+/app-audit            # score vs the House KB + Axiom auditors → gap report → remediation backlog
+```
+
+`/app-audit` ranks every finding by severity **and the exact house rule it violates**, then builds a
+remediation backlog and pauses so you choose what to fix. **Safe fixes** (accessibility, tokens,
+localization, lint, missing analytics) are automated; **risky changes** (migrations, refactors,
+concurrency rewrites, billing logic) get a written plan and only proceed with your approval.
+`/app-run` does this automatically when it detects a non-empty app directory.
+
 ## The autonomy model
 
 ```
@@ -139,8 +156,10 @@ files — add, remove, or retune them.
 
 | Command | What it does |
 |---|---|
-| `/app-run [idea]` | **The autonomous driver** — init → scope-lock → sprint loop → ship-readiness. `--yolo` skips scope-lock; wrap in `/loop` for hands-off pacing. |
-| `/app-init [idea]` | Intake → CEO vision → parallel CPO/CTO → parallel ux/tech-lead/devops → bootstraps the project `CLAUDE.md`, `.gitignore`, and git strategy. |
+| `/app-run [idea]` | **The autonomous driver** — auto-detects greenfield vs existing app, then init/onboard → gate → sprint loop → ship-readiness. `--yolo` skips the gate; wrap in `/loop` for hands-off pacing. |
+| `/app-init [idea]` | **(New app)** Intake → CEO vision → parallel CPO/CTO → parallel ux/tech-lead/devops → bootstraps the project `CLAUDE.md`, `.gitignore`, and git strategy. |
+| `/app-onboard [path]` | **(Existing app)** Detect the stack, reverse-engineer the as-built architecture + feature inventory, generate `CLAUDE.md` — so the team understands the codebase. |
+| `/app-audit [dimension]` | **(Existing app)** Grade it against the House KB + Axiom auditors → severity-ranked gap report (`docs/80-audit.md`) → remediation backlog → gate → fix (safe auto, risky on approval). |
 | `/app-plan [focus]` | Tech-manager turns backlog + specs into a parallel-friendly board. |
 | `/app-build [tickets]` | Spawns devs/reviewers/QA in parallel; streams reviews; gates merges; loops the bug fixes. 2-cycle review cap. |
 | `/app-review <branch>` | Code review on a single branch. |
@@ -187,6 +206,7 @@ docs/
   23-git-strategy · 40-api · 41-monetization
   50-test-plan · 51-bugs · 52-analytics
   60-releases · 70-security-review
+  80-audit.md                  (brownfield: gap report vs the House KB)
   daily/standup-YYYY-MM-DD.md
 ios/   android/   backend/   (per scope)
 ```

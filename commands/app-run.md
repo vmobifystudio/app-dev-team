@@ -22,13 +22,23 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 
 ## Steps
 
-1. **Init.** Run `/app-init` with the idea (requirements-intake → CEO vision → parallel CPO/CTO →
-   parallel ux-designer/tech-lead/devops-engineer → project bootstrap incl. `CLAUDE.md` + git).
+1. **Detect greenfield vs brownfield.** Using the `brownfield-onboarding` skill's detection, check
+   whether the target directory already contains an app.
+   - **Empty / no app → greenfield:** run `/app-init` with the idea (requirements-intake → CEO
+     vision → parallel CPO/CTO → parallel ux-designer/tech-lead/devops-engineer → project bootstrap
+     incl. `CLAUDE.md` + git).
+   - **Existing app → brownfield:** run `/app-onboard` (reverse-engineer the as-built baseline +
+     `CLAUDE.md`), then `/app-audit` (grade vs the House KB → `docs/80-audit.md` → remediation
+     backlog). If an idea/goal was given, treat it as the upgrade goal and add it as feature tickets
+     alongside the `AUDIT-NNN` remediation tickets.
 
-2. **GATE 1 — scope-lock (human).** Print a one-screen brief: vision, the P0 feature list from the
-   PRD, the architecture headline (platforms + stack), the rough effort, and the top risk. Ask:
-   *"Approve scope and proceed to build?"* Wait for approval.
-   - With `--yolo`, skip this gate and log that scope was auto-approved.
+2. **GATE 1 — scope-lock / audit-approval (human).**
+   - *Greenfield:* print a one-screen brief — vision, P0 feature list, architecture headline,
+     rough effort, top risk — and ask *"Approve scope and proceed to build?"*
+   - *Brownfield:* print the audit scorecard and the remediation backlog grouped by severity and
+     Safe/Risky, and ask *"Which gaps should we fix?"* Risky changes proceed only if approved here.
+   Wait for the answer. With `--yolo`, skip the gate (greenfield: auto-approve scope; brownfield:
+   fix all S1/S2 + Safe, defer Risky) and log the decision.
 
 3. **Plan.** Run `/app-plan` (tech-manager builds the parallel board via `sprint-planner`). Ensure
    every P0 feature has a paired `APP-NNN-analytics` ticket (data-analyst schema feeds this).

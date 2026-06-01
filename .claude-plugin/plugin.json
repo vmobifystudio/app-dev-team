@@ -1,7 +1,7 @@
 {
   "name": "app-dev-team",
-  "version": "1.0.0",
-  "description": "An autonomous mobile app development team for Claude Code. 17 role agents (CEO/CPO/CTO, tech-lead/tech-manager, iOS/Android/backend devs, monetization, code review, QA, UX, ASO, DevOps, data, security, release) run in parallel to take an idea from scope to a shipped iOS/Android app. Wires the installed Axiom iOS, Material 3, and ASO skills, and ships a House Knowledge Base mined from real shipped apps.",
+  "version": "1.1.0",
+  "description": "An autonomous mobile app development team for Claude Code. 17 role agents (CEO/CPO/CTO, tech-lead/tech-manager, iOS/Android/backend devs, monetization, code review, QA, UX, ASO, DevOps, data, security, release) run in parallel to take an idea from scope to a shipped iOS/Android app — or to onboard an existing codebase, audit it against your standards, and close the gaps. Wires the installed Axiom iOS, Material 3, and ASO skills, and ships a House Knowledge Base mined from real shipped apps.",
   "author": {
     "name": "Amol Pomane",
     "email": "amolpomane@gmail.com"

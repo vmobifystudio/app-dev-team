@@ -3,7 +3,22 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] — v1.0 work in progress
+## [1.1.0] — Brownfield support
+
+### Added
+- **Existing-app support.** The team now works on already-built codebases, not just new ideas.
+  - `/app-onboard` — detects the stack, reverse-engineers the as-built architecture + feature
+    inventory, and generates `CLAUDE.md`, so the team understands the codebase (read-only).
+  - `/app-audit` — fans out the specialist + Axiom auditors, produces a severity-ranked gap report
+    (`docs/80-audit.md`) tagging each finding with the exact House KB rule it violates and a
+    Safe/Risky classification, builds an `AUDIT-NNN` remediation backlog, gates on your approval,
+    then fixes (safe fixes automatically; risky changes — migrations, refactors, concurrency
+    rewrites, billing logic — only with an approved plan).
+  - `brownfield-onboarding` skill — stack detection, as-built reverse-engineering, and the
+    Safe-vs-Risky remediation classifier.
+  - `/app-run` now auto-detects greenfield vs brownfield and routes accordingly.
+
+## [1.0.0]
 
 ### Added
 - Four new roles: `aso-specialist`, `devops-engineer`, `monetization-engineer`, `data-analyst`.
