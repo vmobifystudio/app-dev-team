@@ -36,11 +36,43 @@ Most "AI builds your app" demos are a single agent improvising. Real software ge
 - **Zero external dependencies.** Pure Claude Code — subagents, commands, skills, and
   docs-as-shared-memory. Nothing to install on a server. Anyone can clone and run it.
 
+## Install
+
+This repo is its own Claude Code **marketplace**, so installing is two commands. Inside Claude Code:
+
+```
+/plugin marketplace add vmobifystudio/app-dev-team
+/plugin install app-dev-team@mobify-studio
+```
+
+The plugin is enabled automatically — its 17 agents, 9 commands, and skills are now available.
+Run `/plugin` anytime to browse, enable/disable, or remove it. To update later, re-run
+`/plugin marketplace add vmobifystudio/app-dev-team` and reinstall.
+
+<details>
+<summary>Other install methods</summary>
+
+**A specific version/branch** — append a git ref:
+```
+/plugin marketplace add vmobifystudio/app-dev-team@main
+```
+
+**Local clone (for hacking on it)** — point Claude Code at a local checkout:
+```bash
+git clone https://github.com/vmobifystudio/app-dev-team
+```
+```
+/plugin marketplace add ./app-dev-team
+/plugin install app-dev-team@mobify-studio
+```
+
+`/plugin marketplace add` also accepts a full git URL (`https://…/app-dev-team.git`) for non-GitHub hosts.
+</details>
+
 ## Quickstart
 
-```bash
-# 1) Install: clone into your Claude Code plugins, or add via your marketplace.
-# 2) From the root of a new (empty) project directory:
+```
+# From the root of a new (empty) project directory, in Claude Code:
 
 /app-run "A habit tracker for new parents, iOS + Android, freemium"
 ```
