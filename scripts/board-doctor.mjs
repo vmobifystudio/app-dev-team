@@ -74,16 +74,28 @@ function diagnose(board, ledger, capabilities) {
   }
 
   const ledgerByTicket = new Map();
-  for (const entry of ledger) {
+  for (const [index, entry] of ledger.entries()) {
     const id = entry.ticketId.toUpperCase();
 
     if (!entry.known) {
-      anomalies.push({
-        code: 'ledger_action_unknown',
+      // The ledger is append-only, so a bad line can never be removed. A strict parser plus an
+      // immutable log therefore needs a supersede path, or one typo blocks the board forever.
+      // A later valid entry for the same ticket IS the correction: the record has been repaired,
+      // so the bad row drops to a warning that keeps the mistake visible without gating on it.
+      const superseded = ledger
+        .slice(index + 1)
+        .some((later) => later.known && later.ticketId.toUpperCase() === id);
+
+      (superseded ? warnings : anomalies).push({
+        code: superseded ? 'ledger_action_unknown_superseded' : 'ledger_action_unknown',
         ticketId: id,
         line: entry._line,
-        detail: `Review ledger uses action "${entry.action}", which is not one of: ${[...LEDGER_ACTIONS].join(', ')}. The verdict it records is invisible to every mechanical check — cycle counts and the approval requirement both silently ignore it.`,
-        action: 'Append a corrected line using the exact vocabulary (never edit the wrong one — the ledger is append-only).',
+        detail: superseded
+          ? `Review ledger line uses the non-canonical action "${entry.action}", but a later valid entry for ${id} supersedes it. Left visible because the ledger is append-only; no action needed.`
+          : `Review ledger uses action "${entry.action}", which is not one of: ${[...LEDGER_ACTIONS].join(', ')}. The verdict it records is invisible to every mechanical check — cycle counts and the approval requirement both silently ignore it.`,
+        action: superseded
+          ? 'None — the record was repaired by a later line.'
+          : 'Append a corrected line using the exact vocabulary (never edit the wrong one — the ledger is append-only).',
       });
       continue;
     }

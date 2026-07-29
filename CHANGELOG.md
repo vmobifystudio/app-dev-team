@@ -126,6 +126,21 @@ Also confirmed: **worktrees are necessary but not sufficient.** The two clean br
 add/add conflicts on **7 of 10 files** — isolation removes the corruption, file-overlap serialization
 removes the unmergeable pile. Both rules are load-bearing.
 
+### Fixed — found by the full-sprint dry run (review gate)
+
+- **A drifted ledger word silently erased a REQUEST CHANGES verdict.** The reviewer appended
+  `changes-requested` instead of the canonical `changes`. `parseLedger` filtered the row out, so the
+  verdict vanished from every mechanical check, the ledger-derived cycle count stayed at 0, and
+  `board-doctor` reported the *milder* `review_never_started` — pointing away from a rejection that
+  had really happened. Unknown actions are no longer dropped; `ledger_action_unknown` blocks, the
+  legal vocabulary is printed in the ledger template header, and `code-reviewer` names the exact
+  words.
+- **A strict parser over an append-only log had no supersede path** — one typo would have blocked
+  the board permanently, since the bad line can never be deleted. A later valid entry for the same
+  ticket now counts as the correction and drops the bad row to
+  `ledger_action_unknown_superseded` (visible, non-blocking). An *unsuperseded* bad word still
+  blocks; both directions tested.
+
 ### Fixed — worktree location and a false claim
 
 `agent-isolation` said "`Add .agent-wt/ to .gitignore` (the `/app-init` bootstrap does this)".
