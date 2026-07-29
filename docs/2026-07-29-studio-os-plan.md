@@ -219,3 +219,95 @@ nobody wants.
 
 That is not a defect to engineer away. It is the reason the founder gates exist, and the reason P1's
 production-observation loop matters more than any gate in the system.
+
+---
+
+# Addendum — review of the second plan (control room, org model, methodology)
+
+Three of my earlier positions change on the evidence in this plan. I am recording the changes
+rather than defending the originals.
+
+## Position changes
+
+**1. The roster can be larger than I argued — because activation is already strict.**
+
+My earlier objection was that 18 → ~40 roles multiplies drift and context cost. The second plan
+answers it directly: *"Do not activate every agent simultaneously"*, with three team levels
+(utility / growth / flagship) and trigger-based specialists. We already enforce exactly that —
+`role-activation` gates by tier and product type and **fails closed** on an unstaffed product type.
+
+So an inactive role costs **maintenance, not runtime**. That is a real cost but a much smaller one,
+and it is already policed: `team-doctor` blocks on a role nothing spawns, a role in no contract
+tier, and a role missing from the activation matrix.
+
+**Revised rule:** a role may be added when it has (a) an activation trigger, (b) a contract tier,
+(c) a spawn site, and (d) a reason it cannot be a skill. Roles that fail (d) still become skills —
+`interaction-motion-designer`, `content-designer`, `localisation-specialist` and
+`database-migration-specialist` are procedures, not standing contexts. But `product-manager`,
+`test-automation-engineer`, `privacy-reviewer`, `compliance-specialist` and `reliability-engineer`
+clear the bar once activation is conditional, and I withdraw the objection to them.
+
+**2. SQLite: "not on our Node floor", not "never".**
+
+I argued zero-dependency is a security property and rejected SQLite. That was half right.
+`node:sqlite` is **stdlib from Node 22.5** — so on Node 22+ it is zero-dependency *and* gives atomic
+writes, queries and pagination. Measured here: this machine runs **Node 20.19.6**, where it is
+unavailable, and Node 20 is LTS into 2026, so requiring 22+ would exclude real users today.
+
+**Decision:** JSONL remains the store now, with the schema shaped so a SQLite projection is a drop-in
+later (`studio-event-schema/v1`). Revisit when the plugin's Node floor moves to 22. The append-only
+event log stays the source of truth in both worlds, so this is a projection change, not a rewrite.
+
+**3. Two dashboard modes — accepted, and it resolves a tension I had.**
+
+Keep the dependency-free dashboard as the **emergency/diagnostic** interface: it must work when the
+build stack is broken, which is exactly when you need to see why. Build the full control room as a
+separate React/TypeScript app.
+
+The constraint that makes this safe: **the frontend lives in its own directory with its own
+dependencies, and the plugin itself stays zero-dependency.** The plugin must remain correct and
+usable with the UI absent — the UI enhances visibility, it is never required for correctness.
+
+## Accepted without change
+
+- **CLI is the execution interface, not the complete human interface.** Correct, and the list of
+  what CLI is poor at (following threads, comparing screens, browsing evidence) is accurate.
+- **Local-first.** Repositories, credentials and evidence stay on the machine. Remote access later
+  as a control plane receiving *selected events*, never shell or filesystem access.
+- **SSE over WebSockets.** Already the transport; no reason to add another.
+- **Machine truth vs human presentation.** The chat view renders structured events; the metadata
+  panel (ticket, requirement, decision, artifact updated, verification required) is what makes it
+  operational rather than decorative.
+- **No fabricated chain-of-thought.** Routine execution appears as compact system events
+  (`22:31 · started AND-018 · 6 files changed · 42/42 passed`), not narrated conversation. This is
+  the same rule as "never render an empty panel that looks like all-clear": the UI may only show
+  what the log can produce.
+- **Message obligations** — every material discussion ends in a decision, an artifact update, a
+  transition, a documented assumption, a blocker, an escalation, or an explicit no-action close.
+- **Do not rank agents by tokens or message count.** Rank by verified completion, escaped defects,
+  rework generated, false-completion rate, and recurrence of known failure classes.
+- **Shape Up's appetite and circuit-breaker over estimates.** Agents cannot estimate honestly; a
+  fixed appetite with a stop condition is the right shape.
+- **`studio-director` as the single founder interface.** Absorbs my `chief-of-staff` for small
+  projects; both exist for flagship.
+
+## Where I would still hold the line
+
+- **Rituals must produce artifacts, not transcripts.** A simulated standup that yields prose is
+  cost with no output. Each ritual must emit a decision, a ticket, or a recorded risk.
+- **The `#channels` are a generated view.** They are a projection of the event log, never a place
+  where state is authored — same rule as the board's Markdown.
+- **Do not add DORA metrics before the pipeline has run end to end.** Deployment frequency on a
+  system that has never shipped is theatre. Metrics land after Phase R proves the loop.
+
+## Revised sequence
+
+Unchanged at the top: **P0 → P4 → P1**. Then:
+
+| Order | Phase | Change |
+|---|---|---|
+| 4 | **P3a — structured comms backend** | Event schema v1, threads, channels, decisions, questions, SSE. JSONL now, SQLite-ready. |
+| 5 | **P3b — minimum control room** | Five screens only: Mission Control · Communications · Board · Team · Founder Inbox. Separate app, own deps, plugin unaffected. |
+| 6 | **P2 — roles, on the revised rule** | The bar is now (a) trigger, (b) contract tier, (c) spawn site, (d) cannot be a skill. |
+| 7 | **P3c — evidence, design and release rooms** | Worktrees, builds, tests, runtime evidence, traceability, design QA, release readiness. |
+| 8 | **Metrics** | DORA + flow + quality, once there is a real pipeline to measure. |
