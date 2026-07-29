@@ -820,7 +820,7 @@ process.exit(j.findings.some(f=>f.code==="contract_drift")?1:0);
 # give it a scratch plugin to validate. Markdown only — the copy is a few hundred KB and no slower
 # than the run against the real tree above.
 PLUG="$TMP/plugin"; mkdir -p "$PLUG"
-cp -R "$HERE/../agents" "$HERE/../commands" "$HERE/../skills" "$PLUG/"
+cp -R "$HERE/../agents" "$HERE/../commands" "$HERE/../skills" "$HERE/../knowledge" "$PLUG/"
 
 # Regression: the skill-exists check was gated behind a hard-coded whitelist of eleven skill names,
 # all of which existed — so it could report a missing skill only for a skill that was not missing.
@@ -1000,6 +1000,219 @@ plugrestore skills/team-protocol/SKILL.md
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" ) >/dev/null 2>&1
 [ $? = 0 ] && ok "the scratch plugin is coherent again once every seeded defect is reverted" \
             || bad "the scratch plugin is coherent again once every seeded defect is reverted"
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "failure corpus"
+# --------------------------------------------------------------------------------------------
+# knowledge/failure-corpus.md is the only pack that learns from failure. Every assertion here is
+# about the one output that justifies it existing: a class that recurs AFTER its rule shipped, which
+# is proof the rule does not work. Everything else in the file is a story you could have read.
+CORPUS="$PLUG/knowledge/failure-corpus.md"
+plugcorpus()  { cp "$CORPUS" "$TMP/corpus-restore.md"; }
+corpusrestore() { cp "$TMP/corpus-restore.md" "$CORPUS"; }
+
+# THE assertion. An instance dated after its class's `Rule shipped` date is a recurrence, and if that
+# is not flagged the corpus reads as "we know about this one" — the most expensive misreading of the
+# file. Proven to fail: with the check removed from team-doctor.mjs this line went green on a corpus
+# containing a class that had recurred twice under a rule claiming to catch it.
+plugcorpus
+printf '| 2099-01-01 | a board ID was re-upcased by a fourth reader, long after the rule shipped |\n' >> "$CORPUS"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/corpus1.json" 2>/dev/null
+assert_finding "$TMP/corpus1.json" corpus_recurrence \
+  "an instance dated after its class's rule shipped is flagged as a RECURRENCE" "2099-01-01"
+assert_has "$TMP/corpus1.json" "The rule did not work" "...and the finding names the rule, not the incident, as the problem"
+corpusrestore
+
+# The other half, and it matters as much: a corpus of instances that all predate their rule must be
+# silent. A check that fires on every corpus gets switched off, and a switched-off check protects
+# nothing. This is the seeded corpus exactly as shipped.
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/corpus2.json" 2>/dev/null
+grep -q corpus_recurrence "$TMP/corpus2.json" \
+  && bad "instances predating their rule are not recurrences" \
+  || ok "instances predating their rule are not recurrences"
+
+# A class with no Tell cannot be run against a diff and a class with no Rule catches nothing —
+# either way it is decoration, and decoration reads as finished work.
+plugcorpus
+grep -v '^\*\*Tell:\*\*' "$TMP/corpus-restore.md" > "$CORPUS"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/corpus3.json" 2>/dev/null
+assert_finding "$TMP/corpus3.json" corpus_class_incomplete "a class with no Tell is a blocking finding" "Tell"
+corpusrestore
+
+# An unparseable `Rule shipped` silently disables the recurrence comparison — the failure mode where
+# the check still runs, still reports clean, and can no longer decide anything.
+plugcorpus
+sed 's/^\*\*Rule shipped:\*\* 2026-07-29/**Rule shipped:** last summer/' "$TMP/corpus-restore.md" > "$CORPUS"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/corpus4.json" 2>/dev/null
+assert_finding "$TMP/corpus4.json" corpus_class_incomplete "a non-date Rule shipped is a blocking finding" "last summer"
+corpusrestore
+
+# A parser that finds no classes must say so. "Zero classes" and "zero problems" are the same output
+# from a reader that has stopped reading, which is FC-004 committed inside the corpus checker.
+plugcorpus
+sed 's/^### FC-/#### FC-/' "$TMP/corpus-restore.md" > "$CORPUS"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/corpus5.json" 2>/dev/null
+assert_finding "$TMP/corpus5.json" corpus_unparseable "a corpus whose class headings changed shape is unparseable, not clean"
+corpusrestore
+
+# Deleting the corpus must not silently downgrade two gates to generic checklists.
+rm "$CORPUS"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/corpus6.json" 2>/dev/null
+assert_finding "$TMP/corpus6.json" corpus_missing "a deleted corpus is a blocking finding, not a quiet loss of two gates"
+corpusrestore
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" ) >/dev/null 2>&1
+[ $? = 0 ] && ok "the corpus is coherent again once every seeded defect is reverted" \
+            || bad "the corpus is coherent again once every seeded defect is reverted"
+
+# Wiring. A corpus nobody invokes is the RV-035 shape — a handoff into a void — and it would be a
+# particularly bleak one in the file about rules that do not fire.
+for f in agents/code-reviewer.md agents/verification-engineer.md skills/defect-hunting/SKILL.md; do
+  grep -q "knowledge/failure-corpus.md" "$HERE/../$f" \
+    && ok "$f invokes the failure corpus" \
+    || bad "$f invokes the failure corpus"
+done
+grep -q "corpus_recurrence" "$HERE/../commands/app-learn.md" \
+  && ok "/app-learn's failure pass reads the recurrence flag" \
+  || bad "/app-learn's failure pass reads the recurrence flag"
+grep -q "team-doctor.mjs" "$HERE/../commands/app-learn.md" \
+  && ok "...by running the script that produces it, not by re-deriving it" \
+  || bad "...by running the script that produces it, not by re-deriving it"
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "portfolio (multi-project)"
+# --------------------------------------------------------------------------------------------
+# The portfolio is the easiest place in this codebase to commit the failure it exists to prevent: a
+# project silently missing from a list reads as "nothing to worry about". Most of what is asserted
+# here is therefore about projects that CANNOT be read, not projects that can.
+PORT="$HERE/portfolio.mjs"
+PREG="$FIX/portfolio/registry.txt"
+
+assert_exit 0 "ranks a registry of seeded projects" node "$PORT" --registry "$PREG"
+assert_has "$TMP/out" "4 project(s)" "...and reports every registered project, readable or not"
+
+# A registry that is not there is not an empty studio. Exit 2, the same three-state contract as every
+# other gate: a missing input is CANNOT EVALUATE, never CLEAR.
+assert_exit 2 "an absent registry is CANNOT EVALUATE, not an empty portfolio" \
+  node "$PORT" --registry "$TMP/no-such-registry.txt"
+assert_has "$TMP/out" "not the same as there being none" "...and says so in the message, with the path it looked at"
+
+# An empty portfolio SAYS it is empty. Proven to fail: returning exit 0 with a bare "PORTFOLIO — 0
+# project(s)" header made this line green while the output read as an all-clear.
+printf '# every line here is a comment\n\n' > "$TMP/empty-registry.txt"
+assert_exit 2 "a registry naming no projects says so instead of reporting all-clear" \
+  node "$PORT" --registry "$TMP/empty-registry.txt"
+assert_has "$TMP/out" "names no projects" "...naming the empty registry"
+
+# --- degrade honestly ---------------------------------------------------------------------------
+# Every one of these is a project that must appear in the output. Omission is the defect.
+node "$PORT" --registry "$PREG" > "$TMP/port.txt" 2>&1
+assert_has "$TMP/port.txt" "broken" "a project with a corrupt event log appears in the list"
+assert_has "$TMP/port.txt" "UNREADABLE" "...as UNREADABLE, with the reason attached"
+assert_has "$TMP/port.txt" "not valid JSON" "...and the reason is the parser's, not a paraphrase"
+assert_has "$TMP/port.txt" "gone" "a registered path that does not exist still appears"
+assert_has "$TMP/port.txt" "no such path" "...saying why, instead of being skipped"
+
+# The invariant, checked mechanically rather than by reading the rendering: the number of projects in
+# --json equals the number of paths in the registry. A row lost anywhere between the registry and the
+# report is the whole failure mode, and it would not show up in any single-project assertion.
+node "$PORT" --registry "$PREG" --json > "$TMP/port.json" 2>/dev/null
+node -e '
+const fs = require("node:fs");
+const listed = fs.readFileSync(process.argv[1], "utf8").split("\n")
+  .map((l) => l.replace(/#.*$/, "").trim()).filter(Boolean).length;
+const reported = JSON.parse(fs.readFileSync(process.argv[2], "utf8")).projects.length;
+process.exit(listed === reported ? 0 : 1);
+' "$PREG" "$TMP/port.json" \
+  && ok "every registry line is reported — no project can be dropped between registry and report" \
+  || bad "every registry line is reported" "registry and report disagree on the project count"
+
+# UNREADABLE must outrank every score. Not knowing is worse than any known state.
+head -3 "$TMP/port.txt" | grep -q "UNREADABLE" \
+  && ok "an unreadable project sorts above every scored one" \
+  || bad "an unreadable project sorts above every scored one"
+
+# A board whose Status column was renamed reads as an empty board, and an empty board looks finished.
+# This is the mutation that cleared a real release; here it must read as UNREADABLE.
+rm -rf "$TMP/pnostatus"; mkdir -p "$TMP/pnostatus/one/docs"
+sed 's/| Status |/| State |/' "$FIX/ship-clear/docs/31-board.md" > "$TMP/pnostatus/one/docs/31-board.md"
+printf 'one\n' > "$TMP/pnostatus/reg.txt"
+node "$PORT" --registry "$TMP/pnostatus/reg.txt" > "$TMP/pns.txt" 2>&1
+grep -q "no Status column" "$TMP/pns.txt" \
+  && ok "a board with no Status column is UNREADABLE, never an empty board" \
+  || bad "a board with no Status column is UNREADABLE, never an empty board"
+
+# --- the ranking rule ---------------------------------------------------------------------------
+# "Where should the next hour go" is not "what is busy". A project blocked for three days with nobody
+# on it must outrank a project with MORE blockers that moved today. Proven to fail: dropping the idle
+# multiplier from score() reverses this, which is exactly the ranking a status report would give.
+rm -rf "$TMP/prank"; mkdir -p "$TMP/prank/stale/docs" "$TMP/prank/busy/docs"
+node -e '
+const fs = require("node:fs");
+const [dir, days, n] = [process.argv[1], Number(process.argv[2]), Number(process.argv[3])];
+const ts = (o) => new Date(Date.now() - o * 86400000).toISOString();
+const lines = [];
+for (let i = 1; i <= n; i += 1) {
+  const id = `APP-00${i}`;
+  lines.push(JSON.stringify({ ts: ts(days), ticket: id, event: "created", by: "tech-manager",
+    detail: { title: "t", owner: "ios-developer", dependsOn: [] }, provenance: "cli" }));
+  lines.push(JSON.stringify({ ts: ts(days), ticket: id, event: "blocked", by: "tech-manager",
+    detail: "waiting", provenance: "cli" }));
+}
+fs.writeFileSync(`${dir}/docs/31-board-events.jsonl`, `${lines.join("\n")}\n`);
+' "$TMP/prank/stale" 3 1
+node -e '
+const fs = require("node:fs");
+const [dir, days, n] = [process.argv[1], Number(process.argv[2]), Number(process.argv[3])];
+const ts = (o) => new Date(Date.now() - o * 86400000).toISOString();
+const lines = [];
+for (let i = 1; i <= n; i += 1) {
+  const id = `APP-00${i}`;
+  lines.push(JSON.stringify({ ts: ts(days), ticket: id, event: "created", by: "tech-manager",
+    detail: { title: "t", owner: "ios-developer", dependsOn: [] }, provenance: "cli" }));
+  lines.push(JSON.stringify({ ts: ts(days), ticket: id, event: "blocked", by: "tech-manager",
+    detail: "waiting", provenance: "cli" }));
+}
+fs.writeFileSync(`${dir}/docs/31-board-events.jsonl`, `${lines.join("\n")}\n`);
+' "$TMP/prank/busy" 0 2
+printf 'busy\nstale\n' > "$TMP/prank/reg.txt"
+node "$PORT" --registry "$TMP/prank/reg.txt" > "$TMP/prank.txt" 2>&1
+grep -q "^1\. stale" "$TMP/prank.txt" \
+  && ok "a project blocked 3 days with nobody on it outranks a busier one that moved today" \
+  || bad "a project blocked 3 days outranks a busier one that moved today" "$(head -4 "$TMP/prank.txt")"
+
+# --- the facts the portfolio exists to surface ---------------------------------------------------
+assert_has "$TMP/port.txt" "static-only verification" "a merge resting on a suite that never ran is named"
+assert_has "$TMP/port.txt" "stranded behind APP-001" "a todo stranded behind a blocked dependency is named"
+assert_has "$TMP/port.txt" "open S1/S2" "the open S1/S2 count is reported per project"
+# A missing bug board is UNKNOWN, not zero — the same rule ship-gate applies, and it has to cost
+# something in the ranking or "not knowing" is the cheapest way to look healthy.
+grep -q "UNKNOWN — no docs/51-bugs.md" "$TMP/prank.txt" \
+  && ok "a project with no bug board reports UNKNOWN, never 0 open bugs" \
+  || bad "a project with no bug board reports UNKNOWN, never 0 open bugs"
+
+# One parser, proven by agreement rather than by grepping for an import: ship-gate and the portfolio
+# must return the same open-S1/S2 count for the same bug board, because they now share parseBugs.
+GATE_OPEN=$(sh "$HERE/ship-gate.sh" "$FIX/ship-blocked" 2>/dev/null | sed -n 's/.*  \([0-9]*\) open S1\/S2.*/\1/p')
+PORT_OPEN=$(node -e '
+const fs = require("node:fs");
+import(process.argv[1]).then((m) => {
+  process.stdout.write(String(m.parseBugs(fs.readFileSync(process.argv[2], "utf8")).blocking.length));
+});
+' "$HERE/lib/board.mjs" "$FIX/ship-blocked/docs/51-bugs.md" 2>/dev/null)
+[ -n "$GATE_OPEN" ] && [ "$GATE_OPEN" = "$PORT_OPEN" ] \
+  && ok "ship-gate and the portfolio agree on the open S1/S2 count — one parser, proven by agreement" \
+  || bad "ship-gate and the portfolio agree on the open S1/S2 count" "gate=$GATE_OPEN portfolio=$PORT_OPEN"
+
+# Usage errors are exit 1, distinct from both CANNOT EVALUATE and a clean report.
+assert_exit 1 "an unknown flag is a usage error, not a silent default" node "$PORT" --registry "$PREG" --nonsense
+
+# /app-portfolio has to actually invoke the thing.
+PCMD="$HERE/../commands/app-portfolio.md"
+[ -f "$PCMD" ] && ok "/app-portfolio exists" || bad "/app-portfolio exists"
+grep -q "scripts/portfolio.mjs" "$PCMD" && ok "...and invokes scripts/portfolio.mjs" \
+                                        || bad "...and invokes scripts/portfolio.mjs"
 
 echo
 # --------------------------------------------------------------------------------------------

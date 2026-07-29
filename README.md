@@ -375,7 +375,8 @@ Markdown files — add, remove, or retune them.
 | `/app-review <branch>` | Code review on a single branch. |
 | `/app-ship [version]` | Parallel security + ASO + analytics readiness → release-manager. Confirms before any upload. |
 | `/app-status` | Vision, sprint goal, board doctor verdict, board summary, blockers, latest standup. |
-| `/app-learn <app paths>` | Mines a shipped app's conventions into the **living** House KB; flags conflicts for your decision. |
+| `/app-portfolio` | **(Many apps)** Ranks every registered project by **attention needed** — where should the next hour go? An unreadable project is reported as unreadable, never omitted. |
+| `/app-learn <app paths>` | Mines a shipped app's conventions into the **living** House KB; flags conflicts for your decision. Its failure pass harvests findings into the failure corpus and flags any class that **recurred after its rule shipped**. |
 | `/app-team` | Lists the roster. |
 
 ## The House Knowledge Base (`knowledge/`)
@@ -393,9 +394,16 @@ Every build agent reads the relevant pack first:
 | `analytics.md` | Consent-gated events, PII rules, funnels, retention |
 | `aso.md` | Screenshot automation, Play Data Safety, store-readiness gate |
 | `git-workflow.md` | Branch model, commit conventions, versioning, CI, secrets |
+| `failure-corpus.md` | **The defect classes this codebase actually produces** — the tell a reviewer greps for, the dated instances, and the rule that now catches each one |
 
 It's **living** — `/app-learn` folds new learnings from each shipped app back in, and flags
 conflicts (it never silently overwrites a convention).
+
+Every pack but one learns from apps that **shipped**, which means the KB only ever learned from
+success. `failure-corpus.md` is the other half: `code-reviewer` and `verification-engineer` run its
+tells before improvising their own, because prior information about what goes wrong *here* beats a
+generic checklist of what could go wrong anywhere. Its most valuable output is a class that recurs
+**after its rule shipped** — `team-doctor` fails on that, because it is proof the rule does not work.
 
 ## What it leverages on your machine
 

@@ -1,0 +1,5 @@
+# One project path per line. Relative paths resolve against this file's directory.
+tipjar
+notes
+broken
+gone

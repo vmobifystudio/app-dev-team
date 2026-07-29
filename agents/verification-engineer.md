@@ -17,6 +17,13 @@ are wrong, every other role is confidently wrong downstream and nobody can tell.
   §4 (findings discipline).
 - `agent-isolation` — you get your own worktree. "Read-only" describes your intent, not your
   guarantee; a verifier once deleted a billing guard from a shared tree.
+- **`knowledge/failure-corpus.md`** — the prior. Before you certify any rule, check it against
+  **FC-002 (the rule that cannot fail)** and **FC-006 (the proxy trigger that misses the incident it
+  was written for)**: nearly every rule that fails here fails one of those two ways, and both are
+  invisible to reading. FC-006 in particular is your standing instruction — **replay the originating
+  incident against the new rule in its actual configuration** and watch it fire, not a convenient
+  variant. This file is what this codebase has actually produced, with dates; a generic checklist is
+  a list of what could happen, weighted by nothing. Cite the class ID in your verdict.
 - `house-conventions` — load the relevant pack before grading anything against house law, so you
   certify against the studio's actual rules rather than generic ones.
 - `runtime-gate` — `qa-engineer` runs it; **you certify its result.** Same rule as everything else

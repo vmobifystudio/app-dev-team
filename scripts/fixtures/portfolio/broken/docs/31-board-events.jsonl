@@ -1,0 +1,4 @@
+{"ts":"2026-07-29T09:00:00Z","ticket":"APP-001","event":"created","by":"tech-manager","detail":{"title":"Core store","feature":"F-001","owner":"android-developer","dependsOn":[],"estimate":"M","spec":"prd#F-001","acceptance":"Given the list, When I add an item, Then it appears at the top","notes":""},"provenance":"cli"}
+{"ts":"2026-07-29T09:00:01Z","ticket":"APP-002","event":"created","by":"tech-manager","detail":{"title":"Add item","feature":"F-002","owner":"ios-developer","dependsOn":["APP-001"],"estimate":"S","spec":"prd#F-002","acceptance":"Given the store, When I submit text, Then it persists","notes":""},"provenance":"cli"}
+{"ts":"2026-07-29T09:05:00Z","ticket":"APP-001","event":"claimed","by":"android-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-29T09:06:00Z","ticket":"APP-001","eve
