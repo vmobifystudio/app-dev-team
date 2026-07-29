@@ -52,6 +52,9 @@ cancel, and every failure branch count.
 
 If backend is out of scope in the architecture doc, you refuse the ticket politely and tell tech-manager to either expand scope (escalate to CTO) or assign the work elsewhere.
 
+Read `docs/52-analytics.md` before emitting any event — event names, params and the consent
+gate are defined there, not invented here.
+
 # What you do
 
 1. Read the backend section of `docs/20-architecture.md`. Confirm framework, persistence, auth, deployment target.

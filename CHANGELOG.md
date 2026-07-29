@@ -70,6 +70,40 @@ programme. Evidence: `docs/research/2026-07-29-dry-run-parallel-agent-collision.
 - `board-doctor` knows the new role; refactored onto the shared parser with all five fixtures
   re-run and byte-identical results (13 anomalies / 5 warnings, same codes, same exit codes).
 
+### Cross-check pass (same release)
+
+A structured audit of the plugin against itself — role reachability, ticket-owner vs spawnable-role,
+skill references, handoff targets, and the doc writer/reader graph. Six findings, one severe:
+
+- **S1 — a ticket owned by a role `/app-build` never spawns was silently dropped.** `board-doctor`
+  accepted 15 owners; `/app-build` step 2 named only three platform developers. `/app-audit` files
+  `AUDIT-NNN` tickets against monetization, analytics, ASO, DevOps and security findings and then
+  says "remediate via the normal `/app-build` loop" — so those tickets were never picked up, never
+  blocked, and never reported. Same silent-drop class as a stranded dependency, through a different
+  door. Now: `/app-build` spawns **by the ticket's Owner column**, and `board-doctor` raises
+  `owner_not_spawnable`.
+- **S2 — three-way disagreement on who may own a ticket** (tech-manager's shape said 5 roles,
+  board-doctor accepted 15, `/app-build` could spawn 3). One canonical list now lives in
+  `scripts/lib/board.mjs` as `BUILD_SPAWNABLE_OWNERS`.
+- **S2 — `docs/52-analytics.md` was written and never read by any implementer.** The data-analyst
+  defined the event schema; the developers implementing `APP-NNN-analytics` tickets never opened it,
+  so event names were invented per-ticket. All four implementing roles now read it.
+- **S2 — `/app-audit` never verified its own findings, and had no register.** It now spawns
+  `verification-engineer` over the findings first (a mis-calibrated constant and a rule that cannot
+  fail are both invisible to re-reading), and opens `docs/81-findings.md` where every finding has a
+  stable ID and a status that is never blank.
+- **S3 — `verification-engineer` was missing from the `/app-team` roster.**
+- **S3 — the branch model contradicted itself.** `git-workflow.md` integrates on `develop`;
+  `tech-manager` merged to `main`. The integration branch is now an explicit per-project decision
+  recorded in `docs/23-git-strategy.md`, which the merge gate reads.
+
+### Added — `scripts/team-doctor.mjs`
+
+The rule that stops this class coming back: validates the **plugin itself**. Catches an unreachable
+role, an owner `/app-build` never spawns, a referenced skill that doesn't exist, an unresolvable
+handoff target, and a doc with only one reference (written and never read, or read and never
+written). Verified by breaking the plugin on purpose and watching it go red, then recover.
+
 ## [1.2.0] — Board integrity
 
 Informed by a study of a production multi-agent orchestrator

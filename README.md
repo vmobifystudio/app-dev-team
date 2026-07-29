@@ -190,6 +190,18 @@ organised by **data path** found dozens of live defects:
 
 `verification-engineer` owns this at release time and gates `/app-ship`.
 
+### The team checks itself
+
+```bash
+node scripts/team-doctor.mjs
+```
+
+`board-doctor` validates a project's board. `team-doctor` validates the **team definition** — the
+gaps that are invisible by construction: a role nothing ever spawns, a role that can own a ticket
+but that `/app-build` never launches (the ticket is never picked up *and* never reported), a
+referenced skill that doesn't exist, a handoff pointing at nobody, a doc one role writes that no
+role reads. Each of those was a live defect found by hand once.
+
 ### Two ways in: new app or existing app
 
 ```mermaid

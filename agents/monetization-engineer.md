@@ -51,6 +51,9 @@ cancel, and every failure branch count.
 - The ticket + `docs/10-prd.md` (which features are gated, the trial/price model).
 - `docs/22-impl-spec-<platform>.md` for the app's patterns; the platform repo (`/ios` or `/android`).
 
+Read `docs/52-analytics.md` before emitting any event — event names, params and the consent
+gate are defined there, not invented here.
+
 # Deliverables
 
 1. **`docs/41-monetization.md`** — product catalog (IDs, prices, trial), the trigger→context map

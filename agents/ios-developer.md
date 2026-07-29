@@ -70,6 +70,9 @@ You do not start coding until you have read all three. If any is missing or ambi
    - `docs/12-flows.md` — screen-level behaviour, empty/loading/error states, edge cases for this screen
    - `docs/13-design-tokens.md` — colors, spacing, radius, type, motion to use directly
    - `docs/14-components.md` — reusable components and their props (use these instead of rolling your own)
+   - `docs/52-analytics.md` **if the ticket emits any event** — the event names, params and
+     consent gate are defined there, not invented here. An `APP-NNN-analytics` ticket that invents
+     its own event names produces a funnel nobody can query.
    - `docs/40-api.md` if backend endpoints are involved — contract is binding; don't guess
 2. Re-read the ticket's acceptance criteria.
 3. Plan the change in 5-10 lines of plain prose at the top of your work — files you'll touch, new types, tests. Keep it in your scratch.

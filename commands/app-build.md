@@ -33,10 +33,30 @@ Tickets (optional, default = all ready): $ARGUMENTS
    any ticket pair that shares a file. Launch IC agents concurrently in a **single assistant
    message** — one Task invocation per owner, each passed its worktree path and the full list of
    tickets they're working this round:
-   - `ios-developer` for iOS-ready tickets
-   - `android-developer` for Android-ready tickets
-   - `backend-developer` only if backend is in scope per `docs/20-architecture.md`
-   Run `ux-designer` and `qa-engineer` in this same message when their work is ready (early flows / test plan drafts).
+   **Spawn by the ticket's `Owner` column — never from a hardcoded list.** Any of these can own and
+   work a ticket, and the board doctor rejects an owner this loop cannot spawn:
+
+   | Owner | Spawn when |
+   |---|---|
+   | `ios-developer` | iOS-ready tickets |
+   | `android-developer` | Android-ready tickets |
+   | `backend-developer` | backend is in scope per `docs/20-architecture.md` |
+   | `monetization-engineer` | paywall / IAP / ads tickets |
+   | `data-analyst` | `APP-NNN-analytics` instrumentation tickets |
+   | `devops-engineer` | CI / signing / build-config tickets |
+   | `aso-specialist` | store-asset tickets |
+   | `verification-engineer` | tickets that add a constant, threshold, guard rule, or baseline |
+   | `ux-designer`, `qa-engineer` | in the same message when their work is ready (early flows / test plan drafts) |
+
+   The previous version listed only the three platform developers. `/app-audit` files `AUDIT-NNN`
+   tickets against monetization, analytics, ASO, DevOps and security findings and then says
+   "remediate via the normal `/app-build` loop" — so those tickets were owned by roles this step
+   never spawned. They were never picked up, never blocked, and never reported: the loop drained
+   around them and printed a successful sprint. Same silent-drop class as a stranded dependency.
+
+   `security-reviewer`, `code-reviewer`, `release-manager`, `tech-lead` and `tech-manager` do
+   **not** work tickets — they gate, review, and coordinate. A ticket owned by one of them is a
+   board error (`owner_not_spawnable`).
 
 3. **Streaming review.** As each developer agent returns `DONE: APP-NNN`:
    - **Verify the claim before you believe it** (`board-doctor` skill):

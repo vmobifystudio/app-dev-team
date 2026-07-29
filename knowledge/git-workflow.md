@@ -29,6 +29,13 @@ Reference the ticket/issue ID. One logical change per commit; no unrelated clean
 Use a co-author trailer. This plugin's own merge gate is owned by the `tech-manager` — only it
 runs `git merge` on the integration branch.
 
+**Which branch is "the integration branch" is a per-project decision, and it must be recorded in
+`docs/23-git-strategy.md` at `/app-init`.** The flagship internal apps integrate on `develop` and
+promote to `main` via a release branch; a new single-app project usually integrates on `main`
+directly. `tech-manager`'s merge gate reads that doc — it does not assume `main`. Leaving it
+unrecorded is how a team ends up with feature branches merged to `main` on a project whose release
+process expects `develop`.
+
 ## Versioning
 
 - **Android:** `version.properties` with `versionCode = MAJOR*10000 + MINOR*100 + PATCH`

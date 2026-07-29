@@ -23,6 +23,7 @@ import { resolve } from 'node:path';
 
 import {
   KNOWN_OWNERS,
+  BUILD_SPAWNABLE_OWNERS,
   VALID_STATUS,
   POST_REVIEW_STATUS,
   MAX_REVIEW_CYCLES,
@@ -120,6 +121,18 @@ function diagnose(board, ledger, capabilities) {
         'owner_invalid',
         `Owner "${row.owner}" is not a known role.`,
         'tech-manager: reassign to a role listed in the roster.'
+      );
+      continue;
+    }
+
+    // A valid role the build loop cannot spawn is a ticket nobody will ever pick up. It is not
+    // blocked and not ready, so — exactly like a stranded dependency — the loop drains around it
+    // and reports the sprint complete. /app-audit files these routinely.
+    if (row.status !== 'done' && !BUILD_SPAWNABLE_OWNERS.has(row.owner.toLowerCase())) {
+      push(
+        'owner_not_spawnable',
+        `Owner "${row.owner}" is a real role but /app-build never spawns it to work a ticket, so this ticket will never be picked up and never reported.`,
+        'tech-manager: reassign to a role the build loop spawns, or work it outside the sprint loop and mark it done.'
       );
       continue;
     }

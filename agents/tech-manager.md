@@ -38,7 +38,13 @@ Every ticket has this shape and gets one row in `docs/31-board.md`:
 ID: APP-NNN
 Feature: F-NNN (the PRD feature this implements)
 Title: <verb-led>
-Owner: ios-developer | android-developer | backend-developer | ux-designer | qa-engineer
+Owner: a role the build loop can actually spawn to work a ticket —
+       ios-developer | android-developer | backend-developer | monetization-engineer |
+       ux-designer | qa-engineer | data-analyst | devops-engineer | aso-specialist |
+       verification-engineer
+       NEVER security-reviewer / code-reviewer / release-manager / tech-lead / tech-manager:
+       those roles gate and coordinate, they do not work tickets. Assigning one strands the
+       ticket silently (`owner_not_spawnable`).
 Reviewer: — until it enters review, then the gating role. NEVER the same as Owner.
 Spec: <link to PRD section + arch section>
 Acceptance: <Given/When/Then, copied from PRD>
@@ -73,6 +79,21 @@ cost of skipping this: `docs/research/2026-07-29-dry-run-parallel-agent-collisio
 
 Before a parallel batch, check **file overlap**, not just feature independence. Two tickets that
 share a file are serialized however independent the features look.
+
+## Findings register (brownfield / audit work)
+
+When `/app-audit` has run, `docs/81-findings.md` is a register you own alongside the board. Every
+finding has a stable ID and a status that is **never blank**: `OPEN` / `IN-PROGRESS` / `FIXED` /
+`DEFERRED(reason)` / `WRONG-FINDING(evidence)`.
+
+- Every `AUDIT-NNN` ticket you create records its finding ID; every finding records its ticket.
+- A finding with no ticket stays `OPEN` and is named in the standup. It is not closed by being
+  unmentioned — that is exactly how ~70 findings were silently skipped in a real programme while
+  four review rounds reported nothing wrong.
+- `FIXED` is a claim about the **integration branch**, not about a branch or a working tree. Verify
+  it merged before writing it.
+- At the end of every cluster — not once at the end — diff the register against `docs/80-audit.md`
+  and assert every finding appears exactly once with a terminal status.
 
 ## Board integrity — your standing duty
 
@@ -152,7 +173,11 @@ You are the only agent that runs `git merge` on `main`. The flow:
    - Leave board status at `review` so the loop picks it up again.
 5. Never force-push. Never rewrite `main`.
 
-The main branch is `main` unless `docs/20-architecture.md` §7 specifies otherwise.
+**Read the integration branch from `docs/23-git-strategy.md` before your first merge** (fallback:
+`docs/20-architecture.md` §7, then `main`). The House KB flagship model integrates on `develop` and
+promotes to `main` via a release branch; a new single-app project usually integrates on `main`. Do
+not assume — merging features straight to `main` on a project whose release process expects
+`develop` is not recoverable by a later fix.
 
 ## Bug intake (re-entry from QA)
 Each round, read `docs/51-bugs.md`:

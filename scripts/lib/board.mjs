@@ -24,6 +24,30 @@ const KNOWN_OWNERS = new Set([
   'tech-manager',
 ]);
 
+/**
+ * Roles the /app-build loop can actually spawn to WORK a ticket.
+ *
+ * A ticket owned by a valid role that the loop cannot spawn is never picked up, is never blocked,
+ * and is never reported — the loop drains and prints a successful sprint. Same silent-drop class
+ * as a stranded dependency, through a different door. /app-audit hits it directly: it files
+ * AUDIT-NNN tickets against monetization / analytics / aso / devops / security findings and then
+ * says "remediate via the normal /app-build loop".
+ *
+ * Keep this in sync with commands/app-build.md step 2 and agents/tech-manager.md's ticket shape.
+ */
+const BUILD_SPAWNABLE_OWNERS = new Set([
+  'ios-developer',
+  'android-developer',
+  'backend-developer',
+  'monetization-engineer',
+  'ux-designer',
+  'qa-engineer',
+  'data-analyst',
+  'devops-engineer',
+  'aso-specialist',
+  'verification-engineer',
+]);
+
 const VALID_STATUS = new Set(['todo', 'in_progress', 'review', 'qa', 'done', 'blocked']);
 const POST_REVIEW_STATUS = new Set(['qa', 'done']);
 const LEDGER_ACTIONS = new Set(['requested', 'started', 'changes', 'approved', 'merged']);
@@ -194,6 +218,7 @@ function detectCycle(id, rowsById, stack = []) {
 
 export {
   KNOWN_OWNERS,
+  BUILD_SPAWNABLE_OWNERS,
   VALID_STATUS,
   POST_REVIEW_STATUS,
   LEDGER_ACTIONS,

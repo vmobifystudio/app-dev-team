@@ -33,6 +33,9 @@ allowed-tools: Read, Glob, Grep, Bash
 
 4. Print today's daily report if it exists at `docs/daily/<today>.md`.
 5. Print recent bug list from `docs/51-bugs.md` if it exists — show open S1/S2 only.
+5a. If `docs/81-findings.md` exists, print the findings register summary: counts per status, and
+   **name every row still `OPEN` or `IN-PROGRESS`**. A register with open rows means the audit is
+   not closed, however quiet the board looks.
 6. Suggest the next action: `/app-build`, `/app-plan`, or "ship".
 
 Be terse. This is a status print, not a narration.
