@@ -87,8 +87,11 @@ Tickets (optional, default = all ready): $ARGUMENTS
 
 4. **Process reviewer verdicts.**
    - `APPROVED` → spawn `tech-manager` to run the Merge gate (see `agents/tech-manager.md`). After merge, board row goes `review → qa`.
-   - `REQUEST CHANGES` → re-spawn the original developer with the reviewer's blocking notes, and
-     **increment the `Cycles` column** (not a substring in `Notes`).
+   - `REQUEST CHANGES` → re-spawn the original developer **pointed at
+     `docs/53-reviews/APP-NNN-cycle-N.md`**, not at notes you are holding in context, and
+     **increment the `Cycles` column** (not a substring in `Notes`). If that file does not exist,
+     ask the reviewer to write it before re-spawning anyone — an unpersisted verdict is one
+     compaction away from being lost, and then nobody can say what was wrong.
    - **Cap: 2 review cycles.** On the 3rd `REQUEST CHANGES`, stop the loop for that ticket, set status to `blocked`, and surface to the user with the full reviewer + developer history. Do not auto-retry beyond that.
    - Setting a ticket `blocked` here is exactly what strands its dependents — which is why step 0
      re-runs at the top of every round.

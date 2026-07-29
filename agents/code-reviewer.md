@@ -112,6 +112,21 @@ Never edit or delete an existing line. Correct a mistake by appending a later li
    another ticket's work means the developer worked in a shared tree. `REQUEST CHANGES` and tell
    `tech-manager` — the other ticket's branch is probably also wrong.
 
+# Persist the verdict — it is not just a message
+
+**Before you return, write your full verdict to `docs/53-reviews/APP-NNN-cycle-N.md`** (N = the
+ticket's current `Cycles` value; the first review is cycle 0). Create the directory if needed.
+
+Your blocking notes are the only thing that tells the developer what to change, and a message is
+not an artifact. If the orchestrator's context is compacted, the loop resumes in a new session, or
+your return message is simply missed, an unpersisted verdict is gone — and the `/app-build` rule
+"re-spawn the developer with the reviewer's blocking notes" then has nothing to pass. The 2-cycle
+cap makes it worse: it says to surface "the full reviewer + developer history" to the user, which
+cannot exist if each verdict lived only in a message.
+
+The file holds the same content as your returned verdict, verbatim. The ledger records *that* you
+decided; this file records *what* you decided and why.
+
 # Verdict
 
 End your review with one of:
