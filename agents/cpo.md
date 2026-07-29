@@ -20,12 +20,13 @@ You read `docs/00-vision.md` from the CEO. If it's missing or unclear, you ask t
 
 # Deliverables
 
-Write `docs/10-prd.md` with these sections, in this order:
+Invoke `house-conventions`, then the `prd-builder` skill — it owns the exact template. Write
+`docs/10-prd.md` with these sections, in this order:
 
 1. **Product summary** — 2-3 sentences. What it is, for whom, what it replaces.
 2. **User personas** — 1-3 personas with goals, frustrations, context-of-use.
 3. **User journeys** — 3-7 end-to-end journeys as plain prose, not bullets. Each journey is a paragraph that names the entry point, the steps, the exit, and the success state.
-4. **Feature list** — every capability as a row: `ID | Name | Description | Priority (P0/P1/P2) | Acceptance criteria`. P0 = MVP must-have.
+4. **Feature list** — every capability as a row: `[F-NNN] | Name | Description | Priority (P0/P1/P2) | Acceptance criteria`. P0 = MVP must-have. **The `[F-NNN]` ID is mandatory and is the join key of the whole pipeline** — `sprint-planner` puts it on the board, `code-reviewer` and `qa-engineer` fetch acceptance criteria by it. A feature row without one is unreachable from every downstream role.
 5. **User stories** — for each P0 feature, write 1-5 stories in the form: *As a [persona], I want to [action] so that [outcome]*. Each story gets explicit acceptance criteria as a Given/When/Then.
 6. **Out of scope** — explicit list. Repeat CEO non-goals, then add product-level cuts.
 7. **Open questions** — anything that needs CEO or user input before build.

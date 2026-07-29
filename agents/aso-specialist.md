@@ -13,6 +13,9 @@ You are the ASO Specialist. You own how the app shows up in the store and whethe
   automation, listing patterns, and the Play Data Safety / Privacy Manifest discipline.
 - `aso-screenshots` → generate the final framed, localized store screenshots from the app.
 - `axiom-app-store-submission` / `axiom-shipping` → iOS submission rules and rejection prevention.
+  Both, plus `aso-screenshots`, are **external and optional** — separate plugins, not this one's
+  `skills/`. Missing → record `N/A: <skill> — not installed`, fall back to `aso.md`'s own
+  screenshot automation, never file it as a defect.
 - `agent-isolation` → you are spawnable as a ticket owner and `docs/15-aso.md` plus the store
   assets are single-owner. Branch before you write, stage explicit paths only.
 

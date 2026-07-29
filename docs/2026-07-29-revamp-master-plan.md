@@ -439,6 +439,37 @@ false `DONE`.
 | 3.4 | Give execs (`ceo`/`cpo`/`cto`) the `answer`/`decision` vocabulary so a routed escalation can actually close a question | seeded escalation closes; `question_unanswered` clears |
 | 3.5 | `board-render` "recent activity" panel to include message activity (its header has always claimed this) | rendered output contains both ledgers |
 
+#### Phase 4 redesign — what dry run 4 says the dashboard must actually show
+
+The original panel list was designed from the outside, before the pipeline had ever run. Having run
+it once, three of the panels are wrong-headed and three things that matter were missing. Revise
+before building:
+
+**What the run proved a human actually needs to see, in priority order:**
+
+1. **Why is nothing moving?** The single most useful fact in the whole run was "all three tickets
+   are blocked, and here is the one reason." A burn-down chart would have shown a flat line and
+   explained nothing. The top panel is **NEEDS ATTENTION with causes**, not progress.
+2. **What is inspectable but not runnable.** `code-reviewer` never ran because a missing simulator
+   blocked a path that also gates static review (DR4-002). A human seeing "3 tickets awaiting
+   review, 0 reviewers ever spawned" would have caught that in seconds; nothing surfaced it.
+3. **Unowned artifacts.** `/project.yml` sat between two charters and was nearly the run's
+   fatal blocker (DR4-019). The dashboard should name any artifact a spec requires that no ticket
+   owns.
+4. **Roles spawned before their inputs existed** (DR4-018) — an ordering violation nothing detects.
+5. **Work with no provenance.** QA's test plan and bug report — the best artifacts of the run —
+   were written with no branch, no ticket, no commit (DR4-007). A panel listing files changed in
+   the tree that belong to no ticket would have caught it immediately.
+6. **Open questions, and whether the answer reached anyone.** A closed ledger is not delivery
+   (DR4-006). Show question → answer → *and the artifact the answer was folded into*.
+
+**Demoted:** the burn-down (flat and uninformative on a blocked sprint), the dependency graph (three
+tickets — the table was clearer), and the activity timeline as a primary panel (useful for
+forensics, not for "what do I do now").
+
+**The control-room actions the run actually wanted:** unblock a ticket with a recorded reason,
+answer an open question, assign an unowned artifact. Not "re-prioritise" — nobody wanted that once.
+
 ### Phase 4 — The dashboard (control room)
 
 | # | Item | Proof |

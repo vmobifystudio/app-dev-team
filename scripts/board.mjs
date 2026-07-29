@@ -9,7 +9,7 @@
  *
  * Usage:
  *   board.mjs add   <ID> --title T [--owner R] [--feature F-001] [--depends A,B] [--estimate M]
- *                        [--spec S] [--acceptance A] [--notes N] [--by role]
+ *                        [--spec S] [--acceptance A] [--notes N] [--by role] [--status blocked]
  *   board.mjs move  <ID> <event> --by <role> [--detail "..."]
  *   board.mjs assign <ID> --to <role> [--by <role>]
  *   board.mjs show  [ID] [--json]
@@ -18,8 +18,14 @@
  *
  * Common flags: --log <events.jsonl>  --board <31-board.md>
  *
- * Events: created · claimed · assigned · done_reported · verified · rejected · review_requested ·
- *         started · approved · changes · merged · qa_passed · qa_failed · blocked · unblocked · closed
+ * Events: created · claimed · assigned · done_reported · verified · verified_static · rejected ·
+ *         review_requested · started · approved · changes · merged · qa_passed · qa_failed ·
+ *         blocked · unblocked · closed
+ *
+ * `verified_static` is `verified`'s honest sibling: the branch, the commits and the changed files
+ * check out and every non-executable check passed, but the test suite DID NOT RUN. It unlocks
+ * review, approval and merge — a missing toolchain must not cost a ticket its code review — and it
+ * blocks `closed`, because "done" is the word that asserts the suite ran green.
  *
  * Exit codes:
  *   0  appended / rendered
@@ -33,6 +39,7 @@ import { resolve, dirname } from 'node:path';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import {
   EVENTS,
+  key,
   parseEventLog,
   reduce,
   validate,
@@ -48,6 +55,22 @@ const die = (code, message) => {
   process.stderr.write(`board: ${message}\n`);
   process.exit(code);
 };
+
+/**
+ * Normalise the PREFIX of a ticket ID and nothing else.
+ *
+ * This used to be `id.toUpperCase()`, so the bug-intake convention `BUG-001-fix` — mandated in
+ * lowercase by agents/tech-manager.md and /app-build — was stored and rendered `BUG-001-FIX`, and
+ * a grep for the documented spelling found nothing on a board that had the ticket. `app-001` still
+ * becomes `APP-001`; the suffix is now the operator's to spell.
+ */
+const normalizeId = (id) => String(id ?? '').replace(/^[A-Za-z]+/, (prefix) => prefix.toUpperCase());
+
+/** Resolve an ID the user typed to the one on the board, whatever case either is in. */
+function resolveId(tickets, id) {
+  const state = tickets.get(key(id));
+  return state ? state.id : normalizeId(id);
+}
 
 function parseArgs(argv) {
   const flags = {};
@@ -114,8 +137,30 @@ function refuse(id, name, result) {
 // commands
 // --------------------------------------------------------------------------------------------
 
+/**
+ * The statuses a ticket can legitimately be BORN in.
+ *
+ * Bug intake needs this. `BUG-NNN-fix` inherits the original's owner and depends on it being done —
+ * so when the original is blocked, the new row is stranded the instant it is created, and dropping
+ * the dependency to avoid that is a lie about why the work is waiting. `add --status blocked`
+ * creates the row in the state it belongs in, in one call, and `stranded` (a `todo`-only check)
+ * correctly stays quiet about a ticket that is already reported as blocked.
+ *
+ * Nothing past `blocked` is offered on purpose: `review` or `qa` at creation time would assert a
+ * verification and an approval that no event in the log records.
+ */
+const BIRTH_STATUS = new Set(['todo', 'blocked']);
+
 function cmdAdd(id, flags, paths) {
   if (!id) die(1, 'add needs a ticket ID: board.mjs add APP-001 --title "..."');
+  const birth = String(flags.status || 'todo').toLowerCase().trim();
+  if (!BIRTH_STATUS.has(birth)) {
+    die(
+      1,
+      `add --status accepts ${[...BIRTH_STATUS].join(' or ')}, not "${birth}".\n` +
+        '  Anything further along asserts a verification or an approval no event records — work the ticket there.'
+    );
+  }
   const { events } = loadLog(paths.log, { required: false });
   const { tickets } = reduce(events);
 
@@ -131,7 +176,7 @@ function cmdAdd(id, flags, paths) {
   };
   const event = {
     ts: new Date().toISOString(),
-    ticket: id.toUpperCase(),
+    ticket: normalizeId(id),
     event: 'created',
     by: flags.by || 'tech-manager',
     detail,
@@ -144,16 +189,29 @@ function cmdAdd(id, flags, paths) {
     process.exit(1);
   }
   append(paths.log, event);
-  const next = reduce([...events, event]);
+  const appended = [event];
+
+  if (birth === 'blocked') {
+    const blocked = {
+      ...event,
+      event: 'blocked',
+      detail: flags.notes || flags.reason || 'created blocked',
+    };
+    append(paths.log, blocked);
+    appended.push(blocked);
+  }
+
+  const next = reduce([...events, ...appended]);
   writeView(paths.board, next.tickets);
-  process.stdout.write(`${event.ticket} created (todo). Board re-rendered to ${paths.board}\n`);
+  process.stdout.write(`${event.ticket} created (${birth}). Board re-rendered to ${paths.board}\n`);
+  if (birth === 'blocked') reportCascade(next.tickets, event.ticket);
 }
 
 function cmdMove(id, name, flags, paths) {
   if (!id || !name) die(1, 'move needs a ticket and an event: board.mjs move APP-001 claimed --by ios-developer');
-  const ticket = id.toUpperCase();
   const { events } = loadLog(paths.log);
   const { tickets } = reduce(events);
+  const ticket = resolveId(tickets, id);
 
   const event = {
     ts: new Date().toISOString(),
@@ -184,10 +242,19 @@ function cmdMove(id, name, flags, paths) {
   append(paths.log, event);
   const next = reduce([...events, event]);
   writeView(paths.board, next.tickets);
-  const state = next.tickets.get(ticket);
-  process.stdout.write(`${ticket} ${name} -> ${state.status} (cycles ${state.cycles})\n`);
+  const state = next.tickets.get(key(ticket));
+  process.stdout.write(`${ticket} ${name} -> ${describeStatus(state)} (cycles ${state.cycles})\n`);
+  if (state.verifiedStatic) {
+    process.stdout.write(
+      `  STATIC ONLY: ${state.staticUnrun} has not run on ${ticket}. It may be reviewed, approved and\n` +
+        '  merged; it may NOT be closed. Run the suite and append "verified" to clear this.\n'
+    );
+  }
   if (name === 'blocked') reportCascade(next.tickets, ticket);
 }
+
+/** The derived status as a human reads it — `qa` alone hides that nothing was ever executed. */
+const describeStatus = (state) => (state.verifiedStatic ? `${state.status} (static only)` : state.status);
 
 /** `blocked` cascades: say which dependents just stopped being claimable, and why. */
 function reportCascade(tickets, id) {
@@ -210,10 +277,12 @@ function cmdShow(id, flags, paths) {
 
   if (flags.json) {
     const state = {};
-    for (const [key, t] of tickets) {
-      state[key] = {
+    for (const [k, t] of tickets) {
+      state[k] = {
         id: t.id,
         status: t.status,
+        verifiedStatic: t.verifiedStatic,
+        unrun: t.staticUnrun,
         owner: t.owner,
         reviewer: t.reviewer,
         cycles: t.cycles,
@@ -232,9 +301,12 @@ function cmdShow(id, flags, paths) {
 
   for (const t of wanted) {
     process.stdout.write(
-      `${t.id.padEnd(14)} ${t.status.padEnd(12)} owner=${t.owner || '—'} reviewer=${t.reviewer || '—'} ` +
+      `${t.id.padEnd(14)} ${describeStatus(t).padEnd(20)} owner=${t.owner || '—'} reviewer=${t.reviewer || '—'} ` +
         `cycles=${t.cycles}/${MAX_REVIEW_CYCLES} deps=${t.dependsOn.join(',') || '—'} events=${t.events.length}\n`
     );
+    if (t.verifiedStatic) {
+      process.stdout.write(`${' '.repeat(15)}NOT RUN: ${t.staticUnrun} — this ticket cannot be closed until it does.\n`);
+    }
   }
 
   if (!id) {
@@ -304,7 +376,7 @@ function migrate(text) {
   });
 
   for (const row of board.rows) {
-    const id = row.id.toUpperCase();
+    const id = normalizeId(row.id);
     const status = (row.status || '').toLowerCase();
     const owner = isEmpty(row.owner) ? '' : row.owner;
 
@@ -341,7 +413,13 @@ function migrate(text) {
     let inReview = false;
     const preReview = () => {
       events.push(inferred(id, 'done_reported'));
-      events.push(inferred(id, 'verified', 'no verify-done record on the hand-written board'));
+      // A board rendered as `qa (static only)` says in writing that its suite never ran. Migrating
+      // that to a plain `verified` would launder the one fact the marker exists to keep.
+      events.push(
+        row.staticOnly
+          ? inferred(id, 'verified_static', 'the executable test suite (recorded static-only on the board)')
+          : inferred(id, 'verified', 'no verify-done record on the hand-written board')
+      );
     };
     const enterReview = (to) => {
       if (inReview) return;
@@ -467,7 +545,7 @@ function main() {
     default:
       process.stderr.write(
         `board: unknown command "${command ?? ''}"\n` +
-          '  add <ID> --title T [--owner R] [--depends A,B] ...\n' +
+          '  add <ID> --title T [--owner R] [--depends A,B] [--status todo|blocked] ...\n' +
           '  move <ID> <event> --by <role> [--detail "..."]\n' +
           '  assign <ID> --to <role>\n' +
           '  show [ID] [--json]\n' +

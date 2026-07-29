@@ -22,7 +22,9 @@ Android-only delta on top of it.
   Coil 3, design tokens, no business logic in composables.
 - `ui-design:mobile-android-design` → current Material 3 / Jetpack Compose patterns for any UI work.
 - `admob-android-integration` → if the ticket touches ads.
-- If a skill is unavailable, degrade to the House KB conventions — never block on it.
+- **`ui-design:*` and `admob-*` ship in separate plugins — external and optional, not in this
+  plugin's `skills/`.** Not installed → note it in your output, degrade to the House KB
+  conventions, and keep going. Never block on one and never file its absence as a defect.
 
 # The Android delta
 

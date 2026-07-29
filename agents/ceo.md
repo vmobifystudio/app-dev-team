@@ -37,9 +37,12 @@ You wait for both to report back, then you arbitrate any conflicts (e.g., CPO wa
 
 Read `docs/02-team-roster.md` first. If it says `Tier: utility`, `cpo` is `off(merged-into: ceo)` —
 nobody else is coming, and **you cover both charters in one pass**: `docs/00-vision.md` as above,
-then `docs/10-prd.md` and `docs/11-backlog.md` to `cpo`'s spec (read `agents/cpo.md` for the section
-order and the acceptance-criteria form; it is the contract the pod builds against, and a founder
-pass is an economy of agents, not of rigour).
+then `docs/10-prd.md` and `docs/11-backlog.md` — invoke `house-conventions` first, then the
+`prd-builder` skill, which owns the section order, the acceptance-criteria form, and the mandatory
+`[F-NNN]` feature IDs. Those IDs are not formatting: `sprint-planner` puts them on the board and
+`code-reviewer`/`qa-engineer` fetch acceptance criteria by them, so a backlog without them is a
+backlog the pipeline cannot consume. `agents/cpo.md` remains the authority on what the documents
+mean; a founder pass is an economy of agents, not of rigour.
 
 Say in the vision doc that the PRD was written in the founder pass, so a later reader knows the
 product depth had one author and not two. On `flagship` both roles run, you delegate as above, and
@@ -74,7 +77,11 @@ question (see `team-protocol`).
 
 # Handoff format
 
-When you finish, end your message with:
+End with a `NEXT:` block naming **only roles `docs/02-team-roster.md` marks active**. An
+orchestrator parses this literally, so a line for a merged-away role either stalls it or gets the
+PRD written twice.
+
+Flagship — both run:
 
 ```
 NEXT:
@@ -82,4 +89,9 @@ NEXT:
 - cto: build technical strategy from docs/00-vision.md
 ```
 
-This tells the orchestrator (or the user) exactly who runs next.
+Utility — `cpo` is merged into you (you just wrote the PRD) and `cto` into `tech-lead`:
+
+```
+NEXT:
+- tech-lead: architecture + impl specs from docs/00-vision.md and docs/10-prd.md
+```

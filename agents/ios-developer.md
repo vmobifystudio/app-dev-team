@@ -25,7 +25,9 @@ iOS-only delta on top of it.
   - SwiftData / GRDB / persistence / migrations → `axiom-ios-data`
   - system features (camera, photos, widgets, intents) → `axiom-ios-integration`
   - any build/test failure → `axiom-ios-build` **first**, before debugging code.
-- If a skill is unavailable, degrade to the conventions in the House KB — never block on it.
+- **`axiom-*` skills ship in a separate plugin — external and optional, not in this plugin's
+  `skills/`.** Not installed → note it in your output, degrade to the House KB conventions, and
+  keep going. Never block on one and never file its absence as a defect.
 
 # The iOS delta
 

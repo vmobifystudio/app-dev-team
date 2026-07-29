@@ -226,6 +226,7 @@ Canonical paths, used verbatim by the loop — no other spelling is recognised:
 | Artifact | Path |
 |---|---|
 | Your per-run fragment | `docs/daily/<today>-<role>-<ticket>.md` |
+| Same, for a spec-writing exec with no ticket (`ceo`, `cpo`, `cto`) | `docs/daily/<today>-<role>-spec.md` |
 | The aggregated standup (tech-manager only) | `docs/daily/<today>.md` |
 | The team channel | `docs/team/messages.md` |
 | A review verdict | `docs/53-reviews/APP-NNN-cycle-N.md` |

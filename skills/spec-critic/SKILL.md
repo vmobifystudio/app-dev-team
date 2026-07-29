@@ -59,13 +59,18 @@ dropped — this codebase forbids silent caps.
 ## Filing them
 
 One `question` row **per ticket**, carrying up to three numbered questions in the body — not one row
-per question. Two reasons: the anti-ping-pong guard refuses a third `spec-critic → tech-lead` send
-on the same ticket, and `board-doctor` pairs questions to answers **by count**, so three rows need
-three separate answers to close while one row closes with one.
+per question. Two reasons: the anti-ping-pong guard refuses a third send on the same pair and
+ticket, and `board-doctor` pairs questions to answers **by count**, so three rows need three
+separate answers to close while one row closes with one.
+
+**`--from` is the ticket's `Owner`, never `spec-critic`.** You are a skill, not a role: you are in
+no org-chart row, so an answer addressed back to you is addressed to nobody and the developer who
+needed it never sees it. File on the owner's behalf — the same thing `/app-build` step 1a does with
+an `ASSUMED, NOT RAISED` line — so the `answer` comes back to a party that will actually read it.
 
 ```bash
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/team-message.sh" \
-   --from spec-critic --to tech-lead --ticket APP-004 --kind question \
+   --from ios-developer --to tech-lead --ticket APP-004 --kind question \
    --summary "3 spec gaps on APP-004: error type, cancel path, empty state" \
    --body "1) Toggle failure: TodoError or the IOException the repo throws? 2) Picker cancel: keep the existing photo or clear it? 3) Empty list: placeholder copy is unspecified — exact string?"
 ```
@@ -74,12 +79,21 @@ The helper exits `1` if it refuses the send. **A refused send is not a sent mess
 refuses, stop and file one `escalation` to `tech-manager` instead. Never write that you raised a
 question you did not raise.
 
-## Then
+## Then — and the fold-back is the delivery
 
 `tech-lead` answers in the same run wherever it can — it wrote the specs, so most answers are one
-line — with an `answer` row per ticket, and folds the answer back into the impl spec so the
-developer reads it in place. Anything still open after this round becomes a `tech-manager` action
-item under the unanswered-question rule in `team-protocol`.
+line — with an `answer` row per ticket. Then, **mandatorily**, it edits each answer into
+`docs/22-impl-spec-*.md` at the section the question was about, and names the edited section in the
+`answer` body.
+
+**A closed ledger is not delivery.** The developer is spawned against the impl spec; it is not
+handed the ledger and has no reason to read it. So the row closes the count and the *edit* is what
+reaches the person who has to decide. Skip the fold-back and the board renders clean, the doctor
+reports no `question_unanswered`, and the developer guesses exactly as if nobody had asked — a
+metric that cannot fail. Answering without editing the spec is not answering; it is scoring.
+
+Anything still open after this round becomes a `tech-manager` action item under the
+unanswered-question rule in `team-protocol`.
 
 ## Never
 

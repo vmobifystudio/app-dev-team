@@ -156,6 +156,14 @@ function parseBoard(text) {
     columns.forEach((name, index) => {
       record[name] = (cells[index] ?? '').replace(/`/g, '').trim();
     });
+    // `qa (static only)` — the renderer's marker for a ticket verified without running its test
+    // suite. Split it back into a plain status plus a flag: every downstream check (status_invalid,
+    // POST_REVIEW_STATUS, the ship gate) keys on the bare word and would otherwise read a legally
+    // generated board as malformed. A hand-written board that never carries the suffix is untouched.
+    if (/\(static only\)/i.test(record.status || '')) {
+      record.status = record.status.replace(/\s*\(static only\)\s*/i, '').trim();
+      record.staticOnly = true;
+    }
     // Skip the format-example row some boards carry (APP-NNN / F-NNN placeholders).
     if (/^APP-?NNN$/i.test(record.id || '')) continue;
     if (!record.id) continue;

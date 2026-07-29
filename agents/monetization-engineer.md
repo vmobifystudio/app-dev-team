@@ -21,6 +21,8 @@ that is expensive to get wrong.
   Billing entitlement rules, AdGate ordering, NO-AD zones, frequency caps, consent, and the
   test-IDs-by-default rule are all there. Match them exactly.
 - iOS: `axiom-in-app-purchases`, `axiom-storekit-ref`. Android: `admob-android-integration`.
+  All **external and optional** — separate plugins, not this one's `skills/`. Not installed → say
+  so and follow `monetization.md`; never block on one, never file its absence as a defect.
 
 # Inputs
 

@@ -28,6 +28,7 @@ const EVENTS = new Set([
   'assigned',
   'done_reported',
   'verified',
+  'verified_static',
   'rejected',
   'review_requested',
   'started',
@@ -49,7 +50,17 @@ const EVENTS = new Set([
  * make it impossible to assign the second ticket of a track before the first one lands. `assigned`
  * changes the owner and nothing else.
  */
-const STATUS_PRESERVING = new Set(['assigned', 'started', 'verified', 'done_reported', 'qa_passed', 'qa_failed', 'approved', 'rejected']);
+const STATUS_PRESERVING = new Set(['assigned', 'started', 'verified', 'verified_static', 'done_reported', 'qa_passed', 'qa_failed', 'approved', 'rejected']);
+
+/**
+ * Ticket IDs are matched case-insensitively but STORED as written.
+ *
+ * The CLI used to upcase every ID, so the mandated `BUG-001-fix` was rendered `BUG-001-FIX` and a
+ * grep for the documented spelling found nothing. Keying the map on the upper form keeps every log
+ * ever written (and `parseDependencies`, which upcases) resolving to the same ticket, while
+ * `state.id` carries the spelling the operator actually typed.
+ */
+const key = (id) => String(id ?? '').toUpperCase();
 
 /** What may legally happen next, keyed by derived status. Anything absent is refused. */
 function legalEvents(state) {
@@ -57,15 +68,18 @@ function legalEvents(state) {
     case 'todo':
       return ['claimed', 'assigned', 'blocked'];
     case 'in_progress':
-      if (state.verifyPending) return ['verified', 'rejected', 'blocked', 'assigned'];
+      if (state.verifyPending) return ['verified', 'verified_static', 'rejected', 'blocked', 'assigned'];
       if (state.verified) return ['review_requested', 'done_reported', 'blocked', 'assigned'];
       return ['done_reported', 'blocked', 'assigned'];
     case 'review':
       return ['started', 'approved', 'changes', 'merged', 'blocked', 'assigned'];
     case 'qa':
+      // `verified` is legal here so a ticket merged on a STATIC verification can be upgraded once
+      // the executable suite finally runs. Without that there is no path from `qa (static only)` to
+      // `done` except lying, and a sprint would have to close by hand — which is what happened.
       return state.qaPassed
-        ? ['closed', 'qa_failed', 'blocked']
-        : ['qa_passed', 'qa_failed', 'blocked'];
+        ? ['closed', 'verified', 'qa_failed', 'blocked']
+        : ['qa_passed', 'verified', 'qa_failed', 'blocked'];
     case 'done':
       return [];
     case 'blocked':
@@ -120,6 +134,11 @@ function blankTicket(id) {
     approvals: [],
     dependsOn: [],
     verified: false,
+    // "the branch checks out and the non-executable checks passed, but the test suite never ran."
+    // Carried on the ticket for the rest of its life, not consumed by review, because the fact that
+    // survives into `qa` is exactly the one a sprint must not close on.
+    verifiedStatic: false,
+    staticUnrun: '',
     verifyPending: false,
     qaPassed: false,
     qaFailures: 0,
@@ -143,7 +162,7 @@ function reduce(events) {
   for (const event of events) {
     const { ticket: id, event: name, by, detail } = event;
     if (name === 'created') {
-      if (tickets.has(id)) {
+      if (tickets.has(key(id))) {
         violations.push({ event, reason: `${id} was created twice` });
         continue;
       }
@@ -154,11 +173,11 @@ function reduce(events) {
       state.dependsOn = Array.isArray(meta.dependsOn) ? meta.dependsOn : [];
       state.created = event;
       state.events.push(event);
-      tickets.set(id, state);
+      tickets.set(key(id), state);
       continue;
     }
 
-    const state = tickets.get(id);
+    const state = tickets.get(key(id));
     if (!state) {
       violations.push({ event, reason: `event on unknown ticket ${id} (no "created")` });
       continue;
@@ -184,10 +203,20 @@ function reduce(events) {
       case 'verified':
         state.verifyPending = false;
         state.verified = true;
+        state.verifiedStatic = false;
+        state.staticUnrun = '';
+        break;
+      case 'verified_static':
+        state.verifyPending = false;
+        state.verified = true;
+        state.verifiedStatic = true;
+        state.staticUnrun = String(detail || '').trim() || 'the executable test suite';
         break;
       case 'rejected':
         state.verifyPending = false;
         state.verified = false;
+        state.verifiedStatic = false;
+        state.staticUnrun = '';
         break;
       case 'review_requested': {
         state.status = 'review';
@@ -253,7 +282,7 @@ function validate(tickets, candidate) {
     return { ok: false, reason: `"${name}" is not an event`, legal: [...EVENTS] };
   }
 
-  const state = tickets.get(id);
+  const state = tickets.get(key(id));
 
   if (name === 'created') {
     return state
@@ -280,7 +309,7 @@ function validate(tickets, candidate) {
   switch (name) {
     case 'claimed': {
       const unmet = state.dependsOn.filter((depId) => {
-        const dep = tickets.get(depId);
+        const dep = tickets.get(key(depId));
         if (!dep) return true;
         return !dep.events.some((e) => e.event === 'merged');
       });
@@ -340,6 +369,19 @@ function validate(tickets, candidate) {
           legal: ['qa_passed', 'qa_failed', 'blocked'],
         };
       }
+      // A ticket verified STATICALLY may merge and may reach qa — that is the whole point, it keeps
+      // real work moving on a host whose toolchain is absent. It may not be called done: `done` is
+      // the one word that asserts the executable suite ran green, and nothing here has seen it do
+      // that. The sprint closes as "merged, verification deferred", which is the truth.
+      if (state.verifiedStatic) {
+        return {
+          ok: false,
+          reason:
+            `${id} was verified STATICALLY only — ${state.staticUnrun} has never run, so "done" would ` +
+            'assert something nobody has checked. The sprint can close as "merged, verification deferred".',
+          legal: ['verified', 'qa_failed', 'blocked'],
+        };
+      }
       return { ok: true };
     default:
       return { ok: true };
@@ -350,9 +392,9 @@ function validate(tickets, candidate) {
 function dependentsOf(tickets, id, seen = new Set()) {
   const out = [];
   for (const [otherId, state] of tickets) {
-    if (seen.has(otherId) || !state.dependsOn.includes(id)) continue;
+    if (seen.has(otherId) || !state.dependsOn.map(key).includes(key(id))) continue;
     seen.add(otherId);
-    out.push(otherId, ...dependentsOf(tickets, otherId, seen));
+    out.push(state.id, ...dependentsOf(tickets, otherId, seen));
   }
   return out;
 }
@@ -404,7 +446,11 @@ function renderBoard(tickets, { generatedAt = new Date().toISOString() } = {}) {
       t.meta.title,
       t.owner,
       t.reviewer,
-      t.status,
+      // The static-only fact rides in the Status cell because that is the cell every human and
+      // every reader looks at, and a ticket whose tests never ran must not read as plain `qa`.
+      // lib/board.mjs splits the suffix back off, so board-doctor still sees a valid status and
+      // every existing check keeps working on the generated board unchanged.
+      t.verifiedStatic ? `${t.status} (static only)` : t.status,
       t.cycles,
       t.dependsOn.join(', '),
       t.meta.estimate,
@@ -518,6 +564,7 @@ function deriveMetrics(events) {
 export {
   EVENTS,
   STATUS_PRESERVING,
+  key,
   legalEvents,
   parseEventLog,
   reduce,

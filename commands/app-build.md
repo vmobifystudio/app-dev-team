@@ -332,9 +332,27 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      its suite — quoting the output. An N/A that replaces the check with nothing is a skip wearing
      a label.
 
-   Then spawn `qa-engineer` once to exercise the acceptance criteria; where the Axiom toolchain is
-   present it drives the P0 journey per the `runtime-gate` skill rather than stopping at launch. QA
-   writes new defects to `docs/51-bugs.md`. S1/S2 bugs come back into the loop in step 1 next round.
+   Then run the QA pass **as a ticket**, not as an errand. Create the row first, so the wave's QA
+   has an owner, a branch and a place on the board like any other work:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add QA-<sprint> --title "QA pass — wave <n>" --owner qa-engineer
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move QA-<sprint> claimed --by qa-engineer
+   ```
+
+   Then spawn `qa-engineer` once with that ticket ID to exercise the acceptance criteria; where the
+   Axiom toolchain is present it drives the P0 journey per the `runtime-gate` skill rather than
+   stopping at launch. QA writes new defects to `docs/51-bugs.md`. S1/S2 bugs come back into the
+   loop in step 1 next round.
+
+   **Its return goes through step 3 exactly like a developer's.** It is a DOC-profile ticket, so:
+   `done_reported`, then `verify-done.sh <branch> "$BASE" --docs-only`, then the daily-fragment
+   check, then review and the merge gate. A QA return with no `Branch:`, or a branch `verify-done`
+   cannot find, is **REJECTED** — re-spawn QA to redo the pass on a branch. Do not accept the
+   documents and move on: observed live, `50-test-plan.md` and `51-bugs.md` landed straight in the
+   shared tree with no branch, commit, ticket or fragment, so the run's single best artifact had no
+   provenance and was invisible to the board, the doctor, `verify-done` and the merge gate. Files
+   appearing in the working tree is not evidence that a QA pass happened.
 
    Record QA's verdict per ticket, then close what passed:
 

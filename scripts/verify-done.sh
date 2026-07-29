@@ -23,15 +23,25 @@
 # flag their DONE was structurally un-passable, so the loop either re-spawned them forever or
 # skipped verification for them entirely.
 #
-# Exit codes:
-#   0  claim verified AND the tests were settled — either they ran green, or --docs-only exempted
-#      them. A stated exemption is a decision; it is not an unknown.
-#   1  claim rejected — do not move the board row to review
-#   2  CANNOT EVALUATE — usage error, not a git repository, or no test command was supplied for a
-#      code ticket. That last one used to be exit 0 as well, so a single 0 meant three different
-#      things (green / exempt / never run) and the only caller cannot tell them apart: /app-build
-#      reads the exit code and does not parse stdout. Same three-state contract as every other gate
-#      here — there is no path from a check that did not run to exit 0.
+# Exit codes — and the headline word on line 1 always matches the code, because the only thing an
+# agent reliably reads is line 1. It used to print "VERIFIED:" while exiting 2 for "tests never ran".
+#   0  VERIFIED       — claim verified AND the tests were settled: they ran green, or --docs-only
+#                       exempted them. A stated exemption is a decision; it is not an unknown.
+#   1  REJECTED       — the claim is false, or a test RAN and FAILED. Its instruction is "re-spawn
+#                       the developer with these failures verbatim", so it must never be reached by
+#                       anything but a real defect.
+#   2  CANNOT EVALUATE — usage error, not a git repository, no test command for a code ticket, or
+#                       the test command could not be EXECUTED (missing toolchain, missing SDK,
+#                       missing gradle wrapper, command not found).
+#
+# The 1/2 split is the whole point of this rewrite. Running the test string and branching on
+# zero/non-zero made a MISSING TOOLCHAIN indistinguishable from a FAILING TEST — observed live: a
+# host with no Xcode produced "1 REJECTED", which sent a developer to fix a bug that did not exist.
+# `runtime-gate` has distinguished UNKNOWN from FAIL since it was written; this now does too.
+#
+# The tie-break is deliberately asymmetric: when the output does not prove a suite actually ran,
+# this reports 2, not 1. A false REJECTED costs a developer a phantom hunt and looks legitimate the
+# whole way; a false CANNOT EVALUATE costs one human question. Given the choice, stop and ask.
 
 set -u
 
@@ -117,8 +127,39 @@ fi
 # test is normally ALREADY checked out somewhere else. `git checkout <branch>` then fails with
 # "already checked out at ...", which would reject every honest DONE and send the loop re-spawning
 # developers until the spawn budget trips. Run the tests where the branch actually lives.
+#
+# TESTS_STATUS is one of: unverified · n/a (docs-only) · green · failing · cannot-run
+# The last two are the DR4-001 split, and CANNOT_EVAL_WHY records which one was decided and why.
 TESTS_STATUS="unverified"
+CANNOT_EVAL_WHY=""
 [ "$DOCS_ONLY" -eq 1 ] && TESTS_STATUS="n/a (docs-only)"
+
+# Did the test command FAIL, or did it never actually RUN? The evidence is the output, and the
+# order of these three questions is the decision.
+#
+# 1. An exit of 126/127 is the shell saying it could not execute the thing at all.
+# 2. A toolchain/environment signature — `xcode-select: error: tool 'xcodebuild' requires Xcode`,
+#    `command not found`, a missing SDK, a missing gradle wrapper — means nothing was exercised.
+#    Checked BEFORE the ran-evidence patterns, because xcodebuild prints "** TEST FAILED **" when
+#    it cannot find an SDK, and that string alone would read as a genuine test failure.
+# 3. Only then, positive evidence that a suite ran and reported: the run happened, so exit 1 is a
+#    real verdict about real code.
+# Anything else falls through to cannot-run. See the asymmetry note in the header.
+classify_test_outcome() {
+  if [ "$TEST_RC" -eq 127 ] || [ "$TEST_RC" -eq 126 ]; then
+    CANNOT_EVAL_WHY="the test command exited $TEST_RC — the shell could not execute it at all"
+    return 1
+  fi
+  if grep -Eqi 'command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|cannot be located|[Uu]nable to find a destination|GradleWrapperMain|permission denied|not recognized as an internal' "$TEST_LOG"; then
+    CANNOT_EVAL_WHY="the output names a missing or unusable toolchain, not a failing assertion"
+    return 1
+  fi
+  if grep -Eqi 'test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|expectation|[0-9]+ (passing|failing)|✗|✘' "$TEST_LOG"; then
+    return 0
+  fi
+  CANNOT_EVAL_WHY="the output carries no evidence that a test suite ran at all (exit $TEST_RC, $(wc -l <"$TEST_LOG" | tr -d ' ') line(s) of output)"
+  return 1
+}
 
 # ONE trap for both the temporary worktree and the test log. Two `trap ... EXIT` statements do not
 # stack in POSIX sh — the second silently replaces the first — so the worktree would have been left
@@ -166,11 +207,14 @@ if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
       echo "verify-done: running tests in a temporary detached worktree at $TMP_WT." >&2
     else
       rm -rf "$CANDIDATE"
-      fail "could not create a temporary worktree for $BRANCH, so the tests were not run."
+      # Not a REJECTED: the developer's claim is untouched by this repo's inability to make a
+      # worktree. It is precisely a cannot-evaluate.
+      TESTS_STATUS="cannot-run"
+      CANNOT_EVAL_WHY="could not create a temporary worktree for $BRANCH, so the tests were never started"
     fi
   fi
 
-  if [ -z "$FAILURES" ]; then
+  if [ -z "$FAILURES" ] && [ "$TESTS_STATUS" != "cannot-run" ]; then
     echo "verify-done: running tests on $BRANCH: $TEST_CMD" >&2
     # Capture, never discard. The verdict below tells the loop to "re-spawn the developer with
     # these failures verbatim" — and the output went to /dev/null, so there were no verbatim
