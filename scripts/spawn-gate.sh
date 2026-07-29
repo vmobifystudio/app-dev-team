@@ -18,10 +18,16 @@
 #   0  GO             — every writer named has its own worktree, or there is exactly one writer
 #                       (a lone writer cannot collide with anyone: that is the "serialize" branch
 #                       of the rule, and it is stated in the output so it lands in the standup).
-#   1  REFUSED        — two or more writers and at least one has no worktree. Spawn nobody.
+#   1  REFUSED        — two or more writers and at least one has no worktree, OR the studio
+#                       emergency stop is set (`.studio-stop` / APP_TEAM_STOP). Spawn nobody.
 #   2  CANNOT EVALUATE — not a git repository, or no ticket IDs given. Not a pass.
 
 set -u
+
+# The ONE refusal exit. Three paths refuse now (emergency stop, two writers with no worktree) and
+# routing them all through here keeps a single point that a mutation can flip — mutate.sh's M01
+# anchors on it, and an anchor that occurs three times lands somewhere arbitrary and proves nothing.
+refuse() { exit 1; }
 
 DIR=.agent-wt
 IDS=""
@@ -40,12 +46,44 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# `set -f` first: without it the shell GLOBS while re-splitting, so a ticket ID of `*` expands to
+# every filename in the cwd and the gate reports on files instead of tickets.
+set -f
 # shellcheck disable=SC2086
 set -- $IDS
+set +f
 if [ $# -eq 0 ]; then
   echo "CANNOT EVALUATE: no ticket IDs given"
   echo "usage: spawn-gate.sh <TICKET-ID> [TICKET-ID ...]"
   exit 2
+fi
+
+# --- the emergency stop ------------------------------------------------------------------------
+#
+# Checked BEFORE anything else, because this is the mandatory pre-spawn call: every documented spawn
+# site runs this gate, so the halt cannot be skipped without skipping the gate. A stop checked once
+# at the top of a loop is a preference, not a stop.
+#
+# Set it without editing any code:   echo "why" > .studio-stop      (or APP_TEAM_STOP=1)
+# Clear it the same way:             rm .studio-stop
+#
+# It halts SPAWNING. It cannot kill agents already running — nothing here holds a process handle on
+# them — and saying otherwise would be a control believed to do more than it does.
+STOP_FILE=${APP_TEAM_STOP_FILE:-.studio-stop}
+STOP_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+if [ -n "${APP_TEAM_STOP:-}" ]; then
+  echo "REFUSED: EMERGENCY STOP is set (APP_TEAM_STOP=$APP_TEAM_STOP)"
+  echo "Spawn nobody. Report what is unfinished and stop the loop."
+  refuse
+fi
+if [ -e "$STOP_ROOT/$STOP_FILE" ]; then
+  echo "REFUSED: EMERGENCY STOP is set ($STOP_ROOT/$STOP_FILE)"
+  echo "reason: $(cat "$STOP_ROOT/$STOP_FILE" 2>/dev/null || echo '(unreadable — treated as STOP)')"
+  echo
+  echo "Spawn nobody. Report what is unfinished and stop the loop. An operator clears this with"
+  echo "  rm \"$STOP_ROOT/$STOP_FILE\""
+  echo "and an agent never clears it on its own judgement that things look fine now."
+  refuse
 fi
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -102,4 +140,4 @@ for id in $missing; do
 done
 echo
 echo "Or serialize: spawn one writer, let it commit, then the next. Say so in the standup."
-exit 1
+refuse

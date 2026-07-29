@@ -20,7 +20,10 @@
  * one typo into a permanently blocked board.
  */
 
+import { createHash } from 'node:crypto';
+
 import { MAX_REVIEW_CYCLES } from './board.mjs';
+import { checkCapability } from './capabilities.mjs';
 
 const EVENTS = new Set([
   'created',
@@ -129,6 +132,101 @@ function parseEventLog(text) {
     events.push({ _line: index + 1, provenance: 'cli', detail: '', by: '', ts: null, ...record });
   });
   return { events, errors };
+}
+
+// --------------------------------------------------------------------------------------------
+// the audit chain
+// --------------------------------------------------------------------------------------------
+
+/**
+ * Tamper evidence for an append-only log, in about thirty lines and no dependency.
+ *
+ * The event log is the studio's only record of who decided what. Every rule in this file is
+ * enforced at APPEND time — which is exactly why the log is worth attacking: an agent with `Write`
+ * can bypass `board.mjs` entirely and edit a line, and until now nothing anywhere would notice. A
+ * rewritten `approved` is the cheapest possible way to bypass a failed gate.
+ *
+ * Each appended line carries `hash = sha256(previous-hash + canonical(this event))`. Editing,
+ * reordering or deleting any line changes every hash after it, so the break is located to a line
+ * number. This proves the log was not rewritten. It does NOT prove who wrote a line — that needs a
+ * key an autonomous agent would have to hold, and an agent that holds a signing key can sign a lie.
+ * Attribution is `by`, enforced for gate events in lib/capabilities.mjs; tamper-evidence is here.
+ * Two different claims, and conflating them would be the more comfortable lie.
+ *
+ * LEGACY PREFIX: a log written before this existed has no hashes. The chain starts at the first
+ * hashed line, and its anchor is the sha of every raw byte before it — so the unhashed prefix is
+ * still covered: edit a legacy line and the first chained line stops verifying. No migration, no
+ * flag day, and the honest report is "N unchained / M chained".
+ */
+const HASH_FIELDS_EXCLUDED = new Set(['hash', '_line']);
+
+const sha = (text) => createHash('sha256').update(text).digest('hex').slice(0, 32);
+
+/** Key order is not part of the claim, so it must not be part of the hash. */
+const canonicalEvent = (event) => {
+  const out = {};
+  for (const k of Object.keys(event).filter((k) => !HASH_FIELDS_EXCLUDED.has(k)).sort()) out[k] = event[k];
+  return JSON.stringify(out);
+};
+
+const chainHash = (previous, event) => sha(`${previous}\n${canonicalEvent(event)}`);
+
+/**
+ * Walk the log's raw text and confirm every hashed line still hashes.
+ *
+ * @returns {{ok: true, chained: number, unchained: number, tip: string}
+ *         | {ok: false, line: number, reason: string, chained: number, unchained: number}}
+ */
+function verifyChain(text) {
+  const lines = text.split('\n');
+  let previous = null;
+  let consumed = 0;
+  let chained = 0;
+  let unchained = 0;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (line.trim()) {
+      let record = null;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        record = null; // parseEventLog owns the "unreadable line" report; this is not a chain break
+      }
+      if (record && typeof record.hash === 'string') {
+        const base = previous === null ? sha(text.slice(0, consumed)) : previous;
+        const expected = chainHash(base, record);
+        if (record.hash !== expected) {
+          return {
+            ok: false,
+            line: i + 1,
+            chained,
+            unchained,
+            reason:
+              `line ${i + 1} does not hash to its recorded value — this line, or something before ` +
+              'it, was edited, reordered or deleted after it was appended.',
+          };
+        }
+        previous = record.hash;
+        chained += 1;
+      } else if (previous !== null) {
+        return {
+          ok: false,
+          line: i + 1,
+          chained,
+          unchained,
+          reason:
+            `line ${i + 1} carries no hash but follows ${chained} chained line(s). Something appended ` +
+            'to this log without the CLI, so the chain cannot certify anything after it.',
+        };
+      } else {
+        unchained += 1;
+      }
+    }
+    consumed += line.length + (i === lines.length - 1 ? 0 : 1);
+  }
+
+  return { ok: true, chained, unchained, tip: previous === null ? sha(text) : previous };
 }
 
 const REVIEWER_IN_DETAIL = /(?:->|→)\s*([\w-]+)/;
@@ -285,6 +383,15 @@ function reduce(events) {
  * refusal obliges the caller to append instead (the cycle cap forcing `blocked`).
  */
 function validate(tickets, candidate) {
+  const transition = validateTransition(tickets, candidate);
+  if (!transition.ok) return transition;
+  // Capability runs LAST, so every older refusal keeps its own words. The self-approval message
+  // ("a role does not gate its own work") is the one a reviewer needs to read, and it must not be
+  // replaced by a generic capability refusal just because this check is newer.
+  return checkCapability(tickets.get(key(candidate.ticket)), candidate, legalEvents(tickets.get(key(candidate.ticket)) || { status: 'todo' }));
+}
+
+function validateTransition(tickets, candidate) {
   const { ticket: id, event: name, by } = candidate;
 
   if (!EVENTS.has(name)) {
@@ -583,6 +690,8 @@ export {
   parseEventLog,
   reduce,
   validate,
+  chainHash,
+  verifyChain,
   dependentsOf,
   renderBoard,
   deriveMetrics,

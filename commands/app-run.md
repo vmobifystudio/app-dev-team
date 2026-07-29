@@ -77,6 +77,13 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      has no other economic brake: `round-journal.mjs check` runs at the top of every round, exit 1
      ends the run with the ceiling named and every unfinished ticket listed. Do not raise a ceiling
      to keep going — that is a decision to hand back to the user, and it is Gate-shaped.
+   - **The kill switch outranks everything in this file.** An unattended run is the case the studio
+     emergency stop exists for: an operator who cannot reach a keyboard writes
+     `echo "reason" > .studio-stop` at the repository root (or sets `APP_TEAM_STOP`) and every spawn
+     stops at the next gate. `round-journal.mjs check` and `spawn-gate.sh` both refuse while it is
+     set, so it takes effect before the next agent launches, not at the end of the round. **Never
+     clear it.** Report the reason it carries, list what is unfinished, and end the run. It halts
+     *spawning*; agents already running are not killed, so say which ones were in flight.
    - **Escalate to the user only** for: a blocker the team can't resolve, the 2-cycle review cap
      being hit, the budget ceiling, or a scope/architecture conflict. Surface verbatim with a
      proposed answer.

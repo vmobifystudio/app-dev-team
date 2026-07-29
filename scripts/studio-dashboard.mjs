@@ -55,6 +55,8 @@ import { existsSync, readFileSync, writeFileSync, watch, readdirSync, mkdirSync 
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { parseArgs } from './lib/args.mjs';
+import { redact } from './lib/redact.mjs';
 import {
   readBoard,
   parseMessages,
@@ -747,7 +749,30 @@ function panelTimeline(model) {
 // state
 // ---------------------------------------------------------------------------------------------
 
-function assembleState(root, { actions = true } = {}) {
+/**
+ * Everything this page shows, with credentials stripped.
+ *
+ * One choke point, deliberately: the state is serialised in two places (baked into the exported
+ * HTML, and streamed to the live page), and a redaction applied at one of them is a redaction the
+ * other quietly skips. Filtering the assembled object covers the board, the ledger, the messages,
+ * the bug list and every panel at once, including the ones added after this was written.
+ *
+ * The exported HTML is the case that matters: it is a file people attach to tickets and paste into
+ * chat, so a token that reached a blocker message reaches an audience nobody chose.
+ */
+function assembleState(root, options = {}) {
+  const raw = assembleStateRaw(root, options);
+  const { text, redacted } = redact(JSON.stringify(raw));
+  if (redacted.length) {
+    process.stderr.write(
+      `studio-dashboard: REDACTED ${redacted.join(', ')} from the rendered state. ` +
+        'It is still in the source file — find it and rotate it.\n'
+    );
+  }
+  return JSON.parse(text);
+}
+
+function assembleStateRaw(root, { actions = true } = {}) {
   const boardSource = readSource(root, REL.board);
   const logSource = readSource(root, REL.log);
   const messagesSource = readSource(root, REL.messages);
@@ -1313,10 +1338,18 @@ function serve(root, { port, actions }) {
 
 function main() {
   const argv = process.argv.slice(2);
-  const flag = (name, fallback) => {
-    const i = argv.indexOf(`--${name}`);
-    return i !== -1 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback;
-  };
+  // `--export --no-actions` used to write the page to the string "." — the old local parser saw a
+  // `--`-shaped value, silently substituted the fallback, and the operator got a dashboard exported
+  // nowhere with a success message. Values are values; lib/args.mjs is the one place that rule lives.
+  const { flags } = parseArgs(argv, {
+    valueFlags: new Set(['project', 'export', 'port']),
+    knownFlags: new Set(['project', 'export', 'port', 'no-actions']),
+    die: (code, message) => {
+      process.stderr.write(`studio-dashboard: ${message}\n`);
+      process.exit(code);
+    },
+  });
+  const flag = (name, fallback) => (typeof flags[name] === 'string' ? flags[name] : fallback);
   const root = resolve(process.cwd(), flag('project', '.'));
   if (!existsSync(root)) {
     process.stderr.write(`studio-dashboard: no such project directory: ${root}\n`);

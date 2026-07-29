@@ -14,12 +14,17 @@
  *
  * Usage:
  *   round-journal.mjs append --round N [--tickets A,B] [--verdicts approved=2,changes=1]
+ *                            [--agents ios-developer=2,qa-engineer=1]
  *                            [--retries N] [--refusals N] [--spawns N] [--wall-clock-sec N]
  *                            [--spend-usd N] [--note "..."]
  *   round-journal.mjs show   [--json]
  *   round-journal.mjs check  [--max-rounds N] [--max-spawns N] [--max-retries N] [--max-spend-usd N]
+ *                            [--max-agent-spawns N]
  *
- * Ceilings: flag > env (APP_TEAM_MAX_ROUNDS, _SPAWNS, _RETRIES, _SPEND_USD) > default.
+ * Ceilings: flag > env (APP_TEAM_MAX_ROUNDS, _SPAWNS, _RETRIES, _SPEND_USD, _AGENT_SPAWNS) > default.
+ *
+ * `check` also honours the studio EMERGENCY STOP (`.studio-stop` or APP_TEAM_STOP) and exits 1 with
+ * the operator's recorded reason. See scripts/lib/stop.mjs.
  * Common flag: --journal <path>   (default docs/33-rounds.jsonl)
  *
  * Exit codes:
@@ -31,28 +36,32 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
+import { parseArgs as parseArgv } from './lib/args.mjs';
+import { readStop, STOP_FILE } from './lib/stop.mjs';
+
 const DEFAULT_JOURNAL = 'docs/33-rounds.jsonl';
-const DEFAULTS = { rounds: 12, spawns: 60, retries: 30, spendUsd: null };
+const DEFAULTS = { rounds: 12, spawns: 60, retries: 30, spendUsd: null, agentSpawns: 20 };
 
 const die = (code, message) => {
   process.stderr.write(`round-journal: ${message}\n`);
   process.exit(code);
 };
 
-const parseArgs = (argv) => {
-  const flags = {};
-  const positional = [];
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg.startsWith('--')) {
-      const [name, inline] = arg.slice(2).split(/=(.*)/s);
-      if (inline !== undefined) flags[name] = inline;
-      else if (argv[i + 1] !== undefined && !argv[i + 1].startsWith('--')) flags[name] = argv[++i];
-      else flags[name] = true;
-    } else positional.push(arg);
-  }
-  return { flags, positional };
-};
+/**
+ * Every flag here takes a value, and that is the point: this file shipped a byte-identical copy of
+ * the `board.mjs` argument-injection hole. `--note "--journal=/tmp/x"` set `note` to `true` and
+ * wrote the loop's budget ledger to an attacker-chosen path — so the ceilings that stop an
+ * unattended `/app-run` were computed from an empty file and never fired. Same class, second file;
+ * one parser now, in lib/args.mjs.
+ */
+const VALUE_FLAGS = new Set([
+  'round', 'tickets', 'verdicts', 'retries', 'refusals', 'spawns', 'agents',
+  'wall-clock-sec', 'spend-usd', 'note', 'journal',
+  'max-rounds', 'max-spawns', 'max-retries', 'max-spend-usd', 'max-agent-spawns',
+]);
+const KNOWN_FLAGS = new Set([...VALUE_FLAGS, 'json']);
+
+const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, knownFlags: KNOWN_FLAGS, die });
 
 const num = (value, fallback = 0) => {
   if (value === undefined || value === true) return fallback;
@@ -97,6 +106,22 @@ const parsePairs = (value) => {
 const list = (value) =>
   typeof value === 'string' ? value.split(',').map((s) => s.trim()).filter(Boolean) : [];
 
+/**
+ * Spawns per role, summed over the journal.
+ *
+ * The studio-wide `spawns` ceiling is a blunt instrument: 59 of 60 spawns can belong to one looping
+ * `ios-developer` retrying the same ticket, and the aggregate looks healthy right up to the moment
+ * it stops the whole loop. A per-agent ceiling catches the one role that is stuck while the others
+ * are working, which is both the cheaper failure to catch and the one an operator can act on.
+ */
+const perAgent = (rounds) => {
+  const out = {};
+  for (const r of rounds) {
+    for (const [role, n] of Object.entries(r.agents || {})) out[role] = (out[role] || 0) + num(n);
+  }
+  return out;
+};
+
 const totals = (rounds) =>
   rounds.reduce(
     (acc, r) => ({
@@ -121,6 +146,7 @@ const ceilings = (flags) => ({
       : process.env.APP_TEAM_MAX_SPEND_USD
         ? num(process.env.APP_TEAM_MAX_SPEND_USD, null)
         : DEFAULTS.spendUsd,
+  agentSpawns: num(flags['max-agent-spawns'], num(process.env.APP_TEAM_MAX_AGENT_SPAWNS, DEFAULTS.agentSpawns)),
 });
 
 const cmdAppend = (flags, path) => {
@@ -134,6 +160,8 @@ const cmdAppend = (flags, path) => {
     retries: num(flags.retries),
     refusals: num(flags.refusals),
     spawns: num(flags.spawns),
+    // "ios-developer=2,qa-engineer=1" — same shape as --verdicts, same parser.
+    agents: parsePairs(flags.agents),
     wallClockSec: num(flags['wall-clock-sec']),
     // null, not 0: "not measurable in this harness" and "cost nothing" are different claims.
     spendUsd: flags['spend-usd'] === undefined ? null : num(flags['spend-usd'], null),
@@ -175,11 +203,27 @@ const cmdShow = (flags, path) => {
 };
 
 const cmdCheck = (flags, path) => {
+  // The kill switch is checked FIRST and reported on its own line. It is not a budget: a budget
+  // says "this has cost enough", a stop says "an operator wants this halted now", and printing
+  // them as the same kind of fact invites the same response — raise the ceiling and continue.
+  const stop = readStop(process.cwd());
+  if (stop.stopped) {
+    process.stdout.write(`EMERGENCY STOP is set (${stop.source})\n  reason: ${stop.reason}\n`);
+    process.stdout.write(
+      '  Spawn nothing. Report what is unfinished and stop the loop.\n' +
+        `  This is cleared by an operator (rm ${STOP_FILE}), never by an agent deciding it is fine now.\n`
+    );
+    process.exit(1);
+  }
   const rounds = readJournal(path);
   const t = totals(rounds);
   const caps = ceilings(flags);
+  const agents = perAgent(rounds);
   const breached = [];
   if (t.rounds >= caps.rounds) breached.push(`rounds ${t.rounds} / ${caps.rounds}`);
+  for (const [role, n] of Object.entries(agents)) {
+    if (n >= caps.agentSpawns) breached.push(`agent ${role} ${n} / ${caps.agentSpawns}`);
+  }
   if (t.spawns >= caps.spawns) breached.push(`spawns ${t.spawns} / ${caps.spawns}`);
   if (t.retries >= caps.retries) breached.push(`retries ${t.retries} / ${caps.retries}`);
   if (caps.spendUsd !== null && t.spendReported && t.spendUsd >= caps.spendUsd) {
@@ -199,7 +243,8 @@ const cmdCheck = (flags, path) => {
   }
 
   process.stdout.write(
-    `BUDGET: rounds ${t.rounds}/${caps.rounds} · spawns ${t.spawns}/${caps.spawns} · retries ${t.retries}/${caps.retries} · ${spendLine}\n`,
+    `BUDGET: rounds ${t.rounds}/${caps.rounds} · spawns ${t.spawns}/${caps.spawns} · retries ${t.retries}/${caps.retries} · ${spendLine}\n` +
+      `  per agent (max ${caps.agentSpawns} each): ${Object.entries(agents).map(([r, n]) => `${r} ${n}`).join(' · ') || 'nothing journaled — pass --agents role=N'}\n`,
   );
   process.exit(0);
 };

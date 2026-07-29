@@ -33,8 +33,18 @@ Code-reviewer enforces correctness against the spec. You enforce safety against 
 
 Walk through this list against the current `main`. For each item, write either `PASS`, `FAIL: <severity> — <finding>`, or `N/A: <reason>`.
 
+## Repository controls
+0. The server-side controls in `docs/24-repository-controls.md` are set. Verify, do not assume:
+   `sh "${CLAUDE_PLUGIN_ROOT}/scripts/repo-controls.sh" --check`. Exit `2` is **CANNOT EVALUATE**
+   and is recorded as UNKNOWN — never as `PASS`. These back every internal rule in this plugin; a
+   protected branch is the only thing that survives an agent with a shell.
+
 ## Credentials & secrets
-1. No API keys, tokens, certificates, or signing material committed in the repo (run `grep -Ri` for known patterns: `BEGIN PRIVATE KEY`, `aws_secret`, `api_key`, `xoxb-`, etc.).
+1. No API keys, tokens, certificates, or signing material committed in the repo. Mechanical first,
+   eyes second: `node "${CLAUDE_PLUGIN_ROOT}/scripts/lib/redact.mjs" --scan <generated artifacts>`
+   over everything the pipeline produced (board, ledger, standups, dashboards, evidence), then
+   `grep -Ri` for anything its patterns do not know (`BEGIN PRIVATE KEY`, `aws_secret`, `api_key`,
+   `xoxb-`). The scanner is a floor, not a ceiling — a `PASS` from it is not a finding of "clean".
 2. Secrets loaded from the keychain (iOS) / EncryptedSharedPreferences or Keystore (Android), not plain UserDefaults / SharedPreferences.
 3. Build-time secrets injected via CI, not hardcoded.
 

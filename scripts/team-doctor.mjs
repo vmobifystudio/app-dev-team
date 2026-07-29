@@ -21,6 +21,8 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 
 import { BUILD_SPAWNABLE_OWNERS } from './lib/board.mjs';
+import { ROLE_GATES, ROLES_IN_MATRIX } from './lib/capabilities.mjs';
+import { STOP_FILE } from './lib/stop.mjs';
 
 const ROOT = process.cwd();
 const findings = [];
@@ -231,6 +233,47 @@ if (!existsSync(MATRIX)) {
   }
 }
 
+// --- 2d. the capability matrix names real roles, and the controls are reachable --------------------
+//
+// lib/capabilities.mjs decides who may write a gate event. A TYPO in it is silent and expensive in
+// exactly one direction: `code-revewier` does not grant a stranger anything, it locks out the real
+// reviewer — so every approval starts failing and the fastest fix under pressure is to widen the
+// list. A misspelling that makes a control unusable is how controls get deleted.
+
+for (const role of ROLES_IN_MATRIX) {
+  if (!roles.has(role)) {
+    add(findings, 'capability_role_unknown', 'scripts/lib/capabilities.mjs',
+      `The capability matrix grants "${role}" a gate event, and there is no agents/${role}.md. Nothing can exercise that grant, and the roles that CAN are the ones the matrix silently locks out.`,
+      'Fix the spelling, or add the agent.');
+  }
+}
+
+// A role that owns tickets and can write no gate event at all is fine and common (developers).
+// A role that can write a gate event but no command ever spawns is not: the capability is a
+// promise nothing can keep, and every attempt to use it is refused with a list naming a ghost.
+for (const [event, allowed] of Object.entries(ROLE_GATES)) {
+  const live = allowed.filter((r) => roles.has(r));
+  if (live.length === 0) {
+    add(findings, 'capability_event_unreachable', 'scripts/lib/capabilities.mjs',
+      `No existing role may write "${event}", so that transition can never legally happen and every ticket needing it strands.`,
+      `Grant "${event}" to a role that exists.`);
+  }
+}
+
+// The emergency stop is only a control if the loops that spawn agents know about it. This is the
+// same shape as the integration-branch defect from dry run 4: the resolver was hardened and its
+// input was never produced, so the fix did nothing. A kill switch nobody documents is a file.
+const STOP_MUST_MENTION = ['commands/app-build.md', 'commands/app-run.md', 'scripts/spawn-gate.sh'];
+for (const rel of STOP_MUST_MENTION) {
+  const path = join(ROOT, rel);
+  if (!existsSync(path)) continue;
+  if (!readFileSync(path, 'utf8').includes(STOP_FILE)) {
+    add(findings, 'kill_switch_unreferenced', rel,
+      `The studio emergency stop is the file "${STOP_FILE}", and ${rel} never mentions it. A spawn site that does not check the stop is a spawn site the stop does not stop.`,
+      `Name ${STOP_FILE} here, and check it before spawning.`);
+  }
+}
+
 // --- 3. every referenced skill exists --------------------------------------------------------------
 
 /**
@@ -332,6 +375,10 @@ const DOC_WRITERS = new Map([
   // One artifact per platform, so every `docs/22-impl-spec-<anything>` folds into this row.
   ['docs/22-impl-spec-*.md',            ['agents/tech-lead.md', 'commands/app-onboard.md']],
   ['docs/23-git-strategy.md',           ['agents/devops-engineer.md']],
+  // The server-side controls. Written by devops, read by security-reviewer before ship — the one
+  // artifact in the set whose contents nothing in this plugin can enforce, which is why a role has
+  // to go and look.
+  ['docs/24-repository-controls.md',    ['agents/devops-engineer.md']],
   ['docs/30-sprint-plan.md',            ['skills/sprint-planner/SKILL.md']],
   ['docs/31-board.md',                  ['skills/sprint-planner/SKILL.md', 'commands/app-plan.md']],
   ['docs/31-board-events.jsonl',        ['skills/sprint-planner/SKILL.md', 'commands/app-plan.md']],

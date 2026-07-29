@@ -3,6 +3,55 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] — Security hardening (S.1–S.7)
+
+The threat this plugin actually has is not a web form. It spawns autonomous agents that run shell
+commands, write files and drive git in someone's repository. These are the controls for that, and
+each one was watched refuse before it was watched pass.
+
+- **S.1 Capability enforcement at the append (`scripts/lib/capabilities.mjs`).** Gate events
+  (`verified`, `verified_static`, `rejected`, `approved`, `changes`, `merged`, `qa_passed`,
+  `qa_failed`, `closed`) now have a closed list of roles. A designer or doc role cannot merge; a
+  developer cannot approve or verify; `release-manager` appears in no evidence row, so the role that
+  decides a build ships cannot author the evidence that it is shippable; QA cannot write
+  `qa_passed` on a ticket it owns. A gate event with **no `--by` is refused** — an unattributed
+  approval is the thing the audit chain exists to make impossible. Work events are untouched.
+- **S.2 One argument parser (`scripts/lib/args.mjs`).** `board.mjs`'s injection fix was copied into
+  `round-journal.mjs`, `portfolio.mjs` and `studio-dashboard.mjs` — three hand-rolled loops with the
+  same hole. `--note "--journal=/tmp/x"` wrote the budget ledger to an attacker-chosen path, so the
+  ceilings that stop an unattended run were computed from an empty file. Also fixed: `team-message.sh`
+  hung forever on a value-less flag (`shift 2` with one argument left does not shift), and
+  `runtime-gate.sh` interpolated an agent-supplied path into two `sh -c` strings.
+- **S.3 Tamper-evident event log.** Every appended event carries
+  `hash = sha256(previous-hash + canonical(event))`. `board.mjs verify` locates a break to a line;
+  the CLI **refuses to append to a rewritten log**; `ship-gate.sh` blocks a release on one. A log
+  written before this existed still works — the chain anchors on the raw bytes of the unhashed
+  prefix, so editing a legacy line breaks the first chained line. This proves the log was not
+  rewritten. It does **not** prove who wrote a line; that is `by`, enforced separately.
+- **S.4 Credential redaction at the write (`scripts/lib/redact.mjs`).** `board.mjs` filters every
+  free-text ticket field, `team-message.sh` filters summary and body, the dashboard filters the state
+  it renders and exports — each says out loud that it redacted. `--scan` fails on a credential-shaped
+  string in a generated artifact and is wired into `security-reviewer`'s checklist. Documented
+  placeholders (`<your-key>`, `${VAR}`, `xxxx`, `REDACTED`) are not credentials.
+- **S.5 Repository content is DATA (`scripts/injection-scan.mjs`).** A detector for
+  instruction-shaped text — `ignore previous instructions`, `you are now`, role headers, chat and
+  tool-call markup, exfiltration phrasing — in files an agent is about to read. It **reports and
+  never strips**: editing someone's repository destroys evidence and teaches the reader that
+  survivors are safe. Guidance added to `ic-workflow` and to `code-reviewer`'s check list.
+- **S.6 Kill switch and per-agent ceilings.** `echo "reason" > .studio-stop` (or `APP_TEAM_STOP`)
+  halts every spawn at the next gate, with no code edit and no restart; `spawn-gate.sh` and
+  `round-journal.mjs check` both refuse while it is set, and an agent never clears it.
+  `round-journal.mjs --agents role=N` adds a per-role spawn ceiling, because the studio total reads
+  healthy while one role burns 59 of 60 spawns on one ticket. It halts *spawning* — agents already
+  running are not killed, and the docs say so.
+- **S.7 Repository controls (`scripts/repo-controls.sh`, `docs/24-repository-controls.md`).**
+  `--check` reports protected branch, required status checks, required non-self review, production
+  environment approval and secret push protection; `--print` emits the `gh` commands and runs
+  nothing. No `gh` is exit `2 CANNOT EVALUATE`, never a pass. These are the only controls in the
+  studio an agent cannot switch off, which is why they are written down apart from the rest.
+- **Seven new mutations (M17–M23)**, each proving its own assertion bites. `spawn-gate.sh`'s three
+  refusal paths were routed through one `refuse()` so M01's anchor stays unique.
+
 ## [Unreleased] — Phase 5: isolation becomes a mechanism, and the loop gets a brake
 
 - **`scripts/spawn-gate.sh` — the orchestrator can no longer forget worktree isolation.** Given the

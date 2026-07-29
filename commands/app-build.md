@@ -83,8 +83,15 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      round on purpose: a spend you only see when it stops you is a spend you saw too late.
    - Exit `1` → **CEILING REACHED. Stop the loop.** Print its lines verbatim, then the sprint
      summary from step 8 naming every unfinished ticket. Do not spawn this round. Raising a ceiling
-     (`--max-rounds`, `--max-spawns`, `--max-retries`, `--max-spend-usd`, or `APP_TEAM_MAX_*`) is
-     the user's decision, not a workaround you apply to keep going.
+     (`--max-rounds`, `--max-spawns`, `--max-retries`, `--max-agent-spawns`, `--max-spend-usd`, or
+     `APP_TEAM_MAX_*`) is the user's decision, not a workaround you apply to keep going.
+   - It also reports **per-agent** spawn counts against `--max-agent-spawns`. The studio-wide total
+     can look healthy while 59 of 60 spawns belong to one role looping on one ticket; that is the
+     failure a per-agent ceiling catches and the aggregate cannot. Journal them in step 6 with
+     `--agents ios-developer=2,qa-engineer=1`.
+   - The same command reports the **EMERGENCY STOP** (`.studio-stop`, or `APP_TEAM_STOP`) and exits
+     `1`. That is not a budget and must not be treated as one: a ceiling can be raised with a
+     reason, a stop is cleared by the operator who set it and by nobody else.
 
    **Token cost is not measurable in this harness**, so nothing here pretends to know it. What is
    counted is what is countable — rounds, spawns, retries, refusals, wall-clock — and those are the
@@ -171,6 +178,13 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    `git worktree add` line for each; create them and re-run, or serialize the round. Exit `2` →
    worktrees are unavailable here, so serialize; a 2 is never a go-ahead. Exit `0` with a single
    ticket prints `SERIALIZED` — legal, and it must be said in the standup.
+
+   **This gate is also the studio kill switch.** If `.studio-stop` exists at the repository root (or
+   `APP_TEAM_STOP` is set in the environment), it refuses with `EMERGENCY STOP` and the operator's
+   recorded reason. Spawn nobody, report what is unfinished, and stop the loop. **You never clear
+   `.studio-stop` yourself** — an agent deciding the halt no longer applies is the halt not existing.
+   An operator sets it with `echo "reason" > .studio-stop` and clears it with `rm .studio-stop`,
+   with no code change and no restart.
 
    This is a script rather than a reminder because the reminder failed on the people who wrote it:
    two writers went into one checkout hours after that rule was hardened, one ran `git stash` +
@@ -457,6 +471,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" append --round <N> \
      --tickets APP-001,APP-002 --verdicts approved=1,changes=1 \
+     --agents ios-developer=2,code-reviewer=1 \
      --spawns <how many agents you launched> --retries <re-spawns> \
      --refusals <CLI/gate exit-1s this round> --wall-clock-sec <seconds>
    ```
