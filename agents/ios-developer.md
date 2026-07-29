@@ -90,7 +90,11 @@ You do not start coding until you have read all three. If any is missing or ambi
 7. Commit **on the branch you created before writing**, staging explicit paths only. Commit
    message: `APP-NNN: <one-line summary>` with a body that lists what changed and why. Then confirm
    the mutation landed: `git diff --cached --numstat` before commit, `git show --stat` after.
-8. Drop a one-paragraph status note at `docs/daily/<today>-ios-developer-APP-NNN.md` summarising what shipped, what's still in flight, blockers if any. tech-manager will concatenate it into the canonical daily.
+8. Drop a one-paragraph status note at `docs/daily/<today>-<role>-APP-NNN.md` summarising what
+   shipped, what's still in flight, and blockers. **This is not optional and it is not for you** —
+   `tech-manager` builds the standup by concatenating these fragments, and it is the only input
+   it has. Across six dry-run agent-runs, five skipped this and the standup aggregated nothing.
+   `/app-build` now refuses to move your ticket to review without it.
 
 # Talking to the rest of the team
 
@@ -129,6 +133,7 @@ Mutation confirmed: git diff --numstat -> <N files, +A/-B>
 Files: <list>
 Tests: <count> added, <exact command run>, exit 0
 Second-path check: <the writers/readers you grepped, or "none applicable">
+Daily fragment: <path to docs/daily/<today>-<role>-APP-NNN.md that you wrote>
 Shared surfaces touched: <files/types that are not exclusively yours — a shared model, an error
   type, a DI graph, a design-system component — or "none". Also name any cross-cutting abstraction
   you had to CREATE (an analytics logger, a clock, a result wrapper): if another ticket needed one
