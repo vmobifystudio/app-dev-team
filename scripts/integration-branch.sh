@@ -12,19 +12,25 @@
 #   2. docs/20-architecture.md      — the same line, if §7 carries it instead
 #   3. main
 #
-# A branch named by the docs but absent from the repository is reported on stderr and the fallback
-# is used — a base that does not exist would make every verify-done comparison meaningless, and
-# failing loudly here beats silently comparing against nothing.
+# A branch named by the docs but absent from the repository is exit 2, NOT a fallback. This file
+# used to print a warning to stderr and return `main` with exit 0 — failing open on the single
+# condition it was written to catch. Its only caller does `BASE=$(sh scripts/integration-branch.sh)`,
+# which discards stderr and never looks at `$?`, so on a develop-model project the base silently
+# became `main` and features merged to the wrong branch: the outcome this header calls unrecoverable.
+# The warning was real and nobody could see it.
 #
 # Usage:
 #   scripts/integration-branch.sh [repo-root]
 #
 # Output: the branch name on stdout, nothing else, so it is safe to use inline:
-#   BASE=$(sh scripts/integration-branch.sh)
+#   BASE=$(sh scripts/integration-branch.sh) || { echo "$BASE"; exit 1; }
 #
 # Exit codes:
 #   0  a branch name was resolved (see stderr for whether it was the documented one)
-#   2  not a git repository
+#   2  CANNOT RESOLVE — not a git repository, or the declared branch does not exist. The reason is
+#      printed on STDOUT as well as stderr, because a caller capturing stdout is the only one that
+#      exists and it must be able to show WHY the round stopped. Never fall back on this path: a
+#      wrong merge base is not recoverable by a later fix.
 
 set -u
 
@@ -32,7 +38,8 @@ ROOT="${1:-.}"
 FALLBACK="main"
 
 if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-  echo "integration-branch: not a git repository: $ROOT" >&2
+  echo "integration-branch: CANNOT RESOLVE — not a git repository: $ROOT"
+  echo "integration-branch: CANNOT RESOLVE — not a git repository: $ROOT" >&2
   exit 2
 fi
 
@@ -69,7 +76,9 @@ if git -C "$ROOT" rev-parse --verify --quiet "refs/heads/$DECLARED" >/dev/null 2
   exit 0
 fi
 
-echo "integration-branch: $SOURCE declares '$DECLARED' but no such branch exists locally or on origin." >&2
-echo "integration-branch: falling back to $FALLBACK — create the branch or fix the doc." >&2
-echo "$FALLBACK"
-exit 0
+MSG="integration-branch: CANNOT RESOLVE — $SOURCE declares '$DECLARED' but no such branch exists
+locally or on origin. Refusing to fall back to $FALLBACK: merging feature work into the wrong
+integration branch is not recoverable by a later fix. Create the branch, or fix the doc."
+echo "$MSG"
+echo "$MSG" >&2
+exit 2

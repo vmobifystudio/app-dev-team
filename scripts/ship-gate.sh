@@ -24,6 +24,7 @@ ROOT=${1:-.}
 BOARD="$ROOT/docs/31-board.md"
 BUGS="$ROOT/docs/51-bugs.md"
 PLAN="$ROOT/docs/50-test-plan.md"
+RELEASES="$ROOT/docs/60-releases.md"
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 BLOCKERS=""
@@ -39,6 +40,52 @@ unknown() { UNKNOWNS="${UNKNOWNS}  UNKNOWN  $1
 # Every exit-2 path prints its reason on STDOUT in the same shape as the verdict below, because
 # /app-ship displays that output verbatim to name the missing artifact and its owning role. A bare
 # exit 2 with the reason only on stderr gives the command nothing to show.
+# --- waivers ---------------------------------------------------------------------------------
+# /app-ship's only route from a CANNOT EVALUATE to a release is a human appending
+#     WAIVED: <artifact> — <who waived it> — <reason>
+# to docs/60-releases.md. No script wrote that line and no script read it, so the single path that
+# converts a non-pass into a ship was pure improvisation — precisely what this file was written to
+# replace everywhere else in the command. It is read here, and held to its own stated shape.
+#
+# waiver_for <artifact> — prints "<who> — <reason>" and returns 0 when a well-formed waiver names
+# exactly this artifact; returns 1 otherwise. The separator is the em dash /app-ship writes, with
+# `--` accepted as its ASCII spelling. All three fields must be present and non-empty: "WAIVED:
+# docs/51-bugs.md" on its own is a record that someone skipped a gate, not a decision anyone can be
+# held to, and a waiver nobody signed is indistinguishable from a check that was never there.
+waiver_for() {
+  [ -f "$RELEASES" ] || return 1
+  awk -v want="$1" '
+    function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+    /WAIVED:/ {
+      line = $0
+      sub(/^.*WAIVED:/, "", line)
+      gsub(/--/, "—", line)
+      n = split(line, f, "—")
+      if (n < 3) next
+      if (trim(f[1]) != want) next
+      who = trim(f[2]); why = trim(f[3])
+      if (who == "" || why == "") next
+      print who " — " why
+      found = 1
+      exit
+    }
+    END { exit (found ? 0 : 1) }
+  ' "$RELEASES"
+}
+
+# unknown_unless_waived <artifact> <unknown-message> — the missing input still gets named either
+# way. A waived gate must never look like a skipped one, so a waiver is REPORTED, not silent.
+unknown_unless_waived() {
+  W=$(waiver_for "$1") && { note "WAIVED: $1 by $W"; return 0; }
+  if [ -f "$RELEASES" ] && grep -q "WAIVED:.*$1" "$RELEASES" 2>/dev/null; then
+    unknown "$2
+           A WAIVED: line naming $1 exists in docs/60-releases.md but is MALFORMED, so it does not
+           count. It must read: WAIVED: $1 — <who waived it> — <reason>, all three present."
+  else
+    unknown "$2"
+  fi
+}
+
 cannot_evaluate_now() {
   echo "SHIP GATE"
   echo "  UNKNOWN  $1"
@@ -94,7 +141,8 @@ if [ -f "$BUGS" ]; then
 else
   # Normal on a brownfield project that has not run a /app-build QA wave — that file is only ever
   # written inside one. A routine outcome, not an exceptional one: name the owner and the fix.
-  unknown "no bug board at $BUGS — qa-engineer owns it. The open-defect count is UNKNOWN, not zero. Run a QA pass (or have qa-engineer write the file recording that none was needed), then re-run."
+  unknown_unless_waived "docs/51-bugs.md" \
+    "no bug board at $BUGS — qa-engineer owns it. The open-defect count is UNKNOWN, not zero. Run a QA pass (or have qa-engineer write the file recording that none was needed), then re-run."
 fi
 
 # --- 4. QA's own verdict --------------------------------------------------------------------------
@@ -108,7 +156,8 @@ if [ -f "$PLAN" ]; then
     note "the test plan contains rows that were reasoned, not executed. Do not report those as tested."
   fi
 else
-  unknown "no test plan at $PLAN — qa-engineer owns it. Nothing states what was verified or what the exit criteria were. Have qa-engineer write it (a brownfield ship still needs its exit criteria on paper), then re-run."
+  unknown_unless_waived "docs/50-test-plan.md" \
+    "no test plan at $PLAN — qa-engineer owns it. Nothing states what was verified or what the exit criteria were. Have qa-engineer write it (a brownfield ship still needs its exit criteria on paper), then re-run."
 fi
 
 # --- verdict ---------------------------------------------------------------------------------------

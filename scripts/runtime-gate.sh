@@ -12,7 +12,7 @@
 #
 # Usage:  sh scripts/runtime-gate.sh [--platform ios|android|auto] [--project-root <path>]
 #
-# Exit:   0 PASS            — the app built AND launched
+# Exit:   0 PASS            — the app built, launched, AND was still running afterwards
 #         1 FAIL            — it did not build, or did not launch
 #         2 CANNOT EVALUATE — the toolchain needed is not on this machine, so it was never run
 #
@@ -36,10 +36,18 @@ BUILD_TIMEOUT=${RUNTIME_GATE_BUILD_TIMEOUT:-900}    # 15 min — cold SPM resolv
 BOOT_TIMEOUT=${RUNTIME_GATE_BOOT_TIMEOUT:-180}      # 3 min  — first boot of a cold simulator runtime
 LAUNCH_TIMEOUT=${RUNTIME_GATE_LAUNCH_TIMEOUT:-60}   # 1 min  — install + launch on a booted device
 
+# `shift 2` with only one argument left is a FAILURE in POSIX sh — it does not shift, so `$1` is
+# still the flag and this loop spins forever writing nothing. `sh runtime-gate.sh --project-root`
+# hung indefinitely. A gate that hangs is a gate that gets removed, which is the same header comment
+# the timeout logic below was written under; the argument parser had never been held to it.
+need_value() {
+  [ "$1" -ge 2 ] || { echo "runtime-gate: $2 needs a value" >&2; exit 2; }
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --platform)     PLATFORM=${2:-}; shift 2 ;;
-    --project-root) ROOT=${2:-}; shift 2 ;;
+    --platform)     need_value $# "--platform";     PLATFORM=${2:-}; shift 2 ;;
+    --project-root) need_value $# "--project-root"; ROOT=${2:-}; shift 2 ;;
     -h|--help)      sed -n '1,30p' "$0"; exit 0 ;;
     *) echo "runtime-gate: unknown argument '$1'" >&2
        echo "usage: runtime-gate.sh [--platform ios|android|auto] [--project-root <path>]" >&2
@@ -115,6 +123,19 @@ run_capped() {
   wait "$pid"
 }
 
+# --- is it STILL running? --------------------------------------------------------------------
+# `xcrun simctl launch` returns 0 as soon as the process has been forked, and `adb shell monkey`
+# returns 0 once it has injected the events. An app that crashes 200ms later exits both with status
+# 0 — so this gate slept 3s, took a screenshot of a dead simulator, and printed RESULT: PASS on
+# exactly the crash-on-launch its own header claims to catch. /app-ship then quotes that screenshot
+# as evidence. Spawning is not running: after the settle, go and look for the process.
+#
+# Two one-liners on purpose. Each is a single command whose exit status is the entire contract, so
+# it can be exercised against a stub `xcrun`/`adb` on PATH without a toolchain (scripts/test.sh
+# extracts and runs them that way).
+ios_running()     { xcrun simctl spawn "$1" launchctl list 2>/dev/null | grep -q "$2"; }
+android_running() { [ -n "$(adb -s "$1" shell pidof "$2" 2>/dev/null | tr -d '\r\n ')" ]; }
+
 # --- what kind of project is this? ---------------------------------------------------------------
 # Depth-limited so a vendored sample project six levels down inside a dependency does not decide
 # what this repo is. Both found is normal (a cross-platform repo) — run both and combine.
@@ -177,8 +198,12 @@ ios_gate() {
     run_capped "$BUILD_TIMEOUT" "$WORK/ios.log" sh -c "cd '$(dirname "$SWIFTPKG")' && swift build"
     RC=$?
     if [ "$RC" -eq 0 ]; then
-      pass "ios    " "Package.swift builds. NOTE: a SwiftPM package has no app to launch — the
-                    launch half of this gate was not exercised."
+      # Was `pass`, whose own text said the launch half was never exercised — while exit 0 is
+      # defined at the top of this file as "built AND launched". A verdict that contradicts itself
+      # in its own sentence is still read by /app-ship as a green runtime gate.
+      unknown "ios    " "Package.swift builds, but a SwiftPM package has no app to launch, so the
+                    launch half of this gate was NOT exercised. Building is the floor, not the gate.
+                    Point --project-root at the .xcodeproj/.xcworkspace that produces the app."
     elif [ "$RC" -eq 124 ]; then
       unknown "ios    " "swift build exceeded ${BUILD_TIMEOUT}s and was killed."
     else
@@ -244,13 +269,20 @@ ios_gate() {
   fi
 
   if run_capped "$LAUNCH_TIMEOUT" "$WORK/launch.log" xcrun simctl launch "$UDID" "$BUNDLE"; then
-    SHOT="$EVIDENCE/runtime-$DATE-ios.png"
-    mkdir -p "$EVIDENCE"
     sleep 3   # let the first frame render; a screenshot of the launch screen proves nothing
-    if xcrun simctl io "$UDID" screenshot "$SHOT" >/dev/null 2>&1; then
-      pass "ios    " "built, installed and launched ($BUNDLE). Evidence: docs/evidence/runtime-$DATE-ios.png"
+    if ! ios_running "$UDID" "$BUNDLE"; then
+      fail "ios    " "$BUNDLE launched and then EXITED within 3s — it crashed on launch. simctl
+                    launch returns 0 for a process that has been forked, so this used to come out
+                    as PASS with a screenshot of a dead simulator attached as evidence."
+      keep_log "$WORK/launch.log" "simctl launch"
     else
-      pass "ios    " "built, installed and launched ($BUNDLE). Screenshot capture failed — no evidence artifact."
+      SHOT="$EVIDENCE/runtime-$DATE-ios.png"
+      mkdir -p "$EVIDENCE"
+      if xcrun simctl io "$UDID" screenshot "$SHOT" >/dev/null 2>&1; then
+        pass "ios    " "built, installed, launched and still running after 3s ($BUNDLE). Evidence: docs/evidence/runtime-$DATE-ios.png"
+      else
+        pass "ios    " "built, installed, launched and still running after 3s ($BUNDLE). Screenshot capture failed — no evidence artifact."
+      fi
     fi
   else
     fail "ios    " "compiles and installs, but $BUNDLE does not launch. This is the exact failure
@@ -335,14 +367,21 @@ android_gate() {
 
   if run_capped "$LAUNCH_TIMEOUT" "$WORK/adblaunch.log" \
        adb -s "$DEV" shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1; then
-    SHOT="$EVIDENCE/runtime-$DATE-android.png"
-    mkdir -p "$EVIDENCE"
     sleep 3
-    if adb -s "$DEV" exec-out screencap -p > "$SHOT" 2>/dev/null && [ -s "$SHOT" ]; then
-      pass "android" "built, installed and launched ($PKG). Evidence: docs/evidence/runtime-$DATE-android.png"
+    if ! android_running "$DEV" "$PKG"; then
+      fail "android" "$PKG launched and then EXITED within 3s — it crashed on launch. \`adb shell
+                    monkey\` reports the events it injected, not a living process, so this used to
+                    come out as PASS with a screenshot of a dead emulator attached as evidence."
+      keep_log "$WORK/adblaunch.log" "adb shell monkey"
     else
-      rm -f "$SHOT"
-      pass "android" "built, installed and launched ($PKG). Screenshot capture failed — no evidence artifact."
+      SHOT="$EVIDENCE/runtime-$DATE-android.png"
+      mkdir -p "$EVIDENCE"
+      if adb -s "$DEV" exec-out screencap -p > "$SHOT" 2>/dev/null && [ -s "$SHOT" ]; then
+        pass "android" "built, installed, launched and still running after 3s ($PKG). Evidence: docs/evidence/runtime-$DATE-android.png"
+      else
+        rm -f "$SHOT"
+        pass "android" "built, installed, launched and still running after 3s ($PKG). Screenshot capture failed — no evidence artifact."
+      fi
     fi
   else
     fail "android" "assembles and installs, but $PKG does not launch."

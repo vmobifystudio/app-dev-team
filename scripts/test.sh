@@ -36,6 +36,34 @@ assert_has() {
   grep -q -- "$2" "$1" && ok "$3" || bad "$3" "missing: $2"
 }
 
+# assert_exit_within <seconds> <expected> <label> <command...>
+#
+# For assertions about a script that must not HANG. `assert_exit` would wait forever on a
+# regression, and a suite that hangs reports nothing at all — the failure mode is indistinguishable
+# from a machine that went to sleep. There is no `timeout(1)` on macOS, hence the watchdog.
+assert_exit_within() {
+  secs=$1; want=$2; label=$3; shift 3
+  rm -f "$TMP/rc"
+  ( "$@" >"$TMP/out" 2>"$TMP/err"; echo $? > "$TMP/rc" ) & job=$!
+  # The watchdog polls for the result file and returns on its own, rather than being killed — a
+  # signalled background job makes the shell print "Terminated" into the middle of the suite output.
+  ( i=0
+    while [ "$i" -lt "$secs" ]; do
+      [ -f "$TMP/rc" ] && exit 0
+      sleep 1; i=$((i + 1))
+    done
+    kill -9 "$job" 2>/dev/null ) & dog=$!
+  wait "$job" 2>/dev/null; jrc=$?
+  wait "$dog" 2>/dev/null
+  got=$(cat "$TMP/rc" 2>/dev/null || echo "")
+  if [ "$jrc" -eq 137 ] || [ -z "$got" ]; then
+    bad "$label" "did not exit within ${secs}s — it hung"
+  elif [ "$got" = "$want" ]; then ok "$label"
+  else bad "$label" "expected exit $want, got $got"
+  fi
+  rm -f "$TMP/rc"
+}
+
 echo "SCRIPT TESTS"
 echo
 
@@ -137,6 +165,48 @@ sed 's/| done |/| review |/' "$FIX/cycles-spent.md" > "$TMP/cycles-review.md"
 node "$HERE/board-doctor.mjs" "$TMP/cycles-review.md" --json > "$TMP/cyc.json" 2>/dev/null
 assert_has "$TMP/cyc.json" "cycle_cap_breached" "the same Cycles on a ticket still in review does breach"
 
+# Regression: the cap was off by one. `effectiveCycles >= MAX_REVIEW_CYCLES` fired at Cycles = 2,
+# but /app-build allows 2 review cycles and stops the loop on the THIRD REQUEST CHANGES — so the
+# doctor blocked the second rework the command explicitly permits, and the documented retry flow
+# could not complete. Cycles = 2 is a fully-spent budget, not a breach; only above it is.
+sed 's/| done | 3 |/| review | 2 |/' "$FIX/cycles-spent.md" > "$TMP/cycles-at-cap.md"
+node "$HERE/board-doctor.mjs" "$TMP/cycles-at-cap.md" --json > "$TMP/atcap.json" 2>/dev/null
+grep -q cycle_cap_breached "$TMP/atcap.json" \
+  && bad "Cycles = 2 in review is the budget spent, not a breach (the 3rd is the breach)" \
+  || ok "Cycles = 2 in review is the budget spent, not a breach (the 3rd is the breach)"
+assert_exit 0 "...so a ticket on its documented second rework is still spawnable" \
+  node "$HERE/board-doctor.mjs" "$TMP/cycles-at-cap.md"
+
+# Regression: self_review from the ledger had no correction path. The ledger is append-only and
+# LEDGER_ACTIONS has no void/supersede verb, so the prescribed remediation ("void the approval")
+# was impossible to perform legally — a mistaken owner-approval flagged forever. Same supersede
+# pattern this repo already established for unknown ledger actions: evaluate the EFFECTIVE state.
+SR="$TMP/selfreview.md"
+cat > "$SR" <<'EOF'
+# Sprint board — an owner-approval later corrected by a real reviewer
+
+| ID | Feature | Title | Owner | Reviewer | Status | Cycles | Depends on | Estimate | Spec | Acceptance | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| APP-001 | F-001 | Login | ios-developer | code-reviewer | qa | 0 | — | M | prd#F-001 | Given a user, when they sign in, then the home screen appears | — |
+
+## Review ledger (append-only — never edit or delete a line)
+
+| Timestamp | Ticket | Action | Actor |
+|---|---|---|---|
+| 2026-07-29T09:00Z | APP-001 | requested | ios-developer -> code-reviewer |
+| 2026-07-29T09:10Z | APP-001 | approved | ios-developer |
+EOF
+assert_exit 1 "an owner-approval with nothing after it still blocks" node "$HERE/board-doctor.mjs" "$SR"
+printf '| 2026-07-29T10:00Z | APP-001 | approved | code-reviewer |\n' >> "$SR"
+node "$HERE/board-doctor.mjs" "$SR" --json > "$TMP/sr.json" 2>/dev/null
+node -e '
+const j=require(process.argv[1]);
+const blocking=j.anomalies.some(a=>a.code==="self_review");
+const warned=j.warnings.some(a=>a.code==="self_review_superseded");
+process.exit(!blocking&&warned?0:1);
+' "$TMP/sr.json" && ok "a later legitimate approval supersedes it (warns, does not block)" \
+                 || bad "a later legitimate approval supersedes it (warns, does not block)"
+
 echo
 # --------------------------------------------------------------------------------------------
 echo "board-render"
@@ -218,6 +288,60 @@ fi
 printf '#!/bin/sh\necho NOPE_MARKER_7\nexit 1\n' > "$TMP/faketest.sh"
 ( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "sh $TMP/faketest.sh" ) >"$TMP/vf.txt" 2>&1
 assert_has "$TMP/vf.txt" "NOPE_MARKER_7" "a failing test's own output is quoted in the rejection"
+
+# Regression: exit 0 meant three different things — tests green, tests exempt (--docs-only), and
+# tests never run. /app-build reads the exit code and does not parse stdout, so "nobody ran the
+# tests" was indistinguishable from "the tests passed". The stated exemption stays a 0; the unknown
+# gets the same code every other gate in this repo uses for it.
+( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main ) >"$TMP/vnone.txt" 2>&1
+[ $? = 2 ] && ok "a code ticket with no test command is CANNOT EVALUATE, not a pass" \
+            || bad "a code ticket with no test command is CANNOT EVALUATE, not a pass" "$(head -3 "$TMP/vnone.txt")"
+assert_has "$TMP/vnone.txt" "NOT a pass" "...and says so in words, not only in the exit code"
+
+# Regression: with the branch not already in a worktree, verify-done ran `git checkout` in the
+# SHARED tree. /app-build explicitly runs verification alongside still-running developers, so that
+# rejected a valid DONE whenever another agent's files were dirty, carried those files onto the
+# branch under test, and moved HEAD under an agent mid-edit. Three failures from one line.
+D="$TMP/dirtyrepo"; mkdir -p "$D"
+( cd "$D" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && echo one > a.txt && git add a.txt && git commit -qm init \
+  && git checkout -q -b feat/rework && echo two > a.txt && echo c > c.txt \
+  && git add -A && git commit -qm work && git checkout -q main \
+  && echo "uncommitted work by another agent" > a.txt ) >/dev/null 2>&1
+
+( cd "$D" && sh "$HERE/verify-done.sh" feat/rework main "test -f c.txt" ) >"$TMP/vdirty.txt" 2>&1
+VDRC=$?
+if [ "$VDRC" = 0 ] && grep -q "VERIFIED" "$TMP/vdirty.txt"; then
+  ok "verifies a branch while the shared tree is dirty (temporary worktree, no checkout)"
+else
+  bad "verifies a branch while the shared tree is dirty (temporary worktree, no checkout)" "$(head -3 "$TMP/vdirty.txt")"
+fi
+# ...and it left the other agent's tree exactly where it found it.
+[ "$( cd "$D" && git rev-parse --abbrev-ref HEAD )" = "main" ] \
+  && ok "...without moving HEAD under the agent that is still working" \
+  || bad "...without moving HEAD under the agent that is still working"
+[ "$( cd "$D" && cat a.txt )" = "uncommitted work by another agent" ] \
+  && ok "...and without touching its uncommitted files" \
+  || bad "...and without touching its uncommitted files"
+# The temporary worktree is cleaned up by the trap, or the next round starts in a littered repo.
+[ "$( cd "$D" && git worktree list | wc -l | tr -d ' ' )" = "1" ] \
+  && ok "...and the temporary worktree is removed on exit" \
+  || bad "...and the temporary worktree is removed on exit" "$( cd "$D" && git worktree list )"
+
+# --docs-only was unreachable: `grep -rn docs-only commands/` returned nothing and /app-build always
+# passed a test command, so the flag the whole doc-ticket path depends on could never fire.
+grep -q -- "--docs-only" "$HERE/../commands/app-build.md" \
+  && ok "/app-build actually passes --docs-only for doc-profile tickets" \
+  || bad "/app-build actually passes --docs-only for doc-profile tickets"
+# The roster has to be named where the flag is used, or the loop cannot tell which tickets get it.
+MISSING_ROLE=""
+for role in ux-designer qa-engineer aso-specialist data-analyst verification-engineer; do
+  grep -q -- "--docs-only" "$HERE/../commands/app-build.md" \
+    && sed -n '/pass .--docs-only. instead/,/^     Branch, commits/p' "$HERE/../commands/app-build.md" \
+       | grep -q "$role" || MISSING_ROLE="$MISSING_ROLE $role"
+done
+[ -z "$MISSING_ROLE" ] && ok "...naming every doc-profile role where the flag is used" \
+                       || bad "...naming every doc-profile role where the flag is used" "missing:$MISSING_ROLE"
 
 echo
 # --------------------------------------------------------------------------------------------
@@ -358,6 +482,34 @@ assert_exit 2 "a missing bug board is CANNOT EVALUATE, not BLOCKED" sh "$HERE/sh
 mkship noplan '' && rm "$TMP/noplan/docs/50-test-plan.md"
 assert_exit 2 "a missing test plan is CANNOT EVALUATE, not BLOCKED" sh "$HERE/ship-gate.sh" "$TMP/noplan"
 
+# `WAIVED:` was enforced by nothing. /app-ship lets a human convert a CANNOT EVALUATE into a ship by
+# writing `WAIVED: <artifact> — <who> — <reason>` into docs/60-releases.md — and no script wrote
+# that line, no script read it. The single path from a non-pass to a release was improvisation,
+# which is the exact thing this file was written to replace. Read it, and hold it to its own shape.
+waivetree() {   # waivetree <name> <releases-file-content>
+  mkship "$1" '' && rm "$TMP/$1/docs/51-bugs.md"
+  printf '%s\n' "$2" > "$TMP/$1/docs/60-releases.md"
+}
+
+waivetree waived "WAIVED: docs/51-bugs.md — amol — internal distribution only, no QA wave this cycle"
+assert_exit 0 "a well-formed waiver clears the gate it names" sh "$HERE/ship-gate.sh" "$TMP/waived"
+assert_has "$TMP/out" "WAIVED: docs/51-bugs.md by amol" "...and the waiver is REPORTED, never silent"
+
+# A waived gate must never look like a skipped gate, so every field has to be there. A waiver with
+# nobody's name on it, or no reason, records that someone walked past a gate — not a decision.
+waivetree noreason "WAIVED: docs/51-bugs.md — amol"
+assert_exit 2 "a waiver with no reason does not count" sh "$HERE/ship-gate.sh" "$TMP/noreason"
+assert_has "$TMP/out" "MALFORMED" "...and says the waiver was malformed rather than ignoring it"
+
+waivetree nowho "WAIVED: docs/51-bugs.md —  — because"
+assert_exit 2 "a waiver with nobody's name does not count" sh "$HERE/ship-gate.sh" "$TMP/nowho"
+
+waivetree wrongart "WAIVED: docs/50-test-plan.md — amol — a real reason for a different artifact"
+assert_exit 2 "a waiver for another artifact does not cover this one" sh "$HERE/ship-gate.sh" "$TMP/wrongart"
+
+waivetree bare "WAIVED: docs/51-bugs.md"
+assert_exit 2 "a bare WAIVED: line does not count" sh "$HERE/ship-gate.sh" "$TMP/bare"
+
 echo
 # --------------------------------------------------------------------------------------------
 echo "team-doctor"
@@ -425,6 +577,70 @@ grep -q "PASS" "$TMP/rg-none.txt" "$TMP/rg-gradle.txt" \
   && bad "no verdict says PASS when the toolchain never ran" \
   || ok "no verdict says PASS when the toolchain never ran"
 
+# Regression: `--platform`/`--project-root` did `shift 2`, which in POSIX sh FAILS and does not
+# shift when only one argument remains — so $1 stayed the flag and the parse loop spun forever
+# writing zero bytes. `sh scripts/runtime-gate.sh --project-root` never returned. A gate that hangs
+# is a gate that gets removed, which is the rule the timeout logic in the same file was written to.
+assert_exit_within 5 2 "a dangling --project-root exits 2, it does not hang" \
+  sh "$HERE/runtime-gate.sh" --project-root
+assert_exit_within 5 2 "a dangling --platform exits 2, it does not hang" \
+  sh "$HERE/runtime-gate.sh" --platform
+
+# Regression: `simctl launch` returns 0 for a process that has merely been FORKED, and `adb shell
+# monkey` returns 0 once it has injected its events — so a build that crashed 200ms later produced
+# RESULT: PASS with a screenshot of a dead simulator, on the gate whose header claims to catch
+# exactly crash-on-launch. The fix is a liveness check after the settle sleep.
+#
+# This box has neither Xcode nor adb, so the gate's happy path cannot be exercised end to end. The
+# predicate that decides PASS vs FAIL is one command each, so it is extracted and run against a stub
+# `xcrun`/`adb` on PATH — the branch is real, reachable, and does what it says on both answers.
+eval "$(sed -n '/^ios_running()/p;/^android_running()/p' "$HERE/runtime-gate.sh")"
+STUB="$TMP/stubbin"; mkdir -p "$STUB"
+mkstub() {   # mkstub <name> <stdout>
+  printf '#!/bin/sh\nprintf "%%s\\n" "%s"\n' "$2" > "$STUB/$1"; chmod +x "$STUB/$1"
+}
+
+if ! command -v ios_running >/dev/null 2>&1 && ! type ios_running >/dev/null 2>&1; then
+  bad "the liveness predicates exist in runtime-gate.sh" "ios_running/android_running not found"
+else
+  mkstub xcrun "0	1	com.example.app"
+  ( PATH="$STUB:$PATH"; ios_running SOME-UDID com.example.app ) \
+    && ok "ios_running is true while the process is in launchctl list" \
+    || bad "ios_running is true while the process is in launchctl list"
+  mkstub xcrun ""
+  ( PATH="$STUB:$PATH"; ios_running SOME-UDID com.example.app ) \
+    && bad "ios_running is FALSE once the app has exited" \
+    || ok "ios_running is FALSE once the app has exited"
+
+  mkstub adb "4213"
+  ( PATH="$STUB:$PATH"; android_running SOME-DEV com.example.app ) \
+    && ok "android_running is true while pidof returns a pid" \
+    || bad "android_running is true while pidof returns a pid"
+  mkstub adb ""
+  ( PATH="$STUB:$PATH"; android_running SOME-DEV com.example.app ) \
+    && bad "android_running is FALSE once pidof returns nothing" \
+    || ok "android_running is FALSE once pidof returns nothing"
+fi
+
+# ...and the predicate has to be WIRED to a fail, not merely defined. Both launch blocks must reach
+# it, and a dead process must produce FAIL — this is the line whose absence produced the pass.
+LIVE=$(grep -c 'if ! ios_running\|if ! android_running' "$HERE/runtime-gate.sh")
+[ "$LIVE" = "2" ] && ok "both launch paths assert liveness after the settle sleep" \
+                  || bad "both launch paths assert liveness after the settle sleep" "found $LIVE"
+grep -A2 'if ! ios_running' "$HERE/runtime-gate.sh" | grep -q 'fail ' \
+  && grep -A2 'if ! android_running' "$HERE/runtime-gate.sh" | grep -q 'fail ' \
+  && ok "a process that is gone is a FAIL, not a PASS" \
+  || bad "a process that is gone is a FAIL, not a PASS"
+
+# The SwiftPM branch called pass() with text saying the launch half was never exercised, then
+# exited 0 — while exit 0 is defined at the top of the file as "built AND launched". A verdict that
+# contradicts itself inside its own sentence still reads as green to /app-ship.
+# Not executable here (no swift toolchain, and xcodebuild is refused before this branch is reached),
+# so this is asserted on the source: the SwiftPM success arm must be an `unknown`.
+sed -n '/SWIFTPKG/,/^  fi/p' "$HERE/runtime-gate.sh" | grep -q 'unknown "ios    " "Package.swift builds' \
+  && ok "a SwiftPM package that builds is CANNOT EVALUATE, not PASS" \
+  || bad "a SwiftPM package that builds is CANNOT EVALUATE, not PASS"
+
 echo
 # --------------------------------------------------------------------------------------------
 echo "integration-branch"
@@ -439,13 +655,31 @@ IB="$TMP/ibrepo"; mkdir -p "$IB/docs"
 [ "$(sh "$HERE/integration-branch.sh" "$IB" 2>/dev/null)" = "main" ] \
   && ok "no git-strategy doc resolves to main" || bad "no git-strategy doc resolves to main"
 
-# A base that does not exist makes every verify-done comparison vacuous, so the fallback is used —
-# but loudly. A silent fallback would read exactly like a project that never declared one.
+# A base that does not exist used to print a warning on stderr and return `main` with exit 0 —
+# failing OPEN on the one condition this script exists to catch. Its only caller is
+# `BASE=$(sh scripts/integration-branch.sh)` in commands/app-build.md, which discards stderr and
+# never looked at $?, so on a develop-model project the base silently became `main` and features
+# merged to the wrong branch: the outcome this file's own header calls unrecoverable. The warning
+# was real and structurally invisible. It is exit 2 now, and the reason goes to STDOUT so the one
+# caller that exists can show it.
 printf 'Integration branch: develop\n' > "$IB/docs/23-git-strategy.md"
-[ "$(sh "$HERE/integration-branch.sh" "$IB" 2>"$TMP/ib.err")" = "main" ] \
-  && ok "a declared branch that does not exist falls back to main" \
-  || bad "a declared branch that does not exist falls back to main"
-assert_has "$TMP/ib.err" "no such branch exists" "...and says so on stderr"
+IBOUT=$(sh "$HERE/integration-branch.sh" "$IB" 2>"$TMP/ib.err"); IBRC=$?
+[ "$IBRC" = "2" ] && ok "a declared branch that does not exist is exit 2, never a fallback" \
+                  || bad "a declared branch that does not exist is exit 2, never a fallback" "got $IBRC, printed '$IBOUT'"
+printf '%s' "$IBOUT" | grep -q "CANNOT RESOLVE" \
+  && ok "...and the reason is on stdout, where the only caller can see it" \
+  || bad "...and the reason is on stdout, where the only caller can see it"
+printf '%s' "$IBOUT" | grep -qx "main" \
+  && bad "...and it never emits a usable branch name on that path" \
+  || ok "...and it never emits a usable branch name on that path"
+assert_has "$TMP/ib.err" "no such branch exists" "...and says so on stderr too"
+
+# The caller has to actually check it. A gate nothing reads is the defect that was just fixed one
+# file over; asserting the script alone would repeat it.
+grep -q 'integration-branch.sh") \\' "$HERE/../commands/app-build.md" \
+  && grep -q "STOP the round" "$HERE/../commands/app-build.md" \
+  && ok "/app-build checks the exit code and stops the round on 2" \
+  || bad "/app-build checks the exit code and stops the round on 2"
 
 ( cd "$IB" && git branch develop ) >/dev/null 2>&1
 [ "$(sh "$HERE/integration-branch.sh" "$IB" 2>/dev/null)" = "develop" ] \

@@ -24,9 +24,14 @@
 # skipped verification for them entirely.
 #
 # Exit codes:
-#   0  claim verified (see "tests=" in the output for whether tests were actually run)
+#   0  claim verified AND the tests were settled — either they ran green, or --docs-only exempted
+#      them. A stated exemption is a decision; it is not an unknown.
 #   1  claim rejected — do not move the board row to review
-#   2  usage error / not a git repository
+#   2  CANNOT EVALUATE — usage error, not a git repository, or no test command was supplied for a
+#      code ticket. That last one used to be exit 0 as well, so a single 0 meant three different
+#      things (green / exempt / never run) and the only caller cannot tell them apart: /app-build
+#      reads the exit code and does not parse stdout. Same three-state contract as every other gate
+#      here — there is no path from a check that did not run to exit 0.
 
 set -u
 
@@ -115,6 +120,22 @@ fi
 TESTS_STATUS="unverified"
 [ "$DOCS_ONLY" -eq 1 ] && TESTS_STATUS="n/a (docs-only)"
 
+# ONE trap for both the temporary worktree and the test log. Two `trap ... EXIT` statements do not
+# stack in POSIX sh — the second silently replaces the first — so the worktree would have been left
+# behind the moment a test log was created.
+TMP_WT=""
+TEST_LOG=""
+cleanup() {
+  [ -n "$TEST_LOG" ] && rm -f "$TEST_LOG"
+  if [ -n "$TMP_WT" ]; then
+    git worktree remove --force "$TMP_WT" >/dev/null 2>&1
+    git worktree prune >/dev/null 2>&1
+    rm -rf "$TMP_WT"
+  fi
+  return 0
+}
+trap cleanup EXIT INT TERM
+
 if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
   # Locate a worktree holding this branch. `git worktree list --porcelain` emits, per worktree:
   #   worktree <path>\n ... \n branch refs/heads/<name>
@@ -124,18 +145,29 @@ if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
 
   CURRENT=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
   RUN_DIR=""
-  SWITCHED=0
 
   if [ -n "$WT" ]; then
     RUN_DIR="$WT"
     echo "verify-done: $BRANCH is checked out at $WT — running tests there (no checkout)." >&2
   elif [ "$CURRENT" = "$BRANCH" ]; then
     RUN_DIR="."
-  elif git checkout --quiet "$BRANCH" 2>/dev/null; then
-    RUN_DIR="."
-    SWITCHED=1
   else
-    fail "could not reach $BRANCH to run tests: it is not in a worktree and could not be checked out (uncommitted changes?)."
+    # NEVER `git checkout` here. /app-build explicitly runs verification alongside still-running
+    # developers, and the shared worktree is where those developers are writing. Checking out in
+    # place did three wrong things at once: it rejected a valid DONE because someone else's files
+    # were dirty, it carried those uncommitted files onto the branch under test so the tests were
+    # not testing this branch, and it moved HEAD under an agent that was mid-edit. A throwaway
+    # detached worktree is the branch's own tree and touches nobody else's.
+    CANDIDATE=$(mktemp -d)
+    rmdir "$CANDIDATE" 2>/dev/null   # `git worktree add` wants to create the directory itself
+    if git worktree add --detach --quiet "$CANDIDATE" "$RESOLVED" 2>/dev/null; then
+      TMP_WT="$CANDIDATE"            # only now is there something for the trap to clean up
+      RUN_DIR="$TMP_WT"
+      echo "verify-done: running tests in a temporary detached worktree at $TMP_WT." >&2
+    else
+      rm -rf "$CANDIDATE"
+      fail "could not create a temporary worktree for $BRANCH, so the tests were not run."
+    fi
   fi
 
   if [ -z "$FAILURES" ]; then
@@ -146,7 +178,6 @@ if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
     # guessed at what; an instruction that cannot be followed is the same defect class as a gate
     # that cannot fail.
     TEST_LOG=$(mktemp)
-    trap 'rm -f "$TEST_LOG"' EXIT INT TERM
     if ( cd "$RUN_DIR" && sh -c "$TEST_CMD" ) >"$TEST_LOG" 2>&1; then
       TESTS_STATUS="green"
     else
@@ -155,7 +186,6 @@ if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
     fi
   fi
 
-  [ "$SWITCHED" -eq 1 ] && git checkout --quiet "$CURRENT" 2>/dev/null
 fi
 
 # --- verdict --------------------------------------------------------------------------------------
@@ -173,9 +203,16 @@ fi
 
 echo "VERIFIED: $BRANCH"
 echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=$TESTS_STATUS"
+
+# The branch half of the claim is verified either way — but "tests were never run" is not the same
+# outcome as "tests passed", and exit 0 said both. The only caller reads the exit code and does not
+# parse this text, so the note below was addressed to nobody. Give the unknown its own code.
 if [ "$TESTS_STATUS" = "unverified" ]; then
-  echo "  NOTE: no test command was supplied, so 'tests: all green' in the DONE report is unproven."
-  echo "        Pass the project's test command as the 3rd argument to close that gap."
+  echo "  CANNOT EVALUATE: no test command was supplied, so 'tests: all green' in the DONE report is"
+  echo "        unproven. This is NOT a pass — the branch checks out, the tests were never run."
+  echo "        Pass the project's test command as the 3rd argument, or --docs-only if the ticket"
+  echo "        genuinely produces a document and no test."
+  exit 2
 fi
 echo "Next: move the board row to review and spawn the code-reviewer."
 exit 0

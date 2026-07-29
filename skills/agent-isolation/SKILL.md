@@ -130,6 +130,20 @@ consistently more confident than the work justifies.
   `defect-hunting` skill. A rule that cannot fail reports success forever.
 - An audit finding is checked by reproducing it, not by re-reading the finding.
 
+## Rule 5 — if HEAD moved under you, stop and report
+
+You may be running without a worktree — the orchestrator failed to make one, or the project cannot
+use them. That is a supported state, and it is the state in which this rule is the only thing
+standing between you and another agent's lost work.
+
+If `HEAD` is not where you left it, or files you did not write have appeared, **stop.** Do not
+`git reset --hard`, do not `git checkout -- .`, do not `git stash drop`, do not delete an untracked
+file to "clean up". Another agent's uncommitted work may be in that tree, and none of those
+commands can be undone from inside your run.
+
+Write a `blocker` naming what moved and let `tech-manager` resolve it. A stalled ticket is cheap; a
+discarded working tree is not recoverable.
+
 ## Orchestrator checklist
 
 Before a parallel launch:

@@ -67,17 +67,39 @@ Tickets (optional, default = all ready): $ARGUMENTS
      straight to `main` there is not recoverable by a later fix:
 
      ```bash
-     BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh")
+     BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") \
+       || { echo "$BASE"; echo "STOP: integration branch unresolved"; exit 2; }
      sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" "<project test command>"
      ```
 
+     **If `integration-branch.sh` exits 2, STOP the round** and surface its message (it prints on
+     stdout, so `$BASE` holds it) — do not run `verify-done.sh`, do not merge. Exit 2 means the
+     integration branch could not be resolved, and every base you might substitute is a guess.
+     Merging feature work into the wrong branch is not recoverable by a later fix, which is exactly
+     why this no longer falls back to `main` on its own.
+
      Use that same `$BASE` for the merge gate in step 4 — one resolution per round, not one per
      call site.
+
+     **For a ticket whose deliverable is a document, not code, pass `--docs-only` instead of a test
+     command** — that is, tickets owned by `ux-designer`, `qa-engineer`, `aso-specialist`,
+     `data-analyst`, or `verification-engineer`:
+
+     ```bash
+     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" --docs-only
+     ```
+
+     Branch, commits and changed files are still verified; only the test requirement is lifted.
+     Without this the flag was unreachable — this loop always passed a test command — so a doc
+     ticket either failed a test it structurally cannot have, or got waved through unverified.
 
      `REJECTED` → leave the row where it is and re-spawn the developer with the blocking lines
      verbatim. This counts as a **developer** retry, not a review cycle.
      `VERIFIED` → continue. If it reports `tests=unverified`, say so in the daily fragment; never
      restate the agent's "all green" as confirmed.
+     Exit `2` → **CANNOT EVALUATE**, not a pass: you supplied no test command for a code ticket, so
+     nothing verified the "all green" claim. Supply the project's test command and re-run, or use
+     `--docs-only` if the ticket really has no test.
    - **Read the `Shared surfaces touched` line.** If two returning agents name the same file, or
      both report *creating* a cross-cutting abstraction for the same concern, route it to
      `tech-manager` **now** — before the merge gate, while both agents still exist — to pick one

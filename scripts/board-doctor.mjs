@@ -343,16 +343,29 @@ function diagnose(board, ledger, capabilities, messages = []) {
       );
     }
 
-    for (const entry of approvals) {
-      if (entry.from && entry.from.toLowerCase() === row.owner.toLowerCase()) {
-        anomalies.push({
-          code: 'self_review',
-          ticketId: row.id,
-          line: entry._line,
-          detail: `Review ledger records an approval by the owner (${entry.from}).`,
-          action: 'tech-manager: void the approval and re-review with a different role.',
-        });
-      }
+    // Evaluate the EFFECTIVE approval state, not every line in isolation. The ledger is append-only
+    // and LEDGER_ACTIONS has no void/supersede verb, so the prescribed remediation ("void the
+    // approval") was literally impossible to carry out — a mistaken owner-approval, later corrected
+    // by a genuine reviewer approval, flagged as a blocking anomaly forever with no legal way to
+    // clear it. Same shape as the unknown-action case above, and the same fix: a later valid entry
+    // IS the correction. An owner-approval with no legitimate approval after it is still blocking.
+    for (const [i, entry] of approvals.entries()) {
+      if (!entry.from || entry.from.toLowerCase() !== row.owner.toLowerCase()) continue;
+      const superseded = approvals
+        .slice(i + 1)
+        .some((later) => later.from && later.from.toLowerCase() !== row.owner.toLowerCase());
+
+      (superseded ? warnings : anomalies).push({
+        code: superseded ? 'self_review_superseded' : 'self_review',
+        ticketId: row.id,
+        line: entry._line,
+        detail: superseded
+          ? `Review ledger records an approval by the owner (${entry.from}), but a later approval by a different role supersedes it. Left visible because the ledger is append-only; no action needed.`
+          : `Review ledger records an approval by the owner (${entry.from}), and no later approval by a different role supersedes it.`,
+        action: superseded
+          ? 'None — the record was repaired by a later, legitimate approval.'
+          : 'Append a fresh approval from a different role (never edit the wrong line — the ledger is append-only). Until then this ticket has not been reviewed.',
+      });
     }
 
     if (POST_REVIEW_STATUS.has(row.status) && approvals.length === 0) {
@@ -382,13 +395,20 @@ function diagnose(board, ledger, capabilities, messages = []) {
     } else {
       const effectiveCycles = Number.isNaN(cycles) ? 0 : cycles;
 
+      // SEMANTICS, stated so this cannot drift again: `Cycles` counts REQUEST CHANGES verdicts
+      // already recorded. /app-build allows 2 review cycles and stops the loop on the THIRD
+      // REQUEST CHANGES — so Cycles = 2 is a ticket that has used its whole budget legitimately
+      // and may still be worked, and only Cycles > 2 is a breach. `>=` fired at 2 and blocked the
+      // second rework the command explicitly permits: the doctor and the command disagreed about
+      // the same number, and the doctor won because it is the one with an exit code.
+      //
       // Only while the ticket is still being worked. `status !== 'blocked'` meant a ticket that
       // legitimately used its two review cycles and then merged stayed a BLOCKING anomaly for the
       // life of the board, so the pre-spawn gate went permanently red on any real sprint.
-      if (effectiveCycles >= MAX_REVIEW_CYCLES && ACTIVE_STATUS.has(row.status)) {
+      if (effectiveCycles > MAX_REVIEW_CYCLES && ACTIVE_STATUS.has(row.status)) {
         push(
           'cycle_cap_breached',
-          `Cycles = ${effectiveCycles} (cap is ${MAX_REVIEW_CYCLES}) but status is "${row.status}", not blocked.`,
+          `Cycles = ${effectiveCycles} (cap is ${MAX_REVIEW_CYCLES}, breached above it) but status is "${row.status}", not blocked.`,
           'Stop the loop for this ticket, set it blocked, and surface the full reviewer + developer history.'
         );
       }
