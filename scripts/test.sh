@@ -185,6 +185,15 @@ echo "team-doctor"
 ( cd "$HERE/.." && node "$HERE/team-doctor.mjs" ) >/dev/null 2>&1
 [ $? = 0 ] && ok "the shipped team definition is coherent" || bad "the shipped team definition is coherent"
 
+# Regression: backend-developer and monetization-engineer sat two releases behind on the output
+# contract, so every /app-build gate silently skipped backend and billing tickets.
+( cd "$HERE/.." && node "$HERE/team-doctor.mjs" --json ) 2>/dev/null > "$TMP/td.json"
+node -e '
+const j=require(process.argv[1]);
+process.exit(j.findings.some(f=>f.code==="contract_drift")?1:0);
+' "$TMP/td.json" && ok "all ticket-working roles share one output contract" \
+                 || bad "all ticket-working roles share one output contract"
+
 echo
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

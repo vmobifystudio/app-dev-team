@@ -94,6 +94,34 @@ if (appBuild) {
   }
 }
 
+// --- 2b. ticket-working roles share one output contract ---------------------------------------------
+// /app-build's gates parse these fields. A role missing one is a role every gate silently skips:
+// backend-developer and monetization-engineer were two releases behind, so worktree isolation, the
+// daily fragment, the assumptions-vs-ledger check and the shared-surface check did nothing at all
+// for backend and billing tickets — the highest-risk code in the system.
+
+const CONTRACT_FIELDS = [
+  'Worktree:',
+  'Mutation confirmed:',
+  'Daily fragment:',
+  'Assumptions & open questions:',
+  'Second-path check:',
+  'Shared surfaces touched:',
+];
+// Roles that work a ticket AND report a DONE contract. Reviewers/QA have their own verdict shapes.
+const CONTRACT_ROLES = ['ios-developer', 'android-developer', 'backend-developer', 'monetization-engineer'];
+
+for (const role of CONTRACT_ROLES) {
+  const agent = roles.get(role);
+  if (!agent) continue;
+  const missing = CONTRACT_FIELDS.filter((f) => !agent.text.includes(f));
+  if (missing.length > 0) {
+    add(findings, 'contract_drift', agent.rel,
+      `Output contract is missing ${missing.length} field(s) the other ticket-working roles report: ${missing.join(' ')} — every /app-build gate that reads them silently does nothing for this role's tickets.`,
+      'Bring the contract to parity with agents/android-developer.md.');
+  }
+}
+
 // --- 3. every referenced skill exists --------------------------------------------------------------
 
 const SKILL_REF = /`([a-z][a-z0-9-]{2,})`\s*(?:skill|→|->)|invoke[s]?\s+`([a-z][a-z0-9-]{2,})`|(?:use|using)\s+the\s+`([a-z][a-z0-9-]{2,})`\s+skill/gi;

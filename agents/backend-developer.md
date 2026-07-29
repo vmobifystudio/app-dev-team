@@ -105,7 +105,19 @@ ticket, 4 roles per chain). If it refuses your send, you are looping — send on
 
 ```
 DONE: APP-NNN
-Branch: feat/APP-NNN-be-short-slug
+Worktree: <the path you were given, or "none — shared tree">
+Branch: feat/APP-NNN-be-short-slug        (created BEFORE any file was written)
+Staged (explicit paths): <list>
+Mutation confirmed: git diff --numstat -> <N files, +A/-B>
+Files: <list>
+Tests: <count> added, <exact command run>, exit 0
+Daily fragment: <path to docs/daily/<today>-<role>-APP-NNN.md, written inside your worktree>
+Assumptions & open questions: <every place the spec did not answer something and you decided
+  anyway. Paste the ledger row for each question raised, or write "ASSUMED, NOT RAISED". Never
+  write that you raised something you did not.>
+Second-path check: <the writers/readers you grepped, or "none applicable">
+Shared surfaces touched: <files/types not exclusively yours, and any cross-cutting abstraction you
+  had to CREATE — or "none">
 Endpoints: <list>
 Migrations: <list, or "none">
 Contract updated: docs/40-api.md
