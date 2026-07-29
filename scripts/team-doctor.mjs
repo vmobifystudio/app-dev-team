@@ -336,6 +336,10 @@ const DOC_WRITERS = new Map([
   ['docs/31-board.md',                  ['skills/sprint-planner/SKILL.md', 'commands/app-plan.md']],
   ['docs/31-board-events.jsonl',        ['skills/sprint-planner/SKILL.md', 'commands/app-plan.md']],
   ['docs/32-board-view.md',             ['commands/app-build.md', 'commands/app-status.md']],
+  // The round journal: what happened to the LOOP, as distinct from the event log's what happened to
+  // the TICKETS. Written by /app-build at the end of each round via round-journal.mjs, read by
+  // /app-status for the trend and the budget position.
+  ['docs/33-rounds.jsonl',              ['commands/app-build.md']],
   ['docs/40-api.md',                    ['agents/backend-developer.md']],
   ['docs/41-monetization.md',           ['agents/monetization-engineer.md']],
   ['docs/50-test-plan.md',              ['agents/qa-engineer.md']],
