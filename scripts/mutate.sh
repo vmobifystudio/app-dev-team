@@ -128,7 +128,7 @@ M06@@scripts/lib/board.mjs@@/[A-Za-z]+-\d+(?:-[A-Za-z]+)?/g@@/[A-Za-z]+-\d+/g@@s
 M07@@scripts/lib/events.mjs@@if (by && by === state.owner) {@@if (false) {@@the ticket's owner approving their own ticket is refused
 M08@@scripts/lib/events.mjs@@if (!external.length) {@@if (false) {@@a merge with no approval at all is refused
 M09@@scripts/lib/events.mjs@@if (!state.verified) {@@if (false) {@@review_requested on a DONE with no verify-done result is refused
-M10@@scripts/integration-branch.sh@@echo "$MSG" >&2@@echo "$MSG" >&2; echo "$FALLBACK"; exit 0@@a declared branch that does not exist is exit 2, never a fallback
+M10@@scripts/integration-branch.sh@@integration branch is not recoverable by a later fix. Create the branch, or fix the doc."@@integration branch is not recoverable by a later fix."; echo "$FALLBACK"; exit 0@@a declared branch that does not exist is exit 2, never a fallback
 M11@@scripts/team-message.sh@@if [ "$ROLE_COUNT" -ge "$MAX_PER_ROLE" ]; then@@if false; then@@the per-role cap refuses the eleventh message of a round
 M12@@scripts/team-message.sh@@if [ "$CHAIN" -gt "$MAX_CHAIN" ]; then@@if [ "$CHAIN" -lt "$MAX_CHAIN" ]; then@@a fifth role on one ticket's thread is refused
 M13@@hooks/block-shared-tree-destructive-git.sh@@[ -n "$DIRTY" ] || exit 0@@[ -z "$DIRTY" ] || exit 0@@dirty tree: blocks git stash
