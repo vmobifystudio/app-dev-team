@@ -346,6 +346,28 @@ done
 [ -z "$MISSING_ROLE" ] && ok "...naming every doc-profile role where the flag is used" \
                        || bad "...naming every doc-profile role where the flag is used" "missing:$MISSING_ROLE"
 
+# No role executed a constant anywhere INSIDE the sprint loop. code-reviewer routes constants and
+# guard-rules to verification-engineer rather than running them; verification-engineer was spawned
+# only by /app-ship. So a mis-calibrated threshold introduced in an ordinary ticket was executed by
+# nobody before it merged — defect-hunting §2 cited everywhere and performed nowhere in the loop.
+# The two halves must agree on the field name, or the gate is wired to a line that is never emitted.
+for field in "Constants routed to verification-engineer:" "Rules routed to verification-engineer:"; do
+  if grep -qF "$field" "$HERE/../agents/code-reviewer.md" \
+     && grep -qF "$field" "$HERE/../commands/app-build.md"; then
+    ok "reviewer and /app-build agree on \"$field\""
+  else
+    bad "reviewer and /app-build agree on \"$field\"" "emitted or read by only one of them"
+  fi
+done
+sed -n '/^4\. \*\*Process reviewer verdicts/,/^4a\./p' "$HERE/../commands/app-build.md" \
+  | grep -q "spawn \`verification-engineer\`" \
+  && ok "a flagged constant spawns verification-engineer before the merge gate" \
+  || bad "a flagged constant spawns verification-engineer before the merge gate"
+sed -n '/^4\. \*\*Process reviewer verdicts/,/^4a\./p' "$HERE/../commands/app-build.md" \
+  | grep -q "VERIFICATION: FAIL" \
+  && ok "...and its FAIL gates the merge alongside the review verdict" \
+  || bad "...and its FAIL gates the merge alongside the review verdict"
+
 echo
 # --------------------------------------------------------------------------------------------
 echo "team-message"

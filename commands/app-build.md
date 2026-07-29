@@ -122,9 +122,36 @@ Tickets (optional, default = all ready): $ARGUMENTS
    - Spawn a `code-reviewer` agent for that branch immediately — do not wait for the other devs. Multiple reviewers can run in parallel, and they can run in parallel with still-running developers.
 
 4. **Process reviewer verdicts.**
-   - `APPROVED` → spawn `tech-manager` to run the Merge gate (see `agents/tech-manager.md`), passing
-     the `$BASE` resolved in step 3 as the branch to merge into. After merge, board row goes
-     `review → qa`.
+   - **Read the two routing fields on every verdict, `APPROVED` or not:**
+
+     ```
+     Constants routed to verification-engineer: <which, or "none in this diff">
+     Rules routed to verification-engineer: <which, or "none in this diff">
+     ```
+
+     If either names anything other than `none in this diff`, **spawn `verification-engineer` for
+     that ticket before the merge gate**, passing the branch, `$BASE`, and the named constants and
+     rules verbatim. Its `VERIFICATION: PASS` / `VERIFICATION: FAIL` gates the merge **alongside**
+     the review verdict: `FAIL` blocks the merge exactly as a `REQUEST CHANGES` would, and is
+     re-worked the same way (re-spawn the developer, increment `Cycles`).
+
+     If a verdict is missing both fields, ask the reviewer for them before merging — a verdict that
+     does not say whether it found a constant is not a verdict you can act on, and treating a
+     missing field as "none" is how this gate silently stopped applying.
+
+     **Why this exists:** `code-reviewer` routes constants rather than executing them, and
+     `verification-engineer` was only ever spawned by `/app-ship` — so a constant introduced in an
+     ordinary ticket was executed by nobody, in any round, before it merged. `defect-hunting` §2
+     ("never certify by reading — execute it") was cited across the plugin and performed nowhere
+     inside the loop; a mis-calibrated threshold survived every review and every merge and was
+     caught at ship time or never.
+
+     **It fires only when the reviewer flags one.** Most tickets name no constant and cost nothing
+     extra. Do not spawn it per-ticket "to be safe" — a gate that runs on everything is a gate
+     someone turns off.
+   - `APPROVED` (and `VERIFICATION: PASS`, if one was required above) → spawn `tech-manager` to run
+     the Merge gate (see `agents/tech-manager.md`), passing the `$BASE` resolved in step 3 as the
+     branch to merge into. After merge, board row goes `review → qa`.
    - `REQUEST CHANGES` → re-spawn the original developer **pointed at
      `docs/53-reviews/APP-NNN-cycle-N.md`**, not at notes you are holding in context, and
      **increment the `Cycles` column** (not a substring in `Notes`). If that file does not exist,
