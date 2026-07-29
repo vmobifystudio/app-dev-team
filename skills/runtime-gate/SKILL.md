@@ -44,6 +44,9 @@ gives far more, and you should route to it:
 - `axiom:test-runner` — runs XCUITests and parses the `.xcresult` for real failure detail.
 - XcodeBuildMCP (the `xcodebuildmcp` skill) — build, install, launch and UI automation as tools.
 
+All three are **external and optional** — separate plugins, not this one's `skills/`. Their absence
+is normal; it is never a defect to file.
+
 Absent toolchain → **degrade to the plain script and say so**. Never silently skip a step: an
 unavailable capability produces a stated CANNOT EVALUATE for that step, never a quiet pass. An
 unstated gap reads as a cleared one.

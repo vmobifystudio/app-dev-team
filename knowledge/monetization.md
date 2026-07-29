@@ -2,7 +2,8 @@
 
 How Mobify Studio monetizes. Two models: **subscription/IAP** (flagship content/AI apps) and
 **ads** (utility apps and ad-supported tiers). Pair with `axiom-in-app-purchases` /
-`axiom-storekit-ref` (iOS) and `admob-android-integration` (Android).
+`axiom-storekit-ref` (iOS) and `admob-android-integration` (Android) — **external and optional**,
+separate plugins, not this one's `skills/`. Absent → this pack is the authority.
 
 ## Paywall — the two-door gateway (iOS, portable concept)
 

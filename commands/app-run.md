@@ -73,8 +73,13 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    - After each round, spawn `tech-manager` to write the standup at `docs/daily/<today>.md`
      (`team-protocol`'s canonical path — not `standup-<today>.md`, which nothing else reads) and
      print a 3-line summary: counts per status, what merged, blockers.
+   - **The budget ceiling stops this loop and says why** (`/app-build` step 0a). An unattended run
+     has no other economic brake: `round-journal.mjs check` runs at the top of every round, exit 1
+     ends the run with the ceiling named and every unfinished ticket listed. Do not raise a ceiling
+     to keep going — that is a decision to hand back to the user, and it is Gate-shaped.
    - **Escalate to the user only** for: a blocker the team can't resolve, the 2-cycle review cap
-     being hit, or a scope/architecture conflict. Surface verbatim with a proposed answer.
+     being hit, the budget ceiling, or a scope/architecture conflict. Surface verbatim with a
+     proposed answer.
 
 5. **Ship-readiness.** When the board is drained and there are zero open S1/S2 bugs, spawn in
    parallel **the `active` ones among** `aso-specialist` (store assets + readiness),

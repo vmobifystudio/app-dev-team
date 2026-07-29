@@ -69,6 +69,23 @@ allowed-tools: Read, Glob, Grep, Bash
      hand-written; run /app-plan or /app-build once to migrate it`. Do not migrate from here:
      `/app-status` is a read-only command and migration rewrites `docs/31-board.md`.
 
+3bb. **Loop trend and budget** — what happened to the *loop*, which the event log cannot answer:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" show
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" check
+   ```
+
+   Both read `docs/33-rounds.jsonl`, appended once per round by `/app-build` step 6a. `show` is the
+   per-round burn-down (tickets waved, verdicts, retries, refusals);
+   `check` is the one-line budget position, and it prints here whether or not it is near a ceiling —
+   a spend first seen when it stops the run was seen too late. `ROUND JOURNAL: no rounds yet` is the
+   correct output before the first `/app-build` round; it is not an error.
+
+   **Spend reads `not measurable in this harness` unless a round actually reported a number.** That
+   sentence is the honest one: rounds, spawns, retries and refusals are counted because they are
+   countable, and no token figure is invented to fill the gap.
+
 3c. **Open team threads.** From `docs/team/messages.md`, list any `question` with no matching
    `answer`, and any `escalation` not yet closed by a `decision`. These are the conversations the
    team is stuck inside.

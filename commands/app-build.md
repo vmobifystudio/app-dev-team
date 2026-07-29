@@ -73,6 +73,24 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    This gate is not optional and it runs **every round**, not just the first — a ticket becomes
    `stranded` the moment its dependency is blocked, which happens mid-loop at step 4.
 
+0a. **Budget gate — the loop's only economic brake.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" check
+   ```
+
+   - Exit `0` → print the `BUDGET:` line in the standup (step 6) and continue. It is surfaced every
+     round on purpose: a spend you only see when it stops you is a spend you saw too late.
+   - Exit `1` → **CEILING REACHED. Stop the loop.** Print its lines verbatim, then the sprint
+     summary from step 8 naming every unfinished ticket. Do not spawn this round. Raising a ceiling
+     (`--max-rounds`, `--max-spawns`, `--max-retries`, `--max-spend-usd`, or `APP_TEAM_MAX_*`) is
+     the user's decision, not a workaround you apply to keep going.
+
+   **Token cost is not measurable in this harness**, so nothing here pretends to know it. What is
+   counted is what is countable — rounds, spawns, retries, refusals, wall-clock — and those are the
+   ceilings that fire. If a harness does report spend, pass it with `--spend-usd` in step 6 and the
+   `--max-spend-usd` ceiling starts applying too.
+
 1. **Read state.**
    - `node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json` — the derived state of every
      ticket, from the log. Find tickets where `status` is `todo` and every `dependsOn` ID is
@@ -142,6 +160,22 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    ```
 
    A refusal here means the ticket was not actually ready — read the reason and spawn nobody for it.
+
+   **Then run the isolation gate, and obey it.** Last command before the launch message:
+
+   ```bash
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" APP-001 APP-002 APP-003
+   ```
+
+   Exit `1` → **REFUSED: spawn nobody.** It names the tickets with no worktree and prints the
+   `git worktree add` line for each; create them and re-run, or serialize the round. Exit `2` →
+   worktrees are unavailable here, so serialize; a 2 is never a go-ahead. Exit `0` with a single
+   ticket prints `SERIALIZED` — legal, and it must be said in the standup.
+
+   This is a script rather than a reminder because the reminder failed on the people who wrote it:
+   two writers went into one checkout hours after that rule was hardened, one ran `git stash` +
+   `git reset`, and 22 files of the other's work were lost (DR4-027). Isolation cannot be a
+   convention the orchestrator remembers.
 
    **Spawn by the ticket's `Owner` column — never from a hardcoded list.** The authority on which
    owners this loop can spawn is `board-doctor` (Manual-fallback check 4) and the
@@ -293,6 +327,14 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 
      There is no `Cycles` column to increment any more. The count is the number of `changes` events,
      so it cannot drift from the ledger the way the hand-maintained column did.
+
+     **Re-spawn one model tier up.** First attempt runs the role's default (its agent file's
+     `model:`); every re-spawn after a `changes` runs the next tier — `haiku → sonnet → opus`,
+     capped at opus. Pass it explicitly (the subagent tool's `model` parameter where the harness has
+     one; otherwise state the tier in the prompt) and name the tier in the standup. A ticket that
+     failed review is by definition harder than it looked, and this is the cheapest place to put
+     effort where evidence already says it is needed. A `rejected` verify-done retry does **not**
+     escalate — nothing was reviewed, so nothing said the work was hard.
    - **Cap: 2 review cycles, enforced at write time.** The 3rd `changes` is **refused**, and the CLI
      appends `blocked` in its place and prints the dependents that just stopped being claimable.
      That is not an error to work around: stop the loop for that ticket and surface it to the user
@@ -382,6 +424,24 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    Also surface unanswered team messages: any `question` in `docs/team/messages.md` with no matching
    `answer` is a `tech-manager` action item, not a thing to leave sitting.
 
+6a. **Journal the round — one line, every round, before you loop.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" append --round <N> \
+     --tickets APP-001,APP-002 --verdicts approved=1,changes=1 \
+     --spawns <how many agents you launched> --retries <re-spawns> \
+     --refusals <CLI/gate exit-1s this round> --wall-clock-sec <seconds>
+   ```
+
+   Then print the `BUDGET:` line from step 0a in the standup, so the spend is visible before it is a
+   problem rather than at the moment it stops the run.
+
+   `docs/31-board-events.jsonl` records what happened to **tickets**; `docs/33-rounds.jsonl` records
+   what happened to the **loop** — rounds, spawns, retries, refusals. They are different questions
+   and only the first was answerable, so nothing could say whether a run was converging or thrashing.
+   Add `--spend-usd` only if the harness actually reported a number; otherwise leave it off and the
+   field stays `null`, which every reader prints as "not measurable here".
+
 7. **Loop** back to step 0 until the board has no ready `todo` rows and nothing in `review`/`qa`.
 
 8. **Exit check — never declare a sprint done on an incoherent board.** Re-run the doctor one last
@@ -392,8 +452,13 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 
 ## Safety
 
-- **Never spawn a writing agent without its own worktree** (or, failing that, serialized). Measured
-  cost of ignoring this: `docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+- **Never spawn a writing agent without its own worktree** (or, failing that, serialized), and never
+  spawn without `spawn-gate.sh` having said so — the rule was known, written and defended by the
+  operator who then broke it. Measured cost:
+  `docs/research/2026-07-29-dry-run-parallel-agent-collision.md`, and DR4-027.
+- **No repo-wide `git reset` / `stash` / `checkout -- .` / `clean` / `add -A` / `add .`** by any
+  agent sharing a tree — tell every agent so in its prompt. Need a clean tree to test? Copy to a
+  temp dir. One of those commands cost 22 files of live work (`agent-isolation` Rule 2).
 - **Never spawn while the board doctor reports an anomaly.**
 - **Never move a row to `review` on an unverified `DONE`.**
 - **Never advance a wave across a `RUNTIME GATE: FAIL`, and never record a `CANNOT EVALUATE` as a
