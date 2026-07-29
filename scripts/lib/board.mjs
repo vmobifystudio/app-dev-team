@@ -302,7 +302,7 @@ export function parseMessages(text) {
     if (!line.includes('|') || isSeparatorRow(line)) continue;
     const cells = splitRow(line);
     if (cells.length < 6) continue;
-    const [timestamp, from, to, ticketId, kind, summary] = cells;
+    const [timestamp, from, to, ticketId, kind, summary, body] = cells;
     if (!/^\d{4}-\d{2}-\d{2}/.test(timestamp.trim())) continue;
     entries.push({
       _line: i + 1,
@@ -312,10 +312,45 @@ export function parseMessages(text) {
       ticketId: ticketId.trim(),
       kind: kind.trim().toLowerCase(),
       summary: summary.trim(),
+      // The Body column was parsed off and thrown away, so every reader saw a one-line ledger while
+      // team-message.sh had been writing the detail all along. The dashboard needs it: the artifact
+      // an answer was folded into is named in the body, and without it every answered question read
+      // as "delivered nowhere".
+      body: (body || '').trim(),
     });
   }
   return entries;
 }
+
+const RESOLVING_KINDS = new Set(['answer', 'decision']);
+
+/**
+ * Pair a ticket's questions with the resolutions that closed them.
+ *
+ * board-doctor pairs questions and resolutions BY COUNT on a ticket, so every reader must resolve to
+ * the same number or the renderer and the validator disagree about one ledger. Counting alone cannot
+ * NAME a row, and both tech-lead (which must answer the specific question) and the dashboard (which
+ * must show question → answer → the artifact it was folded into) need the pairing itself. Oldest
+ * first: each `answer`/`decision` closes the earliest still-open question on that ticket, so
+ * `open.length` is exactly doctor's `questions.length - resolutions.length`.
+ *
+ * Lives here, not in a renderer, because it was written twice the moment a second consumer wanted
+ * it — which is how the two readings of one board this file's header warns about begin.
+ */
+export function pairQuestions(thread) {
+  const open = [];
+  const answered = [];
+  for (const m of thread) {
+    if (m.kind === 'question') open.push(m);
+    else if (RESOLVING_KINDS.has(m.kind)) {
+      const question = open.shift();
+      if (question) answered.push({ question, resolution: m });
+    }
+  }
+  return { open, answered };
+}
+
+export const openQuestions = (thread) => pairQuestions(thread).open;
 
 /**
  * Definition of Ready — is this ticket workable, or will the developer have to guess?

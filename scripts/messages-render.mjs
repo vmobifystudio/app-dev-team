@@ -24,7 +24,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { parseMessages, parseBoard, isEmpty } from './lib/board.mjs';
+import { parseMessages, parseBoard, isEmpty, openQuestions } from './lib/board.mjs';
 
 /**
  * Guard windows. These MUST match scripts/team-message.sh and board-doctor.mjs's diagnoseMessages;
@@ -40,7 +40,6 @@ const MAX_PAIR = 2;
 const MAX_CHAIN = 4;
 const ROUND_WINDOW = 40;
 
-const RESOLVING_KINDS = new Set(['answer', 'decision']);
 const SHIPPED_STATUS = new Set(['qa', 'done']);
 
 let useColor = process.stdout.isTTY && !process.argv.includes('--no-color');
@@ -69,23 +68,8 @@ function truncate(value, max) {
   return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
 }
 
-/**
- * Which questions are still open.
- *
- * board-doctor pairs questions and resolutions BY COUNT on a ticket, so this must resolve to the
- * same number or the renderer and the validator disagree about the same ledger. Counting alone
- * cannot name a row, and tech-lead needs the specific question to answer — so pair them oldest
- * first: each `answer`/`decision` closes the earliest still-open question on that ticket. The
- * leftovers are open, and their count is exactly doctor's `questions.length - resolutions.length`.
- */
-function openQuestions(thread) {
-  const open = [];
-  for (const m of thread) {
-    if (m.kind === 'question') open.push(m);
-    else if (RESOLVING_KINDS.has(m.kind)) open.shift();
-  }
-  return open;
-}
+// `openQuestions` is lib/board.mjs's — the pairing is shared with the doctor and the dashboard, and
+// it was already written twice. There is deliberately no local copy.
 
 function buildModel(text, boardText) {
   const messages = parseMessages(text);
