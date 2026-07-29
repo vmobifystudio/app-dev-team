@@ -330,7 +330,10 @@ fi
 
 # --docs-only was unreachable: `grep -rn docs-only commands/` returned nothing and /app-build always
 # passed a test command, so the flag the whole doc-ticket path depends on could never fire.
-grep -q -- "--docs-only" "$HERE/../commands/app-build.md" \
+# Grep for the INVOCATION, not the word. A file that merely mentions `--docs-only` in passing is
+# exactly the state this was in: skills/team-protocol documented the call, and the loop never made
+# it. Mentioning a flag is not wiring it.
+grep -q 'verify-done.sh" <branch> "\$BASE" --docs-only' "$HERE/../commands/app-build.md" \
   && ok "/app-build actually passes --docs-only for doc-profile tickets" \
   || bad "/app-build actually passes --docs-only for doc-profile tickets"
 # The roster has to be named where the flag is used, or the loop cannot tell which tickets get it.

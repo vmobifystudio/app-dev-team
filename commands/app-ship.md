@@ -46,8 +46,17 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
       surface. Then re-run the gate.
    2. **Waive it, with the reason written down.** Append to `docs/60-releases.md` under this
       version — the release record `release-manager` already owns — a line reading
-      `WAIVED: <artifact> — <who waived it> — <reason>`. Then continue, and repeat the waiver in the
-      release summary and in step 4's confirmation question.
+      `WAIVED: <artifact> — <who waived it> — <reason>`. Then **re-run `ship-gate.sh`** — it reads
+      `docs/60-releases.md`, and it is the gate itself that decides the waiver applies, not you.
+      A waiver it accepts comes back as `WAIVED: <artifact> by <who> — <reason>` in its output;
+      repeat that line in the release summary and in step 4's confirmation question.
+
+      `<artifact>` must be the exact path the gate named (`docs/51-bugs.md`, `docs/50-test-plan.md`),
+      and **all three fields must be present** — the gate rejects a waiver with no name or no
+      reason and stays at `CANNOT EVALUATE`, saying the waiver was malformed. That is deliberate:
+      an unsigned, unexplained waiver is a skipped gate wearing a decision's clothes. If the gate
+      still says `CANNOT EVALUATE` after you wrote a waiver, the waiver did not count — do not
+      proceed on the strength of having written it.
 
    Asking this is not a third human gate: `/app-ship` **is** Gate 2, and produce-or-waive is part of
    the ship conversation the user is already in. Under `--yolo` from `/app-run`, do not auto-waive —
