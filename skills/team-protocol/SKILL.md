@@ -34,8 +34,10 @@ Rules:
 - **`Summary` is one line and must stand alone.** It is what the orchestrator and the user read.
 - **Every message names a ticket** (or `—` for project-wide). A message with no ticket cannot be
   routed or closed.
-- A `question` is not resolved until an `answer` with the same ticket exists. `board-doctor`
-  reports an unanswered question older than the current round.
+- A `question` is not resolved until an `answer` **or** a `decision` with the same ticket exists.
+  `board-doctor` reads this ledger (as a sibling of the board) and reports `question_unanswered` —
+  and says explicitly when the ticket has already reached `qa`/`done`, i.e. shipped on an
+  unconfirmed assumption.
 
 Write with the helper so the format and the guard stay honest:
 
@@ -107,7 +109,8 @@ need it. That is the case the channel is actually for, and it is rarer than it l
 ## Anti-ping-pong guard
 
 Two agents can burn a whole budget agreeing with each other. Hard limits, enforced by
-`team-message.sh` and checked by `board-doctor`:
+`team-message.sh` at send time and re-checked by `board-doctor` against the ledger afterwards —
+so a row appended by hand cannot route around the guard:
 
 | Limit | Value | Why |
 |---|---|---|

@@ -19,7 +19,7 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
 
 import {
   KNOWN_OWNERS,
@@ -30,6 +30,7 @@ import {
   LEDGER_ACTIONS,
   parseBoard,
   parseLedger,
+  parseMessages,
   isEmpty,
   parseDependencies,
   findBlockingAncestor,
@@ -43,7 +44,70 @@ import {
  * Precedence-ordered. The first structural problem on a row suppresses the derived ones —
  * an invalid owner makes "who acts next" unanswerable, so we do not also guess about review.
  */
-function diagnose(board, ledger, capabilities) {
+/**
+ * Team-message checks. `team-protocol` promises these; until now nothing performed them.
+ * An unanswered question is how a developer ends up guessing, and the guess ships.
+ */
+function diagnoseMessages(messages, rowsById, warnings) {
+  const byTicket = new Map();
+  for (const m of messages) {
+    if (!byTicket.has(m.ticketId)) byTicket.set(m.ticketId, []);
+    byTicket.get(m.ticketId).push(m);
+  }
+
+  for (const [ticketId, thread] of byTicket) {
+    const questions = thread.filter((m) => m.kind === 'question');
+    const answered = thread.some((m) => m.kind === 'answer' || m.kind === 'decision');
+    const row = rowsById.get(ticketId.toUpperCase());
+
+    if (questions.length > 0 && !answered) {
+      const last = questions[questions.length - 1];
+      warnings.push({
+        code: 'question_unanswered',
+        ticketId,
+        line: last._line,
+        detail: `"${last.summary}" was asked of ${last.to} and has no answer or decision. ${
+          row && (row.status === 'qa' || row.status === 'done')
+            ? `The ticket has already reached "${row.status}" — it shipped on an unconfirmed assumption.`
+            : 'The owner is deciding without it.'
+        }`,
+        action: 'tech-manager: answer it, route it, or record a decision. An open question is how a guess becomes shipped behaviour.',
+      });
+    }
+
+    // The guard in team-message.sh refuses the send; this catches a ledger written by hand.
+    const pairs = new Map();
+    for (const m of thread) {
+      if (m.kind === 'escalation') continue;
+      const key = `${m.from}\u2192${m.to}`;
+      pairs.set(key, (pairs.get(key) || 0) + 1);
+    }
+    for (const [pair, count] of pairs) {
+      if (count > 2) {
+        warnings.push({
+          code: 'message_pair_exceeded',
+          ticketId,
+          line: 0,
+          detail: `${pair} exchanged ${count} messages on ${ticketId} (limit 2 without a third party). Two is a conversation; more is a stall.`,
+          action: 'tech-manager: resolve it or escalate. Do not let the pair keep going.',
+        });
+      }
+    }
+
+    const roles = new Set(thread.flatMap((m) => [m.from, m.to]));
+    if (roles.size > 4) {
+      warnings.push({
+        code: 'message_chain_too_deep',
+        ticketId,
+        line: 0,
+        detail: `${ticketId} has involved ${roles.size} roles (limit 4). A question relayed that far is an escalation.`,
+        action: 'tech-manager: take the decision rather than relaying it further.',
+      });
+    }
+  }
+}
+
+function diagnose(board, ledger, capabilities, messages = []) {
   const anomalies = [];
   const warnings = [];
   const rowsById = new Map();
@@ -307,6 +371,8 @@ function diagnose(board, ledger, capabilities) {
     }
   }
 
+  diagnoseMessages(messages, rowsById, warnings);
+
   return { anomalies, warnings };
 }
 
@@ -400,7 +466,11 @@ function main() {
     hasLedger: /^\s*#{1,6}\s.*review\s+ledger/im.test(text),
   };
 
-  const result = diagnose(board, ledger, capabilities);
+  // The message ledger is a sibling of the board: docs/31-board.md -> docs/team/messages.md
+  const messagesPath = join(dirname(boardPath), 'team', 'messages.md');
+  const messages = existsSync(messagesPath) ? parseMessages(readFileSync(messagesPath, 'utf8')) : [];
+
+  const result = diagnose(board, ledger, capabilities, messages);
   if (!options.quiet || result.anomalies.length > 0) report(result, board, capabilities, options);
   process.exit(result.anomalies.length > 0 ? 1 : 0);
 }

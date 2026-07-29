@@ -32,7 +32,19 @@ Rules for any script added here:
    Node still performs the check by hand. The plugin must never hard-require a runtime.
 3. **A meaningful exit code**, so a command can gate on it.
 4. **A fixture-tested cascade.** Run it against a deliberately broken input and confirm every
-   branch fires before you ship it.
+   branch fires before you ship it — and add the case to `scripts/test.sh`:
+
+   ```bash
+   sh scripts/test.sh        # 41 assertions over committed fixtures
+   sh scripts/test.sh -v     # list every passing assertion
+   ```
+
+   Fixtures live in `scripts/fixtures/`. Every assertion in the suite corresponds to a defect that
+   was really shipped and then found by running the thing; the comments name them, so a change that
+   breaks one can see what it is undoing.
+
+   **Prove your new assertion can fail.** Mutate the code it guards, watch it go red, revert. A test
+   that has never failed is indistinguishable from one that cannot.
 
 ## How to add or change a role
 

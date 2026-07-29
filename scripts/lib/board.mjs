@@ -246,6 +246,36 @@ export {
   detectCycle,
 };
 
+/**
+ * Parse the team message ledger — `docs/team/messages.md`, a sibling of the board.
+ *
+ * `team-protocol` claimed board-doctor checked the anti-ping-pong limits and reported unanswered
+ * questions. It read neither: the doctor had never opened this file. Two asserted gates that did
+ * not run — the same defect as a Definition of Done citing a script nobody can find.
+ */
+export function parseMessages(text) {
+  const entries = [];
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line.includes('|') || isSeparatorRow(line)) continue;
+    const cells = splitRow(line);
+    if (cells.length < 6) continue;
+    const [timestamp, from, to, ticketId, kind, summary] = cells;
+    if (!/^\d{4}-\d{2}-\d{2}/.test(timestamp.trim())) continue;
+    entries.push({
+      _line: i + 1,
+      timestamp: timestamp.trim(),
+      from: from.trim(),
+      to: to.trim(),
+      ticketId: ticketId.trim(),
+      kind: kind.trim().toLowerCase(),
+      summary: summary.trim(),
+    });
+  }
+  return entries;
+}
+
 /** Convenience: parse everything a consumer needs from the board file in one pass. */
 export function readBoard(text) {
   const board = parseBoard(text);
