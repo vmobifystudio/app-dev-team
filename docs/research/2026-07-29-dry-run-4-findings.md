@@ -170,3 +170,79 @@ has no worktree** — a rule the orchestrator cannot forget is worth more than o
    hours earlier and were calibrated to known fixes. The 22 friction findings are the yield.
    Next run's hypotheses should target the *unknown* — the review stage, `/app-ship`, and a second
    round with a real merge.
+
+---
+
+## Addendum — the team reviewed its own revamp, and failed it
+
+After the register above was fixed, `code-reviewer` and `security-reviewer` were run under their real
+role files against the full diff (`git diff main...revamp/phase-r-fixes`, 83 files). Verdicts:
+**REQUEST CHANGES** and **SECURITY: FAIL**. Sixteen blocking findings, every one reproduced by
+execution rather than argued from reading.
+
+This was also `code-reviewer`'s first real exercise: in the dry run it never ran once, because a
+missing simulator blocked a path that also gated static inspection (DR4-002). Its first act on being
+unblocked was to fail the diff that unblocked it.
+
+### The three gates that could not fire
+
+| | |
+|---|---|
+| `ship-gate` | The open-S1/S2 blocker demanded markdown bold (`**BUG-001** … **S1**`); the template `qa-engineer` is told to write is plain pipe-delimited. **The only files matching were the fixtures written to satisfy it.** A board carrying an S1 *crash on launch* returned `RESULT: CLEAR`, exit 0. |
+| `verify-done` | The ran-evidence check was consulted only on FAILURE. `verify-done.sh feat/X main "true"` → `VERIFIED … tests=green`. Rigorous when the command fails, credulous when it succeeds — backwards for a gate. |
+| `integration-branch` | Its fail-open was fixed in the morning and **nothing changed, because nobody writes the line it reads.** `grep -rn "Integration branch" agents/ skills/ commands/` returned nothing; `devops-engineer` was never told to emit it. The resolver was hardened; its input was never produced. |
+
+### Two S1s, with a reproduction
+
+Argument injection lives in `board.mjs parseArgs`, not the dashboard — so it is reachable from every
+agent-supplied string (`--detail`, `--title`, `--notes`, `--acceptance`), not one form field:
+
+```
+$ echo SENTINEL-DO-NOT-OVERWRITE > victim.txt
+$ node scripts/board.mjs move APP-001 unblocked --by tech-manager --detail "--board=$PWD/victim.txt"
+APP-001 unblocked -> todo
+$ head -1 victim.txt
+# Sprint board
+```
+
+**Keep this probe.** "Fixed" means the sentinel survives, not that a report says so.
+
+`POST /action` had no Origin/Host/Content-Type check, so a `text/plain` body is a CORS-simple
+request needing no preflight — any page open in the operator's browser could drive it, and chained
+with the above, write files into the repository.
+
+### Four assertions in the suite that could not fail
+
+Found by mutation — breaking the code and watching whether the suite noticed:
+
+- `"the page loads nothing from the network"` used a PCRE lookahead in `grep -E`. The pattern was a
+  **syntax error**, stderr went to `/dev/null`, and control always fell to `|| ok`. A live CDN URL
+  was baked into the page and the suite reported 385 passed, 0 failed.
+- Two `board-doctor` assertions grepped the whole JSON blob, so **demoting an anomaly to a warning —
+  deleting the gate — left them green.** One also matched a prefix of a different code.
+- `"one parser, proven by agreement"` compared two callers of the *same* function. Mutating that
+  function so every merged ticket carried the wrong status left the assertion green while seven
+  unrelated ones caught it. That assertion was specified by the orchestrator, who asked for a
+  behavioural proof and accepted a tautological one.
+
+### The class this all belongs to
+
+Eleven of the sixteen are one shape: **a fix that lands in the mechanism and stops before the
+consumer.**
+
+- ticket IDs stopped being upcased in `board.mjs`; three readers upcase them again
+- `verified_static` was added to the state machine; the loop could not reach it and the ship gate
+  cannot see it, so a ticket **ships CLEAR asserting a suite that never ran**
+- `integration-branch` was hardened; its input is never written
+- the destructive-git ban became a hook; the hook keyed on worktrees and **stood down in exactly the
+  configuration that caused DR4-027**
+
+The review question that finds this class, and the one worth asking of every fix in this repo:
+**who else touches this value between the fix and the human?**
+
+### What it says about the day
+
+A green suite is evidence only to the extent its assertions can go red. The 385-green figure quoted
+throughout this work was partly hollow, and nobody could tell by looking — including four rounds of
+the orchestrator's own checking. The team's own review, executing rather than reading, found in one
+pass what none of that had.
