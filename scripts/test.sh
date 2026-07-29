@@ -2204,7 +2204,7 @@ DCMD="$HERE/../commands/app-dashboard.md"
 [ -f "$DCMD" ] && ok "/app-dashboard exists" || bad "/app-dashboard exists"
 grep -q "studio-dashboard.mjs" "$DCMD" && ok "...and invokes scripts/studio-dashboard.mjs" \
                                        || bad "...and invokes scripts/studio-dashboard.mjs"
-grep -q -- "--export docs/32-board-view.html" "$DCMD" \
+grep -q -- "--export docs/34-dashboard.html" "$DCMD" \
   && ok "...and documents the static export mode with the path it writes" \
   || bad "...and documents the static export mode with the path it writes"
 

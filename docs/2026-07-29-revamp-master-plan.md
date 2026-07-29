@@ -270,7 +270,7 @@ on any project the team has ever touched.
   - **Dependency graph** — SVG from the existing graph helpers (no mermaid runtime needed
     locally; the GitHub-rendered mermaid view stays for the repo).
 - **Launch:** `/app-dashboard` command (or `/app-status --web`) starts it; `/app-run` prints the
-  URL at sprint start. Static mode `--export docs/32-board-view.html` for sharing without a
+  URL at sprint start. Static mode `--export docs/34-dashboard.html` for sharing without a
   server.
 - **Explicitly not building** (YAGNI until proven): websockets libraries, React/build steps, a
   database, auth (localhost only), write actions from the UI. The moment the dashboard can write,
@@ -478,7 +478,7 @@ answer an open question, assign an unowned artifact. Not "re-prioritise" — nob
 | 4.2 | `GET /state` assembled via `lib/board.mjs`; `GET /events` SSE with 2s debounced `fs.watch` | edit a doc, assert the page refetches |
 | 4.3 | Panels: kanban w/ NEEDS ATTENTION, threaded team feed, **activity timeline replaying the event log**, sprint burn-down, dependency graph (SVG) | each panel renders against a seeded project |
 | 4.4 | **Control-room actions** — answer a question, approve a gate, re-prioritize — invoked strictly through the same validated CLI agents use. Never a direct state write | attempt a direct write and assert it is impossible by construction |
-| 4.5 | `/app-dashboard` command; `--export docs/32-board-view.html` static mode; `/app-run` prints the URL | both modes exercised |
+| 4.5 | `/app-dashboard` command; `--export docs/34-dashboard.html` static mode; `/app-run` prints the URL | both modes exercised |
 
 ### Phase 5 — Smarter orchestration
 

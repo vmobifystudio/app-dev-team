@@ -250,9 +250,31 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      `VERIFIED` → `board.mjs move APP-NNN verified --by tech-manager --detail "verify-done.sh green"`
      and continue. If it reports `tests=unverified`, say so in the daily fragment **and in the
      `--detail`**; never restate the agent's "all green" as confirmed.
-     Exit `2` → **CANNOT EVALUATE**, not a pass: you supplied no test command for a code ticket, so
-     nothing verified the "all green" claim. Supply the project's test command and re-run, or use
-     `--docs-only` if the ticket really has no test.
+     Exit `2` → **CANNOT EVALUATE**, not a pass. It has **two causes and they need different
+     actions** — the script names which in its output, so read it rather than assuming:
+
+     - *No test command was supplied for a code ticket.* Nothing verified the "all green" claim.
+       Supply the project's test command and re-run, or `--docs-only` if the ticket really has no
+       test. Re-running is the fix.
+     - *A test command was supplied and the toolchain could not run it* — no SDK, no simulator, a
+       missing wrapper. **Re-running cannot fix this**, and the work is not defective; it is
+       unrunnable *here*. Do not leave the ticket stuck and do not fake a `verified`. Record what
+       actually happened and let the review proceed on inspection:
+
+       ```bash
+       node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN verified_static \
+         --by tech-manager --detail "<the toolchain reason, verbatim from verify-done>"
+       ```
+
+       The ticket can then be reviewed, approved and merged, and it carries
+       `qa (static only) — NOT RUN: the executable test suite` until something runs it. It **cannot
+       reach `done`**. Say `CANNOT EVALUATE` in the standup and name what never ran.
+
+     This second branch is the whole point of the static lane: in the first end-to-end run,
+     `code-reviewer` never ran **once** across an entire sprint, because a missing simulator blocked
+     a path that also gated static inspection (DR4-002). An exit-2 handler that only knows how to say
+     "supply a test command and re-run" leaves that lane unreachable in exactly the case it exists
+     for.
    - **Read the `Shared surfaces touched` line.** If two returning agents name the same file, or
      both report *creating* a cross-cutting abstraction for the same concern, route it to
      `tech-manager` **now** — before the merge gate, while both agents still exist — to pick one
@@ -378,9 +400,15 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    has an owner, a branch and a place on the board like any other work:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add QA-<sprint> --title "QA pass — wave <n>" --owner qa-engineer
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move QA-<sprint> claimed --by qa-engineer
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add QA-<sprint>-w<n> --title "QA pass — wave <n>" --owner qa-engineer
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move QA-<sprint>-w<n> claimed --by qa-engineer
    ```
+
+   **The wave number is in the ID, not only the title.** Step 5 runs once per completed wave, so a
+   fixed `QA-<sprint>` collides on the second one: `add` refuses the duplicate, and the existing row
+   has already moved past `todo`, so `claimed` is refused too. Any sprint with more than one wave
+   would then be unable to run the ticketed QA pass at all — the loop would fall back to QA as an
+   errand, which is the untracked, unprovenanced shape this step was written to end (DR4-007).
 
    Then spawn `qa-engineer` once with that ticket ID to exercise the acceptance criteria; where the
    Axiom toolchain is present it drives the P0 journey per the `runtime-gate` skill rather than

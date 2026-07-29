@@ -24,7 +24,7 @@ invokes the same validated CLI the agents use and shows you the command and its 
 2. **Or export a static copy** to share with someone who will not run a server:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/studio-dashboard.mjs" --project . --export docs/32-board-view.html
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/studio-dashboard.mjs" --project . --export docs/34-dashboard.html
    ```
 
    One self-contained file: the state is baked in, there is no server, and the action buttons are

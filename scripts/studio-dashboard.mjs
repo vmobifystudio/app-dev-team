@@ -38,7 +38,7 @@
  *
  * Usage:
  *   node scripts/studio-dashboard.mjs [--project DIR] [--port 4173] [--no-actions]
- *   node scripts/studio-dashboard.mjs --export docs/32-board-view.html [--project DIR]
+ *   node scripts/studio-dashboard.mjs --export docs/34-dashboard.html [--project DIR]
  *
  * Routes:
  *   GET  /         the page (one file, no CDN, no fonts, no images)
@@ -81,7 +81,7 @@ const GENERATED = new Set([
   'docs/31-board.md',
   'docs/31-board-events.jsonl',
   'docs/32-board-view.md',
-  'docs/32-board-view.html',
+  'docs/34-dashboard.html',
   'docs/33-messages-view.md',
   'docs/team/messages.md',
 ]);

@@ -340,6 +340,9 @@ const DOC_WRITERS = new Map([
   // the TICKETS. Written by /app-build at the end of each round via round-journal.mjs, read by
   // /app-status for the trend and the budget position.
   ['docs/33-rounds.jsonl',              ['commands/app-build.md']],
+  // The dashboard's static export. Deliberately NOT 32-board-view.html: board-render already owns
+  // 32-board-view.md, and two renderings sharing one name is DR4-020 — a second view nobody declared.
+  ['docs/34-dashboard.html',            ['commands/app-dashboard.md']],
   ['docs/40-api.md',                    ['agents/backend-developer.md']],
   ['docs/41-monetization.md',           ['agents/monetization-engineer.md']],
   ['docs/50-test-plan.md',              ['agents/qa-engineer.md']],
@@ -356,7 +359,9 @@ const DOC_WRITERS = new Map([
 
 // A generated projection of a file that already has readers. It exists to be LOOKED at by a human,
 // so "no step reads it" is its correct shape rather than a defect. Everything else earns its row.
-const TERMINAL_DOCS = new Set(['docs/32-board-view.md']);
+// Terminal deliverables: produced for a human to look at, not consumed by any later step. Being
+// unread is their correct end state, so `doc_unread` must not fire on them.
+const TERMINAL_DOCS = new Set(['docs/32-board-view.md', 'docs/34-dashboard.html']);
 
 // `docs/NN-slug` with the extension it was actually written with. Every impl spec folds to one key.
 const docKey = (base, ext) =>
@@ -364,7 +369,12 @@ const docKey = (base, ext) =>
 
 const docMentions = new Map();
 for (const file of [...agents, ...commands, ...skills]) {
-  for (const m of file.text.matchAll(/docs\/(\d{2}-[a-z0-9-]*)(\.md|\.jsonl|\/)?/g)) {
+  // The extension list must cover every artifact type the pipeline produces, not just the ones it
+  // produced when this was written. `.html` was missing when the dashboard's static export landed:
+  // the reference normalised to `docs/34-dashboard` while DOC_WRITERS held `docs/34-dashboard.html`,
+  // so the same file was reported BOTH as undeclared and as an unused row — a check disagreeing with
+  // itself about one artifact. Add the extension when a new artifact type appears.
+  for (const m of file.text.matchAll(/docs\/(\d{2}-[a-z0-9-]*)(\.md|\.jsonl|\.html|\/)?/g)) {
     const key = docKey(`docs/${m[1]}`, m[2]);
     if (!docMentions.has(key)) docMentions.set(key, new Set());
     docMentions.get(key).add(file.rel);
