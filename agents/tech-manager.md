@@ -21,7 +21,7 @@ You own:
    `docs/31-board.md` is a **generated rendering**. You own the board's content; you do not write
    its file. Every mutation goes through the CLI (see **Moving the board** below) — a cell you edit
    by hand is overwritten by the next render and is invisible to every rule in this plugin.
-3. **The daily report** — `docs/daily/YYYY-MM-DD.md`, one per active day. You write this by concatenating the per-agent fragments (`docs/daily/<date>-<agent>-<ticket>.md`) that ICs drop after each run. ICs never write the canonical daily file directly — that prevents write-races between parallel agents.
+3. **The daily report** — `docs/daily/<today>.md`, one per active day. You write this by concatenating the per-agent fragments (`docs/daily/<today>-<role>-<ticket>.md`) that ICs drop after each run. ICs never write the canonical daily file directly — that prevents write-races between parallel agents.
 4. **The merge gate** — APPROVED branches land on the integration branch only through you
    (see Merge gate below; the orchestrator gives you the branch, you never guess it).
 
@@ -204,8 +204,8 @@ look. A dry run of two "independent" tickets in one module produced add/add conf
 files. You never parallelize work where one ticket blocks another — that wastes everyone's context.
 
 ## Standup
-At the start of each working session, build `docs/daily/YYYY-MM-DD.md` by:
-1. Reading all `docs/daily/<date>-*.md` fragments dropped by ICs the previous run.
+At the start of each working session, build `docs/daily/<today>.md` by:
+1. Reading all `docs/daily/<today>-*.md` fragments dropped by ICs the previous run.
 2. Concatenating them under sections: **Shipped**, **In flight**, **Blockers**.
 3. Adding your own summary line at the top with ticket counts per status.
 4. Deleting the fragment files once consumed (or moving them to `docs/daily/.fragments/`).

@@ -58,8 +58,16 @@ function buildModel(text) {
   const { board, ledger, capabilities } = readBoard(text);
   const rowsById = new Map();
   for (const row of board.rows) {
+    // `id` is the GRAPH key and must stay upper-cased: parseDependencies() upper-cases every
+    // dependency it parses, so a lower-cased key would silently stop matching its own edges.
+    //
+    // `label` is what a human reads, and it keeps the spelling the board actually carries. DR4-008
+    // was fixed in board.mjs — `BUG-001-fix` is the ID that tech-manager.md and /app-build mandate —
+    // and this file re-introduced it one layer later, printing `BUG-001-FIX` into the terminal view
+    // and into docs/32-board-view.md. A grep for the documented spelling found nothing on a board
+    // that had the ticket, which is the whole defect, just moved to the surface people look at.
     const id = row.id.toUpperCase();
-    rowsById.set(id, { ...row, id, status: (row.status || '').toLowerCase().trim() });
+    rowsById.set(id, { ...row, id, label: String(row.id).trim(), status: (row.status || '').toLowerCase().trim() });
   }
 
   // Derived, never stored: a todo behind a blocked dependency is invisible to the sprint loop.
@@ -106,7 +114,7 @@ function renderKanban(model) {
       const row = byColumn.get(col)[i];
       if (!row) return ' '.repeat(width);
       const flag = row.stranded ? red('!') : ' ';
-      return `${flag}${truncate(`${row.id} ${row.title}`, width - 1).padEnd(width - 1)}`;
+      return `${flag}${truncate(`${row.label} ${row.title}`, width - 1).padEnd(width - 1)}`;
     });
     lines.push(cells.join(' │ '));
   }
@@ -142,12 +150,12 @@ function renderAttention(model) {
   for (const row of model.rows) {
     if (row.stranded) {
       lines.push(
-        `  ${red('STRANDED')}  ${row.id}  waiting on ${row.stranded.via} (${row.stranded.reason}) — the sprint loop cannot see this`
+        `  ${red('STRANDED')}  ${row.label}  waiting on ${row.stranded.via} (${row.stranded.reason}) — the sprint loop cannot see this`
       );
     }
   }
   for (const row of model.rows) {
-    if (row.status === 'blocked') lines.push(`  ${red('BLOCKED ')}  ${row.id}  ${truncate(row.notes || row.title, 60)}`);
+    if (row.status === 'blocked') lines.push(`  ${red('BLOCKED ')}  ${row.label}  ${truncate(row.notes || row.title, 60)}`);
   }
   // Agree with the validator. board-doctor deliberately degrades this finding on a board that has
   // no Reviewer column at all — the column's absence is one migration to fix, not a per-ticket
@@ -156,7 +164,7 @@ function renderAttention(model) {
   if (model.capabilities.hasReviewColumns) {
     for (const row of model.rows) {
       if (row.status === 'review' && isEmpty(row.reviewer)) {
-        lines.push(`  ${yellow('NO REVIEWER')} ${row.id}  in review with nobody assigned`);
+        lines.push(`  ${yellow('NO REVIEWER')} ${row.label}  in review with nobody assigned`);
       }
     }
   } else if (model.rows.some((row) => row.status === 'review')) {
@@ -185,7 +193,7 @@ function renderMermaid(model) {
   const nodeId = (id) => id.replace(/[^A-Za-z0-9]/g, '_');
 
   for (const row of model.rows) {
-    const label = `${row.id}<br/>${truncate(row.title, 28).replace(/"/g, "'")}`;
+    const label = `${row.label}<br/>${truncate(row.title, 28).replace(/"/g, "'")}`;
     lines.push(`    ${nodeId(row.id)}["${label}"]`);
   }
   for (const row of model.rows) {

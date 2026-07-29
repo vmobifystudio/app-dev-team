@@ -39,6 +39,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   skill reference across `agents/`, `knowledge/` and `skills/` is marked external-and-optional
   (DR4-011), asserted by the suite so a new one cannot be added unmarked.
 - Suite: 210 → **259 assertions**, each new one proven to fail against the old behaviour first.
+## [Unreleased] — Phase 6: the checks that had no way to fail
+
+**210 → 295 assertions.** Every check below was confirmed to FAIL against a deliberately broken
+fixture before it was trusted: 21 mutations were applied to the scripts one at a time, and each was
+caught by at least one new assertion. Nothing here was certified by reading.
+
+### The doc graph is declared, not guessed (RV-035)
+
+`team-doctor`'s old check counted *mentions* — "referenced in exactly one file" — which cannot tell
+a producer from a consumer, so four documents written and never read looked healthy. It also printed
+`.md` onto every name it reported, including `docs/31-board-events.jsonl`; a tool that names a file
+which does not exist is a tool people stop believing.
+
+Every `docs/NN-*` now has a declared producer in `DOC_WRITERS`, and four blocking findings:
+`doc_undeclared` (an artifact nobody owns — DR4-019's shape), `doc_unread` (RV-035 itself),
+`doc_writer_silent` (the producer moved and the declaration is stale) and `doc_unused`.
+
+### One spelling per path (RV-031)
+
+The daily fragment had **five** spellings across the corpus — `<today>` vs `<date>` vs `YYYY-MM-DD`,
+`<role>` vs `<agent>` vs `<your-role>` — and `/app-build` matched exactly one of them. Every agent
+using one of the other four wrote a fragment the standup never found and the loop reported a clean
+round. 13 variant spellings normalised; `path_spelling` blocks any new one. The canonical patterns
+must also still be published in `team-protocol`'s paths table, or that blocks too — a script
+enforcing a rule its own documentation no longer states is a rule enforcing itself.
+
+### Generated CI must be able to go red (DR4-023, DR4-024)
+
+In dry run 4 the devops agent wrote a workflow whose build and test steps both ended
+`| xcbeautify || true`, so a failing test exited zero — it would have shipped the run's real money
+bug green — and ran `brew install swiftlint` while the project's own principles ban SwiftLint by
+name. Both became prose rules in `devops-engineer`. Prose is what produced the defect. `ship-gate.sh`
+now reads the generated workflows and blocks on a masked exit code (`|| true`, `continue-on-error`,
+a build piped with no `pipefail`) or an undeclared install.
+
+### Assertion gaps closed (RV-039)
+
+- **`runtime-gate` FAIL(1) and PASS(0) are executed.** The largest script here had its two
+  consequential verdicts covered by nothing — `WORST=1` could have been deleted and the suite stayed
+  green. Both arms now run end to end against stubbed `gradlew`/`adb`/`aapt2`, including
+  crash-on-launch. `RUNTIME_GATE_BUILD_TIMEOUT` exists in the source specifically to make the timeout
+  branch testable and had never been set by a test; it is now.
+- **`board-render`** — exit 2 on a missing or unparseable board, and the *rendered values*: ticket
+  counts, per-column tallies, owner load, stranded chains. It had "does not crash" and nothing else.
+- **`ship-gate`** — the QA-hold and deferred S3/S4 notes, neither of which changes an exit code, so
+  deleting either left the suite green.
+- **`team-message`** — an unrecognised `--kind` and an unknown argument, plus the half that matters:
+  neither refusal writes a row.
+- **`--json` schema stability** for `board-doctor` and `board.mjs show`, asserted as exact key sets.
+
+### Fixed while writing the checks
+
+- **DR4-008 survived one layer past its fix.** `board.mjs` stopped upcasing ticket IDs so
+  `BUG-001-fix` reaches the board; `board-render.mjs` upcased it again on the way to the terminal
+  and to `docs/32-board-view.md`. A grep for the documented spelling still found nothing on the
+  surface people actually look at. Found by asserting the values, which is the whole point.
 
 ## [1.5.0] — The gates now fail closed, and something finally runs the app
 

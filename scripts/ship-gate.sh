@@ -160,6 +160,54 @@ else
     "no test plan at $PLAN — qa-engineer owns it. Nothing states what was verified or what the exit criteria were. Have qa-engineer write it (a brownfield ship still needs its exit criteria on paper), then re-run."
 fi
 
+# --- 5. the generated CI must be able to go red ---------------------------------------------------
+# DR4-023. The devops agent wrote a workflow whose Build and Test steps both ended `| xcbeautify ||
+# true`, so a failing test exited zero. It would have shipped dry run 4's real money bug green — in a
+# repo whose own `defect-hunting` §3 says a rule that cannot fail is worse than no rule. The agent
+# reproduced the exact anti-pattern the skill exists to forbid, and nothing inspected the file.
+#
+# DR4-024. The same workflow ran `brew install swiftlint` while the project's own
+# 21-engineering-principles.md bans SwiftLint by name — a pipeline performing an install nobody
+# asked for, against the project's own stated rules.
+#
+# Both are now prose rules in agents/devops-engineer.md. Prose is what produced the defect. This is
+# the executable half. Absent CI is not a finding: plenty of projects ship without a workflow, and
+# turning that into a blocker would make the gate unusable on exactly those projects.
+#
+# Globbed, never `for wf in $(find ...)`: this plugin's own install path contains spaces, and an
+# unquoted word split turns one workflow into two nonexistent files — every check below then reads
+# nothing and passes, which is the failure mode this whole section exists to stop.
+for wf in "$ROOT"/.github/workflows/*.yml "$ROOT"/.github/workflows/*.yaml; do
+  if [ -f "$wf" ]; then
+    REL=${wf#"$ROOT"/}
+
+    # `|| true`, `|| :` and continue-on-error each turn a red step green. Quoted per line so the
+    # blocker names the step a human has to go and look at.
+    MASKED=$(grep -nE '(\|\|[[:space:]]*(true|:)([[:space:]]|$))|continue-on-error:[[:space:]]*true' "$wf" 2>/dev/null || true)
+    [ -n "$MASKED" ] && block "$REL masks an exit code, so a failing step reports green:
+$(printf '%s' "$MASKED" | sed 's/^/             /')
+           Remove the mask. A CI that cannot go red manufactures confidence (DR4-023)."
+
+    # A pipe is the subtler half: GitHub Actions' DEFAULT shell is `bash -e {0}` WITHOUT pipefail,
+    # so `xcodebuild test | xcbeautify` exits with xcbeautify's status and the compiler's failure is
+    # discarded. `shell: bash` (which adds -eo pipefail) or an explicit `set -o pipefail` fixes it.
+    if ! grep -q 'pipefail\|shell:[[:space:]]*bash' "$wf" 2>/dev/null; then
+      PIPED=$(grep -nE '(xcodebuild|gradlew|swift (build|test)|npm (test|run)|pytest|go test|cargo test|dotnet test)[^|]*\|[^|]' "$wf" 2>/dev/null || true)
+      [ -n "$PIPED" ] && block "$REL pipes a build/test command with no pipefail, so the build's exit code is thrown away:
+$(printf '%s' "$PIPED" | sed 's/^/             /')
+           Add \`set -o pipefail\` (or \`shell: bash\`) to the step, or do not pipe (DR4-023)."
+    fi
+
+    # An install in a workflow is a dependency the project never declared. It also silently pins
+    # whatever version the package manager serves that morning.
+    INSTALLS=$(grep -nE '(brew install|apt-get +(-[a-z]+ +)*install|apt +install|npm +(i|install) +(-g|--global)|gem install|pip3? install)' "$wf" 2>/dev/null || true)
+    [ -n "$INSTALLS" ] && block "$REL installs a tool the project has not declared:
+$(printf '%s' "$INSTALLS" | sed 's/^/             /')
+           Check it against docs/21-engineering-principles.md — the project's rules beat the House KB
+           defaults. An undeclared tool is a question for the ledger, not an install (DR4-024)."
+  fi
+done
+
 # --- verdict ---------------------------------------------------------------------------------------
 echo "SHIP GATE"
 if [ -n "$UNKNOWNS" ]; then printf '%s' "$UNKNOWNS"; fi

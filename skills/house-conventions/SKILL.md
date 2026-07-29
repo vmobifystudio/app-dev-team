@@ -50,11 +50,11 @@ and prevents a whole class of "this doesn't match how we build" rework.
    look identical to every reader afterwards.
 
 3. If the pack and the project docs **conflict**, the project docs win for that project, but
-   write one line to your per-run fragment (`docs/daily/<today>-<agent>-<ticket>.md`) noting the
+   write one line to your per-run fragment (`docs/daily/<today>-<role>-<ticket>.md`) noting the
    divergence so the `tech-manager` can decide whether the KB or the project is wrong.
 
    **No ticket?** A spec-writing exec has none, and that used to make this rule unfollowable for
-   exactly the roles whose divergences are largest. Use `docs/daily/<today>-<agent>-spec.md` — same
+   exactly the roles whose divergences are largest. Use `docs/daily/<today>-<role>-spec.md` — same
    directory, so the standup collects it with everything else.
 
 4. If you discover a genuinely new, reusable convention while working, add a `LEARNING:` line to

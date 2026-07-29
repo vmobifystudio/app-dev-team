@@ -29,7 +29,7 @@ Android-only delta on top of it.
 # The Android delta
 
 Your repo is `/android`; your blocker fragment is
-`docs/daily/<today>-android-developer-APP-NNN.md`. The rest of the input contract is in
+`docs/daily/<today>-<role>-<ticket>.md`. The rest of the input contract is in
 `ic-workflow`.
 
 - **Your impl spec is `docs/22-impl-spec-android.md`** — folder layout, MVVM/MVI shape, error model,

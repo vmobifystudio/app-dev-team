@@ -490,14 +490,21 @@ answer an open question, assign an unowned artifact. Not "re-prioritise" — nob
 | 5.4 | Warm managers where the harness supports named agents + SendMessage; respawn model stays the portable baseline, all durable state stays in files | both modes interchangeable mid-sprint |
 | 5.5 | Auditor soft-routing made real (RV-019): one canonical list, detect-else-degrade, never a silent skip | run with the Axiom plugin absent; assert a stated degrade |
 
-### Phase 6 — The studio tests itself
+### Phase 6 — The studio tests itself ✅ SHIPPED (210 → 295 assertions)
 
 | # | Item | Proof |
 |---|---|---|
-| 6.1 | CI (one GitHub Actions workflow): `test.sh` + `team-doctor` + plugin validation on push/PR | a deliberately broken push goes red |
-| 6.2 | Doc-graph check in `team-doctor`: every `docs/NN-*.md` written by some step must be read by some step | would have caught RV-035; prove on a seeded orphan |
-| 6.3 | Path-spelling check: fragments/standups must match one canonical pattern | would have caught RV-031; prove on a seeded variant |
-| 6.4 | Remaining ship-gate/board-render assertion gaps from RV-039 | suite count rises; each new assertion proven to fail first |
+| 6.1 ✅ | CI (one GitHub Actions workflow): `test.sh` + `team-doctor` + plugin validation on push/PR | landed early, `.github/workflows/checks.yml` |
+| 6.2 ✅ | Doc-graph check in `team-doctor`: every `docs/NN-*` has a **declared** producer and at least one reader (`doc_undeclared` · `doc_unread` · `doc_writer_silent` · `doc_unused`) | four seeded orphans in a scratch plugin, each proven to fire; the `.md`-on-a-`.jsonl` bug is asserted gone |
+| 6.3 ✅ | Path-spelling check: fragments, standups, verdicts and the ledger match one pattern each, and the pattern must still be published in `team-protocol`'s paths table | 13 variant spellings found and normalised in the real tree; 3 seeded variants proven to fire |
+| 6.4 ✅ | RV-039 assertion gaps: `board-render` exit 2 + rendered values, `ship-gate` QA-hold and S3/S4 notes, `team-message` usage exits, `runtime-gate` **FAIL(1)**, **PASS(0)** and the `RUNTIME_GATE_BUILD_TIMEOUT` branch, `--json` schema for `board-doctor` and `board.mjs show` | 21 deliberate mutations of the scripts; every one caught by at least one new assertion |
+| 6.5 ✅ | **DR4-023 / DR4-024**: generated CI must be able to go red and must install nothing undeclared — executable, in `ship-gate.sh` | seeded workflows: `\|\| true`, `continue-on-error`, an unprotected pipe, `brew install`; plus the control cases that must stay CLEAR |
+
+Not done, and why: **DR4-018** (a role spawned before its declared inputs exist) and **DR4-019** (an
+artifact a spec requires that no ticket owns) both need a declaration that does not exist yet — a
+per-role `Inputs:` contract and a spec→artifact→ticket link. The plugin-level half of DR4-019 *is*
+covered: `doc_undeclared` fires on any document no step declares a producer for. The project-level
+half needs Phase 7's registry work to have somewhere to stand.
 
 ### Phase 7 — Portfolio (multi-project)
 

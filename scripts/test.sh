@@ -234,6 +234,62 @@ assert_has "$TMP/r.txt" "STRANDED" "render surfaces stranded tickets"
 node "$HERE/board-render.mjs" "$FIX/clean.md" --out "$TMP/view.md" --no-color >/dev/null 2>&1
 assert_has "$TMP/view.md" "mermaid" "render writes a mermaid graph"
 
+# RV-039: everything above asserts only that the renderer does not crash and that two words appear
+# somewhere in its output. A renderer that printed an empty board, or the wrong counts, or every
+# ticket in the wrong column, passed all of it. This is the reader /app-status and /app-build put in
+# front of a human every round, so "it ran" is not a standard — the VALUES are the product.
+
+# The one non-zero exit this script has was never exercised at all. A view that renders an empty
+# board from a file it could not open is CLEAR-shaped: the caller sees "no tickets" and moves on.
+assert_exit 2 "a missing board is CANNOT EVALUATE, not an empty view" \
+  node "$HERE/board-render.mjs" "$TMP/nosuchboard.md"
+printf '# Sprint board\n\nNo table here yet.\n' > "$TMP/render-notable.md"
+assert_exit 2 "a board with no parseable ticket table is CANNOT EVALUATE" \
+  node "$HERE/board-render.mjs" "$TMP/render-notable.md"
+node "$HERE/board-render.mjs" "$TMP/render-notable.md" --out "$TMP/never-view.md" --no-color >/dev/null 2>&1
+[ -f "$TMP/never-view.md" ] && bad "...and it writes no view file on that path" \
+                            || ok "...and it writes no view file on that path"
+
+# Exact values on the clean fixture: 3 tickets, 2 todo (APP-002, BUG-003-fix), 1 done (APP-001),
+# all three owned by android-developer with the done one excluded from the open count.
+node "$HERE/board-render.mjs" "$FIX/clean.md" --no-color > "$TMP/rclean.txt" 2>/dev/null
+assert_has "$TMP/rclean.txt" "SPRINT BOARD — 3 tickets" "the header counts every row on the board"
+assert_has "$TMP/rclean.txt" "todo=2 · done=1" "...and the tally matches the Status cells, column by column"
+assert_has "$TMP/rclean.txt" "TODO (2)" "the kanban column headers carry their own counts"
+assert_has "$TMP/rclean.txt" "DONE (1)" "...for every occupied column"
+assert_has "$TMP/rclean.txt" "android-developer" "the owner swimlane names the owner"
+assert_has "$TMP/rclean.txt" "2 open" "...and counts only the tickets that are not done"
+assert_has "$TMP/rclean.txt" "nothing needs attention" "a board with nothing wrong says so, rather than printing an empty section"
+
+# ...and the counts must move with the board, or they are constants that happen to look right.
+node "$HERE/board-render.mjs" "$FIX/stranded.md" --no-color > "$TMP/rstr.txt" 2>/dev/null
+assert_has "$TMP/rstr.txt" "todo=2 · blocked=1 · stranded=2" "a different board produces different counts, stranded included"
+assert_has "$TMP/rstr.txt" "STRANDED  APP-002  waiting on APP-001 (blocked)" "...and each stranded ticket names what it is waiting on"
+assert_has "$TMP/rstr.txt" "STRANDED  APP-003  waiting on APP-002 (blocked via APP-001)" "...transitively, through the ticket in between"
+assert_has "$TMP/rstr.txt" "BLOCKED   APP-001" "...and the blocked ticket itself is listed"
+
+# DR4-008, one layer later. board.mjs stopped upcasing ticket IDs so `BUG-001-fix` — the spelling
+# tech-manager.md and /app-build mandate — survives onto the board. This renderer upcased it again
+# on the way to the terminal and to docs/32-board-view.md, so a grep for the documented spelling
+# still found nothing on the surface people actually look at. Found by asserting the values.
+grep -q 'BUG-003-fix' "$TMP/rclean.txt" \
+  && ok "the rendered view keeps the documented lowercase suffix (BUG-NNN-fix)" \
+  || bad "the rendered view keeps the documented lowercase suffix (BUG-NNN-fix)"
+grep -q 'BUG-003-FIX' "$TMP/rclean.txt" \
+  && bad "...and never upcases it on the way to the terminal" \
+  || ok "...and never upcases it on the way to the terminal"
+grep -q 'BUG-003-FIX' "$TMP/view.md" \
+  && bad "...nor into the committed docs/32-board-view.md" \
+  || ok "...nor into the committed docs/32-board-view.md"
+
+# The written view is a document, not a debug dump: the counts and every ticket have to be in it.
+assert_has "$TMP/view.md" "3 tickets" "the written view states the same ticket count as the terminal"
+assert_has "$TMP/view.md" "todo=2 · done=1" "...and the same tally"
+assert_has "$TMP/view.md" "Do not edit" "...and says it is generated, so nobody hand-edits a projection"
+for t in APP-001 APP-002 BUG-003-fix; do
+  assert_has "$TMP/view.md" "$t" "...and carries $t into the dependency graph"
+done
+
 echo
 # --------------------------------------------------------------------------------------------
 echo "verify-done"
@@ -461,6 +517,26 @@ send "$R" --from ios-developer --to tech-lead --ticket APP-1 --kind question --s
 ( cd "$R" && sh "$M" --from tech-lead --to tech-lead --ticket APP-1 --kind fyi --summary x ) >/dev/null 2>&1
 [ $? = 2 ] && ok "refuses a message to self" || bad "refuses a message to self"
 
+# RV-039: the two usage errors were the only exits this script has that nothing asserted. Both are
+# the same hazard — a message that was never delivered. `--kind` is what board-doctor pairs
+# questions to answers with, so a misspelt kind (`--kind ask`) writing a row anyway would make the
+# unanswered-question check count a thread that does not exist; and a mistyped flag silently
+# swallowed would drop the message entirely while the sender reports it sent.
+( cd "$R" && sh "$M" --from ios-developer --to tech-lead --ticket APP-1 --kind ask --summary s ) >"$TMP/tmkind.txt" 2>&1
+[ $? = 2 ] && ok "an unrecognised --kind is a usage error, not a row nobody can pair" \
+            || bad "an unrecognised --kind is a usage error, not a row nobody can pair"
+assert_has "$TMP/tmkind.txt" "question|answer|handoff" "...and the error lists the kinds it does accept"
+BEFORE=$(grep -c '^| 20' "$R/docs/team/messages.md" 2>/dev/null || echo 0)
+( cd "$R" && sh "$M" --from ios-developer --to tech-lead --ticket APP-1 --sumary typo --kind fyi ) >"$TMP/tmarg.txt" 2>&1
+[ $? = 2 ] && ok "an unknown argument is a usage error, never silently ignored" \
+            || bad "an unknown argument is a usage error, never silently ignored"
+assert_has "$TMP/tmarg.txt" "unknown argument" "...and names the argument it did not understand"
+# The half that matters: a rejected send must leave the ledger untouched. A usage error that had
+# already appended is a message the sender believes went out and no guard below ever counted.
+AFTER=$(grep -c '^| 20' "$R/docs/team/messages.md" 2>/dev/null || echo 0)
+[ "$BEFORE" = "$AFTER" ] && ok "...and neither refusal writes a row to the ledger" \
+                         || bad "...and neither refusal writes a row to the ledger" "$BEFORE -> $AFTER"
+
 # A fresh repo per scenario, because every guard below counts rows in the ledger and a shared
 # ledger would make each test depend on the ones before it.
 newrepo() {
@@ -602,6 +678,128 @@ assert_exit 2 "a waiver for another artifact does not cover this one" sh "$HERE/
 waivetree bare "WAIVED: docs/51-bugs.md"
 assert_exit 2 "a bare WAIVED: line does not count" sh "$HERE/ship-gate.sh" "$TMP/bare"
 
+# --- the two NOTES, which nothing had ever asserted --------------------------------------------
+# RV-039. Both exist because a gate that only says BLOCKED/CLEAR loses the information a human
+# needs to decide, and both are invisible to every assertion above: notes do not change the exit
+# code, so deleting either one left this suite entirely green. A note that never prints is the same
+# as no note, and this is the output /app-ship shows the human at the last decision point.
+
+# QA can recommend holding while every per-ticket review approved, and both can be right: a review
+# is scoped to one diff and cannot see that the sprint's journey was never wired together.
+mkship qahold ''
+printf '# Test plan\nExit criteria: QA recommends we HOLD this build — the onboarding journey was never run end to end.\n' \
+  > "$TMP/qahold/docs/50-test-plan.md"
+assert_exit 0 "a QA hold is a note, not a blocker — the human decides" sh "$HERE/ship-gate.sh" "$TMP/qahold"
+assert_has "$TMP/out" "QA text mentions a hold" "...and the gate says so instead of clearing silently"
+assert_has "$TMP/out" "before overriding" "...and points at the exit criteria to read first"
+
+# ...and the mirror, so this is a discrimination rather than a note that always prints.
+sh "$HERE/ship-gate.sh" "$FIX/ship-clear" 2>/dev/null | grep -q "QA text mentions a hold" \
+  && bad "...and a test plan with no hold in it produces no such note" \
+  || ok "...and a test plan with no hold in it produces no such note"
+
+# A test plan whose rows were reasoned rather than executed is the exact claim this repo exists to
+# refuse. It does not block — reasoning is legitimate for some rows — but it must never be reported
+# as tested, which requires the gate to say it out loud.
+mkship reasoned ''
+printf '# Test plan\n| T-1 | signup | NOT PERFORMED — verified by reading the implementation |\n' \
+  > "$TMP/reasoned/docs/50-test-plan.md"
+assert_exit 0 "rows that were reasoned instead of executed do not block" sh "$HERE/ship-gate.sh" "$TMP/reasoned"
+assert_has "$TMP/out" "reasoned, not executed" "...but the gate names them so they are not reported as tested"
+
+# S3/S4 bugs ship, and the release notes are where they get declared. The count comes from a
+# separate grep to the S1/S2 one and could have stopped counting without any assertion noticing.
+mkship deferred ''
+printf '# Bug log\n**BUG-010** | APP-001 | **S3** | copy is clipped |\n**BUG-011** | APP-002 | **S4** | icon is 1px off |\n' \
+  > "$TMP/deferred/docs/51-bugs.md"
+assert_exit 0 "open S3/S4 bugs do not block a release" sh "$HERE/ship-gate.sh" "$TMP/deferred"
+assert_has "$TMP/out" "2 open S3/S4 bug(s)" "...and the gate counts them exactly"
+assert_has "$TMP/out" "name them in the release notes" "...and says what to do with them"
+
+# --- DR4-023 / DR4-024: the generated CI is an artifact of this team, so it is gated ------------
+# In dry run 4 the devops agent wrote a workflow whose Build and Test steps both ended
+# `| xcbeautify || true`, so a failing test exited zero — it would have shipped the run's real money
+# bug green. An agent spontaneously reproduced the exact anti-pattern `defect-hunting` §3 exists to
+# forbid, inside a repo built around the sentence "a rule that cannot fail is worse than no rule",
+# and nothing in the pipeline inspected the file. The same workflow ran `brew install swiftlint`
+# while the project's own engineering principles ban SwiftLint by name.
+#
+# Both are now prose rules in agents/devops-engineer.md. Prose is what produced the defect.
+ciship() {   # ciship <name> <workflow-body>
+  mkship "$1" ''
+  mkdir -p "$TMP/$1/.github/workflows"
+  printf '%s\n' "$2" > "$TMP/$1/.github/workflows/ci.yml"
+}
+
+# The control: a workflow that can go red and installs nothing must not change the verdict, or the
+# rule is just "having CI blocks the ship".
+ciship cigood 'jobs:
+  build:
+    steps:
+      - run: xcodebuild -scheme App test'
+assert_exit 0 "a workflow that can fail and installs nothing leaves the gate clear" \
+  sh "$HERE/ship-gate.sh" "$TMP/cigood"
+
+ciship cimask 'jobs:
+  build:
+    steps:
+      - run: set -o pipefail; xcodebuild -scheme App test | xcbeautify || true'
+assert_exit 1 "a generated workflow that masks an exit code blocks the release" \
+  sh "$HERE/ship-gate.sh" "$TMP/cimask"
+assert_has "$TMP/out" "masks an exit code" "...and says which file and which line"
+assert_has "$TMP/out" "ci.yml" "...naming the workflow"
+
+ciship cicontinue 'jobs:
+  build:
+    steps:
+      - run: xcodebuild -scheme App test
+        continue-on-error: true'
+assert_exit 1 "continue-on-error is the same defect wearing a YAML key" \
+  sh "$HERE/ship-gate.sh" "$TMP/cicontinue"
+
+# The subtle one, and the one the dry run actually produced. GitHub Actions' default shell is
+# `bash -e {0}` WITHOUT pipefail, so the pipe throws the compiler's exit code away and the step
+# reports xcbeautify's. Nothing in the file says `|| true`; it is green for a different reason.
+ciship cipipe 'jobs:
+  build:
+    steps:
+      - run: xcodebuild -scheme App test | xcbeautify'
+assert_exit 1 "a build piped into a formatter with no pipefail blocks the release" \
+  sh "$HERE/ship-gate.sh" "$TMP/cipipe"
+assert_has "$TMP/out" "no pipefail" "...and names the reason the exit code is thrown away"
+# ...and the same pipe WITH pipefail is fine, or the rule is "never pipe", which nobody would keep.
+ciship cipipeok 'jobs:
+  build:
+    defaults: { run: { shell: bash } }
+    steps:
+      - run: xcodebuild -scheme App test | xcbeautify'
+assert_exit 0 "...while the identical pipe under shell: bash is accepted" \
+  sh "$HERE/ship-gate.sh" "$TMP/cipipeok"
+
+ciship ciinstall 'jobs:
+  build:
+    steps:
+      - run: brew install swiftlint
+      - run: swiftlint --strict'
+assert_exit 1 "a generated workflow that installs an undeclared tool blocks the release" \
+  sh "$HERE/ship-gate.sh" "$TMP/ciinstall"
+assert_has "$TMP/out" "installs a tool the project has not declared" "...and says so in those terms"
+assert_has "$TMP/out" "21-engineering-principles" "...and points at the file whose rules beat the House KB defaults"
+
+# A project with no CI at all is normal and must stay shippable. Turning that into a blocker would
+# make the gate unusable on exactly the projects that have not reached CI yet.
+assert_exit 0 "a project with no workflows is not penalised for it" sh "$HERE/ship-gate.sh" "$FIX/ship-clear"
+
+# The rule has to survive this plugin's own install path, which contains spaces. `for wf in $(find
+# ...)` fragments one workflow into two nonexistent files, every grep then reads nothing, and the
+# section passes on every input — the exact fail-open shape it exists to stop.
+SPACED="$TMP/spaced dir/proj"
+mkdir -p "$SPACED/.github/workflows"
+cp -R "$TMP/cimask/docs" "$SPACED/docs"
+cp "$TMP/cimask/.github/workflows/ci.yml" "$SPACED/.github/workflows/ci.yml"
+assert_exit 1 "...and it still fires when the project path contains spaces" \
+  sh "$HERE/ship-gate.sh" "$SPACED"
+
 echo
 # --------------------------------------------------------------------------------------------
 echo "team-doctor"
@@ -703,6 +901,106 @@ mv "$MATRIX" "$TMP/matrix-away.md"
 assert_finding "$TMP/tdmx4.json" activation_matrix_missing "a missing activation matrix blocks"
 mv "$TMP/matrix-away.md" "$MATRIX"
 
+# --- the doc graph (RV-035) ----------------------------------------------------------------------
+# Four documents were written by a step and read by no step at all: the producer reported success
+# and the handoff went into a void. The warning that used to live here counted MENTIONS — it could
+# not tell a producer from a consumer, so a doc written twice and never read looked healthy — and it
+# printed `.md` onto every name it reported, including `docs/31-board-events.jsonl`. A tool that
+# names a file which does not exist is a tool people stop believing.
+#
+# Every arm gets its own seeded defect. A graph check that only ever runs against a healthy corpus
+# is the whitelist defect two blocks up, wearing a different hat.
+plugfile() { cp "$PLUG/$1" "$TMP/plug-restore.md"; }
+plugrestore() { cp "$TMP/plug-restore.md" "$PLUG/$1"; }
+
+# 1. A document nothing declares a producer for. This is DR4-019's shape: an artifact every role
+#    assumes another role owns, which in the dry run meant `/project.yml` existed in nobody's charter
+#    and the iOS developer could not compile.
+plugfile agents/qa-engineer.md
+printf '\nCross-check the results against `docs/99-nonexistent.md` before signing off.\n' >> "$PLUG/agents/qa-engineer.md"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tddoc1.json" 2>/dev/null
+assert_finding "$TMP/tddoc1.json" doc_undeclared \
+  "a document referenced with no declared producer blocks" "docs/99-nonexistent.md"
+plugrestore agents/qa-engineer.md
+
+# 2. RV-035 itself: the last reader of a document goes away and nothing notices. `docs/12-flows.md`
+#    is written by ux-designer and read by exactly one step, which is what makes it the sharp case.
+plugfile skills/ic-workflow/SKILL.md
+grep -v 'docs/12-flows' "$TMP/plug-restore.md" > "$PLUG/skills/ic-workflow/SKILL.md"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tddoc2.json" 2>/dev/null
+assert_finding "$TMP/tddoc2.json" doc_unread \
+  "a document written by a step and read by none blocks (RV-035)" "docs/12-flows.md"
+plugrestore skills/ic-workflow/SKILL.md
+
+# 3. The mirror, and the one a refactor produces: the declared writer stops mentioning its own
+#    document. Either the producer moved and the declaration is stale, or the doc is now written by
+#    nobody — and the readers downstream would wait forever either way.
+plugfile agents/ux-designer.md
+grep -v 'docs/12-flows' "$TMP/plug-restore.md" > "$PLUG/agents/ux-designer.md"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tddoc3.json" 2>/dev/null
+assert_finding "$TMP/tddoc3.json" doc_writer_silent \
+  "a declared writer that no longer mentions its own document blocks" "docs/12-flows.md"
+plugrestore agents/ux-designer.md
+
+# 4. ...and a row for a document no step touches at all. The table would otherwise be free to
+#    accumulate artifacts the pipeline stopped producing years ago, which is how it starts lying.
+cp "$PLUG/agents/backend-developer.md" "$TMP/plug-bd.md"
+cp "$PLUG/agents/security-reviewer.md" "$TMP/plug-sr.md"
+cp "$PLUG/skills/ic-workflow/SKILL.md" "$TMP/plug-icw.md"
+grep -v 'docs/40-api' "$TMP/plug-bd.md"  > "$PLUG/agents/backend-developer.md"
+grep -v 'docs/40-api' "$TMP/plug-sr.md"  > "$PLUG/agents/security-reviewer.md"
+grep -v 'docs/40-api' "$TMP/plug-icw.md" > "$PLUG/skills/ic-workflow/SKILL.md"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tddoc4.json" 2>/dev/null
+assert_finding "$TMP/tddoc4.json" doc_unused \
+  "a declared document that no step mentions blocks" "docs/40-api.md"
+cp "$TMP/plug-bd.md"  "$PLUG/agents/backend-developer.md"
+cp "$TMP/plug-sr.md"  "$PLUG/agents/security-reviewer.md"
+cp "$TMP/plug-icw.md" "$PLUG/skills/ic-workflow/SKILL.md"
+
+# The extension bug, asserted directly because it is the part that cost the tool its credibility:
+# the message must name the file as it is spelt on disk. `docs/31-board-events` is a .jsonl.
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tddoc0.json" 2>/dev/null
+grep -q '31-board-events\.md' "$TMP/tddoc0.json" \
+  && bad "the doc graph never reports 31-board-events with a .md extension" \
+  || ok "the doc graph never reports 31-board-events with a .md extension"
+
+# --- one spelling per path (RV-031) --------------------------------------------------------------
+# The daily fragment had FIVE spellings across this corpus — `<today>` vs `<date>` vs `YYYY-MM-DD`,
+# `<role>` vs `<agent>` vs `<your-role>` — and /app-build gated on exactly one of them. Every agent
+# that used one of the other four wrote a fragment the standup never found, committed it, and the
+# loop reported a clean round.
+plugfile agents/tech-manager.md
+printf '\nDrop your fragment at `docs/daily/<date>-<agent>-<ticket>.md` when you are done.\n' >> "$PLUG/agents/tech-manager.md"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdpath1.json" 2>/dev/null
+assert_finding "$TMP/tdpath1.json" path_spelling \
+  "a variant spelling of the daily fragment blocks" "docs/daily/<date>-<agent>-<ticket>.md"
+plugrestore agents/tech-manager.md
+
+# The review verdict and the ledger are the other two paths the loop matches verbatim.
+plugfile agents/code-reviewer.md
+printf '\nWrite the verdict to `docs/reviews/APP-NNN.md` and the note to `docs/team/messages.jsonl`.\n' \
+  >> "$PLUG/agents/code-reviewer.md"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdpath2.json" 2>/dev/null
+assert_finding "$TMP/tdpath2.json" path_spelling \
+  "a variant spelling of the team ledger blocks too" "docs/team/messages.jsonl"
+plugrestore agents/code-reviewer.md
+
+# Both halves, or this is a script enforcing a pattern its own documentation no longer states. The
+# canonical paths table in team-protocol is what every agent reads; nothing reads team-doctor.
+plugfile skills/team-protocol/SKILL.md
+grep -v 'docs/daily/<today>.md' "$TMP/plug-restore.md" > "$PLUG/skills/team-protocol/SKILL.md"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdpath3.json" 2>/dev/null
+assert_finding "$TMP/tdpath3.json" canonical_path_undocumented \
+  "a canonical path this script enforces and the paths table no longer publishes blocks" \
+  "docs/daily/<today>.md"
+plugrestore skills/team-protocol/SKILL.md
+
+# ...and the restored tree is clean again, so every finding above came from its own seeded defect
+# and not from damage left behind by the one before it.
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" ) >/dev/null 2>&1
+[ $? = 0 ] && ok "the scratch plugin is coherent again once every seeded defect is reverted" \
+            || bad "the scratch plugin is coherent again once every seeded defect is reverted"
+
 echo
 # --------------------------------------------------------------------------------------------
 echo "runtime-gate"
@@ -791,6 +1089,91 @@ grep -A2 'if ! ios_running' "$HERE/runtime-gate.sh" | grep -q 'fail ' \
 sed -n '/SWIFTPKG/,/^  fi/p' "$HERE/runtime-gate.sh" | grep -q 'unknown "ios    " "Package.swift builds' \
   && ok "a SwiftPM package that builds is CANNOT EVALUATE, not PASS" \
   || bad "a SwiftPM package that builds is CANNOT EVALUATE, not PASS"
+
+# --- RV-039: the two verdicts that decide a ticket, neither of them ever executed ----------------
+# Everything above this line exercises the CANNOT-EVALUATE paths. The largest script in this repo
+# had its two consequential answers — 1 FAIL, which stops a ticket and re-spawns a developer, and
+# 0 PASS, which is the only statement in the whole plugin that the app actually ran — covered by
+# nothing at all. `WORST=1` could have been deleted and this suite stayed green.
+#
+# Neither needs Xcode. The Android arm's contract is entirely `./gradlew`, `adb` and `aapt`, so the
+# gate is driven end to end against stubs on PATH: a wrapper that fails, then a wrapper that
+# succeeds into a device that answers. The gate does not know the difference, which is the point.
+ASTUB="$TMP/androidstub"; mkdir -p "$ASTUB"
+cat > "$ASTUB/adb" <<'EOF'
+#!/bin/sh
+case "$*" in
+  devices)      printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  *pidof*)      echo 4213 ;;
+  *screencap*)  printf 'stub-png-bytes\n' ;;
+  *)            exit 0 ;;
+esac
+EOF
+cat > "$ASTUB/aapt2" <<'EOF'
+#!/bin/sh
+printf "package: name='com.example.app' versionCode='1' versionName='1.0'\n"
+EOF
+chmod +x "$ASTUB/adb" "$ASTUB/aapt2"
+
+# gradleproj <name> <gradlew-body> — a minimal android tree with a scripted wrapper
+gradleproj() {
+  d="$TMP/$1"; rm -rf "$d"; mkdir -p "$d"
+  : > "$d/build.gradle"
+  printf '#!/bin/sh\n%s\n' "$2" > "$d/gradlew"
+  chmod +x "$d/gradlew"
+  printf '%s' "$d"
+}
+
+# FAIL. The build does not compile: not a missing toolchain, not a hung machine — the app is broken.
+RGF=$(gradleproj rg-fail 'echo "e: MainActivity.kt:12:5 unresolved reference: viewModle"; exit 1')
+assert_exit 1 "a project whose build fails is FAIL, not CANNOT EVALUATE" \
+  env PATH="$ASTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGF"
+cp "$TMP/out" "$TMP/rg-fail.txt"
+assert_has "$TMP/rg-fail.txt" "^RESULT: FAIL" "...and the headline word matches the exit code"
+assert_has "$TMP/rg-fail.txt" "unresolved reference" "...and the compiler's own output is quoted, so the re-spawn instruction can be followed"
+assert_has "$TMP/rg-fail.txt" "Re-spawn the developer" "...which is exactly what the verdict tells the loop to do"
+grep -q "PASS\|CANNOT EVALUATE" "$TMP/rg-fail.txt" \
+  && bad "...and a broken build is never reported as a pass or as an unknown" \
+  || ok "...and a broken build is never reported as a pass or as an unknown"
+
+# PASS. The only verdict in this plugin that asserts the app RAN, and the one every downstream
+# reader treats as proof. It requires all four: builds, installs, launches, and is still alive
+# after the settle — the liveness check tested against stubs above, here wired into the real path.
+RGP=$(gradleproj rg-pass 'mkdir -p app/build/outputs/apk/debug; : > app/build/outputs/apk/debug/app-debug.apk; exit 0')
+assert_exit 0 "a build that assembles, installs, launches and stays up is PASS" \
+  env PATH="$ASTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP"
+cp "$TMP/out" "$TMP/rg-pass.txt"
+assert_has "$TMP/rg-pass.txt" "^RESULT: PASS" "...and says PASS on the line an agent reads"
+assert_has "$TMP/rg-pass.txt" "still running after 3s" "...and states the liveness check it based that on"
+assert_has "$TMP/rg-pass.txt" "com.example.app" "...naming the package it actually launched"
+assert_has "$TMP/rg-pass.txt" "docs/evidence/runtime-" "...and the evidence artifact it captured"
+[ -s "$RGP/docs/evidence/runtime-$(date +%F)-android.png" ] \
+  && ok "...which exists on disk, rather than being a path in a sentence" \
+  || bad "...which exists on disk, rather than being a path in a sentence"
+
+# The same tree, one stub changed: the process is gone after the settle. This is the crash-on-launch
+# the gate's header claims to catch, and the difference between it and the PASS above is one line of
+# stub output — so PASS is being earned, not printed.
+DEADSTUB="$TMP/deadstub"; mkdir -p "$DEADSTUB"
+sed 's/echo 4213/exit 1/' "$ASTUB/adb" > "$DEADSTUB/adb"; chmod +x "$DEADSTUB/adb"
+cp "$ASTUB/aapt2" "$DEADSTUB/aapt2"
+assert_exit 1 "the identical build whose process is gone after 3s is FAIL, not PASS" \
+  env PATH="$DEADSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP"
+assert_has "$TMP/out" "crashed on launch" "...and names crash-on-launch as the reason"
+
+# The timeout branch. RUNTIME_GATE_BUILD_TIMEOUT exists in the source for exactly one reason —
+# "so the timeout branch is testable in seconds instead of in a quarter of an hour" — and no test
+# had ever set it. An untestable branch is an unverified branch, and this one's whole job is to
+# turn a hang into a stated CANNOT EVALUATE rather than a gate nobody can kill.
+RGT=$(gradleproj rg-timeout 'sleep 30')
+assert_exit_within 25 2 "a build that exceeds its timeout is CANNOT EVALUATE, not FAIL" \
+  env RUNTIME_GATE_BUILD_TIMEOUT=2 PATH="$ASTUB:$PATH" \
+  sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGT"
+assert_has "$TMP/out" "exceeded 2s" "...and says which limit it hit, using the override it was given"
+grep -q "^RESULT: FAIL" "$TMP/out" \
+  && bad "...and a build that never finished is never reported as a build that failed" \
+  || ok "...and a build that never finished is never reported as a build that failed"
+
 
 echo
 # --------------------------------------------------------------------------------------------
@@ -1514,6 +1897,59 @@ for f in "$HERE"/../agents/*.md "$HERE"/../knowledge/*.md "$HERE"/../skills/*/SK
 done
 [ -z "$UNMARKED" ] && ok "every file referencing an external skill marks it external-and-optional" \
                    || bad "every file referencing an external skill marks it external-and-optional" "unmarked:$UNMARKED"
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "--json schema"
+# --------------------------------------------------------------------------------------------
+# RV-039. `--json` is the machine contract: /app-status, /app-build and every future dashboard read
+# these keys, and a rename is invisible until something downstream quietly reads `undefined` and
+# renders it as "no anomalies" or "0%". Nothing asserted a single key name. The exact key SET is
+# asserted, not merely presence, so an addition is a deliberate act rather than a drift.
+assert_json_keys() {   # assert_json_keys <label> <expected-csv> <node-expression-over-`j`>
+  node -e '
+const [, file, want, expr] = process.argv;
+const j = JSON.parse(require("node:fs").readFileSync(file, "utf8"));
+const got = Object.keys(eval(expr)).sort().join(",");
+if (got !== want) { process.stderr.write(`got: ${got}\n`); process.exit(1); }
+' "$1" "$2" "$3" 2>"$TMP/jerr" && ok "$4" || bad "$4" "$(cat "$TMP/jerr")"
+}
+
+node "$HERE/board-doctor.mjs" "$FIX/broken.md" --json > "$TMP/schema-bd.json" 2>/dev/null
+assert_json_keys "$TMP/schema-bd.json" "anomalies,capabilities,ok,ticketCount,warnings" "j" \
+  "board-doctor --json keeps its top-level keys"
+assert_json_keys "$TMP/schema-bd.json" "action,code,detail,line,ticketId" "j.anomalies[0]" \
+  "...and every anomaly keeps the five fields a reader renders"
+assert_json_keys "$TMP/schema-bd.json" "action,code,detail,line,ticketId" "j.warnings[0]" \
+  "...and a warning is the same shape as an anomaly, so one renderer serves both"
+node -e '
+const j = require(process.argv[1]);
+process.exit(j.ok === false && typeof j.ticketCount === "number" && Array.isArray(j.anomalies) ? 0 : 1);
+' "$TMP/schema-bd.json" && ok "...with ok=false, a numeric ticketCount and array anomalies, not truthy stand-ins" \
+                       || bad "...with ok=false, a numeric ticketCount and array anomalies, not truthy stand-ins"
+node "$HERE/board-doctor.mjs" "$FIX/clean.md" --json > "$TMP/schema-bdok.json" 2>/dev/null
+node -e 'process.exit(require(process.argv[1]).ok === true ? 0 : 1)' "$TMP/schema-bdok.json" \
+  && ok "...and ok=true on a clean board, so the field discriminates" \
+  || bad "...and ok=true on a clean board, so the field discriminates"
+
+SCH=$(newboard schema-show "$FIX/events/clean.jsonl")
+bm "$SCH" show --json > "$TMP/schema-show.json" 2>/dev/null
+assert_json_keys "$TMP/schema-show.json" "metrics,tickets,violations" "j" \
+  "board.mjs show --json keeps its top-level keys"
+assert_json_keys "$TMP/schema-show.json" \
+  "acceptance,approvals,cycles,dependsOn,estimate,feature,id,notes,owner,reviewer,spec,status,title,unrun,verifiedStatic" \
+  'j.tickets["APP-001"]' "...and every derived ticket keeps its full field set"
+assert_json_keys "$TMP/schema-show.json" \
+  "gateFires,medianCycleTimeMs,reviewPassRate,reworkRate,tickets,ticketsPerRound" "j.metrics" \
+  "...and the self-metrics block keeps the names /app-status prints"
+assert_json_keys "$TMP/schema-show.json" \
+  "approvedFirstPass,cycleTimeMs,cycles,qaFailures,reviewed,status" 'j.metrics.tickets["APP-001"]' \
+  "...and the per-ticket metrics keep theirs"
+# A single ticket's `show --json` must be the same ticket shape, or a caller has to special-case it.
+bm "$SCH" show APP-001 --json > "$TMP/schema-one.json" 2>/dev/null
+assert_json_keys "$TMP/schema-one.json" \
+  "acceptance,approvals,cycles,dependsOn,estimate,feature,id,notes,owner,reviewer,spec,status,title,unrun,verifiedStatic" \
+  'j["APP-001"]' "...and one-ticket show returns that same ticket shape, keyed by ID"
 
 echo
 echo "─────────────────────────────────────────"
