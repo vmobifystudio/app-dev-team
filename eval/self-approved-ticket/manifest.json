@@ -1,0 +1,16 @@
+{
+  "name": "self-approved-ticket",
+  "defect": "APP-120 is done. Its only ledger approval was appended by ios-developer, the ticket's own owner. No later approval by a different role supersedes it.",
+  "expected_detector": "scripts/board-doctor.mjs",
+  "expected_signal": "Review ledger records an approval by the owner",
+  "severity": "S1",
+  "why": "Separation of duties is the same principle P0.5 applies to release: the actor performing an action must not be its sole evaluator. This is the cousin of stale-approval that the studio CAN see, and it is here so the two sit side by side — one detected, one not.",
+  "detector": {
+    "run": [
+      "node",
+      "scripts/board-doctor.mjs",
+      "{project}/docs/31-board.md"
+    ],
+    "expect_exit": 1
+  }
+}

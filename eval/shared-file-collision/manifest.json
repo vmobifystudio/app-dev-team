@@ -1,0 +1,9 @@
+{
+  "name": "shared-file-collision",
+  "defect": "APP-081 and APP-082 are both in_progress, owned by different roles, and both name src/Paywall.swift as their primary file. They must serialise or share a lock; nothing on the board says so.",
+  "expected_detector": null,
+  "expected_signal": null,
+  "severity": "S2",
+  "why": "scripts/spawn-gate.sh looks like the detector and is not. It refuses two writers that lack worktrees — ANY two, whatever files they touch — and says GO the moment both have worktrees, which is precisely the configuration where two branches edit one file and collide at merge. Naming it as this defect's detector would be the \"caught by the wrong assertion\" class mutate.sh reports separately, so it is not named.",
+  "gap": "No detector reads file scopes off the board. spawn-gate covers the unisolated-writer form of the hazard and is blind to the isolated form recorded here."
+}

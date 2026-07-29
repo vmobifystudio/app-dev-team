@@ -1,0 +1,16 @@
+{
+  "name": "ci-that-cannot-fail",
+  "defect": "The generated .github/workflows/ci.yml ends its Build and Test steps with `| xcbeautify || true`, so a failing test exits zero and the workflow is green on a broken build.",
+  "expected_detector": "scripts/ship-gate.sh",
+  "expected_signal": "masks an exit code",
+  "severity": "S1",
+  "why": "DR4-023, reproduced by this repo's own devops agent while working inside a repo built around the sentence forbidding it. A rule that cannot fail is worse than no rule, and until ship-gate §5 landed nothing inspected generated CI at all.",
+  "detector": {
+    "run": [
+      "sh",
+      "scripts/ship-gate.sh",
+      "{project}"
+    ],
+    "expect_exit": 1
+  }
+}

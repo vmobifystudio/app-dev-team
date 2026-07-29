@@ -1,0 +1,9 @@
+{
+  "name": "missing-analytics",
+  "defect": "F-002 \"Upgrade to Pro\" is P0 and is the app's only revenue event. docs/52-analytics.md instruments F-001 and F-003 and has no event for F-002, so the funnel it exists to measure has no data.",
+  "expected_detector": null,
+  "expected_signal": null,
+  "severity": "S2",
+  "why": "team-doctor's doc graph checks that an ARTIFACT has a writer. Nothing checks that every P0 FEATURE has an event. The traceability graph in P1.3/P1.4 is the structure that would make this mechanical; it does not exist yet.",
+  "gap": "No detector. The dashboard cannot show it, the ship gate cannot block it, and the first person to notice is whoever asks why conversion is zero."
+}

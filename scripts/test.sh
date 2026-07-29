@@ -3006,6 +3006,111 @@ grep -nE 'mutate\.sh.*(\|\|[[:space:]]*(true|:))' "$HERE/../.github/workflows/ch
   && bad "...and its exit code is not masked" \
   || ok "...and its exit code is not masked"
 
+echo
+echo
+# --------------------------------------------------------------------------------------------
+echo "studio-eval (the evaluation laboratory — mutate.sh one level up)"
+# --------------------------------------------------------------------------------------------
+# `mutate.sh` asks whether one assertion can go red. The lab asks whether the STUDIO can find a
+# defect planted in a whole project. It is the instrument every later phase is measured against, so
+# the same rule applies to it that applies to every gate here: prove it can fail.
+
+LAB="$HERE/studio-eval.mjs"
+
+assert_exit 0 "--list prints the lab's projects" node "$LAB" --list
+node "$LAB" --list > "$TMP/lablist.txt" 2>&1
+assert_has "$TMP/lablist.txt" "NO DETECTOR EXISTS" \
+  "...and says which planted defects nothing can find, rather than omitting them"
+assert_exit 2 "an unknown --only project is CANNOT RUN, not an empty pass" node "$LAB" --only no-such-project
+
+# The full run. Every scored defect caught, and — the half that is just as easy to lose — the clean
+# project not blocked by anything.
+assert_exit 0 "the lab passes against this tree" node "$LAB"
+node "$LAB" > "$TMP/lab.txt" 2>&1
+assert_has "$TMP/lab.txt" "FALSE-POSITIVE RATE: 0/" \
+  "the clean project completes with zero false blocks"
+assert_has "$TMP/lab.txt" "It EXCLUDES" \
+  "the denominator states what it excluded, so the score is not laundered"
+
+# THE assertion, and the reason the lab is worth having: plant a regression in a DETECTOR and watch
+# the lab go red. `ship-gate.sh` §5 is the gate that catches a generated CI which cannot fail
+# (DR4-023). Neuter its pattern the way mutate.sh's M03 does — in a COPY, never this tree — and the
+# `ci-that-cannot-fail` project must come back MISSED with exit 1.
+#
+# Without this, the lab could be a script that prints a score and always exits 0, which is the
+# "rule that cannot fail" class wearing the costume of the tool built to detect it.
+mkdir -p "$TMP/lab-copy"
+( cd "$HERE/.." && tar cf - scripts eval ) | ( cd "$TMP/lab-copy" && tar xf - )
+if [ -f "$TMP/lab-copy/scripts/ship-gate.sh" ] && [ -d "$TMP/lab-copy/eval" ]; then
+  # `: grep ...` is a no-op returning empty output and exit 0, so MASKED comes back empty and the
+  # masked-exit-code blocker never fires. Literal first-occurrence substitution passed through the
+  # ENVIRONMENT, exactly as mutate.sh does it and for the same reason: `awk -v` processes backslash
+  # escapes and would quietly mutate the mutation.
+  REGRESSION='MASKED=$(grep -nE'
+  MUT_OLD="$REGRESSION" awk '
+    BEGIN { old = ENVIRON["MUT_OLD"]; n = 0; done = 0 }
+    {
+      rest = $0
+      while ((i = index(rest, old)) > 0) { n++; rest = substr(rest, i + length(old)) }
+      if (!done) {
+        i = index($0, old)
+        if (i > 0) { $0 = substr($0, 1, i - 1) "MASKED=$(: grep -nE" substr($0, i + length(old)); done = 1 }
+      }
+      print
+    }
+    END { exit (n == 1 ? 0 : 1) }
+  ' "$HERE/ship-gate.sh" > "$TMP/lab-copy/scripts/ship-gate.sh.new"
+  # The mutation must actually have landed, exactly once. A substitution that matched nothing would
+  # leave the gate intact, the lab would pass, and this assertion would report the lab as
+  # red-capable on no evidence at all — the exact shape of the four decorative assertions that
+  # started this whole line of work.
+  if [ $? -eq 0 ] && ! cmp -s "$TMP/lab-copy/scripts/ship-gate.sh.new" "$HERE/ship-gate.sh"; then
+    ok "the planted regression lands exactly once in ship-gate.sh"
+  else
+    bad "the planted regression lands exactly once in ship-gate.sh" "anchor drifted: $REGRESSION"
+  fi
+  mv "$TMP/lab-copy/scripts/ship-gate.sh.new" "$TMP/lab-copy/scripts/ship-gate.sh"
+  assert_exit 1 "a regression planted in a DETECTOR makes the lab go red" \
+    node "$TMP/lab-copy/scripts/studio-eval.mjs" --only ci-that-cannot-fail
+  node "$TMP/lab-copy/scripts/studio-eval.mjs" --only ci-that-cannot-fail > "$TMP/labreg.txt" 2>&1
+  assert_has "$TMP/labreg.txt" "MISSED" "...and names the project whose defect escaped"
+else
+  bad "the lab copy was made" "tar of scripts/ + eval/ produced nothing usable"
+fi
+
+# A manifest that cannot be scored must stop the run, not be skipped. A silently skipped project is
+# a planted defect reported as neither detected nor missed — invisible in both the numerator and
+# the denominator, which is the one outcome this lab may never produce.
+mkdir -p "$TMP/lab-copy/eval/broken-manifest"
+echo '{ "name": "broken-manifest" }' > "$TMP/lab-copy/eval/broken-manifest/manifest.json"
+assert_exit 2 "a manifest missing its fields is CANNOT RUN, never a silent skip" \
+  node "$TMP/lab-copy/scripts/studio-eval.mjs" --only broken-manifest
+
+# A detector path that does not exist would exit non-zero and read as DETECTED — a lab that scores
+# its own typos as successes. It must be CANNOT RUN.
+mkdir -p "$TMP/lab-copy/eval/ghost-detector"
+cat > "$TMP/lab-copy/eval/ghost-detector/manifest.json" <<'GHOST'
+{ "name": "ghost-detector", "defect": "d", "severity": "S1", "why": "w",
+  "expected_detector": "scripts/no-such-gate.sh", "expected_signal": "x",
+  "detector": { "run": ["sh", "scripts/no-such-gate.sh", "{project}"], "expect_exit": 1 } }
+GHOST
+assert_exit 2 "a detector script that does not exist is CANNOT RUN, never DETECTED" \
+  node "$TMP/lab-copy/scripts/studio-eval.mjs" --only ghost-detector
+
+# Delete the clean project and the lab used to print a detection score and exit 0, having measured
+# nothing about false positives — the half of the number that a studio blocking everything would
+# maximise. Found by doing exactly this and watching the suite stay green.
+rm -f "$TMP/lab-copy/eval/clean/manifest.json"
+assert_exit 2 "with no clean project the lab CANNOT RUN — a detection score alone is not a result" \
+  node "$TMP/lab-copy/scripts/studio-eval.mjs"
+
+# Same rule as mutate.sh: a gate nobody runs is not a gate.
+grep -q 'studio-eval.mjs' "$HERE/../.github/workflows/checks.yml" \
+  && ok "CI runs the lab on every PR" || bad "CI runs the lab on every PR"
+grep -nE 'studio-eval\.mjs.*(\|\|[[:space:]]*(true|:))' "$HERE/../.github/workflows/checks.yml" >/dev/null 2>&1 \
+  && bad "...and its exit code is not masked" \
+  || ok "...and its exit code is not masked"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
