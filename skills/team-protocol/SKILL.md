@@ -28,6 +28,12 @@ mid-run, is readable by the user, and gives a restarted agent its history back.
 
 **Kinds:** `question` · `answer` · `handoff` · `blocker` · `fyi` · `escalation` · `decision`
 
+**`answer` and `decision` each close exactly one open `question` on that ticket** — `board-doctor`
+pairs them by count. So do not use `decision` for a note that decides nothing: it will silently
+consume a real open question. Observed live — a `decision` row correcting a tooling mistake made a
+genuinely unanswered product question look resolved, and the ticket had already shipped on the
+assumption underneath it. **Use `fyi` for anything that is not an answer.**
+
 Rules:
 
 - **Append, never edit.** Correct a wrong line by appending a later one.

@@ -8,3 +8,4 @@
 | 2026-07-29T09:30Z | ios-developer | tech-lead | BUG-003-fix | question | q1 | — |
 | 2026-07-29T09:31Z | ios-developer | tech-lead | BUG-003-fix | question | q2 | — |
 | 2026-07-29T09:32Z | ios-developer | tech-lead | BUG-003-fix | question | q3 — over the pair limit | — |
+| 2026-07-29T09:40Z | tech-lead | ios-developer | BUG-003-fix | decision | closes exactly one of the three | — |

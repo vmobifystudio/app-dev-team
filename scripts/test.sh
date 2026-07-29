@@ -103,6 +103,11 @@ process.exit(ok?0:1);
 ' "$TMP/msg.json" && ok "unanswered questions and pair-limit breaches are reported" \
                   || bad "unanswered questions and pair-limit breaches are reported"
 
+# Regression: "any answer resolves any question" is a false negative the moment a ticket has two.
+node "$HERE/board-doctor.mjs" "$FIX/clean.md" 2>/dev/null | grep -q "2 of 3 question(s) on this ticket are unresolved" \
+  && ok "resolutions pair with questions by count, not existence" \
+  || bad "resolutions pair with questions by count, not existence"
+
 node "$HERE/board-doctor.mjs" "$FIX/clean.md" 2>/dev/null | grep -q "shipped on an unconfirmed assumption" \
   && ok "a question unanswered on a shipped ticket says so" \
   || bad "a question unanswered on a shipped ticket says so"

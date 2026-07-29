@@ -56,17 +56,21 @@ function diagnoseMessages(messages, rowsById, warnings) {
   }
 
   for (const [ticketId, thread] of byTicket) {
+    // Pair by COUNT, not existence. "Any answer resolves any question" is a false negative the
+    // moment a ticket carries two questions, or one unrelated decision: observed live, a
+    // `decision` row correcting a tooling mistake made a genuinely open product question look
+    // resolved. One resolution closes one question — anything else is still open.
     const questions = thread.filter((m) => m.kind === 'question');
-    const answered = thread.some((m) => m.kind === 'answer' || m.kind === 'decision');
+    const resolutions = thread.filter((m) => m.kind === 'answer' || m.kind === 'decision');
     const row = rowsById.get(ticketId.toUpperCase());
 
-    if (questions.length > 0 && !answered) {
+    if (questions.length > resolutions.length) {
       const last = questions[questions.length - 1];
       warnings.push({
         code: 'question_unanswered',
         ticketId,
         line: last._line,
-        detail: `"${last.summary}" was asked of ${last.to} and has no answer or decision. ${
+        detail: `${questions.length - resolutions.length} of ${questions.length} question(s) on this ticket are unresolved — most recent: "${last.summary}" (asked of ${last.to}). ${
           row && (row.status === 'qa' || row.status === 'done')
             ? `The ticket has already reached "${row.status}" — it shipped on an unconfirmed assumption.`
             : 'The owner is deciding without it.'
