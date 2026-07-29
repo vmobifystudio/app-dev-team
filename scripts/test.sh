@@ -1325,6 +1325,266 @@ grep -q '"event":"verified_static"' "$TMP/static.jsonl" \
   || bad "migrate reads a static-only board back as verified_static, not as a full verification"
 
 echo
+# --------------------------------------------------------------------------------------------
+echo "studio-dashboard"
+# --------------------------------------------------------------------------------------------
+# The dashboard is a PROJECTION. Two invariants are worth more than every panel on it, and both are
+# asserted behaviourally here rather than by reading the source:
+#
+#   no second parser — /state's status for every ticket must equal `board.mjs show --json`'s
+#   no direct write  — a refused action must leave the event log byte-identical
+#
+# Everything else asserted below is a degrade path, because a dashboard is the easiest place in this
+# system to render an empty panel that looks like "all clear".
+DASH="$HERE/studio-dashboard.mjs"
+DFX="$TMP/dashproj"
+cp -R "$FIX/dashboard" "$DFX"
+( cd "$DFX" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git add -A && git commit -qm "chore: fixture project" ) >/dev/null 2>&1
+# One file no ticket names, and one file APP-001 names in its Touches: line. The panel has to tell
+# them apart, or it is a list of everything git can see and nobody reads it twice.
+printf 'notes QA wrote straight into the tree\n' > "$DFX/qa-notes.md"
+mkdir -p "$DFX/TipJar" && printf '// owned by APP-001\n' > "$DFX/TipJar/TipCalculation.swift"
+
+RESP="$TMP/resp.json"; export RESP
+# node's own fetch, not curl: the suite already requires node, and a test that silently skips
+# because a tool is absent reads as a pass.
+dfetch() {
+  node -e '
+const [, url, body] = process.argv;
+const opts = body ? { method: "POST", headers: { "content-type": "application/json" }, body } : {};
+fetch(url, opts)
+  .then(async (r) => { require("fs").writeFileSync(process.env.RESP, await r.text()); console.log(r.status); })
+  .catch((e) => { require("fs").writeFileSync(process.env.RESP, String(e)); console.log("000"); });
+' "$1" "${2:-}"
+}
+
+DPORT=$(( 41000 + $$ % 3000 ))
+node "$DASH" --project "$DFX" --port "$DPORT" >"$TMP/dash.log" 2>&1 &
+DASHPID=$!
+i=0
+while [ "$i" -lt 20 ]; do
+  [ "$(dfetch "http://127.0.0.1:$DPORT/state")" = "200" ] && break
+  sleep 1; i=$((i + 1))
+done
+if [ "$i" -ge 20 ]; then
+  bad "the dashboard serves /state" "no response on port $DPORT: $(head -3 "$TMP/dash.log")"
+else
+  ok "the dashboard serves /state"
+fi
+cp "$RESP" "$TMP/state.json"
+
+# The ORDER is the deliverable, not a preference. Dry run 4's lesson was that a blocked sprint needs
+# cause before progress; if a later change demotes "why is nothing moving" below the kanban, the
+# dashboard has quietly become the viewer this phase was rewritten to stop building.
+node -e '
+const p = require(process.argv[1]).panels.map((x) => x.id).join(",");
+process.exit(p === "stuck,static,artifacts,provenance,questions,board,metrics,timeline" ? 0 : 1);
+' "$TMP/state.json" && ok "/state carries the eight panels in priority order, cause first" \
+                    || bad "/state carries the eight panels in priority order, cause first" \
+                           "$(node -e 'console.log(require(process.argv[1]).panels.map(x=>x.id).join(","))' "$TMP/state.json")"
+
+# assert_panel <state.json> <panel-id> <needle> <label>
+assert_panel() {
+  node -e '
+const [, json, id, needle] = process.argv;
+const p = require(json).panels.find((x) => x.id === id);
+process.exit(p && JSON.stringify(p).includes(needle) ? 0 : 1);
+' "$1" "$2" "$3" && ok "$4" || bad "$4" "panel $2 does not mention: $3"
+}
+refute_panel() {
+  node -e '
+const [, json, id, needle] = process.argv;
+const p = require(json).panels.find((x) => x.id === id);
+process.exit(p && JSON.stringify(p).includes(needle) ? 1 : 0);
+' "$1" "$2" "$3" && ok "$4" || bad "$4" "panel $2 should not mention: $3"
+}
+
+assert_panel "$TMP/state.json" stuck "no iOS toolchain on host" \
+  "panel 1 gives the blocked ticket's recorded REASON, not just that it is blocked"
+assert_panel "$TMP/state.json" stuck "\"kind\":\"stranded\"" \
+  "...and the ticket stranded behind it, which the sprint loop cannot see"
+assert_panel "$TMP/state.json" stuck "has never run" \
+  "...and the gate that could not evaluate, naming what it could not evaluate"
+
+# DR4-002 in one line. code-reviewer never ran across a whole sprint and nothing surfaced it.
+assert_panel "$TMP/state.json" static "NO reviewer has ever acted" \
+  "panel 2 says N awaiting review and 0 reviewers ever acted"
+assert_panel "$TMP/state.json" static "no simulator runtime installed" \
+  "...and names what was never executed on a static-only ticket"
+
+# DR4-019. /project.yml sat between two charters and was nearly the run's fatal blocker.
+assert_panel "$TMP/state.json" artifacts "/project.yml" \
+  "panel 3 names an artifact the spec requires that no ticket owns"
+refute_panel "$TMP/state.json" artifacts "TipCalculation.swift" \
+  "...and stays quiet about the artifact a ticket does name"
+
+# DR4-007. The best artifact of the run had no branch, no ticket and no commit.
+assert_panel "$TMP/state.json" provenance "qa-notes.md" \
+  "panel 4 names a file in the tree that belongs to no ticket"
+refute_panel "$TMP/state.json" provenance "TipJar/TipCalculation.swift" \
+  "...and not the file APP-001's notes claim"
+
+# DR4-006, and the discrimination that makes it a rule rather than a complaint: APP-001's answer
+# says "updated in place" and names nothing; APP-002's names docs/22-impl-spec-ios.md. A check that
+# flagged both would be measuring whether anyone wrote a body.
+assert_panel "$TMP/state.json" questions "undelivered_answer" \
+  "panel 5 flags an answer that names no artifact — a closed ledger is not delivery"
+node -e '
+const p = require(process.argv[1]).panels.find((x) => x.id === "questions");
+const flagged = p.items.filter((i) => i.kind === "undelivered_answer").map((i) => i.id);
+process.exit(JSON.stringify(flagged) === JSON.stringify(["APP-001"]) ? 0 : 1);
+' "$TMP/state.json" && ok "...and NOT the answer that does name the artifact it was folded into" \
+                    || bad "...and NOT the answer that does name the artifact it was folded into"
+assert_panel "$TMP/state.json" questions "open_question" "...and the question nobody answered at all"
+
+# Every panel states the population it swept. DR4-025: a clearance claim that does not say what it
+# looked at hides its own blind spot, which is how the one real defect stays inside it.
+node -e '
+const s = require(process.argv[1]);
+process.exit(s.panels.every((p) => typeof p.swept === "string" && p.swept.length > 10) ? 0 : 1);
+' "$TMP/state.json" && ok "every panel states the population it swept" \
+                    || bad "every panel states the population it swept"
+
+# --- invariant 1: ONE PARSER --------------------------------------------------------------------
+# Not a grep for an import. The dashboard and the CLI must AGREE about every ticket on the same
+# project — which is the only thing "one parser" was ever a proxy for.
+node "$HERE/board.mjs" show --json --log "$DFX/docs/31-board-events.jsonl" --board "$DFX/docs/31-board.md" \
+  > "$TMP/cli-show.json" 2>/dev/null
+node -e '
+const dash = require(process.argv[1]).tickets;
+const cli = require(process.argv[2]).tickets;
+const a = dash.map((t) => t.id + "=" + t.status + (t.staticOnly ? "/static" : "")).sort();
+const b = Object.values(cli).map((t) => t.id.toUpperCase() + "=" + t.status + (t.verifiedStatic ? "/static" : "")).sort();
+if (JSON.stringify(a) !== JSON.stringify(b)) { console.error("dash " + a + "\ncli  " + b); process.exit(1); }
+process.exit(a.length ? 0 : 1);
+' "$TMP/state.json" "$TMP/cli-show.json" 2>"$TMP/parsers.txt" \
+  && ok "the dashboard and board.mjs agree on every ticket's status — one parser, proven by agreement" \
+  || bad "the dashboard and board.mjs agree on every ticket's status" "$(cat "$TMP/parsers.txt")"
+
+# --- the action surface -------------------------------------------------------------------------
+[ "$(dfetch "http://127.0.0.1:$DPORT/action" '{"action":"render","params":{}}')" = "400" ] \
+  && ok "POST /action refuses an action that is not on the whitelist" \
+  || bad "POST /action refuses an action that is not on the whitelist" "$(head -c 200 "$RESP")"
+assert_has "$RESP" "not on the action whitelist" "...and says so, naming the whitelist"
+
+# --- invariant 2: NO DIRECT WRITE ---------------------------------------------------------------
+# A refusal is a finding, not an error to swallow: the CLI's own words come back verbatim. And the
+# log must be untouched — if the dashboard could write, the refusal would be advisory.
+cp "$DFX/docs/31-board-events.jsonl" "$TMP/log-before.jsonl"
+dfetch "http://127.0.0.1:$DPORT/action" \
+  '{"action":"unblock","params":{"ticket":"APP-003","by":"tech-manager","reason":"it is not blocked, so this must be refused"}}' >/dev/null
+assert_has "$RESP" "is not legal on APP-003" "a CLI refusal comes back VERBATIM, not summarised"
+assert_has "$RESP" '"exitCode":1' "...with the exit code the CLI actually returned"
+cmp -s "$TMP/log-before.jsonl" "$DFX/docs/31-board-events.jsonl" \
+  && ok "...and a refused action left the event log byte-identical" \
+  || bad "...and a refused action left the event log byte-identical"
+
+# ...and the accepted case goes through the CLI too: one appended line, stamped provenance cli.
+BEFORE=$(wc -l < "$DFX/docs/31-board-events.jsonl" | tr -d ' ')
+dfetch "http://127.0.0.1:$DPORT/action" \
+  '{"action":"unblock","params":{"ticket":"APP-001","by":"tech-manager","reason":"Xcode installed per impl-spec 7.1"}}' >/dev/null
+AFTER=$(wc -l < "$DFX/docs/31-board-events.jsonl" | tr -d ' ')
+if [ "$AFTER" = "$((BEFORE + 1))" ] && tail -1 "$DFX/docs/31-board-events.jsonl" | grep -q '"provenance":"cli"'; then
+  ok "an accepted action appends exactly one CLI-stamped event and nothing else"
+else
+  bad "an accepted action appends exactly one CLI-stamped event and nothing else" "$BEFORE -> $AFTER"
+fi
+# The reason is not optional. An unblock with no recorded reason turns a block into a mystery, and
+# validation at the trust boundary is the one place this file is allowed to refuse before the CLI.
+[ "$(dfetch "http://127.0.0.1:$DPORT/action" '{"action":"unblock","params":{"ticket":"APP-002","by":"tech-manager","reason":""}}')" = "400" ] \
+  && ok "an unblock with no recorded reason is refused before the CLI is ever invoked" \
+  || bad "an unblock with no recorded reason is refused before the CLI is ever invoked"
+
+kill "$DASHPID" 2>/dev/null
+wait "$DASHPID" 2>/dev/null
+
+# --- degrade honestly ---------------------------------------------------------------------------
+# The failure mode this whole codebase exists to prevent, in the place it is easiest to commit: a
+# panel with nothing in it that reads as "all clear".
+EMPTYP="$TMP/dashempty"; mkdir -p "$EMPTYP"
+node "$DASH" --project "$EMPTYP" --export "$TMP/empty.html" >/dev/null 2>&1
+node -e '
+const fs = require("fs");
+const s = JSON.parse(fs.readFileSync(process.argv[1], "utf8").match(/const BOOT = (.*);\nconst CAN_ACT/s)[1]);
+const clear = s.panels.filter((p) => p.status === "clear").map((p) => p.id);
+const unexplained = s.panels.filter((p) => p.status === "unavailable" && !p.note).map((p) => p.id);
+if (clear.length) { console.error("claimed CLEAR with no inputs: " + clear); process.exit(1); }
+if (unexplained.length) { console.error("unavailable with no reason: " + unexplained); process.exit(1); }
+process.exit(s.panels.length === 8 ? 0 : 1);
+' "$TMP/empty.html" 2>"$TMP/degrade.txt" \
+  && ok "a project with no board, no log and no ledger renders NO panel as clear — every one says why" \
+  || bad "a project with no board, no log and no ledger renders NO panel as clear" "$(cat "$TMP/degrade.txt")"
+assert_has "$TMP/empty.html" "no docs/31-board-events.jsonl in this project" "...naming the event log it could not find"
+assert_has "$TMP/empty.html" "no docs/team/messages.md in this project" "...and the ledger it could not find"
+
+# A log that EXISTS but does not parse is the worse case: half a board reads as a whole one. Same
+# fail-closed rule board.mjs applies — the panels that read the log go unavailable, and say so.
+BADP="$TMP/dashbad"; cp -R "$DFX" "$BADP"
+printf 'this line is not JSON\n' >> "$BADP/docs/31-board-events.jsonl"
+node "$DASH" --project "$BADP" --export "$TMP/bad.html" >/dev/null 2>&1
+node -e '
+const fs = require("fs");
+const s = JSON.parse(fs.readFileSync(process.argv[1], "utf8").match(/const BOOT = (.*);\nconst CAN_ACT/s)[1]);
+const byId = Object.fromEntries(s.panels.map((p) => [p.id, p]));
+// No panel that reads the log may claim CLEAR without it, and every one of them has to say the
+// log is why. The board Markdown is still there, so panels with findings legitimately still have
+// them — what must not survive is a silent half-reading.
+const logPanels = ["stuck", "static", "provenance", "metrics", "timeline"];
+const claimedClear = logPanels.filter((id) => byId[id].status === "clear");
+const silent = logPanels.filter((id) => !/unreadable line/.test(byId[id].note || ""));
+if (claimedClear.length) { console.error("claimed CLEAR on half a reading: " + claimedClear); process.exit(1); }
+if (silent.length) { console.error("did not say the log was unreadable: " + silent); process.exit(1); }
+process.exit(byId.metrics.status === "unavailable" ? 0 : 1);
+' "$TMP/bad.html" 2>"$TMP/badlog.txt" && ok "an unreadable event log is CANNOT EVALUATE, never an empty board" \
+                  || bad "an unreadable event log is CANNOT EVALUATE, never an empty board" "$(cat "$TMP/badlog.txt")"
+
+# ...and the board Markdown alone still renders a kanban, because it is a legitimate second input,
+# not a fallback that pretends the log was there.
+NOLOG="$TMP/dashnolog"; cp -R "$DFX" "$NOLOG"; rm "$NOLOG/docs/31-board-events.jsonl"
+node "$DASH" --project "$NOLOG" --export "$TMP/nolog.html" >/dev/null 2>&1
+node -e '
+const fs = require("fs");
+const s = JSON.parse(fs.readFileSync(process.argv[1], "utf8").match(/const BOOT = (.*);\nconst CAN_ACT/s)[1]);
+const board = s.panels.find((p) => p.id === "board");
+process.exit(board.status === "info" && s.tickets.length === 3 && s.readFrom === "docs/31-board.md" ? 0 : 1);
+' "$TMP/nolog.html" && ok "with no event log the board Markdown still renders, and /state says which it read" \
+                    || bad "with no event log the board Markdown still renders, and /state says which it read"
+
+# Static export: one file, the state baked in, no actions offered — it has no server to talk to.
+node -e '
+const fs = require("fs");
+const s = JSON.parse(fs.readFileSync(process.argv[1], "utf8").match(/const BOOT = (.*);\nconst CAN_ACT/s)[1]);
+process.exit(s.actions.length === 0 ? 0 : 1);
+' "$TMP/empty.html" && ok "--export offers no actions — a file on disk cannot invoke a CLI" \
+                    || bad "--export offers no actions"
+grep -q "EventSource" "$TMP/empty.html" && grep -q "if (BOOT) render(BOOT)" "$TMP/empty.html" \
+  && ok "...and the exported page renders from the baked-in state instead of polling a server" \
+  || bad "...and the exported page renders from the baked-in state instead of polling a server"
+grep -qE "https?://(?!localhost|127)" "$TMP/empty.html" 2>/dev/null \
+  && bad "the page loads nothing from the network" \
+  || ok "the page loads nothing from the network (no CDN, no fonts, no images)"
+
+assert_exit 2 "a project directory that does not exist is exit 2" node "$DASH" --project "$TMP/nosuchproject" --export "$TMP/x.html"
+
+# The no-direct-write invariant, guarded statically as well: the ONLY writeFileSync in this file is
+# --export writing an HTML page. A second one is a second writer of state, whatever it is called.
+WRITES=$(grep -c "writeFileSync(\|appendFileSync(\|createWriteStream(" "$DASH")
+[ "$WRITES" = "1" ] \
+  && ok "studio-dashboard.mjs contains exactly one file write, and it is the HTML export" \
+  || bad "studio-dashboard.mjs contains exactly one file write" "found $WRITES"
+
+# /app-dashboard has to actually invoke the thing, both modes. Mentioning a flag is not wiring it —
+# --docs-only proved that the hard way, one section up.
+DCMD="$HERE/../commands/app-dashboard.md"
+[ -f "$DCMD" ] && ok "/app-dashboard exists" || bad "/app-dashboard exists"
+grep -q "studio-dashboard.mjs" "$DCMD" && ok "...and invokes scripts/studio-dashboard.mjs" \
+                                       || bad "...and invokes scripts/studio-dashboard.mjs"
+grep -q -- "--export docs/32-board-view.html" "$DCMD" \
+  && ok "...and documents the static export mode with the path it writes" \
+  || bad "...and documents the static export mode with the path it writes"
+
+echo
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
