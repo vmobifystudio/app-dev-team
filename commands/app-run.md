@@ -43,6 +43,23 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      backlog). If an idea/goal was given, treat it as the upgrade goal and add it as feature tickets
      alongside the `AUDIT-NNN` remediation tickets.
 
+1a. **Intent validation — before Gate 1, outside the chain that wrote the docs.** Spawn
+   `product-validator` (active per the roster). It compares `docs/00-founder-intent/` — the founder's
+   recorded words — against `docs/10-prd.md` and the vision, writes `docs/16-intent-validation.md`,
+   and returns `INTENT: ALIGNED | DRIFTED | CANNOT EVALUATE`. Then:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root .
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root .
+   ```
+
+   The first proves the founder record has not been edited to match the plan; the second walks the
+   goal → outcome → requirement → criterion → ticket → test → analytics chain and reports every
+   break, every conflict it resolved by precedence, and every conditional founder gate that fired.
+   **All of it goes into the Gate 1 brief and none of it is resolved by an agent.** `--yolo` skips
+   human gates, not this: it is the only check in the system that is not inside the loop it is
+   checking. `trace.mjs` exit 2 is `CANNOT EVALUATE`, never a pass.
+
 2. **GATE 1 — scope-lock / audit-approval (human).**
    - *Greenfield:* print a one-screen brief — vision, P0 feature list, architecture headline,
      rough effort, top risk, **plus the roster headline: tier (and whether it was flagged or
@@ -77,9 +94,21 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      has no other economic brake: `round-journal.mjs check` runs at the top of every round, exit 1
      ends the run with the ceiling named and every unfinished ticket listed. Do not raise a ceiling
      to keep going — that is a decision to hand back to the user, and it is Gate-shaped.
+   - **The conditional founder gates run every round**, because a pricing change or a waiver
+     arrives mid-sprint, not at Gate 1:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root . --only gates
+     ```
+
+     Exit 1 means a trigger fired — pricing · sensitive data · destructive migration · account
+     deletion · legal disclosure · visual direction · paid infrastructure · **any waiver of a failed
+     or unavailable gate** — and no founder decision covers it. Stop the loop and ask. The exit is
+     one appended line in `docs/00-founder-intent/decisions.md`; the exit is never an agent deciding
+     the trigger was fine, and `--yolo` does not clear one.
    - **Escalate to the user only** for: a blocker the team can't resolve, the 2-cycle review cap
-     being hit, the budget ceiling, or a scope/architecture conflict. Surface verbatim with a
-     proposed answer.
+     being hit, the budget ceiling, a fired founder gate, or a scope/architecture conflict. Surface
+     verbatim with a proposed answer.
 
 5. **Ship-readiness.** When the board is drained and there are zero open S1/S2 bugs, spawn in
    parallel **the `active` ones among** `aso-specialist` (store assets + readiness),

@@ -1,6 +1,6 @@
 ---
 name: role-activation
-description: Use at project start — /app-init, /app-onboard, or /app-run's first step — to decide which of the 18 roles this product actually needs, and to write the durable roster the rest of the flow reads. Triggers whenever a command is about to fan out to a team, or a gate is about to run for a role that may not be on this project.
+description: Use at project start — /app-init, /app-onboard, or /app-run's first step — to decide which of the 19 roles this product actually needs, and to write the durable roster the rest of the flow reads. Triggers whenever a command is about to fan out to a team, or a gate is about to run for a role that may not be on this project.
 ---
 
 # Role activation
@@ -62,6 +62,7 @@ question — do not guess.** A wrong product type turns off the wrong specialist
 | `aso-specialist` | on | on | on | — | — | — | — | `—` no app-store listing exists to prepare |
 | `data-analyst` | on | on | on | ? | — | — | — | `?` the product emits telemetry or the vision states KPI targets · `—` a library must not phone home; its consumers own analytics |
 | `devops-engineer` | on | on | on | on | — | — | on | every staffed product has a branch model, CI, and a release channel |
+| `product-validator` | on | on | on | on | — | — | on | flagship: always on. utility: `?` — on when `docs/00-founder-intent/` holds a record to validate against. **Outside the cpo/cto/tech-manager chain by construction; it reports to the founder gate** |
 | `qa-engineer` | on | on | on | on | — | — | on | never tier-gated |
 | `code-reviewer` | on | on | on | on | — | — | on | never tier-gated |
 | `security-reviewer` | on | on | on | on | — | — | on | **never off on a staffed type, never tier-gated.** Anything handling user data or credentials gets a review; cheapness is not a reason |
@@ -105,7 +106,7 @@ a real web product is on the table — not to make this table look complete.
 
 ### Tier deltas — `utility` only
 
-Flagship uses the matrix as-is. Utility applies exactly these four changes and no others:
+Flagship uses the matrix as-is. Utility applies exactly these five changes and no others:
 
 1. `cpo` → `off(merged-into: ceo — utility founder pass)`. `ceo` runs one pass covering both
    charters and writes `00-vision.md`, `10-prd.md`, `11-backlog.md`.
@@ -115,6 +116,12 @@ Flagship uses the matrix as-is. Utility applies exactly these four changes and n
    call for the pod all sprint, `cto` is not.
 3. `ux-designer` → `conditional(more than one non-trivial screen, or any custom component)`.
 4. `data-analyst` → `conditional(the vision states a KPI target)`.
+5. `product-validator` → `conditional(docs/00-founder-intent/ holds a record)`. The trigger is the
+   record, not the tier: a utility app built from a real brief still drifts from it, and a utility
+   app built from a one-line idea has nothing to validate against — which the role would report as
+   `INTENT: CANNOT EVALUATE` anyway. **The one thing that never flips is the independence:** on
+   utility the `ceo` runs the founder pass and writes the PRD, so `product-validator` is the only
+   role left that did not write what it checks. Merging it into anything defeats it.
 
 **Never a tier delta:** `security-reviewer`, `verification-engineer`, `code-reviewer`,
 `qa-engineer`. Utility means less ceremony, not less safety.
@@ -139,7 +146,7 @@ Product type: <one of the seven>  (source: docs/01-intake.md §Product type | de
 | aso-specialist | off | product type backend-service has no app-store listing |
 | backend-developer | conditional | trigger: docs/20-architecture.md names a server component |
 | monetization-engineer | conditional | trigger: product sells IAP/subscriptions or serves ads |
-| ...one row per role in the matrix, all 18, none omitted |
+| ...one row per role in the matrix, all 19, none omitted |
 ```
 
 Three states only: `active`, `conditional`, `off`. **Every role gets a row.** A role missing from

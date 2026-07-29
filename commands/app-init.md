@@ -12,12 +12,24 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 
 ## Steps
 
+0. **Record the founder's words before interpreting them.** Create `docs/00-founder-intent/` (copy
+   `${CLAUDE_PLUGIN_ROOT}/docs/00-founder-intent/README.md` into it), write the user's brief and any
+   material they supplied there **verbatim and dated**, then record it:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root . --write
+   ```
+
+   This happens first because everything below is an interpretation of it, and an interpretation with
+   nothing to be checked against is what makes this team's loop closed. The directory is append-only:
+   never edit a recorded file, add a dated line to `decisions.md` instead.
+
 1. **Run the `requirements-intake` skill** to get a clean `docs/01-intake.md`. If the user's prompt is already detailed, ask only the questions still unanswered.
 
 1a. **Activate the roster.** Invoke the `role-activation` skill: fix the **tier** (`--utility` /
    `--flagship`, else derived from the intake) and the **product type** (from the intake's
    `## Product type` answer), then write `docs/02-team-roster.md` — copy
-   `${CLAUDE_PLUGIN_ROOT}/docs/02-team-roster.md` and fill it in from the matrix; all 18 roles, each
+   `${CLAUDE_PLUGIN_ROOT}/docs/02-team-roster.md` and fill it in from the matrix; all 19 roles, each
    `active` / `conditional` / `off` with its trigger or reason.
 
    **If the product type is unstaffed (`web-app`, `cli`), refuse and stop here** — print the skill's
@@ -71,6 +83,21 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 6. **Print a summary**: list every doc produced, with one-line description each, and the suggested
    next command (`/app-run` for the mostly-autonomous flow, or `/app-plan` → `/app-build` for manual control).
 
+6a. **Validate intent against the record — before the gate, not after it.** Spawn
+   `product-validator` (active per the roster). It reads `docs/00-founder-intent/` and the derived
+   documents, writes `docs/16-intent-validation.md`, and returns one line:
+   `INTENT: ALIGNED | DRIFTED | CANNOT EVALUATE`. Then run the graph:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root .
+   ```
+
+   **Both results go into the Gate 1 brief verbatim.** `DRIFTED` and `CANNOT EVALUATE` do not stop
+   the command — they stop the *founder*, which is the point: the drift is a scope question and Gate
+   1 is where scope is decided. Never resolve one by re-reading the PRD and agreeing with it.
+   `product-validator` reports here and to nobody in the cpo/cto/tech-manager chain, and it never
+   writes `docs/10-prd.md`.
+
 7. **GATE 1 — scope-lock (human).** Print a one-screen brief — vision, P0 feature list, architecture
    headline, rough effort, top risk — and ask *"Approve scope and proceed to planning?"* Wait for the
    answer and record it in `docs/00-vision.md` under a `## Scope lock` heading, with the date and
@@ -92,15 +119,17 @@ After this command, the workspace contains:
 CLAUDE.md                    (project conventions, seeded from the House KB)
 .gitignore
 docs/
+  00-founder-intent/          (always — the brief verbatim, plus MANIFEST.sha256)
   00-vision.md
   01-intake.md
-  02-team-roster.md          (always — all 18 roles, active/conditional/off with reasons)
+  02-team-roster.md          (always — all 19 roles, active/conditional/off with reasons)
   10-prd.md
   11-backlog.md
   12-flows.md
   13-design-tokens.md
   14-components.md
   15-aso.md                  (if store work in scope)
+  16-intent-validation.md    (product-validator's verdict, read at GATE 1)
   20-architecture.md
   21-engineering-principles.md
   22-impl-spec-ios.md        (product type ios-app / mobile-app)

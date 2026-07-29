@@ -32,7 +32,7 @@ Product type: mobile-app  (source: docs/01-intake.md §Product type)
 
 ## Rules this file is held to
 
-- **All 18 roles get a row.** A role missing from this file is not "off", it is unaccounted for.
+- **All 19 roles get a row.** A role missing from this file is not "off", it is unaccounted for.
 - Three states only: `active`, `conditional`, `off`. A merge is an `off` with
   `merged-into: <role>` as its reason.
 - A `conditional` role flips to `active` the round its trigger fires — amend the row, keep the

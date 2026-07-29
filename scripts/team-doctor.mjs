@@ -318,6 +318,9 @@ for (const agent of agents) {
 // The key is the real filename, extension included, because that is the string a reader will paste
 // into a terminal.
 const DOC_WRITERS = new Map([
+  // The founder record. A directory, not a file, and the only artifact in the pipeline whose
+  // correct state is UNCHANGED — scripts/founder-intent.mjs holds it to that.
+  ['docs/00-founder-intent/',           ['skills/requirements-intake/SKILL.md', 'commands/app-init.md']],
   ['docs/00-vision.md',                 ['agents/ceo.md']],
   ['docs/01-intake.md',                 ['skills/requirements-intake/SKILL.md']],
   ['docs/02-team-roster.md',            ['skills/role-activation/SKILL.md']],
@@ -327,6 +330,7 @@ const DOC_WRITERS = new Map([
   ['docs/13-design-tokens.md',          ['agents/ux-designer.md']],
   ['docs/14-components.md',             ['agents/ux-designer.md']],
   ['docs/15-aso.md',                    ['agents/aso-specialist.md']],
+  ['docs/16-intent-validation.md',      ['agents/product-validator.md']],
   ['docs/20-architecture.md',           ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
   ['docs/21-engineering-principles.md', ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
   // One artifact per platform, so every `docs/22-impl-spec-<anything>` folds into this row.
@@ -402,6 +406,25 @@ for (const [doc, refs] of docMentions) {
     add(findings, 'doc_unread', writers[0],
       `${doc} is written by ${writers.join(', ')} and read by no step at all. This is RV-035: a handoff into a void — the producer reports success and nothing downstream ever opens the file.`,
       'Name it in the inputs of the role that needs it, or mark it a terminal deliverable in TERMINAL_DOCS.');
+  }
+}
+
+// --- 5b. the validator cannot write what it validates ------------------------------------------------
+//
+// `product-validator` exists for exactly one reason: this team writes the PRD, derives criteria from
+// its own PRD, and tests against its own criteria, so it can prove conformity to its interpretation
+// and nothing else. A validator that also authors the PRD does not narrow that loop, it lengthens it
+// by one step — and it does so invisibly, because every document still reads as reviewed.
+//
+// Independence is a property of the doc graph, so it is enforced in the doc graph. Adding
+// `agents/product-validator.md` to either row below is the whole failure, and it is one plausible
+// edit away at any time ("the validator noticed the gap, so it filled it").
+const VALIDATOR = 'agents/product-validator.md';
+for (const doc of ['docs/10-prd.md', 'docs/11-backlog.md']) {
+  if ((DOC_WRITERS.get(doc) || []).includes(VALIDATOR)) {
+    add(findings, 'validator_writes_prd', 'scripts/team-doctor.mjs',
+      `${VALIDATOR} is declared a writer of ${doc}. It approves that document at scope-lock, so writing it makes the check self-confirming: the only role positioned outside the cpo/cto/tech-manager chain is now inside it, and the closed loop this role exists to break is closed again with one more step in it.`,
+      `Remove ${VALIDATOR} from the ${doc} row. A validator that finds a gap says so and hands it back to cpo; it never fills it.`);
   }
 }
 

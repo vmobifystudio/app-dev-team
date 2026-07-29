@@ -58,6 +58,13 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
       still says `CANNOT EVALUATE` after you wrote a waiver, the waiver did not count — do not
       proceed on the strength of having written it.
 
+      **A waiver is a founder decision, so it is recorded as one.** After the user approves it here,
+      append the matching line to `docs/00-founder-intent/decisions.md`:
+      `<date> FOUNDER DECISION: waiver — <artifact>, <reason>. Approved by <who>.`
+      `scripts/trace.mjs --only gates` detects every `WAIVED:` line and stays red until that record
+      exists — which is the point: the release record says a gate was skipped, and only the founder
+      record says a human chose it.
+
    Asking this is not a third human gate: `/app-ship` **is** Gate 2, and produce-or-waive is part of
    the ship conversation the user is already in. Under `--yolo` from `/app-run`, do not auto-waive —
    `--yolo` skips gates the user would have approved, and nobody has approved shipping without a QA
