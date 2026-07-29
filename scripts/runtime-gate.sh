@@ -44,13 +44,18 @@ need_value() {
   [ "$1" -ge 2 ] || { echo "runtime-gate: $2 needs a value" >&2; exit 2; }
 }
 
+# Which Xcode scheme ships. Empty means "infer", which only succeeds when the project has exactly
+# one shared scheme; anything ambiguous is CANNOT EVALUATE rather than a guess.
+SCHEME_OPT=${SCHEME_OPT:-}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --platform)     need_value $# "--platform";     PLATFORM=${2:-}; shift 2 ;;
     --project-root) need_value $# "--project-root"; ROOT=${2:-}; shift 2 ;;
+    --scheme)       need_value $# "--scheme";       SCHEME_OPT=${2:-}; shift 2 ;;
     -h|--help)      sed -n '1,30p' "$0"; exit 0 ;;
     *) echo "runtime-gate: unknown argument '$1'" >&2
-       echo "usage: runtime-gate.sh [--platform ios|android|auto] [--project-root <path>]" >&2
+       echo "usage: runtime-gate.sh [--platform ios|android|auto] [--project-root <path>] [--scheme <name>]" >&2
        exit 2 ;;
   esac
 done
@@ -180,11 +185,37 @@ ios_gate() {
   if [ -n "$XCPROJ" ]; then
     case "$XCPROJ" in *.xcworkspace) CONTAINER="-workspace" ;; *) CONTAINER="-project" ;; esac
 
-    SCHEME=$(xcodebuild "$CONTAINER" "$XCPROJ" -list 2>/dev/null \
-             | awk '/Schemes:/{f=1;next} f && NF {print; exit}' | sed 's/^ *//;s/ *$//')
-    if [ -z "$SCHEME" ]; then
+    # Scheme selection must never be a guess. Taking the first scheme `xcodebuild -list` prints is
+    # alphabetical, not meaningful: a project with Demo/Extension/Framework/MyApp schemes silently
+    # builds "Demo", and if Demo happens to launch, the gate returns PASS with a screenshot of an
+    # app that is not the one being released. That is a false PASS on the wrong artifact — the
+    # worst outcome this gate can produce, worse than any FAIL.
+    SCHEMES=$(xcodebuild "$CONTAINER" "$XCPROJ" -list 2>/dev/null \
+              | awk '/Schemes:/{f=1;next} f && NF {gsub(/^ +| +$/,""); print} f && !NF {exit}')
+    SCHEME_COUNT=$(printf '%s\n' "$SCHEMES" | grep -c . || true)
+
+    if [ "${SCHEME_COUNT:-0}" -eq 0 ]; then
       unknown "ios    " "no shared scheme in $(basename "$XCPROJ") — xcodebuild cannot pick a target.
                     Mark a scheme Shared in Xcode (Product > Scheme > Manage Schemes) and commit it."
+      return
+    fi
+
+    if [ -n "$SCHEME_OPT" ]; then
+      # Explicitly requested: honour it, but only if it exists.
+      if ! printf '%s\n' "$SCHEMES" | grep -qx -- "$SCHEME_OPT"; then
+        unknown "ios    " "--scheme '$SCHEME_OPT' is not a shared scheme of $(basename "$XCPROJ").
+                    Available: $(printf '%s' "$SCHEMES" | tr '\n' ' ')"
+        return
+      fi
+      SCHEME="$SCHEME_OPT"
+    elif [ "$SCHEME_COUNT" -eq 1 ]; then
+      SCHEME=$SCHEMES
+    else
+      unknown "ios    " "$(basename "$XCPROJ") has $SCHEME_COUNT shared schemes and none was named, so
+                    which one ships is ambiguous. Picking the first would risk PASSing on a demo
+                    target or an extension instead of the app. Re-run with --scheme <name>, or
+                    record the release scheme in docs/20-architecture.md.
+                    Available: $(printf '%s' "$SCHEMES" | tr '\n' ' ')"
       return
     fi
 
@@ -238,7 +269,11 @@ ios_gate() {
   fi
 
   # Reuse a booted simulator if one is up; otherwise boot the first available iPhone.
-  UDID=$(xcrun simctl list devices booted 2>/dev/null | grep -oE '[0-9A-F-]{36}' | head -n 1)
+  # Filter the reuse path to iPhones for the same reason the cold-boot path below does: a booted
+  # Apple Watch or Apple TV simulator is a perfectly normal thing to have running, and installing an
+  # iOS app onto it fails — which this gate would report as "the app does not install", a FAIL
+  # blamed on the app for an environment fact. Match the platform before trusting the device.
+  UDID=$(xcrun simctl list devices booted 2>/dev/null | grep 'iPhone' | grep -oE '[0-9A-F-]{36}' | head -n 1)
   BOOTED_BY_US=0
   if [ -z "$UDID" ]; then
     UDID=$(xcrun simctl list devices available 2>/dev/null | grep 'iPhone' | grep -oE '[0-9A-F-]{36}' | head -n 1)

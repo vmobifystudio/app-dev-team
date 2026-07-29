@@ -20,9 +20,11 @@ Produce `docs/20-architecture.md` and `docs/21-engineering-principles.md` from `
    - Networking: URLSession + async/await, or a named lib
    - Persistence: SwiftData (content apps) or GRDB+SQLite/FTS5 (camera/media) — pick by PRD complexity
    - DI: lightweight — protocol + initializer injection
-   - Testing: **Swift Testing** (`@Test`/`@Suite`), never XCTest; snapshot lib named; UI test
-     framework named. State the coverage floor for the pure-Swift domain engine package
-     (`knowledge/stack-defaults.md`)
+   - Testing: **Swift Testing** (`@Test`/`@Suite`) for unit and domain tests, not XCTest. **UI
+     automation stays XCUITest** — it is XCTest-based, has no Swift Testing equivalent, and
+     `runtime-gate` runs it, so a blanket "never XCTest" would ban the suite the release gate
+     expects. Name the snapshot lib. State the coverage floor for the pure-Swift domain engine
+     package (`knowledge/stack-defaults.md`)
 3. **Android stack** —
    - Kotlin version
    - minSdk / targetSdk (set based on PRD users)

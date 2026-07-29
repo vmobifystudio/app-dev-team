@@ -9,14 +9,14 @@ with a written reason, but these are the starting point — they reflect what's 
 |---|---|---|
 | Language | Swift 6.0, strict concurrency `complete` | Every `@unchecked Sendable` needs an inline justification |
 | UI | SwiftUI only | UIKit only via a wrapper for a specific gap (e.g. haptics) |
-| Min target | Flagship: **latest major minus one**. Utility: the oldest major the app's APIs and ad SDKs still support | Deliberately relative, never pinned here. Resolve both to a concrete number at project start and record it (with the date and the then-current release you resolved against) in `docs/20-architecture.md` |
+| Min target | Flagship: **the immediately preceding released major**. Utility: the oldest major the app's APIs and ad SDKs still support | Relative, never pinned here. **Not arithmetic** — Apple went from iOS 18 straight to iOS 26, so "latest minus one" yields a version that never shipped. Read the actual list of released majors, take the one before current, and record it (with the date and the then-current release) in `docs/20-architecture.md` |
 | Project gen | **XcodeGen** (`project.yml` is source of truth) | `.xcodeproj` is git-ignored, never hand-edited |
 | Architecture | MVVM + Service + Repository | `View → ViewModel → Service → Repository → Persistence` |
 | State | `@Observable` + `@MainActor` on ViewModels only | **No Combine / @Published / ObservableObject** |
 | Persistence | SwiftData (content apps) or GRDB+SQLite/FTS5 (camera/media) | Local-first; migrations from day 1; never destructive |
 | DI | Hand-rolled composition root (`AppContainer`/`AppDIContainer`) | `make<Name>ViewModel()` factory per VM; protocol+impl+mock parity |
 | Networking | URLSession per-service client behind a protocol | Firebase for backend; no heavy HTTP framework |
-| Testing | **Swift Testing** (`@Test`/`@Suite`), not XCTest | Coverage floor is **90%+ line coverage of the pure-Swift domain engine package only** — not the app target, not UI. See `ios-conventions.md` §Testing |
+| Testing | **Swift Testing** (`@Test`/`@Suite`) for unit and domain tests, not XCTest. **UI automation stays XCUITest** — it is XCTest-based and has no Swift Testing equivalent, and `runtime-gate` runs it | Coverage floor is **90%+ line coverage of the pure-Swift domain engine package only** — not the app target, not UI. See `ios-conventions.md` §Testing |
 | Dependencies | Minimal — Apple-native + Firebase + SwiftLint | No RevenueCat; add a dep only with a written reason |
 | Monetization | StoreKit 2 native | See `monetization.md` |
 
