@@ -64,7 +64,8 @@ The real test is **collision**, not location:
 | all source and test code | **worktree only** | two agents on the same file is the corruption case |
 | `docs/daily/<today>-<role>-<ticket>.md` | **worktree**, committed on the branch | reaches `main` at merge; a fragment for unmerged work should not appear in the standup |
 | `docs/53-reviews/APP-NNN-cycle-N.md` | shared tree — **safe** | the path is unique per (ticket, cycle); no other agent can target it, and it must outlive a rejected branch |
-| `docs/31-board.md`, `docs/team/messages.md` | shared tree — **append-only** | never edit an existing line; appends from different agents merge cleanly |
+| `docs/31-board.md` | shared tree — **generated, CLI-only** | do not append to it. `board.mjs` regenerates the whole file from `docs/31-board-events.jsonl` on every event, so a hand-appended row is silently overwritten by the next writer — mutate it with `board.mjs move`, never with an editor |
+| `docs/31-board-events.jsonl`, `docs/team/messages.md` | shared tree — **append-only, via their CLI** | `board.mjs` / `team-message.sh` validate then append; never edit an existing line, and appends from different agents merge cleanly |
 
 A shared write is safe when **no other agent can write that same path**. Uniquely-named files and
 append-only logs qualify. Anything else — source, tests, a doc two roles both edit — is worktree-only.

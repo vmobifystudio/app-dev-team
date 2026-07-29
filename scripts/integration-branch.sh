@@ -10,7 +10,8 @@
 # Resolution order:
 #   1. docs/23-git-strategy.md      — an "Integration branch: <name>" line (devops-engineer writes this)
 #   2. docs/20-architecture.md      — the same line, if §7 carries it instead
-#   3. main
+#   3. main — ONLY when there is no docs/23-git-strategy.md at all. A git-strategy doc that exists
+#      and declares nothing is exit 2, not `main`: see the block that raises it.
 #
 # A branch named by the docs but absent from the repository is exit 2, NOT a fallback. This file
 # used to print a warning to stderr and return `main` with exit 0 — failing open on the single
@@ -45,9 +46,20 @@ fi
 
 # Pull the first "Integration branch: <name>" declaration out of a doc, tolerating backticks,
 # bold markers and table cells around the name.
+#
+# The separator set is wider than `[:|]` because prose is wider than `[:|]`. These are all real
+# phrasings a devops-engineer writes into docs/23-git-strategy.md, and every one of them fell
+# through to the silent `main` fallback:
+#
+#   Integration branch: develop            Integration branch = develop
+#   - Integration branch — `develop`       The integration branch is `develop`.
+#   | Integration branch | develop |
+#
+# ERE (`sed -E`), not BRE: `\|` alternation in a BRE is a GNU extension and this repo runs on BSD
+# sed too, where it would have silently matched nothing — a resolver that always falls back.
 read_declared() {
   [ -f "$1" ] || return 1
-  sed -n 's/.*[Ii]ntegration branch[^A-Za-z0-9]*[:|][^A-Za-z0-9_/-]*\([A-Za-z0-9._/-][A-Za-z0-9._/-]*\).*/\1/p' "$1" \
+  sed -nE 's/.*[Ii]ntegration branch[[:space:]]*(:|=|—|–|-|\||is)[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\2/p' "$1" \
     | head -n 1
 }
 
@@ -63,7 +75,30 @@ for doc in "$ROOT/docs/23-git-strategy.md" "$ROOT/docs/20-architecture.md"; do
 done
 
 if [ -z "$DECLARED" ]; then
-  echo "integration-branch: no 'Integration branch:' declaration found; using $FALLBACK" >&2
+  # A SILENT declaration is not the same absence as a missing document, and the two get opposite
+  # answers. `grep -rn "Integration branch" agents/ skills/ commands/` returned NOTHING: no role
+  # was ever told to write the line this script reads, so on every real project the resolver found
+  # no declaration and returned `main` at exit 0 — the exact fail-open its own header says it exists
+  # to remove. The script was correct and its input was never produced, so fixing the script changed
+  # nothing. agents/devops-engineer.md now REQUIRES the line; this makes its absence visible.
+  #
+  #   docs/23-git-strategy.md exists but declares nothing -> exit 2. The document that owns the
+  #     answer is silent, and "the doc did not say" must never be spelled the same as "the doc said
+  #     main". A wrong merge base is not recoverable by a later fix.
+  #   no git-strategy doc at all -> `main`, exit 0. A project with no branch model has no develop
+  #     model to get wrong, and brownfield /app-audit runs must not be bricked by a doc they never
+  #     had.
+  if [ -f "$ROOT/docs/23-git-strategy.md" ]; then
+    MSG="integration-branch: CANNOT RESOLVE — $ROOT/docs/23-git-strategy.md exists but declares no
+integration branch. Add the line devops-engineer owns, exactly:
+    Integration branch: <name>
+Refusing to assume $FALLBACK: on a develop-model project that silently merges features into the
+wrong branch, which is not recoverable by a later fix."
+    echo "$MSG"
+    echo "$MSG" >&2
+    exit 2
+  fi
+  echo "integration-branch: no docs/23-git-strategy.md in $ROOT; using $FALLBACK" >&2
   echo "$FALLBACK"
   exit 0
 fi

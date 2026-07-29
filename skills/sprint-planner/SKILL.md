@@ -64,9 +64,13 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    | `detail` | free text; an object on `created` (the ticket fields) and on `assigned` (`{to}`) |
    | `provenance` | `cli` for anything the tool appended, `inferred` for anything `migrate` reconstructed |
 
-   **Events:** `created · claimed · assigned · done_reported · verified · rejected ·
-   review_requested · started · approved · changes · merged · qa_passed · qa_failed · blocked ·
-   unblocked · closed`
+   **Events:** `created · claimed · assigned · done_reported · verified · verified_static ·
+   rejected · review_requested · started · approved · changes · merged · qa_passed · qa_failed ·
+   blocked · unblocked · closed`
+
+   `verified_static` is the lane for work that is inspectable but not runnable (verify-done exit 2).
+   Omitting it from this list is how DR4-002 stayed the documented rule: it unlocks review on a
+   ticket whose toolchain is broken, refuses `closed`, and holds the release gate.
 
    The state machine, enforced **before** the append — an illegal transition exits 1 and names what
    is legal from here, so these states are unrepresentable rather than detectable afterwards:

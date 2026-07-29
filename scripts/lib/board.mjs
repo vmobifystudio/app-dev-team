@@ -76,12 +76,20 @@ const EMPTY_CELL = new Set(['', '-', '—', '–', 'n/a', 'none', 'tbd']);
 // parsing
 // --------------------------------------------------------------------------------------------
 
+/**
+ * Split a Markdown table row into cells, honouring the `\|` escape the renderer writes.
+ *
+ * `.split('|')` did not, and the writer and the reader disagreeing about one character is a silent
+ * column shift: a ticket titled `Export CSV | TSV` pushed Owner into the Title cell, Status into
+ * Owner, and `—` into Status — so the ticket had no status and dropped out of every status-keyed
+ * consumer (the ship gate's in-flight check included) while the board still rendered a row.
+ */
 function splitRow(line) {
   return line
     .replace(/^\s*\|/, '')
-    .replace(/\|\s*$/, '')
-    .split('|')
-    .map((cell) => cell.trim());
+    .replace(/(?<!\\)\|\s*$/, '')
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.replace(/\\\|/g, '|').trim());
 }
 
 const isSeparatorRow = (line) => /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(line) && line.includes('-');
@@ -211,6 +219,12 @@ function parseLedger(text) {
     entries.push({
       _line: i + 1,
       timestamp: timestamp.trim(),
+      // `migrate` reconstructs events it could not date and the renderer writes `inferred` in the
+      // timestamp cell — which is the ONLY trace of provenance a ledger row carries. Nothing read
+      // it, so a reconstructed approval satisfied the approval requirement exactly like a real one,
+      // while board.mjs's own migration report calls it "not evidence". The migration was honest
+      // and the renderer laundered it. Surfaced here so every consumer can tell the two apart.
+      inferred: timestamp.trim().toLowerCase() === 'inferred',
       ticketId: ticketId.trim(),
       action,
       known,
@@ -228,6 +242,16 @@ function parseLedger(text) {
 // --------------------------------------------------------------------------------------------
 
 const isEmpty = (value) => EMPTY_CELL.has((value ?? '').trim().toLowerCase());
+
+/**
+ * Normalise the PREFIX of a ticket ID and nothing else — the one spelling rule, in the one place.
+ *
+ * scripts/board.mjs stopped upcasing whole IDs (the bug-intake convention is `BUG-001-fix`, and a
+ * grep for the documented spelling found nothing on a board that had the ticket). board-doctor and
+ * the dashboard kept their own `id.toUpperCase()` and put `BUG-001-FIX` back — and the doctor is
+ * precisely the tool a human copies an ID out of and pastes into the CLI.
+ */
+const normalizeId = (id) => String(id ?? '').replace(/^[A-Za-z]+/, (prefix) => prefix.toUpperCase());
 
 /**
  * Ticket IDs are `<PREFIX>-<NUMBER>` with an optional trailing word — the bug-intake convention in
@@ -282,6 +306,7 @@ export {
   parseBoard,
   parseLedger,
   isEmpty,
+  normalizeId,
   parseDependencies,
   findBlockingAncestor,
   detectCycle,

@@ -143,8 +143,11 @@ CANNOT_EVAL_WHY=""
 #    Checked BEFORE the ran-evidence patterns, because xcodebuild prints "** TEST FAILED **" when
 #    it cannot find an SDK, and that string alone would read as a genuine test failure.
 # 3. Only then, positive evidence that a suite ran and reported: the run happened, so exit 1 is a
-#    real verdict about real code.
+#    real verdict about real code — and exit 0 is a real green.
 # Anything else falls through to cannot-run. See the asymmetry note in the header.
+#
+# Returns 0 = "a suite demonstrably ran". Called on BOTH exit paths; the caller turns that into
+# green or failing using $TEST_RC. It must never be consulted on one branch only.
 classify_test_outcome() {
   if [ "$TEST_RC" -eq 127 ] || [ "$TEST_RC" -eq 126 ]; then
     CANNOT_EVAL_WHY="the test command exited $TEST_RC — the shell could not execute it at all"
@@ -222,15 +225,19 @@ if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
     # guessed at what; an instruction that cannot be followed is the same defect class as a gate
     # that cannot fail.
     TEST_LOG=$(mktemp)
+    # The SAME question on both branches. `classify_test_outcome` was consulted only when the
+    # command FAILED; on exit 0 this wrote `green` unconditionally, so `verify-done.sh feat/X main
+    # "true"` — and `"echo 'skipping tests'"` — printed `VERIFIED ... tests=green`. Rigorous when
+    # the command fails and credulous when it succeeds is backwards for a gate, and it is the purest
+    # green-while-nothing-happened case in the repo: a zero exit is evidence that nothing errored,
+    # never evidence that a suite ran. Ran-evidence decides both directions; the exit code only
+    # decides which verdict a suite that DID run gets.
     if ( cd "$RUN_DIR" && sh -c "$TEST_CMD" ) >"$TEST_LOG" 2>&1; then
-      TESTS_STATUS="green"
+      TEST_RC=0
+      if classify_test_outcome; then TESTS_STATUS="green"; else TESTS_STATUS="cannot-run"; fi
     else
       TEST_RC=$?
-      if classify_test_outcome; then
-        TESTS_STATUS="failing"
-      else
-        TESTS_STATUS="cannot-run"
-      fi
+      if classify_test_outcome; then TESTS_STATUS="failing"; else TESTS_STATUS="cannot-run"; fi
     fi
   fi
 

@@ -38,8 +38,12 @@ Rules:
 
 - **Append, never edit.** Correct a wrong line by appending a later one.
 - **`Summary` is one line and must stand alone.** It is what the orchestrator and the user read.
-- **Every message names a ticket** (or `—` for project-wide). A message with no ticket cannot be
-  routed or closed.
+- **Every message names a ticket** — or the ASCII hyphen `-`, and only `-`, for project-wide
+  chatter: `--ticket -`. This said `—` (an em dash), which `team-message.sh` does not recognise as
+  the sentinel: it treats it as an ordinary ticket ID, so every project-wide broadcast joined one
+  pseudo-thread and the third one was **refused by the anti-ping-pong pair guard**. The guard is
+  skipped for `-` precisely because broadcast chatter carries no thread. A message with no ticket at
+  all cannot be routed or closed.
 - A `question` is not resolved until an `answer` **or** a `decision` with the same ticket exists.
   `board-doctor` reads this ledger (as a sibling of the board) and reports `question_unanswered` —
   and says explicitly when the ticket has already reached `qa`/`done`, i.e. shipped on an

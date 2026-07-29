@@ -62,6 +62,7 @@ import {
   findBlockingAncestor,
   pairQuestions,
   isEmpty,
+  normalizeId,
 } from './lib/board.mjs';
 import { parseEventLog, reduce, deriveMetrics, key } from './lib/events.mjs';
 
@@ -146,7 +147,7 @@ function buildRows(boardSource, log) {
       ledger = parsed.ledger;
       capabilities = parsed.capabilities;
       rows = parsed.board.rows.map((row) => ({
-        id: row.id.toUpperCase(),
+        id: normalizeId(row.id),
         title: row.title || '',
         feature: row.feature || '',
         owner: isEmpty(row.owner) ? '' : row.owner,
@@ -164,7 +165,7 @@ function buildRows(boardSource, log) {
   if (!rows.length && log.ok && log.tickets.size) {
     from = REL.log;
     rows = [...log.tickets.values()].map((t) => ({
-      id: t.id.toUpperCase(),
+      id: normalizeId(t.id),
       title: t.meta.title || '',
       feature: t.meta.feature || '',
       owner: t.owner || '',
@@ -388,7 +389,7 @@ function panelArtifacts(model, root) {
   }));
   for (const m of model.messages) {
     if (m.kind === 'decision' && !isEmpty(m.ticketId)) {
-      claims.push({ id: m.ticketId.toUpperCase(), text: `${m.summary} ${m.body || ''}`.toLowerCase() });
+      claims.push({ id: normalizeId(m.ticketId), text: `${m.summary} ${m.body || ''}`.toLowerCase() });
     }
   }
 
@@ -492,7 +493,7 @@ function panelProvenance(model, root) {
     id: row.id,
     text: `${row.title} ${row.notes} ${row.acceptance} ${row.spec}`.toLowerCase(),
   }));
-  const ticketIds = new Set(model.rows.map((r) => r.id));
+  const ticketIds = new Set(model.rows.map((r) => r.id.toUpperCase()));
 
   const changed = porcelain
     .split('\n')
@@ -590,7 +591,7 @@ function panelQuestions(model, messagesSource) {
   let answeredCount = 0;
   for (const [ticketId, thread] of threads) {
     if (ticketId === '(no ticket)') continue;
-    const status = model.byId.get(ticketId.toUpperCase())?.status ?? null;
+    const status = model.byId.get(normalizeId(ticketId))?.status ?? null;
     const { open, answered } = pairQuestions(thread);
 
     for (const q of open) {
@@ -808,7 +809,21 @@ function assembleState(root, { actions = true } = {}) {
 
 const TICKET_RE = /^[A-Za-z]+-\d+(?:-[A-Za-z]+)?$/;
 const ROLE_RE = /^[a-z][a-z0-9-]{1,40}$/;
-const oneLine = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max && !/[\n\r]/.test(value);
+/**
+ * A free-text field: non-empty, one line, bounded — and NOT shaped like a flag.
+ *
+ * The `--` rule is defence in depth. The real hole was scripts/board.mjs `parseArgs` reading any
+ * `--`-prefixed token as a new flag even in a value position, so `reason: "--board=/tmp/x"` made
+ * the CLI render a board over an arbitrary file and recorded `"detail": true` in its place. That is
+ * fixed at the CLI, where every caller routes; this refuses it at the trust boundary too, because a
+ * form field that looks like a flag is never a legitimate reason, summary or artifact path.
+ */
+const oneLine = (value, max) =>
+  typeof value === 'string' &&
+  value.trim().length > 0 &&
+  value.length <= max &&
+  !/[\n\r]/.test(value) &&
+  !/^\s*--/.test(value);
 
 /**
  * Three actions. Each one BUILDS AN ARGV FOR THE REAL CLI and runs it with execFile — no shell, so
@@ -893,7 +908,11 @@ const ACTIONS = {
 };
 
 function runAction(root, name, params) {
-  const action = ACTIONS[name];
+  // `Object.hasOwn`, not `ACTIONS[name]`: a bare lookup inherits from Object.prototype, so
+  // {"action":"constructor"} passed the whitelist guard, `action.validate` was undefined, and the
+  // TypeError escaped the async handler and KILLED THE PROCESS. The existing negative test used
+  // "render" — not an inherited property — so it stayed green over the hole.
+  const action = Object.hasOwn(ACTIONS, name) ? ACTIONS[name] : null;
   if (!action) {
     return {
       status: 400,
@@ -1235,6 +1254,30 @@ function serve(root, { port, actions }) {
     }
     if (req.method === 'POST' && url.pathname === '/action') {
       if (!actions) return send(403, 'application/json', JSON.stringify({ ok: false, refused: 'this dashboard was started with --no-actions' }));
+
+      // Binding to 127.0.0.1 keeps the network out; it does not keep the OPERATOR'S BROWSER out.
+      // `JSON.parse(body)` ignored Content-Type, and a `text/plain` POST is a CORS-simple request —
+      // no preflight — so any page open in another tab could drive all three actions. Requiring
+      // application/json reinstates the preflight; rejecting a foreign Origin closes the rest.
+      const ctype = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      if (ctype !== 'application/json') {
+        return send(415, 'application/json', JSON.stringify({
+          ok: false,
+          refused: 'POST /action requires content-type: application/json — a simple-CORS body is a drive-by from any page the operator has open',
+        }));
+      }
+      const origin = req.headers.origin;
+      const site = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+      const sameOrigin =
+        origin === undefined ||
+        (() => { try { return new URL(origin).hostname === '127.0.0.1' || new URL(origin).hostname === 'localhost'; } catch { return false; } })();
+      if (!sameOrigin || (site && site !== 'same-origin' && site !== 'none')) {
+        return send(403, 'application/json', JSON.stringify({
+          ok: false,
+          refused: `cross-origin POST /action refused (origin: ${origin ?? 'none'}, sec-fetch-site: ${site || 'none'})`,
+        }));
+      }
+
       let body = '';
       req.on('data', (chunk) => {
         body += chunk;

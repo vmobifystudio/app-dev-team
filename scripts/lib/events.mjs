@@ -403,8 +403,13 @@ function dependentsOf(tickets, id, seen = new Set()) {
 // rendering
 // --------------------------------------------------------------------------------------------
 
+/**
+ * One table cell. `|` is escaped (lib/board.mjs `splitRow` unescapes it) and every newline is
+ * collapsed to a space: a multi-line title used to emit extra lines INSIDE the ticket table, and
+ * the parser read each one as another row — phantom tickets, forged by a title.
+ */
 const CELL = (value) => {
-  const text = String(value ?? '').trim();
+  const text = String(value ?? '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
   return text === '' ? '—' : text.replace(/\|/g, '\\|');
 };
 
