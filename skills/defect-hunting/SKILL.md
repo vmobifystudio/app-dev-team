@@ -122,7 +122,13 @@ cmd | head -1 || handle_error                                  # head's status, 
 ```
 
 A pipeline's status is the *last* command's. Gate on the test itself — `if ! grep -q ...; then` —
-and prove it by running the guard against an input you know should fail it. This was violated while
+and prove it by running the guard against an input you know should fail it.
+
+**And `[^\n]` is not "any character except newline".** In a POSIX bracket expression it means "not a
+backslash and not the letter n". `grep` is line-oriented, so `.` already excludes newlines — write
+`.*`. Using `[^\n]*` made a release gate report zero open blocker bugs while two were open, and the
+behaviour differed between an interactive shell and `sh`, so it passed by hand and failed in the
+script. This was violated while
 writing the rules against it: a merge-gate precondition printed nothing, returned success, and let a
 merge through.
 
@@ -135,10 +141,23 @@ merge through.
 Prefer: import the thing, call it, assert the result. A rule that executes the code under test
 cannot be fooled by prose about the code under test.
 
-### Mandatory: prove the rule can fail
+### Mandatory: prove the rule can fail — all three steps
 
 **A new guard rule, lint rule, architecture test, or CI grep is not done until you have watched it
-fail.** Introduce the violation it exists to catch, run it, see red, revert.
+fail.** But "watch it fail" is three steps, and each one failed separately in a single session:
+
+1. **Confirm the mutation actually applied.** Twice, an edit meant to break the code silently did
+   not land, and the suite stayed green — which was then read as "the test is fine". Check with
+   `diff -q` or by printing the changed line. An unapplied mutation tests nothing and looks
+   identical to a passing test.
+2. **Confirm the fixture reproduces the real condition.** A ship-gate test passed under a mutation
+   that genuinely broke the gate, because the fixture's data happened not to trigger it — the real
+   bug board contained the letter that broke the regex and the fixture did not. A benign fixture
+   passes on broken code.
+3. **Then watch it go red, and green again on revert.**
+
+Skip step 1 and you have tested nothing. Skip step 2 and you have tested the wrong thing. Both look
+exactly like success.
 
 If you cannot make it fail, it is not a rule — it is a comment that costs CI time.
 
