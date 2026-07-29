@@ -1292,6 +1292,38 @@ grep -q "never \`0%\`" "$HERE/../commands/app-status.md" \
   && ok "...and prints n/a for an empty denominator instead of 0%" \
   || bad "...and prints n/a for an empty denominator instead of 0%"
 
+# --- DR4-014: `stranded` is emergent, not drift -------------------------------------------------
+# board-doctor's own skill told the reader that any anomaly on a generated board means "something
+# wrote the Markdown directly — find what did it". True for malformed_row; false for `stranded`,
+# which the CLI produces legally the moment a ticket is blocked. It sent you hunting a hand-edit
+# that never happened — and the real fix is a graph change, not a forensics exercise.
+BDS="$HERE/../skills/board-doctor/SKILL.md"
+grep -q "Emergent" "$BDS" && grep -q "no hand-edit" "$BDS" \
+  && ok "board-doctor's skill separates emergent anomalies from Markdown drift" \
+  || bad "board-doctor's skill separates emergent anomalies from Markdown drift"
+grep -q -- "--status blocked" "$BDS" \
+  && ok "...and points at the intake that makes a legitimately blocked ticket satisfiable" \
+  || bad "...and points at the intake that makes a legitimately blocked ticket satisfiable"
+
+# The three-state contract and the static lane are only real if the operator's instructions carry
+# them. A gate whose caller was never told about its third exit code has two exit codes.
+grep -q "CANNOT EVALUATE" "$BDS" && grep -q "Do not re-spawn the developer" "$BDS" \
+  && ok "...and states verify-done's three outcomes, including do-not-re-spawn on exit 2" \
+  || bad "...and states verify-done's three outcomes, including do-not-re-spawn on exit 2"
+grep -q "verified_static" "$BDS" && grep -q "merged, verification deferred" "$BDS" \
+  && ok "...and documents the inspectable-but-not-runnable lane it routes to" \
+  || bad "...and documents the inspectable-but-not-runnable lane it routes to"
+
+# --- migrate keeps the static-only fact ---------------------------------------------------------
+# A generated board round-trips through `migrate` on any project that predates its log. Reading
+# `qa (static only)` back as a plain `verified` would launder the one fact the marker exists to
+# keep — the same class of lie as a migration inventing a timestamp.
+printf '# Sprint board\n\n| ID | Owner | Status | Reviewer | Cycles | Depends on |\n|---|---|---|---|---|---|\n| APP-009 | ios-developer | qa (static only) | code-reviewer | 0 | — |\n\n## Review ledger\n\n| Timestamp | Ticket | Action | Actor |\n|---|---|---|---|\n| 2026-07-29T10:00:00Z | APP-009 | approved | code-reviewer |\n' > "$TMP/static-board.md"
+node "$BD" migrate "$TMP/static-board.md" --out "$TMP/static.jsonl" >/dev/null 2>&1
+grep -q '"event":"verified_static"' "$TMP/static.jsonl" \
+  && ok "migrate reads a static-only board back as verified_static, not as a full verification" \
+  || bad "migrate reads a static-only board back as verified_static, not as a full verification"
+
 echo
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
