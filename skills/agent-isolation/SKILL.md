@@ -51,6 +51,28 @@ directory shows up as untracked noise in every agent's `git status` and invites 
 
 **Verifiers and auditors get one too.** "Read-only" describes the intent, not the guarantee.
 
+### The rule is not "never touch the shared tree" — it is "never touch a path another agent could"
+
+Some artifacts genuinely belong outside a feature branch. A review verdict has to survive the branch
+being rejected; a findings register spans tickets. Forbidding all shared writes would push those
+back into ephemeral messages, which is the failure this whole design exists to stop.
+
+The real test is **collision**, not location:
+
+| Artifact | Where | Why |
+|---|---|---|
+| all source and test code | **worktree only** | two agents on the same file is the corruption case |
+| `docs/daily/<date>-<role>-APP-NNN.md` | **worktree**, committed on the branch | reaches `main` at merge; a fragment for unmerged work should not appear in the standup |
+| `docs/53-reviews/APP-NNN-cycle-N.md` | shared tree — **safe** | the path is unique per (ticket, cycle); no other agent can target it, and it must outlive a rejected branch |
+| `docs/31-board.md`, `docs/team/messages.md` | shared tree — **append-only** | never edit an existing line; appends from different agents merge cleanly |
+
+A shared write is safe when **no other agent can write that same path**. Uniquely-named files and
+append-only logs qualify. Anything else — source, tests, a doc two roles both edit — is worktree-only.
+
+Observed: a developer wrote its daily fragment to the repo root instead of its worktree, because the
+orchestrator's prompt named a repo-root path. The fragment then sat on `main` describing work that
+was still on an unmerged branch. Name the worktree-relative path when you spawn.
+
 If the project genuinely cannot use worktrees (not a git repo, or a tool that needs the canonical
 path), then agents that write **must be serialized** — one at a time, each committing before the
 next starts. Never run parallel writers in one tree. Say in the daily fragment that you serialized
