@@ -8,9 +8,10 @@ avoided: a serialized foundation ticket (`APP-010`) owning the cross-cutting con
 file-disjoint features behind it (`APP-011` add, `APP-012` export), with a deliberate spec ambiguity
 planted in `APP-012`.
 
-**Headline:** the review and merge gates work, and driving them surfaced **six** defects — three in
-the tooling, two in the process rules, one a self-contradiction between two rules shipped in the
-same release.
+**Headline:** the review and merge gates work. All three tickets went build → review → merge and are
+on `main`. Driving them surfaced **ten** defects — in the tooling, in the process rules, in the
+prompts, one a self-contradiction between two rules shipped in the same release, and one an agent
+sincerely reporting work it had not done.
 
 ---
 
@@ -54,7 +55,7 @@ That last behaviour is what exposed finding 2 below.
 
 ---
 
-## Six defects
+## Findings 1–6: round 1
 
 ### 1. A drifted ledger word silently erased a REQUEST CHANGES
 
