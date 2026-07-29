@@ -3,7 +3,11 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [1.3.0] — Coordination, isolation, and reviews that find real defects
+## [1.4.0] — Coordination, isolation, and gates that actually run
+
+What began as "add worktree isolation" grew, across four dry runs, into a release that found and fixed
+**fifteen defects by executing the process rather than reading it** — including several in the
+tooling written to catch them. Every rule below was written against an observed failure.
 
 Driven by a **live dry run** of the documented process (two developer agents, two deliberately
 independent tickets, one working tree) and by four hard-won lessons from a real remediation
