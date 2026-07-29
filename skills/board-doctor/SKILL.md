@@ -11,10 +11,10 @@ unable to notice.
 
 The worst one, and the reason this skill exists:
 
-> `/app-build` treats a ticket as ready when `Status = todo` **and** every `Depends on` ID is `done`,
-> and it exits the loop when there are no ready `todo` rows and nothing in `review`/`qa`.
-> A ticket whose dependency is `blocked` therefore satisfies neither condition — so the loop
-> **terminates and prints a successful sprint summary without ever mentioning it.**
+> `/app-build` treats a ticket as ready when `Status = todo` **and** every `Depends on` ID is merged
+> (`qa` or `done`), and it exits the loop when there are no ready `todo` rows and nothing in
+> `review`/`qa`. A ticket whose dependency is `blocked` therefore satisfies neither condition — so
+> the loop **terminates and prints a successful sprint summary without ever mentioning it.**
 
 Same for a row with a missing owner, an owner that isn't a real role, or a `Depends on` pointing at
 an ID that doesn't exist. The work is on the board, scheduled to nobody, reported as complete.
@@ -51,6 +51,7 @@ invalid owner makes "who acts next" unanswerable.
 | `status_invalid` | Status outside `todo/in_progress/review/qa/done/blocked` | Set a valid status |
 | `owner_missing` | No owner — can never become ready | Assign an owner |
 | `owner_invalid` | Owner isn't a known role | Reassign from the roster |
+| **`owner_not_spawnable`** | Owner is a real role, but `/app-build` never spawns it to work a ticket | **Reassign to a role the loop spawns** — otherwise the ticket is never picked up *and* never reported |
 | `dependency_self` | Ticket depends on itself | Remove the edge |
 | `dependency_missing` | Depends on an ID with no row | Restore or drop it |
 | `dependency_cycle` | A → B → A | Break the cycle |
@@ -60,8 +61,11 @@ invalid owner makes "who acts next" unanswerable.
 | `done_without_review` | `qa`/`done` with no approval in the ledger | Move back to review, or append the missing line |
 | `cycles_invalid` | Cycles isn't an integer | Set an integer |
 | `cycle_cap_breached` | `Cycles >= 2` but status isn't `blocked` | Stop the ticket, set blocked, surface to the user |
+| `ledger_action_unknown` | A ledger row uses a word outside `requested/started/changes/approved/merged` | Append a corrected line — the verdict is otherwise invisible to every check |
 
-Warnings (non-blocking): `ledger_cycle_mismatch`, `review_never_started`, `orphan_ledger_entry`.
+Warnings (non-blocking): `ledger_cycle_mismatch`, `review_never_started`, `orphan_ledger_entry`,
+`ledger_action_unknown_superseded` (a bad ledger word that a later valid line already corrected —
+kept visible because the ledger is append-only, but not blocking).
 
 ## Legacy boards
 
@@ -98,13 +102,21 @@ Read `docs/31-board.md` and check, in this order:
 1. Every row has the same cell count as the header.
 2. No ticket ID appears twice.
 3. Every `Status` is one of the six valid values.
-4. Every `Owner` is non-empty and is a real role from the roster.
+4. Every `Owner` is non-empty, is a real role, **and is a role `/app-build` actually spawns to work
+   a ticket** — `ios-developer`, `android-developer`, `backend-developer`, `monetization-engineer`,
+   `ux-designer`, `qa-engineer`, `data-analyst`, `devops-engineer`, `aso-specialist`,
+   `verification-engineer`. Never `security-reviewer`, `code-reviewer`, `release-manager`,
+   `tech-lead` or `tech-manager`: those gate and coordinate, they do not work tickets, so a ticket
+   owned by one is never picked up and never reported.
 5. Every ID in `Depends on` has a row; no self-dependency; no cycle.
 6. **For every `todo` row, walk its dependencies. If any is `blocked`, the row is `stranded`** —
    report it, because the loop will not.
 7. Every `review` row names a Reviewer, and no Reviewer equals its own Owner.
 8. Every `qa`/`done` row has an `approved` line in the review ledger.
 9. Every `Cycles` is an integer; `>= 2` requires `Status = blocked`.
+10. Every ledger row's action is exactly one of `requested` / `started` / `changes` / `approved` /
+    `merged`. Anything else is a verdict the checks cannot see — unless a later valid row for the
+    same ticket already corrects it.
 
 Report findings in the same shape the script uses (`TICKET  code  detail -> action`) and apply the
 same rule: **do not spawn while an anomaly is open.**

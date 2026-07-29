@@ -126,7 +126,27 @@ Also confirmed: **worktrees are necessary but not sufficient.** The two clean br
 add/add conflicts on **7 of 10 files** — isolation removes the corruption, file-overlap serialization
 removes the unmergeable pile. Both rules are load-bearing.
 
-### Fixed — an agent reported doing work it had not done
+### Fixed — a relative default path wrote a team message into an unrelated repository
+
+**Corrects an earlier entry in this release.** It originally read "an agent reported doing work it
+had not done". That was wrong.
+
+`team-message.sh` defaulted to the relative path `docs/team/messages.md`. An agent invoked it
+without `cd`-ing to its worktree, so the path resolved against the shell's working directory — a
+completely unrelated project — and wrote a team message into somebody else's repository. The agent
+had done exactly what it was asked. The message's absence from the sandbox was then misread as the
+agent having lied about sending it.
+
+Found only because the owner of that repository asked whether we were writing into it.
+
+- `team-message.sh` now resolves the ledger against `git rev-parse --show-toplevel` and **refuses to
+  run** outside a git repository rather than guessing. Tested from a deep subdirectory, outside any
+  repo, and with an explicit `--ledger`.
+- The `Assumptions & open questions` contract field and its verification stay — for a better reason
+  than originally given. Not "agents lie", but: **an agent's report can be true while the artifact
+  it names is unreachable**, and the loop must be able to tell those apart.
+
+### Fixed — the original (incorrect) framing, superseded above
 
 The most consequential finding of the full-sprint run.
 

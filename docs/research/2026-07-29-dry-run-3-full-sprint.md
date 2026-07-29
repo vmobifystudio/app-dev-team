@@ -167,7 +167,61 @@ file-disjoint scopes.
 
 Both approved on the first review cycle and merged clean. All three tickets are on `main`.
 
-### Finding 7: an agent reported work it had not done
+### Finding 7 — CORRECTED: the agent was honest; the script wrote to the wrong repository
+
+> **This finding was originally published as "an agent reported work it had not done". That was
+> wrong, and the error was mine.** The correction is kept in place of the original because how it
+> was reached matters more than the conclusion.
+
+`APP-012` was given a deliberate spec ambiguity — the AC never says what exporting an *empty* list
+produces. The agent reasoned well, chose an empty string over invented placeholder copy, and wrote
+in its daily fragment that it had raised the question on the team channel.
+
+`docs/team/messages.md` did not exist in the sandbox. Two independent searches of the sprint tree
+confirmed it. I concluded the claim was sincere but false, wrote a fix for "claims about non-code
+artifacts", and published the finding.
+
+**The message existed.** It was in a *different repository* — the session's working directory, an
+unrelated project — because `team-message.sh` defaulted to the **relative** path
+`docs/team/messages.md`. The agent invoked the helper without `cd`-ing to its worktree first, so the
+path resolved against the shell's cwd. The agent did exactly what it was told. My script put the
+file somewhere nobody would look, and its absence read as dishonesty.
+
+It surfaced only because the owner of that unrelated repository asked whether we were writing into it.
+
+**Two real defects, neither the one I originally reported:**
+
+1. **A relative default path in a tool agents invoke from arbitrary directories is a footgun.**
+   `team-message.sh` now resolves the ledger against `git rev-parse --show-toplevel`, and **refuses
+   to run** outside a git repository rather than guessing a location. Tested from a deep subdirectory
+   (anchors to root), outside any repo (refuses), and with an explicit `--ledger` (honoured).
+2. **A "not found" conclusion drawn from two searches of the wrong tree is still one search.** The
+   `defect-hunting` rule says two independent searches, *different tool and different pattern shape*.
+   I ran two searches — both scoped to the sandbox, the only place I believed the file could be.
+   Same assumption, twice. Widening the *pattern* while holding the *search root* fixed is not
+   independence.
+
+**What survives:** the `Assumptions & open questions` contract field and the orchestrator's
+verification of it are still right, for a better reason than the one I gave. Not "agents lie" —
+**an agent's report can be true while the artifact it names is unreachable**, and the loop needs to
+know which of those it is looking at.
+
+**What does not survive:** the framing that this was a trust problem with the developer. It was a
+tooling problem, and I should have found the message before I found a lesson about honesty. The
+reviewer who wrote *"it's a trust issue with the developer, not the code"* was reasoning correctly
+from the evidence I gave it — evidence that was wrong.
+
+<details>
+<summary>Original finding as first published, for the record</summary>
+
+The original text asserted that the agent's claim was "sincere and false", that
+`docs/team/messages.md` "had never been created", and drew a general lesson that nothing verified
+claims about non-code artifacts. The first two statements were false. The third was true but
+incidental.
+
+</details>
+
+### Finding 7 (as originally published — superseded above)
 
 `APP-012` was given a deliberate spec ambiguity — the AC never says what exporting an *empty* list
 produces. The agent reasoned well, chose an empty string over invented placeholder copy, and wrote

@@ -21,7 +21,17 @@
 
 set -u
 
-LEDGER="docs/team/messages.md"
+# Resolved against the git repository root, never the shell's cwd.
+#
+# This defaulted to the bare relative path "docs/team/messages.md". An agent working in a git
+# worktree ran the helper without cd-ing there first, so the path resolved against the session's
+# cwd — a COMPLETELY UNRELATED repository — and wrote a team message into somebody else's project.
+# The agent had done exactly what it was told; the script put the file in the wrong place, and the
+# absence of the message where it was expected was then misread as the agent having lied about
+# sending it.
+#
+# A relative default in a tool that agents invoke from arbitrary directories is a footgun.
+LEDGER=""
 FROM=""; TO=""; TICKET="-"; KIND=""; SUMMARY=""; BODY=""
 
 while [ $# -gt 0 ]; do
@@ -39,6 +49,19 @@ done
 
 [ -n "$FROM" ] && [ -n "$TO" ] && [ -n "$KIND" ] && [ -n "$SUMMARY" ] || {
   echo "team-message: --from, --to, --kind and --summary are required" >&2; exit 2; }
+
+# Anchor the ledger to the repo root unless the caller named a path explicitly.
+if [ -z "$LEDGER" ]; then
+  ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  if [ -z "$ROOT" ]; then
+    echo "team-message: not inside a git repository, and no --ledger given." >&2
+    echo "  Run me from your worktree, or pass --ledger <path>. I will not guess a location:" >&2
+    echo "  a relative default once wrote a team message into an unrelated project." >&2
+    exit 2
+  fi
+  LEDGER="$ROOT/docs/team/messages.md"
+  echo "team-message: ledger -> $LEDGER" >&2
+fi
 
 case "$KIND" in
   question|answer|handoff|blocker|fyi|escalation|decision) ;;
