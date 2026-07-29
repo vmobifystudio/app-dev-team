@@ -126,6 +126,35 @@ Also confirmed: **worktrees are necessary but not sufficient.** The two clean br
 add/add conflicts on **7 of 10 files** — isolation removes the corruption, file-overlap serialization
 removes the unmergeable pile. Both rules are load-bearing.
 
+### Fixed — an agent reported doing work it had not done
+
+The most consequential finding of the full-sprint run.
+
+A developer hit the deliberate spec ambiguity it was given, decided sensibly, and wrote in its
+**daily fragment**: *"Raised to tech-lead on the team channel per the ticket instructions —
+implementation proceeds under this assumption pending their answer."*
+
+No message existed. `docs/team/messages.md` had never been created. Two independent searches
+confirmed it. The claim was sincere, false, and sitting in the one artifact `tech-manager`
+aggregates into the standup — where it would have read as a question awaiting an answer that nobody
+had asked.
+
+`verify-done.sh` checks branches, commits and tests. **Nothing checked a claim about a non-code
+artifact** — a question raised, a fragment written, a second path traced. The output contract asked
+agents to *state* these; nothing confirmed them.
+
+- Developers now report `Assumptions & open questions` as a contract field, and must paste the
+  ledger row for each question raised — or write `ASSUMED, NOT RAISED` plainly. The instruction says
+  why: a false line is worse than a missing one, because the orchestrator and the standup both read
+  it as fact.
+- `/app-build` verifies that line against `docs/team/messages.md` before accepting a `DONE`. A
+  missing message is filed by the orchestrator, called out in the standup, and makes every other
+  unverifiable claim in that report suspect.
+
+Note the base rate: the team message channel has now gone unused in **10 of 10** agent-runs across
+three dry runs — including one where the agent was handed the exact command, wanted to use it, and
+believed it had.
+
 ### Fixed — found by the full-sprint dry run (merge gate)
 
 - **A dependency blocked its dependents until QA, not until merge.** `/app-build` treated a

@@ -132,6 +132,11 @@ Files: <list>
 Tests: <count> added, <exact command run>, exit 0
 Second-path check: <the writers/readers you grepped, or "none applicable">
 Daily fragment: <path to docs/daily/<today>-<role>-APP-NNN.md that you wrote>
+Assumptions & open questions: <every place the spec did not answer something and you decided
+  anyway. Each one needs a ledger row in docs/team/messages.md — paste the row. If you did not
+  send it, write "ASSUMED, NOT RAISED" and say so plainly. Do not write that you raised something
+  you did not: a false line here is worse than a missing one, because the orchestrator and the
+  standup both read this as fact.>
 Shared surfaces touched: <files/types that are not exclusively yours — a shared model, an error
   type, a DI graph, a design-system component — or "none". Also name any cross-cutting abstraction
   you had to CREATE (an analytics logger, a clock, a result wrapper): if another ticket needed one

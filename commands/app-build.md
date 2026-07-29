@@ -83,6 +83,16 @@ Tickets (optional, default = all ready): $ARGUMENTS
      to `tech-manager` to pick one shape and re-spawn the loser with the winner named. Both dry-run
      agents spotted this risk themselves and had nowhere to put it but the closing paragraph of a
      report nobody parsed.
+   - **Verify the `Assumptions & open questions` line against the ledger.** For every question the
+     agent says it raised, `docs/team/messages.md` must contain the row. Observed live: an agent's
+     daily fragment stated "Raised to tech-lead on the team channel per the ticket instructions"
+     and no message existed — the ledger had never been created. The claim was sincere and false,
+     in the one artifact `tech-manager` aggregates into the standup, and nothing checked it.
+
+     If a claimed message is missing, do not quietly fix it: file the question yourself, note in the
+     standup that the agent reported raising it and had not, and treat every other unverifiable
+     claim in that report with the same suspicion. An `ASSUMED, NOT RAISED` line is fine and needs
+     routing; a false "raised" line is a defect in the report.
    - **Check the daily fragment exists** at `docs/daily/<today>-<role>-APP-NNN.md` on the branch.
      Across two dry runs only **1 of 4** agent-runs wrote one, though every IC role requires it —
      and it is the sole input to the standup, so `tech-manager` was aggregating nothing. If it is
