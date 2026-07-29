@@ -135,6 +135,13 @@ M13@@hooks/block-shared-tree-destructive-git.sh@@[ -n "$DIRTY" ] || exit 0@@[ -z
 M14@@hooks/block-shared-tree-destructive-git.sh@@*"git stash"*)@@*"zzzz-no-such-command"*)@@dirty tree: blocks git stash
 M15@@scripts/verify-done.sh@@grep -Eqi 'command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|cannot be located|[Uu]nable to find a destination|GradleWrapperMain|permission denied|not recognized as an internal'@@grep -Eqi 'zzzz-this-pattern-matches-nothing'@@a missing toolchain is CANNOT EVALUATE, not REJECTED
 M16@@scripts/round-journal.mjs@@if (t.spawns >= caps.spawns) breached.push@@if (t.spawns > caps.spawns) breached.push@@the spawn ceiling fires independently of the round ceiling
+M17@@scripts/lib/capabilities.mjs@@if (!allowed.includes(actor)) {@@if (false) {@@a designer may not write a gate event (verified)
+M18@@scripts/lib/capabilities.mjs@@if (NOT_ON_OWN_TICKET.has(name) && state && actor === state.owner) {@@if (false) {@@QA may not pass the ticket it owns
+M19@@scripts/lib/events.mjs@@if (record.hash !== expected) {@@if (false) {@@an edited line is detected, with the line number
+M20@@scripts/lib/redact.mjs@@if (isPlaceholder(value)) continue;@@if (true) continue;@@the artifact scan fails on a credential-shaped string
+M21@@scripts/spawn-gate.sh@@if [ -e "$STOP_ROOT/$STOP_FILE" ]; then@@if false; then@@spawn-gate refuses while the emergency stop file exists
+M22@@scripts/injection-scan.mjs@@if (pattern.test(raw)) findings.push@@if (false) findings.push@@instruction-shaped content in repository text is reported
+M23@@scripts/ship-gate.sh@@node "$HERE/board.mjs" verify --log "$LOG" >/dev/null 2>&1@@true@@ship-gate BLOCKS a release whose event log was rewritten
 CATALOGUE
 }
 

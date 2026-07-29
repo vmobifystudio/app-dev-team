@@ -230,7 +230,11 @@ ios_gate() {
         -destination 'generic/platform=iOS Simulator' -derivedDataPath "$APPDIR" build
     RC=$?
   elif [ -n "$SWIFTPKG" ]; then
-    run_capped "$BUILD_TIMEOUT" "$WORK/ios.log" sh -c "cd '$(dirname "$SWIFTPKG")' && swift build"
+    # Path as a positional argument, never interpolated into the script text — same fix, same
+    # reason as the gradle branch below. A directory name containing a quote closed the quoting and
+    # ran the remainder as shell, and --project-root is agent-supplied.
+    run_capped "$BUILD_TIMEOUT" "$WORK/ios.log" \
+      sh -c 'cd "$1" || exit 2; swift build' sh "$(dirname "$SWIFTPKG")"
     RC=$?
     if [ "$RC" -eq 0 ]; then
       # Was `pass`, whose own text said the launch half was never exercised — while exit 0 is
@@ -354,7 +358,19 @@ android_gate() {
   [ -x "$WRAPPER" ] || chmod +x "$WRAPPER" 2>/dev/null
 
   WDIR=$(dirname "$WRAPPER")
-  run_capped "$BUILD_TIMEOUT" "$WORK/android.log" sh -c "cd '$WDIR' && ./gradlew assembleDebug --console=plain"
+  # This was `sh -c "cd '$WDIR' && ./gradlew ..."`. WDIR derives from --project-root, which is
+  # agent-supplied, so a directory name containing a single quote closed the quoting and ran the
+  # rest as shell — argument injection with a *filesystem path* as the vector, in the one script in
+  # this repo that shells out with an interpolated string. No shell, no interpolation: run the
+  # wrapper directly with an explicit working directory.
+  #
+  # Also fixes the mundane version of the same bug: a project path containing a space.
+  #
+  # The path is passed as a POSITIONAL ARGUMENT to sh and read as "$1" — it never becomes part of
+  # the script text, so there is nothing for a quote to escape. `env -C` would be shorter and is not
+  # portable to the BSD env on macOS, which is where this gate mostly runs.
+  run_capped "$BUILD_TIMEOUT" "$WORK/android.log" \
+    sh -c 'cd "$1" || exit 2; ./gradlew assembleDebug --console=plain' sh "$WDIR"
   RC=$?
   if [ "$RC" -eq 124 ]; then
     unknown "android" "./gradlew assembleDebug exceeded ${BUILD_TIMEOUT}s and was killed."

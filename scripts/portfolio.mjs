@@ -39,6 +39,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { parseArgs } from './lib/args.mjs';
 import {
   readBoard,
   parseMessages,
@@ -363,21 +364,20 @@ function render(projects) {
 
 // --- main ---------------------------------------------------------------------------------------
 
-const argv = process.argv.slice(2);
-const flag = (name) => {
-  const i = argv.indexOf(`--${name}`);
-  if (i === -1) return undefined;
-  const value = argv[i + 1];
-  return value === undefined || value.startsWith('--') ? true : value;
-};
+// One parser (lib/args.mjs), not a fourth hand-rolled one. The old local `flag` returned `true` for
+// a value beginning with `--` and then fell back to the DEFAULT registry — so `--registry
+// --my-list.txt` silently reported on a completely different set of projects and said nothing. A
+// portfolio quietly reporting on the wrong projects is the exact failure this file's header warns
+// about, arriving through the argument parser instead of the reader.
+const { flags } = parseArgs(process.argv.slice(2), {
+  valueFlags: new Set(['registry', 'limit']),
+  knownFlags: new Set(['registry', 'limit', 'json']),
+  die: (code, message) => die(code, `${message}\nusage: portfolio.mjs [--registry <path>] [--json] [--limit N]`),
+});
+const flag = (name) => flags[name];
 
 const registry = typeof flag('registry') === 'string' ? flag('registry') : DEFAULT_REGISTRY;
 const limit = Number(flag('limit')) || Infinity;
-for (const arg of argv) {
-  if (arg.startsWith('--') && !['--registry', '--json', '--limit'].includes(arg)) {
-    die(1, `unknown flag ${arg}\nusage: portfolio.mjs [--registry <path>] [--json] [--limit N]`);
-  }
-}
 
 const projects = readRegistry(expand(registry))
   .map(readProject)

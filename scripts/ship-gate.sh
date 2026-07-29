@@ -110,6 +110,30 @@ case $? in
   *) unknown "board-doctor could not read $BOARD (exit 2) — board coherence was NOT checked." ;;
 esac
 
+# --- 1b. the audit chain must be intact -----------------------------------------------------------
+#
+# Release is where rewriting the event log pays off: every gate below reads state derived from it, so
+# one edited `approved` line ships an unreviewed ticket with every check reporting green. Checked
+# here rather than only in CI because CI runs on a push and a release does not have to be one.
+#
+# Three states, kept apart on purpose: intact, BROKEN (a rewritten history — not a rule violation,
+# and the message says so), and CANNOT EVALUATE when there is no log to read.
+LOG="$ROOT/docs/31-board-events.jsonl"
+if [ -f "$LOG" ]; then
+  node "$HERE/board.mjs" verify --log "$LOG" >/dev/null 2>&1
+  case $? in
+    0) ;;
+    1) block "the board's audit chain is BROKEN — the event log was edited, reordered or truncated after it was written. Run: node scripts/board.mjs verify. Every gate below reads state derived from that log." ;;
+    *) unknown "board.mjs verify could not read $LOG — the audit chain was NOT checked." ;;
+  esac
+else
+  # A NOTE, not an UNKNOWN. Everywhere else in this file "I could not look" must not read as "it was
+  # fine" — but a project with no event log has no chained history to rewrite, so "there is nothing
+  # here to verify" is a true statement rather than a gap. Treating it as UNKNOWN would block every
+  # release on every board that predates the log, which is how a control gets switched off.
+  note "no event log at $LOG — this board has no chained history, so there is nothing to verify. Boards written by scripts/board.mjs carry one."
+fi
+
 # --- 2. no ticket may still be in flight ----------------------------------------------------------
 # Delegated to scripts/ship-inflight.mjs, which reads the board through lib/board.mjs — the one
 # parser. The inline awk this replaced was a third parser and failed open four separate ways; they

@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** post-revamp (`revamp/phase-r-fixes`) · **Date:** 2026-07-29
-**Scale:** 29 roles · 27 skills · 13 commands · 20 scripts · 9 knowledge packs · TBD assertions
+**Scale:** 29 roles · 27 skills · 13 commands · 22 scripts (+6 shared libs) · 9 knowledge packs · 657 assertions
 
 ---
 

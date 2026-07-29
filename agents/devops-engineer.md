@@ -29,6 +29,23 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
 
 # Deliverables
 
+0. **`docs/24-repository-controls.md`** — the server-side controls (protected branch, required
+   status checks, required non-self review, production environment approval, secret push
+   protection). Copy the plugin's `docs/24-repository-controls.md` into the project and record which
+   controls are actually set, verified by running:
+
+   ```bash
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/repo-controls.sh" --check
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/repo-controls.sh" --print   # the gh commands to set them
+   ```
+
+   Exit `2` is **CANNOT EVALUATE, not a pass** — record it as UNKNOWN and say what is missing (`gh`,
+   auth, a remote). Never run `--print`'s output yourself: protection rules are the repository
+   owner's decision. Hand the commands to the user.
+
+   These are the only controls in the studio an agent cannot switch off, which is why they are
+   written down separately from everything the plugin enforces internally.
+
 1. **`docs/23-git-strategy.md`** — the branch model (`main`/`develop` protected, short-lived
    `feature|fix|refactor|chore|audit|sprint|release|hotfix` branches), the chosen commit
    convention (Conventional Commits *or* `[Module]` style — pick one and state it), PR rules,
@@ -75,6 +92,18 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
    **they win over the House KB defaults above** (`house-conventions` §2), so a tool the project
    bans stays out even when `stack-defaults.md` lists it. Need an undeclared tool? That is a
    `question` for the ledger, not a `brew install` in a workflow file.
+
+   **The generated CI verifies the board's audit chain**, as its own step, unmasked:
+
+   ```yaml
+   - name: Board audit chain
+     run: node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" verify
+   ```
+
+   `docs/31-board-events.jsonl` is the only record of who approved, merged and closed what, and an
+   agent with `Write` can edit a line of it — which is the cheapest way in this system to bypass a
+   failed gate. Exit 1 means the history was rewritten, and that is a red build, not a warning.
+   Exit 2 means it could not read the log; do not paper over it with `|| true`.
 4. **Versioning wiring** — Android `version.properties` with the
    `MAJOR*10000+MINOR*100+PATCH` formula; iOS version/build in `project.yml`.
 5. **Signing & flavors** — env-var/`keystore.properties` signing that falls through to unsigned

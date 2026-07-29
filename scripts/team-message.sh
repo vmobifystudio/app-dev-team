@@ -34,15 +34,24 @@ set -u
 LEDGER=""
 FROM=""; TO=""; TICKET="-"; KIND=""; SUMMARY=""; BODY=""
 
+# `shift 2` with one argument left FAILS in POSIX sh: it does not shift, `$1` is still the flag, and
+# this loop spins forever writing nothing. `team-message.sh --from` hung indefinitely — the same
+# defect runtime-gate.sh already fixed, still live here because that fix landed in one file. A gate
+# or helper that hangs is indistinguishable from a machine that went to sleep.
+#
+# Every flag takes a value, and a token in a value position is a VALUE — `--summary --ledger` writes
+# the literal text "--ledger" as the summary rather than silently re-reading it as a flag.
+need() { [ "$1" -ge 2 ] || { echo "team-message: $2 needs a value" >&2; exit 2; }; }
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --from) FROM="${2:-}"; shift 2 ;;
-    --to) TO="${2:-}"; shift 2 ;;
-    --ticket) TICKET="${2:-}"; shift 2 ;;
-    --kind) KIND="${2:-}"; shift 2 ;;
-    --summary) SUMMARY="${2:-}"; shift 2 ;;
-    --body) BODY="${2:-}"; shift 2 ;;
-    --ledger) LEDGER="${2:-}"; shift 2 ;;
+    --from)    need $# "--from";    FROM="$2";    shift 2 ;;
+    --to)      need $# "--to";      TO="$2";      shift 2 ;;
+    --ticket)  need $# "--ticket";  TICKET="$2";  shift 2 ;;
+    --kind)    need $# "--kind";    KIND="$2";    shift 2 ;;
+    --summary) need $# "--summary"; SUMMARY="$2"; shift 2 ;;
+    --body)    need $# "--body";    BODY="$2";    shift 2 ;;
+    --ledger)  need $# "--ledger";  LEDGER="$2";  shift 2 ;;
     *) echo "team-message: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -57,6 +66,25 @@ done
 clean() { printf '%s' "$1" | tr '\n' ' ' | sed 's/|/\//g; s/  */ /g; s/^ //; s/ $//'; }
 FROM=$(clean "$FROM"); TO=$(clean "$TO"); TICKET=$(clean "$TICKET"); KIND=$(clean "$KIND")
 SUMMARY=$(clean "$SUMMARY"); BODY=$(clean "$BODY")
+
+# Credential redaction, at the write.
+#
+# The realistic leak is not exfiltration, it is an agent pasting a working `.env` line into a blocker
+# "so the reviewer can reproduce it". This ledger is Markdown, committed to git, rendered into the
+# dashboard and quoted in the standup — four artifacts from one paste, and git history makes deleting
+# it later useless. Only the free-text fields go through: --from/--to/--kind are already constrained
+# to role and enum shapes, so filtering them could only ever produce a false positive.
+#
+# Degrades to a no-op with a warning if node is unavailable. That is deliberate: this helper is pure
+# POSIX sh so it can run anywhere, and refusing to record a team message because a filter is missing
+# would trade a possible leak for a certain loss of the record.
+REDACT="$(dirname "$0")/lib/redact.mjs"
+if command -v node >/dev/null 2>&1 && [ -f "$REDACT" ]; then
+  SUMMARY=$(printf '%s' "$SUMMARY" | node "$REDACT" --filter)
+  BODY=$(printf '%s' "$BODY" | node "$REDACT" --filter)
+else
+  echo "team-message: node or lib/redact.mjs unavailable — message written WITHOUT credential redaction." >&2
+fi
 [ -n "$BODY" ] || BODY="—"
 [ -n "$TICKET" ] || TICKET="-"
 

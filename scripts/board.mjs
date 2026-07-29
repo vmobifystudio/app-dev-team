@@ -36,13 +36,17 @@
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 
+import { parseArgs as parseArgv } from './lib/args.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
+import { redact } from './lib/redact.mjs';
 import {
   EVENTS,
   key,
   parseEventLog,
   reduce,
   validate,
+  chainHash,
+  verifyChain,
   dependentsOf,
   renderBoard,
   deriveMetrics,
@@ -78,28 +82,24 @@ const VALUE_FLAGS = new Set([
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
 ]);
 
-function parseArgs(argv) {
-  const flags = {};
-  const positional = [];
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (!arg.startsWith('--')) {
-      positional.push(arg);
-      continue;
-    }
-    const [name, inline] = arg.slice(2).split(/=(.*)/s);
-    if (inline !== undefined) {
-      flags[name] = inline;
-    } else if (VALUE_FLAGS.has(name)) {
-      if (i + 1 >= argv.length) die(2, `--${name} needs a value`);
-      flags[name] = argv[(i += 1)];
-    } else if (argv[i + 1] && !argv[i + 1].startsWith('--')) {
-      flags[name] = argv[(i += 1)];
-    } else {
-      flags[name] = true;
-    }
+const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
+
+/**
+ * Every free-text field an agent supplies, filtered through the credential patterns before it is
+ * written. Loud on purpose: silent redaction leaves an operator staring at a truncated string with
+ * no idea what removed it.
+ */
+function scrub(label, value) {
+  if (typeof value !== 'string' || !value) return value;
+  const { text, redacted } = redact(value);
+  if (redacted.length) {
+    process.stderr.write(
+      `board: REDACTED ${redacted.join(', ')} from ${label}. The board is committed and rendered;\n` +
+        '  a credential written here is in git history, where deleting it later does nothing.\n' +
+        '  Rotate it if it was real.\n'
+    );
   }
-  return { flags, positional };
+  return text;
 }
 
 /**
@@ -128,9 +128,31 @@ function loadLog(logPath, { required = true } = {}) {
   return { events };
 }
 
+/**
+ * Append one event, chained to everything already in the log.
+ *
+ * Verifying BEFORE every append is the wiring that makes the chain worth having. A check that only
+ * runs in CI tells you on Tuesday that Monday's log was rewritten; this refuses to add a line to a
+ * log that has already been tampered with, so the tampering cannot be buried under later work.
+ *
+ * FAIL CLOSED, and the recovery is `git checkout -- <log>`: the log is append-only and versioned,
+ * so a broken chain means "restore the file", never "append a repair". There is deliberately no
+ * `--force` — a flag that re-anchors a broken chain is a flag that erases the only evidence.
+ */
 function append(logPath, event) {
   mkdirSync(dirname(logPath), { recursive: true });
-  appendFileSync(logPath, `${JSON.stringify(event)}\n`);
+  const existing = existsSync(logPath) ? readFileSync(logPath, 'utf8') : '';
+  const chain = verifyChain(existing);
+  if (!chain.ok) {
+    die(
+      2,
+      `the audit chain of ${logPath} is broken at line ${chain.line}.\n` +
+        `  ${chain.reason}\n` +
+        '  Refusing to append: a new line on a rewritten log makes the rewrite permanent.\n' +
+        `  Recover the log from version control (git checkout -- ${logPath}), then re-run.`
+    );
+  }
+  appendFileSync(logPath, `${JSON.stringify({ ...event, hash: chainHash(chain.tip, event) })}\n`);
 }
 
 function writeView(boardPath, tickets) {
@@ -178,14 +200,14 @@ function cmdAdd(id, flags, paths) {
   const { tickets } = reduce(events);
 
   const detail = {
-    title: flags.title || '',
+    title: scrub('--title', flags.title || ''),
     feature: flags.feature || '',
     owner: flags.owner || '',
     dependsOn: flags.depends ? parseDependencies(String(flags.depends)) : [],
     estimate: flags.estimate || '',
-    spec: flags.spec || '',
-    acceptance: flags.acceptance || '',
-    notes: flags.notes || '',
+    spec: scrub('--spec', flags.spec || ''),
+    acceptance: scrub('--acceptance', flags.acceptance || ''),
+    notes: scrub('--notes', flags.notes || ''),
   };
   const event = {
     ts: new Date().toISOString(),
@@ -231,7 +253,7 @@ function cmdMove(id, name, flags, paths) {
     ticket,
     event: name,
     by: flags.by || '',
-    detail: flags.detail || '',
+    detail: typeof flags.detail === 'object' ? flags.detail : scrub('--detail', flags.detail || ''),
     provenance: 'cli',
   };
 
@@ -337,6 +359,36 @@ function cmdShow(id, flags, paths) {
     );
     process.exit(1);
   }
+}
+
+/**
+ * `board.mjs verify` — is this log the one that was written?
+ *
+ * Runs in CI. Exit 1 is "the history was rewritten", which is a different fact from "the board is
+ * in a state a rule dislikes" (board-doctor's job) and must never be reported as the same thing.
+ */
+function cmdVerify(paths) {
+  if (!existsSync(paths.log)) die(2, `no event log at ${paths.log} — nothing to verify`);
+  const text = readFileSync(paths.log, 'utf8');
+  const chain = verifyChain(text);
+  if (!chain.ok) {
+    process.stdout.write(
+      `AUDIT CHAIN: BROKEN at line ${chain.line}\n` +
+        `  ${chain.reason}\n` +
+        `  ${chain.chained} line(s) verified before the break.\n` +
+        '  This is a rewritten history, not a board rule violation. Recover the log from version\n' +
+        `  control (git checkout -- ${paths.log}) and find out what wrote to it directly.\n`
+    );
+    process.exit(1);
+  }
+  process.stdout.write(
+    `AUDIT CHAIN: intact — ${chain.chained} chained line(s)` +
+      (chain.unchained
+        ? `, ${chain.unchained} unchained line(s) written before the chain existed (covered by the\n` +
+          '  first chained line\'s anchor: editing them breaks verification too).\n'
+        : '.\n')
+  );
+  process.exit(0);
 }
 
 function cmdRender(paths) {
@@ -553,6 +605,8 @@ function main() {
       return cmdShow(rest[0], flags, paths);
     case 'render':
       return cmdRender(paths);
+    case 'verify':
+      return cmdVerify(paths);
     case 'migrate':
       return cmdMigrate(rest[0], flags, paths);
     default:
@@ -563,6 +617,7 @@ function main() {
           '  assign <ID> --to <role>\n' +
           '  show [ID] [--json]\n' +
           '  render\n' +
+          '  verify                          the audit chain — was this log rewritten?\n' +
           '  migrate [board.md] [--out log.jsonl]\n' +
           `  events: ${[...EVENTS].join(' ')}\n`
       );
