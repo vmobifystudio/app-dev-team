@@ -20,7 +20,24 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    Exit `1` → stop. Then read `docs/31-board.md`: if anything is `todo`, `in_progress`, or `review`,
    stop and tell the user "Sprint isn't done — run `/app-build` first."
 
-1a. **Read the bug board and QA's verdict — a drained board is not a shippable sprint.**
+1a. **Run the ship gate.** These preconditions are a script, not prose to improvise:
+
+   ```bash
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/ship-gate.sh" .
+   ```
+
+   Exit `1` → **do not release.** Print its blockers verbatim and stop. Exit `0` → continue.
+
+   It was prose until improvising it went wrong three times in one session: a guard that could not
+   fail, a field-index mistake that read the wrong column, and a regex that reported zero open
+   S1/S2 bugs while two were open. `sprint-planner` requires every Definition-of-Done gate to name a
+   runnable command; the release gate is the most consequential one and did not have one.
+
+   The gate checks board coherence, that no ticket is still in `todo`/`in_progress`/`review`, that
+   no `S1`/`S2` bug is open, and that a test plan exists — and it *notes* (without blocking) open
+   S3/S4 bugs, any QA hold, and test-plan rows that were reasoned rather than executed.
+
+   What it deliberately does **not** do is decide for you. Read its notes:
 
    - `docs/51-bugs.md` — **any open `S1` or `S2` stops the release.** This command's description and
      Safety section have always claimed to gate on "QA sign-off and a clean bug board"; until this

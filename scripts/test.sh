@@ -180,6 +180,24 @@ send "$R" --from ios-developer --to tech-lead --ticket APP-1 --kind question --s
 
 echo
 # --------------------------------------------------------------------------------------------
+echo "ship-gate"
+# --------------------------------------------------------------------------------------------
+assert_exit 1 "blocks on an open S1/S2 and an in-flight ticket" sh "$HERE/ship-gate.sh" "$FIX/ship-blocked"
+assert_exit 0 "clears a genuinely shippable sprint"             sh "$HERE/ship-gate.sh" "$FIX/ship-clear"
+
+# Regression: `[^\n]*` in a POSIX bracket expression means "not backslash, not the letter n" — the
+# gate reported 0 open S1/S2 with two open, and only differed between the interactive shell and sh.
+sh "$HERE/ship-gate.sh" "$FIX/ship-blocked" 2>/dev/null | grep -q "1 open S1/S2" \
+  && ok "counts open S1/S2 bugs correctly (no [^\\n] regex)" \
+  || bad "counts open S1/S2 bugs correctly (no [^\\n] regex)"
+
+# A bug marked FIXED on its row must not count as open.
+sh "$HERE/ship-gate.sh" "$FIX/ship-clear" 2>/dev/null | grep -q "open S1/S2" \
+  && bad "a FIXED S2 does not block" \
+  || ok "a FIXED S2 does not block"
+
+echo
+# --------------------------------------------------------------------------------------------
 echo "team-doctor"
 # --------------------------------------------------------------------------------------------
 ( cd "$HERE/.." && node "$HERE/team-doctor.mjs" ) >/dev/null 2>&1
