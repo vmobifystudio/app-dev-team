@@ -47,6 +47,13 @@ asserted. A `qa`/`done` ticket with no `approved` line is treated as having skip
 - On approve: append `<ISO ts> | APP-NNN | approved | code-reviewer`
 - On request-changes: append `<ISO ts> | APP-NNN | changes | code-reviewer`
 
+**The action word must be exactly `started`, `approved`, or `changes`** — not `change-requested`,
+not `request-changes`, not `rejected`. The vocabulary is closed and the parser is strict on purpose.
+A live dry run produced `changes-requested`: the row was dropped, the cycle count stayed at zero,
+and the board reported the *milder* "review never started" — so a real REQUEST CHANGES became
+invisible to every mechanical check. `board-doctor` now raises `ledger_action_unknown` and blocks,
+but do not rely on that; write the exact word.
+
 Never edit or delete an existing line. Correct a mistake by appending a later line.
 
 # What you check, in order

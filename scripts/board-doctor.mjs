@@ -27,6 +27,7 @@ import {
   VALID_STATUS,
   POST_REVIEW_STATUS,
   MAX_REVIEW_CYCLES,
+  LEDGER_ACTIONS,
   parseBoard,
   parseLedger,
   isEmpty,
@@ -75,6 +76,18 @@ function diagnose(board, ledger, capabilities) {
   const ledgerByTicket = new Map();
   for (const entry of ledger) {
     const id = entry.ticketId.toUpperCase();
+
+    if (!entry.known) {
+      anomalies.push({
+        code: 'ledger_action_unknown',
+        ticketId: id,
+        line: entry._line,
+        detail: `Review ledger uses action "${entry.action}", which is not one of: ${[...LEDGER_ACTIONS].join(', ')}. The verdict it records is invisible to every mechanical check — cycle counts and the approval requirement both silently ignore it.`,
+        action: 'Append a corrected line using the exact vocabulary (never edit the wrong one — the ledger is append-only).',
+      });
+      continue;
+    }
+
     if (!ledgerByTicket.has(id)) ledgerByTicket.set(id, []);
     ledgerByTicket.get(id).push(entry);
     if (!rowsById.has(id)) {

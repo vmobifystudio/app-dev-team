@@ -159,8 +159,13 @@ function parseLedger(text) {
     if (cells.length < 3) continue;
     const [timestamp, ticketId, rawAction, ...rest] = cells;
     const action = rawAction.toLowerCase().trim();
-    if (!LEDGER_ACTIONS.has(action)) continue;
     if (!/^[A-Za-z]+-\d+/.test(ticketId)) continue;
+    // Do NOT drop an unrecognised action. A row that looks like a ledger entry but uses a word
+    // outside the vocabulary is a verdict that silently vanishes: observed live, a reviewer wrote
+    // `changes-requested` instead of `changes`, the row was filtered out, and the doctor reported
+    // the milder "review never started" — misdirecting away from a REQUEST CHANGES that had
+    // actually happened. Tag it and let the caller raise it.
+    const known = LEDGER_ACTIONS.has(action);
 
     const actorField = (rest[0] || '').trim();
     const arrow = actorField.split(/\s*(?:->|→)\s*/);
@@ -169,6 +174,7 @@ function parseLedger(text) {
       timestamp: timestamp.trim(),
       ticketId: ticketId.trim(),
       action,
+      known,
       from: (arrow[0] || '').trim(),
       to: (arrow[1] || '').trim(),
       raw: line.trim(),

@@ -45,6 +45,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
    ```markdown
    ## Review ledger (append-only — never edit or delete a line)
+   Action must be exactly one of: `requested` `started` `changes` `approved` `merged`
 
    | Timestamp | Ticket | Action | Actor |
    |---|---|---|---|
