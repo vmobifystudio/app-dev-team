@@ -125,19 +125,29 @@ fi
 
 # --- 3. no open S1/S2 bug -------------------------------------------------------------------------
 if [ -f "$BUGS" ]; then
-  # A bug is closed when its row is marked FIXED/CLOSED/WONTFIX on the same line.
+  # Delegated to lib/board.mjs `parseBugs` — the one parser, same rule as the in-flight check above.
+  # This was two inline greps, and one of them fail-opened: `[^\n]*` in a POSIX bracket expression
+  # means "not backslash and not the letter n", so the gate reported 0 open S1/S2 with two open. It
+  # only showed up because the behaviour differed between the interactive shell and `sh`. When the
+  # portfolio needed the same count across N projects, a second reader would have been the third.
   #
-  # Use `.*`, never `[^\n]*`. grep is line-oriented, so `.` already excludes newlines — and in a
-  # POSIX bracket expression `[^\n]` means "not backslash and not the letter n", which silently
-  # matches almost nothing. That exact mistake made this gate report 0 open S1/S2 bugs when two
-  # were open: a ship gate failing open, in the script written to stop gates failing open. It only
-  # showed up because the behaviour differed between the interactive shell and `sh`.
-  OPEN=$(grep -cE '\*\*BUG-[0-9]+\*\*.*\*\*S[12]\*\*' "$BUGS" 2>/dev/null || true)
-  CLOSED=$(grep -cE '\*\*BUG-[0-9]+\*\*.*\*\*S[12]\*\*.*(FIXED|CLOSED|WONTFIX)' "$BUGS" 2>/dev/null || true)
-  OPEN=$((${OPEN:-0} - ${CLOSED:-0}))
-  [ "${OPEN:-0}" -gt 0 ] && block "$OPEN open S1/S2 bug(s) on the bug board."
-  DEFERRED=$(grep -oE '\*\*S[34]\*\*' "$BUGS" | wc -l | tr -d ' ')
-  [ "$DEFERRED" -gt 0 ] && note "$DEFERRED open S3/S4 bug(s) — not blocking, but name them in the release notes."
+  # The library path goes in as an ARGUMENT, never interpolated into the -e source: this plugin's
+  # own install path contains spaces, and a path spliced into JS is one apostrophe from a syntax
+  # error that would make every project report zero open bugs.
+  COUNTS=$(node -e 'const [lib, file] = process.argv.slice(1);
+import(lib).then((m) => {
+  const b = m.parseBugs(require("node:fs").readFileSync(file, "utf8"));
+  process.stdout.write(`${b.blocking.length} ${b.deferred.length}`);
+}).catch((e) => { process.stderr.write(String(e && e.message)); process.exit(1); });' \
+    "$HERE/lib/board.mjs" "$BUGS" 2>"$ERRFILE"); RC=$?
+  if [ "$RC" -ne 0 ] || [ -z "$COUNTS" ]; then
+    unknown "$BUGS could not be parsed ($(cat "$ERRFILE")) — the open-defect count is UNKNOWN, not zero."
+  else
+    OPEN=${COUNTS%% *}
+    DEFERRED=${COUNTS##* }
+    [ "${OPEN:-0}" -gt 0 ] && block "$OPEN open S1/S2 bug(s) on the bug board."
+    [ "${DEFERRED:-0}" -gt 0 ] && note "$DEFERRED open S3/S4 bug(s) — not blocking, but name them in the release notes."
+  fi
 else
   # Normal on a brownfield project that has not run a /app-build QA wave — that file is only ever
   # written inside one. A routine outcome, not an exceptional one: name the owner and the fix.

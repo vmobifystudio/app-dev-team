@@ -460,6 +460,88 @@ for (const file of [...agents, ...commands, ...skills]) {
   }
 }
 
+// --- 7. the failure corpus, and the one signal it exists to produce ------------------------------------
+//
+// `knowledge/failure-corpus.md` is the only pack that learns from failure; the rest learn from
+// shipped code. Two things can rot it, and both are silent:
+//
+//   1. a class with no Tell or no Rule — a story, not knowledge. Nobody can act on it and nobody
+//      notices, because prose always looks finished.
+//   2. an instance dated AFTER its class's `Rule shipped` date. That is a class recurring under a
+//      rule that was supposed to stop it, which is a strictly more valuable fact than the incident:
+//      it says the rule does not work. Left unflagged it reads as "we know about this one", the most
+//      expensive misreading in the file.
+//
+// Blocking, not a warning. The exit is to strengthen the rule and stamp a new `Rule shipped` date —
+// a claim someone is then on the hook for — or to reclassify the instance into the class it really
+// belongs to. Deleting the row is not an exit.
+const CORPUS = join(ROOT, 'knowledge/failure-corpus.md');
+const CORPUS_FIELDS = ['Shape', 'Tell', 'Rule', 'Rule shipped'];
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * One parser for the corpus. Exported shape: [{id, name, fields, instances:[{date, text}]}].
+ * A class heading is `### FC-NNN — <name>`; fields are `**<Field>:**` lines; instances are table
+ * rows whose first cell is an ISO date. Anything else in the section is commentary.
+ */
+function parseCorpus(text) {
+  const classes = [];
+  let current = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const heading = raw.match(/^###\s+(FC-\d+)\s+[—-]\s+(.+?)\s*$/);
+    if (heading) {
+      current = { id: heading[1], name: heading[2], fields: new Map(), instances: [] };
+      classes.push(current);
+      continue;
+    }
+    if (!current) continue;
+    const field = raw.match(/^\*\*([^:*]+):\*\*\s*(.*)$/);
+    if (field) {
+      current.fields.set(field[1].trim(), field[2].trim());
+      continue;
+    }
+    const row = raw.match(/^\|\s*([^|]+?)\s*\|\s*(.+?)\s*\|\s*$/);
+    if (row && DATE.test(row[1])) current.instances.push({ date: row[1], text: row[2] });
+  }
+  return classes;
+}
+
+if (!existsSync(CORPUS)) {
+  add(findings, 'corpus_missing', 'knowledge/failure-corpus.md',
+    'The failure corpus is gone. code-reviewer and verification-engineer are told to run its tells against every diff, so its absence turns two gates into generic checklists without either of them reporting a thing.',
+    'Restore knowledge/failure-corpus.md, or remove the instruction from both agents in the same change.');
+} else {
+  const classes = parseCorpus(readFileSync(CORPUS, 'utf8'));
+  if (classes.length === 0) {
+    add(findings, 'corpus_unparseable', 'knowledge/failure-corpus.md',
+      'The corpus contains no `### FC-NNN — <name>` class headings, so the recurrence check reads zero classes and reports clean over a file that may be full of them. A parser finding nothing is not the same as nothing being there.',
+      'Restore the heading shape documented in the file, or update parseCorpus in scripts/team-doctor.mjs alongside it.');
+  }
+  for (const cls of classes) {
+    const missing = CORPUS_FIELDS.filter((f) => !(cls.fields.get(f) || '').length);
+    if (missing.length) {
+      add(findings, 'corpus_class_incomplete', 'knowledge/failure-corpus.md',
+        `${cls.id} is missing ${missing.join(', ')}. A class with no Tell cannot be applied to a diff and a class with no Rule catches nothing — either way it is a story, and stories read as finished work.`,
+        'Fill the field, or delete the class rather than leaving a decorative one.');
+      continue;
+    }
+    const shipped = cls.fields.get('Rule shipped');
+    if (!DATE.test(shipped)) {
+      add(findings, 'corpus_class_incomplete', 'knowledge/failure-corpus.md',
+        `${cls.id} has "Rule shipped: ${shipped}", which is not a YYYY-MM-DD date. The recurrence check compares instance dates against it, so an unparseable date silently disables the single most valuable signal in this file.`,
+        'Write the date the catching rule actually landed, as YYYY-MM-DD.');
+      continue;
+    }
+    for (const instance of cls.instances) {
+      if (instance.date > shipped) {
+        add(findings, 'corpus_recurrence', 'knowledge/failure-corpus.md',
+          `RECURRENCE — ${cls.id} (${cls.name}) happened again on ${instance.date}, after its rule shipped on ${shipped}: ${instance.text}. The rule did not work. That is the finding, not the incident.`,
+          `Strengthen the rule that claims to catch ${cls.id} and stamp its new "Rule shipped" date, or move this instance to the class it actually belongs to. Deleting the row is not an exit.`);
+      }
+    }
+  }
+}
+
 // --- report ------------------------------------------------------------------------------------------
 
 if (process.argv.includes('--json')) {

@@ -353,6 +353,43 @@ export function pairQuestions(thread) {
 export const openQuestions = (thread) => pairQuestions(thread).open;
 
 /**
+ * Parse `docs/51-bugs.md` — qa-engineer's bug board.
+ *
+ * Here for the reason ship-inflight is here: the open-S1/S2 count decides releases, and it was a
+ * pair of inline greps in ship-gate.sh with nothing else able to read the file. When the portfolio
+ * needed the same number across N projects, the choice was one parser or a second reader — and the
+ * grep it replaces had already fail-opened once (`[^\n]` in a POSIX bracket expression is "not
+ * backslash, not the letter n", so the gate reported 0 open S1/S2 with two open).
+ *
+ * A row is a bug when the line carries a bolded `**BUG-NNN**` and a bolded `**S1..S4**`. It is
+ * closed when the same line says FIXED, CLOSED or WONTFIX — uppercase, because "fixed" in a prose
+ * sentence is a claim, not a state.
+ */
+export function parseBugs(text) {
+  const bugs = [];
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const id = line.match(/\*\*(BUG-\d+)\*\*/);
+    const severity = line.match(/\*\*(S[1-4])\*\*/);
+    if (!id || !severity) continue;
+    const cells = splitRow(line);
+    bugs.push({
+      id: id[1],
+      severity: severity[1],
+      closed: /\b(FIXED|CLOSED|WONTFIX)\b/.test(line),
+      ticket: (cells[1] || '').replace(/\*\*/g, '').trim(),
+      line: line.trim(),
+    });
+  }
+  const open = bugs.filter((b) => !b.closed);
+  return {
+    bugs,
+    open,
+    blocking: open.filter((b) => b.severity === 'S1' || b.severity === 'S2'),
+    deferred: open.filter((b) => b.severity === 'S3' || b.severity === 'S4'),
+  };
+}
+
+/**
  * Definition of Ready — is this ticket workable, or will the developer have to guess?
  *
  * board-doctor checked that a row was structurally valid; nothing checked it was *answerable*. A

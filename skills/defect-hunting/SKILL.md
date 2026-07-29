@@ -187,9 +187,36 @@ adversarial review rounds never caught ~70 such items, because reviewers check *
 
 ---
 
+## 5. Use the prior — `knowledge/failure-corpus.md` beats this skill's own generality
+
+The four rules above are general. They are true of most codebases and were paid for in a different
+one. **`knowledge/failure-corpus.md` is specific: it is what *this* codebase has actually produced,
+one entry per defect class, each with dated instances and the rule that now claims to catch it.**
+
+A generic checklist enumerates what could go wrong, weighted by nothing. A corpus enumerates what
+*did* go wrong here, weighted by how often and how recently — which is the only prior worth having
+when you have finite attention and an unbounded space of possible defects. Run its **Tells** before
+you improvise your own; they exist because someone already paid for them.
+
+Two obligations, both cheap:
+
+1. **Cite the class ID** in any finding it produced (`FC-004`). An uncited class cannot be checked,
+   and cannot be scored for whether it is earning its place.
+2. **A class that recurs after its rule shipped is the most valuable output in the system** — it says
+   the rule does not work, which you would otherwise learn a third time. `team-doctor` fails on it;
+   `/app-learn`'s failure pass is what puts new instances there. Feed it.
+
+The corpus is downstream of this skill, not a replacement for it: §1–§4 are how you find a defect
+nobody has named yet, and that is how new classes get written.
+
+---
+
 ## Review checklist
 
 Attach to any `code-reviewer` or audit verdict:
+
+- [ ] Ran **every Tell in `knowledge/failure-corpus.md`** against this diff, and cited the class ID
+      for each finding it produced
 
 - [ ] Named the data this change touches, and enumerated **every** writer and reader of it
 - [ ] Checked the edit / cancel / failure / restore / import paths, not just the happy path
