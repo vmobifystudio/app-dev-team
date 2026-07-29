@@ -16,7 +16,9 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 0. **Doctor gate.** Run the `board-doctor` skill first. If it exits non-zero, spawn nobody — a
    parallel launch against an incoherent board multiplies the damage across every track at once.
 
-1. **Read the board.** Find tickets where `Status = todo` and all `Depends on` IDs are `done`.
+1. **Read the board.** Find tickets where `Status = todo` and all `Depends on` IDs are **merged**
+   (`qa` or `done`) — a dependency is satisfied once its code is on the integration branch, not once
+   QA has signed it off. Requiring `done` stalls every dependent behind a QA pass.
 
    Note what this readiness rule *cannot* express: a ticket behind a `blocked` dependency is not
    ready and never will be, but it is also never reported. That is the doctor's `stranded` check,

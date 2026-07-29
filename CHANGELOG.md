@@ -126,6 +126,23 @@ Also confirmed: **worktrees are necessary but not sufficient.** The two clean br
 add/add conflicts on **7 of 10 files** — isolation removes the corruption, file-overlap serialization
 removes the unmergeable pile. Both rules are load-bearing.
 
+### Fixed — found by the full-sprint dry run (merge gate)
+
+- **A dependency blocked its dependents until QA, not until merge.** `/app-build` treated a
+  dependency as satisfied only at `done`. Observed live: the foundation ticket merged cleanly to
+  `main` and both features depending on it stayed `todo`, so the sprint had nothing to run while a
+  single QA pass completed. A dependency is satisfied when its code is on the integration branch
+  (`qa` or `done`) — QA failures already re-enter as `BUG-NNN-fix` tickets, so gating dependents a
+  second time buys nothing and serializes the board behind its slowest stage.
+- **The isolation rule contradicted the artifact conventions.** `agent-isolation` said "never leave
+  your worktree" while the daily-fragment and review-verdict conventions both wrote into shared
+  `docs/`. A developer resolved it by writing its fragment to the repo root, so a fragment for
+  unmerged work landed on `main`. Reframed around the real hazard — **collision, not location**: a
+  shared write is safe when no other agent can write that path. Code and tests are worktree-only;
+  daily fragments live in the worktree and reach `main` at merge; `docs/53-reviews/<id>-cycle-N.md`
+  is a safe shared write (unique per ticket+cycle, and must outlive a rejected branch); the board
+  and message ledger are append-only.
+
 ### Fixed — found by the full-sprint dry run (review gate)
 
 - **A drifted ledger word silently erased a REQUEST CHANGES verdict.** The reviewer appended

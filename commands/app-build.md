@@ -25,7 +25,15 @@ Tickets (optional, default = all ready): $ARGUMENTS
    `stranded` the moment its dependency is blocked, which happens mid-loop at step 4.
 
 1. **Read state.**
-   - `docs/31-board.md` — find tickets where `Status = todo` and every `Depends on` ID is `done`.
+   - `docs/31-board.md` — find tickets where `Status = todo` and every `Depends on` ID is **merged**
+     — that is, `qa` **or** `done`.
+
+     A dependency is satisfied when its code is on the integration branch, not when QA has finished
+     with it. Requiring `done` stalls every dependent behind a QA pass: observed live, a foundation
+     ticket merged cleanly and both features that depended on it stayed unready, so the sprint had
+     nothing to do while one QA cycle ran. QA failures already have their own mechanism — they
+     become `BUG-NNN-fix` tickets in step 1 — so blocking dependents a second time buys nothing and
+     serializes the whole board behind its slowest gate.
    - `docs/51-bugs.md` (if it exists) — for every open `S1` or `S2`, ensure a matching `BUG-NNN-fix` row exists on the board; if not, spawn `tech-manager` once with the instruction to create them, then re-read the board.
 
 2. **Spawn developers in parallel.** Use the `parallel-orchestrator` skill, which now requires a
