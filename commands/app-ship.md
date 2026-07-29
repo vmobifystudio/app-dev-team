@@ -20,6 +20,24 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    Exit `1` → stop. Then read `docs/31-board.md`: if anything is `todo`, `in_progress`, or `review`,
    stop and tell the user "Sprint isn't done — run `/app-build` first."
 
+1a. **Read the bug board and QA's verdict — a drained board is not a shippable sprint.**
+
+   - `docs/51-bugs.md` — **any open `S1` or `S2` stops the release.** This command's description and
+     Safety section have always claimed to gate on "QA sign-off and a clean bug board"; until this
+     was fixed, step 1 never actually opened the file. A cited gate that does not run is worse than
+     no gate, because it stops people looking.
+   - `docs/50-test-plan.md` — check the **exit criteria** QA wrote, and whether each row is marked
+     executed or only reasoned. A test plan whose rows all say "not performed" is not a QA pass.
+   - **`qa-engineer`'s ship recommendation is a first-class input, and it can differ from the
+     reviewers without either being wrong.** Observed live: three tickets were each individually
+     correct and approved by review, and QA still recommended holding — no composition root wired
+     the features together, so the sprint's core user journey had never been exercised by anything
+     that shipped. Per-ticket review is scoped to a diff and structurally cannot see that;
+     ticket-level correct is not the same as sprint-level shippable.
+
+   If QA recommends holding, stop and surface its reasoning verbatim, with the specific tickets that
+   would close it. Do not net a hold against a set of approvals.
+
 2. **Spawn `security-reviewer`, `verification-engineer`, `aso-specialist`, and `data-analyst` in
    parallel** in a single message:
    - `security-reviewer` produces `docs/70-security-review.md`. Open `critical`/`high` → stop.
