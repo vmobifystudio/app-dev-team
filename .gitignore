@@ -20,5 +20,25 @@ npm-debug.log*
 .env.*
 *.pem
 
+# Mobile signing material. This plugin has no app code of its own, so none of these can appear
+# here — they are listed because this file is the reference a generated project's .gitignore is
+# seeded from, and a mobile studio's ignore list that omits keystores is a leak waiting for its
+# first real project. Cheaper to carry the lines than to find out which one was missing.
+*.jks
+*.keystore
+keystore.properties
+*.p12
+*.cer
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
 # Per-agent git worktrees (agent-isolation skill)
 .agent-wt/
+
+# App Store Connect API key
+*.p8

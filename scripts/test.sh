@@ -2209,6 +2209,55 @@ grep -q -- "--export docs/34-dashboard.html" "$DCMD" \
   || bad "...and documents the static export mode with the path it writes"
 
 echo
+echo
+# --------------------------------------------------------------------------------------------
+echo "destructive-git hook"
+# --------------------------------------------------------------------------------------------
+# The ban was prose in four files and its only assertion checked THE TEXT WAS PRESENT IN THE
+# MARKDOWN — a documentation-presence check guarding an incident that had already happened
+# (DR4-027: git stash + git reset in a shared checkout, 22 files lost). These assert behaviour.
+HOOK="$HERE/../hooks/block-shared-tree-destructive-git.sh"
+HKD=$(mktemp -d)
+( cd "$HKD" && git init -q . && git commit -q --allow-empty -m i )
+
+# Run the hook against a command, from inside the scratch repo.
+hk() { ( cd "$HKD" && printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | sh "$HOOK" ); }
+
+# CLEAN tree: everything allowed. A gate that fires when it should not gets switched off, and a
+# switched-off gate protects nothing — this half matters as much as the blocking half.
+assert_exit 0 "clean tree: allows git stash"         hk "git stash"
+assert_exit 0 "clean tree: allows git reset --hard"  hk "git reset --hard"
+
+# DIRTY tree with NO worktrees — the exact DR4-027 configuration. The first version of this hook
+# keyed on worktrees existing and was SILENT here, in the state it was written for.
+echo work > "$HKD/uncommitted.txt"
+
+assert_exit 2 "dirty tree: blocks git stash"         hk "git stash"
+assert_exit 2 "dirty tree: blocks git reset --hard"  hk "git reset --hard"
+assert_exit 2 "dirty tree: blocks git clean"         hk "git clean -fd"
+assert_exit 2 "dirty tree: blocks git add -A"        hk "git add -A"
+assert_exit 2 "dirty tree: blocks checkout -- ."     hk "git checkout -- ."
+assert_exit 2 "dirty tree: blocks git commit -a"     hk "git commit -a -m x"
+assert_exit 2 "dirty tree: blocks forced checkout"   hk "git checkout -f"
+assert_exit 2 "dirty tree: blocks git reset --keep"  hk "git reset --keep"
+assert_exit 2 "dirty tree: blocks a force push"      hk "git push --force"
+assert_exit 2 "dirty tree: blocks git branch -D"     hk "git branch -D x"
+
+# The documented safe forms must survive, or the ban bans its own alternative.
+assert_exit 0 "still allows an explicit staged path" hk "git add src/one.swift"
+assert_exit 0 "still allows discarding one file"     hk "git checkout -- mine.swift"
+assert_exit 0 "still allows a path-scoped stash"     hk "git stash push -- one.swift"
+assert_exit 0 "never touches a read-only git command" hk "git status"
+
+# Portability: the first version extracted the command with GNU-only sed alternation, which BSD sed
+# fails SILENTLY — CMD came back empty and the hook allowed everything. It could not fire, written
+# on the day this repo spent hunting rules that cannot fire, and caught only by running it.
+assert_exit 2 "parses the payload without GNU sed extensions" hk "git stash"
+
+rm -rf "$HKD"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
+
+
