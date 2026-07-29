@@ -68,6 +68,15 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    not a conditional check that quietly stops applying — a gate that silently stops applying to
    brownfield projects is indistinguishable, six months later, from a gate that was never there.
 
+   **And a `WAIVED:` is never an `N/A:`.** A gate whose owning role is `off` in
+   `docs/02-team-roster.md` is *structurally inapplicable* — a `backend-service` has no store
+   listing to be ready — so it is recorded as
+   `N/A: <gate> — <role> is off(<reason>) per docs/02-team-roster.md`, printed in the release
+   summary and appended to `docs/60-releases.md` alongside any waivers. A waiver says a human
+   decided to proceed without a gate that applied; an N/A says there was nothing to decide.
+   Writing either one as the other is a lie in the release record: the first invents a decision
+   nobody made, the second hides one somebody did. Read the roster before you reach for `WAIVED:`.
+
    The gate checks board coherence, that no ticket is still in `todo`/`in_progress`/`review`, that
    no `S1`/`S2` bug is open, and that a test plan exists — and it *notes* (without blocking) open
    S3/S4 bugs, any QA hold, and test-plan rows that were reasoned rather than executed.
@@ -104,6 +113,16 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      `WAIVED: runtime gate (<platform>) — <who waived it> — <reason>` in `docs/60-releases.md` and
      repeat the waiver in the release summary and in step 4's confirmation question.
 
+   **Product types the script cannot see are N/A, not waived — and not unchecked.** `runtime-gate.sh`
+   detects iOS and Android only, so a `backend-service`, `web-app`, `cli` or `library` reaches exit
+   `2` structurally, every time, and waiving it every release would train everyone to waive it.
+   Record `N/A: runtime gate — product type <type> is outside runtime-gate.sh's detection`, **then
+   run the equivalent for that type and quote its output**: does the service start and answer a
+   health check, does the page render, does the CLI run `--help` and exit 0, does the library build
+   and pass its own suite. Same three-state contract, same rule — nothing ships that nobody ran.
+   (Extending the script's detection is the planned home for this; until then it is executed here
+   and the evidence is quoted here, never assumed.)
+
    A waiver here is a human stating on the record that this build is going to users without anyone
    having watched it start. That should read as uncomfortable, because it is — but a recorded
    uncomfortable decision beats a silently skipped check, which is indistinguishable six months
@@ -112,8 +131,12 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    Where the Axiom toolchain is present, the `runtime-gate` skill escalates past launch to driving
    the PRD's P0 journey. On a release, prefer that: launching is the floor.
 
-2. **Spawn `security-reviewer`, `verification-engineer`, `aso-specialist`, and `data-analyst` in
-   parallel** in a single message:
+2. **Spawn the `active` roles among `security-reviewer`, `verification-engineer`, `aso-specialist`,
+   and `data-analyst` in parallel** in a single message. Read `docs/02-team-roster.md` first — for
+   an `off` role, print its gate as `N/A: <gate> — <role> is off(<reason>) per
+   docs/02-team-roster.md` (see step 1a: an N/A is not a waiver) and record the same line in
+   `docs/60-releases.md`. `security-reviewer` and `verification-engineer` are never off at any tier
+   or product type, so an N/A for either is a defect in the roster, not a release decision:
    - `security-reviewer` produces `docs/70-security-review.md`. Open `critical`/`high` → stop.
    - `verification-engineer` produces `docs/71-verification.md` — it **executes** every constant
      that makes a real-world claim against outside reference data, and proves every guard rule in
@@ -129,6 +152,12 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      `docs/60-releases.md`. **Do not skip the gate merely because store work looks out of scope** —
      that judgement is the user's, it gets recorded, and it is wrong exactly when someone assumed a
      store upload was not happening.
+
+     The one case that is *not* a waiver: `aso-specialist` is `off` in the roster because the
+     product type has no store at all (`backend-service`, `cli`, `library`, `web-app`). Then the
+     gate never applied and the line is `N/A: store readiness — aso-specialist is off(no app-store
+     listing) per docs/02-team-roster.md`. Missing artifact on a product that *does* ship to a
+     store is still a waiver decision, and still the user's.
    - `data-analyst` confirms P0 features are instrumented and the consent gate works.
    If any returns a blocker, stop and surface the combined list; do not proceed to release.
 

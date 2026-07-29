@@ -36,6 +36,21 @@ assert_has() {
   grep -q -- "$2" "$1" && ok "$3" || bad "$3" "missing: $2"
 }
 
+# assert_finding <doctor-json> <code> <label> [needle]
+#
+# Asserts a *blocking finding* with that exact code, optionally naming <needle>. Deliberately not
+# `grep code "$json"`: the JSON carries warnings too, and a broken check demoted from findings to
+# warnings still greps clean — proven, when demoting one left this suite green. An assertion that
+# cannot tell a finding from a warning is the "rule that cannot fail" class, in the test file.
+assert_finding() {
+  node -e '
+const [, json, code, needle] = process.argv;
+process.exit(require(json).findings.some(
+  (f) => f.code === code && (!needle || JSON.stringify(f).includes(needle))
+) ? 0 : 1);
+' "$1" "$2" "${4:-}" && ok "$3" || bad "$3" "no blocking finding ${2}${4:+ naming $4}"
+}
+
 # assert_exit_within <seconds> <expected> <label> <command...>
 #
 # For assertions about a script that must not HANG. `assert_exit` would wait forever on a
@@ -576,6 +591,46 @@ printf '\nUse the `ui-design:mobile-ios-design` skill, then invoke `superpowers:
 grep -q "skill_missing" "$TMP/tdext.json" \
   && bad "external plugin skills are not reported missing" "$(grep -m1 'References skill' "$TMP/tdext.json")" \
   || ok "external plugin skills are not reported missing"
+
+# The activation matrix in skills/role-activation decides which roles a product type and tier spawn
+# at all. A role present in agents/ but absent from the matrix is unspawnable-by-omission: nothing
+# activates it and nothing records that it was deactivated — the silent-drop class this repo keeps
+# rediscovering, arriving through the roster door. The mirror defect is a matrix row naming a role
+# that does not exist: a roster promising a specialist nothing can spawn.
+MATRIX="$PLUG/skills/role-activation/SKILL.md"
+cp "$MATRIX" "$TMP/matrix-pristine.md"
+restore_matrix() { cp "$TMP/matrix-pristine.md" "$MATRIX"; }
+
+grep -v '^| `ux-designer` |' "$TMP/matrix-pristine.md" > "$MATRIX"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx1.json" 2>/dev/null
+[ $? = 1 ] && ok "a role missing from the activation matrix blocks" \
+            || bad "a role missing from the activation matrix blocks"
+assert_finding "$TMP/tdmx1.json" role_not_in_matrix \
+  "...as role_not_in_matrix, naming the role nothing would activate" "ux-designer"
+restore_matrix
+
+# Appended, not renamed: renaming a real row ALSO removes that role from the matrix, so this case
+# passed on role_not_in_matrix while matrix_role_unknown was disabled. Proven by breaking it.
+{ cat "$TMP/matrix-pristine.md"; echo '| `ux-designerr` | on | on | on | on | on | on | on | typo |'; } > "$MATRIX"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx2.json" 2>/dev/null
+assert_finding "$TMP/tdmx2.json" matrix_role_unknown \
+  "a matrix row for a role that does not exist blocks" "ux-designerr"
+restore_matrix
+
+# Two rows for one role is not a duplicate to tidy up later: they can disagree, and whichever is
+# read second silently wins.
+{ cat "$TMP/matrix-pristine.md"; grep '^| `qa-engineer` |' "$TMP/matrix-pristine.md"; } > "$MATRIX"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx3.json" 2>/dev/null
+assert_finding "$TMP/tdmx3.json" matrix_role_duplicated \
+  "a role with two matrix rows blocks" "qa-engineer"
+restore_matrix
+
+# And the matrix has to exist at all — the roster is generated from it. Asserted on the finding
+# code, not on exit status: removing the file also trips skill_missing, so exit 1 proves nothing.
+mv "$MATRIX" "$TMP/matrix-away.md"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx4.json" 2>/dev/null
+assert_finding "$TMP/tdmx4.json" activation_matrix_missing "a missing activation matrix blocks"
+mv "$TMP/matrix-away.md" "$MATRIX"
 
 echo
 # --------------------------------------------------------------------------------------------

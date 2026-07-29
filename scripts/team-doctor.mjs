@@ -157,6 +157,46 @@ for (const owner of BUILD_SPAWNABLE_OWNERS) {
   }
 }
 
+// --- 2c. every role appears in the activation matrix exactly once ------------------------------------
+//
+// `role-activation` decides which roles a given product type and tier spawn at all. A role that is
+// in agents/ but in no matrix row is unspawnable-by-omission: no command activates it, nothing
+// records that it was deactivated, and no reason exists to read. That is the same silent-drop class
+// as owner_never_spawned above, arriving through the other door — and the whole point of the roster
+// is that a deactivated role is RECORDED, never absent. A matrix row for a role that does not exist
+// is the mirror defect: the roster promises a specialist nothing can spawn.
+
+const MATRIX = join(ROOT, 'skills/role-activation/SKILL.md');
+if (!existsSync(MATRIX)) {
+  add(findings, 'activation_matrix_missing', 'skills/role-activation/SKILL.md',
+    'The role-activation skill is absent, so nothing decides which roles a product type activates and no roster can be generated from it.',
+    'Restore skills/role-activation/SKILL.md with its activation matrix.');
+} else {
+  const matrixText = readFileSync(MATRIX, 'utf8');
+  const seen = new Map();
+  for (const m of matrixText.matchAll(/^\|\s*`([a-z][a-z0-9-]*)`\s*\|/gm)) {
+    seen.set(m[1], (seen.get(m[1]) || 0) + 1);
+  }
+  for (const [role, count] of seen) {
+    if (!roles.has(role)) {
+      add(findings, 'matrix_role_unknown', 'skills/role-activation/SKILL.md',
+        `The activation matrix has a row for "${role}", which is not a role — there is no agents/${role}.md. The roster would promise a specialist nothing can spawn.`,
+        'Fix the row, or add the agent.');
+    } else if (count > 1) {
+      add(findings, 'matrix_role_duplicated', 'skills/role-activation/SKILL.md',
+        `"${role}" has ${count} rows in the activation matrix. Two rows can disagree, and whichever is read second silently wins.`,
+        'Keep exactly one row per role.');
+    }
+  }
+  for (const role of roleNames) {
+    if (!seen.has(role)) {
+      add(findings, 'role_not_in_matrix', `agents/${role}.md`,
+        `"${role}" is in no activation-matrix row, so no product type ever activates it and no roster ever records why it was left out. It is unspawnable by omission — never picked up, never deactivated, never reported.`,
+        'Add a row to the matrix in skills/role-activation/SKILL.md (on / ? / — for each product type), or delete the role.');
+    }
+  }
+}
+
 // --- 3. every referenced skill exists --------------------------------------------------------------
 
 /**

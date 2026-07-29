@@ -28,6 +28,12 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 
 1. **Detect greenfield vs brownfield.** Using the `brownfield-onboarding` skill's detection, check
    whether the target directory already contains an app.
+
+   Either branch writes `docs/02-team-roster.md` via the `role-activation` skill before it spawns
+   anyone. **`--utility` sets the tier**; without it the tier is derived and stated at Gate 1, where
+   scope is approved anyway. Everything after this step spawns from the roster and never from a list
+   in this file — read it, do not re-derive it. `off` roles are not spawned; their gates report
+   `N/A` with the roster's reason, never silence.
    - **Empty / no app → greenfield:** run `/app-init` with the idea (requirements-intake → CEO
      vision → parallel CPO/CTO → parallel ux-designer/tech-lead/devops-engineer → project bootstrap
      incl. `CLAUDE.md` + git). `/app-init` ends with its own scope-lock gate — **this command owns
@@ -39,7 +45,11 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 
 2. **GATE 1 — scope-lock / audit-approval (human).**
    - *Greenfield:* print a one-screen brief — vision, P0 feature list, architecture headline,
-     rough effort, top risk — and ask *"Approve scope and proceed to build?"*
+     rough effort, top risk, **plus the roster headline: tier (and whether it was flagged or
+     derived), product type, and every `off` role with its reason** — and ask *"Approve scope and
+     proceed to build?"* Activation is a scope decision, so it is reviewed at the gate that already
+     reviews scope. **This adds no third gate**; a user who disagrees with the derived tier says so
+     here, and `docs/02-team-roster.md` is rewritten before anything spawns.
    - *Brownfield:* print the audit scorecard and the remediation backlog grouped by severity and
      Safe/Risky, and ask *"Which gaps should we fix?"* Risky changes proceed only if approved here.
    Wait for the answer. With `--yolo`, skip the gate (greenfield: auto-approve scope; brownfield:
@@ -67,8 +77,11 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      being hit, or a scope/architecture conflict. Surface verbatim with a proposed answer.
 
 5. **Ship-readiness.** When the board is drained and there are zero open S1/S2 bugs, spawn in
-   parallel: `aso-specialist` (store assets + readiness), `security-reviewer` (MASVS), and
-   `data-analyst` (instrumentation + consent verification). A readiness agent that cannot evaluate —
+   parallel **the `active` ones among** `aso-specialist` (store assets + readiness),
+   `security-reviewer` (MASVS), and `data-analyst` (instrumentation + consent verification).
+   `security-reviewer` is never off, at any tier. For an `off` role, print
+   `N/A: <its gate> — <role> is off(<reason>) per docs/02-team-roster.md` — an inactive role's gate
+   is structurally not applicable, which is **not** a waiver and **not** a skip. A readiness agent that cannot evaluate —
    the artifact it reads was never written — reports `CANNOT EVALUATE` and goes to Gate 2 as a
    produce-or-waive decision (`/app-ship` step 1a). **Never resolve one by skipping it here:**
    `--yolo` skips human gates, not correctness gates, and this is a correctness gate.

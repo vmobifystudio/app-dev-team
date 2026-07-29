@@ -24,7 +24,12 @@ Scan the target directory (not deeper than ~3 levels) to establish ground truth 
   `compileSdk`/`minSdk`/`targetSdk`, Compose vs XML, the module list.
 - **Both / signals:** existing `CLAUDE.md`, `README`, `docs/`, CI under `.github/workflows`,
   `google-services.json`/`GoogleService-Info.plist` presence (Firebase), ads/billing SDKs in deps.
-- Record the raw findings; do not guess where you can read.
+- **Neither iOS nor Android:** that is a normal answer, not a dead end. Read the package manifests —
+  `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, `pom.xml` — plus `Dockerfile`,
+  `Procfile`, and whether there is a UI surface or a binary entry point. `role-activation`'s
+  detection table maps what you find to one of the seven product types.
+- Record the raw findings; do not guess where you can read. The product type you land on decides
+  which specialists ever get spawned, so an ambiguous tree earns one question to the user.
 
 ## Step 2 — Reverse-engineer the as-built baseline
 

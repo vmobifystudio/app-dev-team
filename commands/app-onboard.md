@@ -22,8 +22,18 @@ something to work against.
 2. **Invoke `house-conventions`** so the reverse-engineering is framed against the studio's
    standards (and the right Flagship/Utility tier).
 
-3. **Spawn in parallel** (single message), each reading the codebase and writing an *as-built*
-   snapshot — describe what exists, mark guesses `(inferred)`, change no code:
+2a. **Activate the roster.** Invoke the `role-activation` skill. Both axes come from step 1's
+   detection, not from a guess: the **product type** from its detection table (a tree that is
+   neither iOS nor Android is a normal answer — read the package manifests), the **tier** from the
+   app's size and shape, naming the signal that decided it. Ambiguous → ask one question.
+
+   Write `docs/02-team-roster.md` in the shape that skill defines — all 18 roles, `active` /
+   `conditional` / `off` with trigger or reason — **before spawning anyone below**, and print the
+   tier, the product type, and the off-list. A brownfield backend service that spawns an
+   `aso-specialist` and gets store-listing homework is the failure this closes.
+
+3. **Spawn the `active` roles in parallel** (single message), each reading the codebase and writing
+   an *as-built* snapshot — describe what exists, mark guesses `(inferred)`, change no code:
    - `cto` + `tech-lead` → `docs/20-architecture.md` (actual stack, layering, state/persistence/DI/
      navigation, backend, CI, signing) and per-platform `docs/22-impl-spec-<platform>.md` snapshots.
    - `cpo` → `docs/10-prd.md` feature inventory derived from the navigation graph and screen files,
@@ -60,8 +70,9 @@ something to work against.
    No command created this file. Observed live: an agent reported raising a question on the channel
    when the channel had never existed, and nothing contradicted it.
 
-6. **Summary.** Print the docs produced, the detected stack, and the suggested next step:
-   `/app-audit` to grade the app against the House KB and build a remediation plan.
+6. **Summary.** Print the docs produced, the detected stack, the roster headline (tier, product
+   type, which roles are off and why), and the suggested next step: `/app-audit` to grade the app
+   against the House KB and build a remediation plan.
 
 ## Safety
 

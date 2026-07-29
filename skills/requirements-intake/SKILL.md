@@ -26,7 +26,12 @@ You are converting fuzzy human intent into a structured intake doc. You are not 
    The five questions, in priority order:
    1. Who is this for? (one specific persona, not a market)
    2. What is the single most important thing they'll do in the app?
-   3. iOS, Android, or both — and which first if you have to pick?
+   3. What kind of product is this — **iOS app, Android app, both, web app, backend service, CLI
+      tool, or a library**? If more than one, which ships first?
+
+      This question used to ask "iOS, Android, or both", which could not describe a product that is
+      neither. `role-activation` reads its answer to decide which specialists exist at all, and a
+      product type it cannot read from here it has to guess at.
    4. What does success look like in 6 months? (numbers if possible)
    5. Anything that's explicitly out of scope?
 
@@ -44,8 +49,11 @@ You are converting fuzzy human intent into a structured intake doc. You are not 
 ## Core action
 ...
 
+## Product type
+One of: ios-app | android-app | mobile-app | backend-service | web-app | cli | library
+
 ## Platforms
-Primary: iOS | Android | both
+Primary: ...
 Order: ...
 
 ## Success in 6 months

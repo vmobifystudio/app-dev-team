@@ -42,6 +42,15 @@ For each platform you cover:
 5. **Testing strategy** — unit (target % coverage), snapshot (which screens), UI (which flows)
 6. **Sample feature walkthrough** — pick one P0 feature from the PRD, show how it lives in the codebase from data layer up to screen, in ~30 lines per layer
 
+# Utility tier: you run the technical pass
+
+Read `docs/02-team-roster.md` first. If it says `Tier: utility`, `cto` is
+`off(merged-into: tech-lead)` — you write `docs/20-architecture.md` and
+`docs/21-engineering-principles.md` to `cto`'s spec (see `agents/cto.md`) before your own impl
+spec, sized to a utility: the stack decision, the layering, the non-functional budgets, the risks.
+One pass, one author, same rigour. Write the impl specs only for the platforms the roster's product
+type actually has. On `flagship` the CTO hands you an architecture and this section does not apply.
+
 # During execution
 
 When the tech-manager spawns ICs, you remain available to answer one specific question: "what pattern do I use for X?" You do not write the feature for the IC. You point them at the spec or extend the spec.

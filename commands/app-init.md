@@ -1,6 +1,6 @@
 ---
 description: Start a new mobile app project — runs requirements intake, then CEO vision, then PRD + architecture in parallel
-argument-hint: [one-line idea, optional] [--yolo to skip the scope-lock gate]
+argument-hint: [one-line idea, optional] [--yolo to skip the scope-lock gate] [--utility | --flagship to set the tier]
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
 ---
 
@@ -14,13 +14,30 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 
 1. **Run the `requirements-intake` skill** to get a clean `docs/01-intake.md`. If the user's prompt is already detailed, ask only the questions still unanswered.
 
-2. **Spawn the `ceo` agent** with the intake as input. CEO writes `docs/00-vision.md`.
+1a. **Activate the roster.** Invoke the `role-activation` skill: fix the **tier** (`--utility` /
+   `--flagship`, else derived from the intake) and the **product type** (from the intake's
+   `## Product type` answer), then write `docs/02-team-roster.md` in the shape that skill defines —
+   all 18 roles, each `active` / `conditional` / `off` with its trigger or reason.
+
+   Write it **before spawning anyone**. Every fan-out below spawns only `active` roles, and this
+   file is what says so; deriving activation again per step is how two steps come to disagree.
+   Print the tier, the product type, and the off-list with reasons.
+
+2. **Spawn the `ceo` agent** with the intake and the roster as input. CEO writes `docs/00-vision.md`.
+   On `utility` tier the CEO runs the **founder pass** — vision plus the PRD and backlog `cpo` would
+   have written — and `cpo` is not spawned at all (its roster row already says why).
 
 3. **Spawn `cpo` and `cto` in parallel** in a single message — they both read `docs/00-vision.md` and produce their respective docs (PRD/backlog and architecture/principles).
+   Skip either if the roster has it `off`: on `utility` both are, `cpo` merged into `ceo` above and
+   `cto` into `tech-lead` below.
 
-4. **Spawn `ux-designer`, `tech-lead`, and `devops-engineer` in parallel** in a single message:
+4. **Spawn the `active` roles among `ux-designer`, `tech-lead`, and `devops-engineer` in parallel**
+   in a single message:
    - `ux-designer` reads PRD, writes flows + tokens + components docs.
-   - `tech-lead` reads architecture + PRD, writes per-platform impl specs.
+   - `tech-lead` reads architecture + PRD, writes per-platform impl specs — and on `utility` tier
+     also writes `docs/20-architecture.md` + `docs/21-engineering-principles.md`, the technical pass
+     `cto` would have run. Write only the impl specs for platforms the product type actually has:
+     a `backend-service` gets `22-impl-spec-backend.md` and no iOS or Android spec.
    - `devops-engineer` reads architecture, writes `docs/23-git-strategy.md`, a platform
      `.gitignore`, and the CI workflow — seeded from the House KB `git-workflow.md`.
      The `.gitignore` **must include `.agent-wt/`** — that is where per-agent git worktrees live
@@ -72,6 +89,7 @@ CLAUDE.md                    (project conventions, seeded from the House KB)
 docs/
   00-vision.md
   01-intake.md
+  02-team-roster.md          (always — all 18 roles, active/conditional/off with reasons)
   10-prd.md
   11-backlog.md
   12-flows.md
@@ -80,13 +98,15 @@ docs/
   15-aso.md                  (if store work in scope)
   20-architecture.md
   21-engineering-principles.md
-  22-impl-spec-ios.md
-  22-impl-spec-android.md
-  22-impl-spec-backend.md    (if backend in scope)
+  22-impl-spec-ios.md        (product type ios-app / mobile-app)
+  22-impl-spec-android.md    (product type android-app / mobile-app)
+  22-impl-spec-backend.md    (product type backend-service / web-app, or backend in scope)
   23-git-strategy.md
   41-monetization.md         (if monetized)
   52-analytics.md
   team/messages.md           (empty team channel, header row only)
 ```
 
-If anything is missing, name it explicitly in the summary with a reason.
+If anything is missing, name it explicitly in the summary with a reason. For anything missing
+*because a role is off*, the reason is already written in `docs/02-team-roster.md` — quote it, and
+say `N/A` rather than leaving a gap the next command has to interpret.

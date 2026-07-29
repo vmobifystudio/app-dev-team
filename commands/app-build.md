@@ -54,6 +54,12 @@ Tickets (optional, default = all ready): $ARGUMENTS
    up, never blocked, never reported, and the loop drained around them and printed a successful
    sprint.
 
+   **`docs/02-team-roster.md` says which of those roles exist on this project at all**
+   (`role-activation`). A ticket owned by an `off` role is not a ticket to spawn quietly around: it
+   is a planning defect — surface it to `tech-manager` to re-own or close, naming the roster reason.
+   A `conditional` role becomes spawnable the round its trigger is met; amend its roster row then,
+   so the flip is on the record.
+
    Spawn only what the project actually has this round: `backend-developer` when backend is in scope
    per `docs/20-architecture.md`, `ux-designer` / `qa-engineer` when their flow or test-plan work is
    ready. `security-reviewer`, `code-reviewer`, `release-manager`, `tech-lead` and `tech-manager`
@@ -186,6 +192,12 @@ Tickets (optional, default = all ready): $ARGUMENTS
      under `RUNTIME GATE: CANNOT EVALUATE`. QA still runs and rows may still advance on QA's own
      verdict, but nothing anywhere may record this build as having been launched — `/app-ship`
      re-runs the same gate and will ask again.
+   - **A product type the script does not detect** (`backend-service`, `web-app`, `cli`, `library`)
+     reaches exit `2` structurally, not accidentally. Record `N/A: runtime gate — product type
+     <type> is outside runtime-gate.sh's detection` and run the equivalent for the type — service
+     starts and answers a health check, page renders, `--help` exits 0, library builds and passes
+     its suite — quoting the output. An N/A that replaces the check with nothing is a skip wearing
+     a label.
 
    Then spawn `qa-engineer` once to exercise the acceptance criteria; where the Axiom toolchain is
    present it drives the P0 journey per the `runtime-gate` skill rather than stopping at launch. QA
