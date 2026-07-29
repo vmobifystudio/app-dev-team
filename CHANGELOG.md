@@ -126,6 +126,46 @@ Also confirmed: **worktrees are necessary but not sufficient.** The two clean br
 add/add conflicts on **7 of 10 files** — isolation removes the corruption, file-overlap serialization
 removes the unmergeable pile. Both rules are load-bearing.
 
+### Fixed — a systematic review pass, and the bug-fix loop run end to end
+
+Asked "what is left", answered it by measuring rather than guessing: which commands and agents have
+never executed, which asserted gates actually run, which contracts have drifted. Seven findings.
+
+**No committed test suite existed.** Every fixture check across three dry runs was ad-hoc, lived in
+a scratch directory, and would have vanished with the session — while `CONTRIBUTING` mandated
+"run it against a deliberately broken input", which no one could do because no fixtures existed.
+`scripts/test.sh` now holds **43 assertions** over four committed board fixtures, each corresponding
+to a defect that really shipped. Proven able to fail by seven separate mutations.
+
+**Five of ten spawnable ticket owners had no output contract at all**, and two more were two
+releases behind. `/app-build`'s gates read those fields — so for `backend-developer`,
+`monetization-engineer`, `devops-engineer`, `ux-designer`, `qa-engineer`, `data-analyst` and
+`aso-specialist`, worktree isolation, the fragment check, the assumptions-vs-ledger check and the
+duplication check **all silently did nothing while reporting success**. That covered billing,
+paywall and CI/signing code. Split into two tiers — code roles (branch + worktree + full contract)
+and artifact roles (one uniquely-named document) — and `team-doctor` now enforces both, plus asserts
+every spawnable owner belongs to a tier so a new role cannot slip through.
+
+**`board-doctor` never opened the message ledger**, though `team-protocol` claimed it checked the
+anti-ping-pong limits and reported unanswered questions. It now reports `question_unanswered`,
+`message_pair_exceeded` and `message_chain_too_deep` — and distinguishes "the owner is deciding
+without it" from "the ticket already reached `qa`/`done`, so it shipped on an unconfirmed
+assumption". Resolutions pair with questions **by count**, after an existence check let one
+unrelated `decision` row mask a genuinely open product question.
+
+**The merge gate's own precondition could not fail, and ran too early.** `grep … | sed … || echo`
+returns `sed`'s status, so the fallback never fired; and the check ran at the top of the round, so a
+reviewer's ledger row landing later meant a merge went through in the window. `tech-manager` now
+gates on `grep`'s own exit status and re-reads the ledger at the moment of merging.
+`defect-hunting` gains a section on shell guards failing open — a more common unfailable rule than
+the `contains()`-over-prose case.
+
+**The bug loop ran end to end.** `BUG-001-fix` (S2, no composition root) went build → verify-done →
+review → merge, closing QA's exit criterion with a test that adds through `AddViewModel` and asserts
+the todo appears in `ExportViewModel`'s output. Its reviewer gave a split verdict on enforcement and
+answered "wired or merely written" honestly — *merely written* — confirmed with two independent
+searches.
+
 ### Fixed — QA, verification, and the bug loop, run for the first time
 
 **The board ID parser could not handle the plugin's own bug-ticket convention.**
