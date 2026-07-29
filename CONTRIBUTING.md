@@ -20,10 +20,21 @@ docs/                        Design specs and plugin docs
 
 Almost everything here is Markdown, and it should stay that way. A script is justified only when
 **an agent checking its own work is the thing being fixed** — a correctness gate whose whole value
-is that it cannot be talked out of a verdict. Today that is exactly two:
+is that it cannot be talked out of a verdict. Today that is nine entries, plus `scripts/test.sh`,
+the suite that proves them:
 
 - `scripts/board-doctor.mjs` — validates the board before any agent is spawned (Node, no deps)
+- `scripts/board-render.mjs` — renders the board for humans, through the same parser
+- `scripts/lib/board.mjs` — the one board parser the others share; a second parser is a defect
 - `scripts/verify-done.sh` — checks a `DONE` claim against git (POSIX `sh`, no deps)
+- `scripts/ship-gate.sh` — the release preconditions, with `scripts/ship-inflight.mjs` reading the board
+- `scripts/runtime-gate.sh` — builds and launches the app; the only gate that runs the artifact
+- `scripts/integration-branch.sh` — resolves the branch feature work integrates into
+- `scripts/team-message.sh` — appends to the team ledger with the anti-ping-pong guard enforced
+- `scripts/team-doctor.mjs` — validates the plugin's own agents, commands and skills
+
+Nine is not a licence to add a tenth. Each one earned its place by being a rule an agent had
+already talked itself out of at least once.
 
 Rules for any script added here:
 
@@ -35,7 +46,7 @@ Rules for any script added here:
    branch fires before you ship it — and add the case to `scripts/test.sh`:
 
    ```bash
-   sh scripts/test.sh        # 41 assertions over committed fixtures
+   sh scripts/test.sh        # 82 assertions over committed fixtures, ~5s, no network
    sh scripts/test.sh -v     # list every passing assertion
    ```
 
@@ -45,6 +56,12 @@ Rules for any script added here:
 
    **Prove your new assertion can fail.** Mutate the code it guards, watch it go red, revert. A test
    that has never failed is indistinguishable from one that cannot.
+
+   Watch what your assertion is actually reading. One here grepped a rejection report for a marker
+   string — and passed with the report empty, because the script echoes the command it is about to
+   run and the marker was in the command. It survived the mutation that deleted the behaviour it
+   guarded. If a needle can reach the haystack by any route other than the behaviour under test,
+   it is not an assertion.
 
 ## How to add or change a role
 

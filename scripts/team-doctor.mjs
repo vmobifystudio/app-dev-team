@@ -94,6 +94,13 @@ if (appBuild) {
   }
 }
 
+// NOT CHECKED: a second copy of the spawnable-owner roster in another command. commands/app-audit.md
+// carried one and it drifted to 8 of 10 (dropping ux-designer and qa-engineer) without this script
+// noticing, because the check above reads app-build.md alone. Every mechanical rule tried here —
+// "names N of the owners but not all" — fires on /app-ship, /app-run and /app-audit, which name the
+// three or four roles they actually spawn and are not rosters at all. A check with a 3-in-3
+// false-positive rate gets switched off, so the duplicate stays a review question, not a gate.
+
 // --- 2b. ticket-working roles share one output contract ---------------------------------------------
 // /app-build's gates parse these fields. A role missing one is a role every gate silently skips:
 // backend-developer and monetization-engineer were two releases behind, so worktree isolation, the
@@ -152,21 +159,55 @@ for (const owner of BUILD_SPAWNABLE_OWNERS) {
 
 // --- 3. every referenced skill exists --------------------------------------------------------------
 
-const SKILL_REF = /`([a-z][a-z0-9-]{2,})`\s*(?:skill|→|->)|invoke[s]?\s+`([a-z][a-z0-9-]{2,})`|(?:use|using)\s+the\s+`([a-z][a-z0-9-]{2,})`\s+skill/gi;
+/**
+ * Skills this plugin legitimately borrows from OTHER installed plugins. They have no
+ * skills/<name>/SKILL.md here and never will, so they are not findings.
+ *
+ * Namespaced references (`plugin:skill`) are self-evidently external and skipped outright; this
+ * list exists for the bare names, which are how the agents actually cite them today.
+ */
+const EXTERNAL_SKILL_PREFIXES = ['axiom-', 'superpowers:', 'ui-design:'];
+const EXTERNAL_SKILLS = new Set([
+  'ui-design',
+  'ui-ux-pro-max',
+  'aso-screenshots',
+  'admob-android-integration',
+  'material-3-expressive',
+  'deep-app-audit',
+  'mobile-ios-design',
+  'mobile-android-design',
+  'frontend-design',
+  'skill-creator',
+]);
+const isExternalSkill = (name) =>
+  name.includes(':') || EXTERNAL_SKILLS.has(name) || EXTERNAL_SKILL_PREFIXES.some((p) => name.startsWith(p));
+
+/**
+ * Two arms, because they carry different confidence.
+ *
+ * Strong: the prose says "skill" or "invoke", so an unknown name is a broken reference.
+ * Weak: a backticked name followed by an arrow. That form is also how this codebase writes
+ *   plain vocabulary — `critical`/`high` → stop — so it additionally requires a hyphenated,
+ *   skill-shaped name. Without that, `high` was reported as a missing skill.
+ *
+ * Case-sensitive on purpose. The old pattern carried /i, so `APPROVED` → , `DONE` → and
+ * `REJECTED` → all matched as "skill names"; skill names are lowercase kebab-case.
+ */
+const SKILL_REF = /`([a-z][a-z0-9]*(?:-[a-z0-9]+)+)`\s*(?:→|->)|`([a-z][a-z0-9-]{2,})`\s*skill|invoke[s]?\s+`([a-z][a-z0-9-]{2,})`|(?:use|using)\s+the\s+`([a-z][a-z0-9-]{2,})`\s+skill/g;
+
+// This check was previously gated behind a hard-coded whitelist of eleven skill names — all of
+// which existed — so it could report a missing skill only for a skill that was not missing. A rule
+// that cannot fail is worse than no rule: it reads as coverage. Validate against skills/ itself.
 for (const file of [...agents, ...commands]) {
   const seen = new Set();
   for (const m of file.text.matchAll(SKILL_REF)) {
-    const name = (m[1] || m[2] || m[3] || '').trim();
+    const name = (m[1] || m[2] || m[3] || m[4] || '').trim();
     if (!name || seen.has(name)) continue;
     seen.add(name);
-    // Only flag names that look like our own skills (not external plugin skills, which are namespaced).
-    if (name.includes(':') || roleNames.includes(name)) continue;
-    if (!skillNames.has(name) && /^(board-doctor|agent-isolation|team-protocol|defect-hunting|house-conventions|sprint-planner|parallel-orchestrator|prd-builder|architecture-builder|requirements-intake|brownfield-onboarding)$/.test(name) === false) continue;
-    if (!skillNames.has(name)) {
-      add(findings, 'skill_missing', file.rel,
-        `References skill \`${name}\`, which has no skills/${name}/SKILL.md.`,
-        'Create the skill or fix the reference.');
-    }
+    if (isExternalSkill(name) || roleNames.includes(name) || skillNames.has(name)) continue;
+    add(findings, 'skill_missing', file.rel,
+      `References skill \`${name}\`, which has no skills/${name}/SKILL.md and is not a known external plugin skill.`,
+      `Create skills/${name}/SKILL.md, fix the reference, or add it to EXTERNAL_SKILLS in team-doctor if another plugin supplies it.`);
   }
 }
 

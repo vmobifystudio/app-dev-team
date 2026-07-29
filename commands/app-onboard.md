@@ -26,8 +26,20 @@ something to work against.
    snapshot — describe what exists, mark guesses `(inferred)`, change no code:
    - `cto` + `tech-lead` → `docs/20-architecture.md` (actual stack, layering, state/persistence/DI/
      navigation, backend, CI, signing) and per-platform `docs/22-impl-spec-<platform>.md` snapshots.
-   - `cpo` → `docs/10-prd.md` feature inventory derived from the navigation graph and screen files.
+   - `cpo` → `docs/10-prd.md` feature inventory derived from the navigation graph and screen files,
+     and from that same inventory **`docs/11-backlog.md` and a minimal `docs/00-vision.md`**.
      Ask the user only for product intent that cannot be read from code.
+
+     **Every already-shipped feature enters the backlog as a `done` / `baseline` row**, never as
+     work to do — the backlog must be real but must not re-propose building what already exists.
+     New work arrives later as `/app-audit`'s `AUDIT-NNN` tickets or as the upgrade goal `/app-run`
+     passes in. The vision is one paragraph: what the app does today, plus the upgrade goal if one
+     was given.
+
+     Both files are required, not nice-to-have: `/app-plan` stops without `docs/11-backlog.md` and
+     `/app-status` reads the vision and the backlog unconditionally. Until `/app-onboard` wrote
+     them, brownfield ran `/app-onboard` → `/app-audit` → `/app-plan` and hit a hard stop telling it
+     to run `/app-init` — the one command this file tells brownfield users never to run.
    - `devops-engineer` → `docs/23-git-strategy.md` capturing the current branch model / CI / signing
      state vs the House KB target, flagging secrets hygiene issues.
 
@@ -35,7 +47,20 @@ something to work against.
    stack, build/run commands, and canonical type/property names found in the code, seeded from the
    House KB. Never overwrite a substantial existing `CLAUDE.md` — propose a diff instead.
 
-5. **Summary.** Print the docs produced, the detected stack, and the suggested next step:
+5. **Create the team channel** `docs/team/messages.md` if absent, with exactly this header and
+   nothing else (`team-protocol` defines the shape; `board-doctor` parses it):
+
+   ```bash
+   [ -f docs/team/messages.md ] || { mkdir -p docs/team && printf '%s\n\n%s\n%s\n' \
+     '## Team messages (append-only — never edit or delete a line)' \
+     '| Timestamp | From | To | Ticket | Kind | Summary | Body |' \
+     '|---|---|---|---|---|---|---|' > docs/team/messages.md; }
+   ```
+
+   No command created this file. Observed live: an agent reported raising a question on the channel
+   when the channel had never existed, and nothing contradicted it.
+
+6. **Summary.** Print the docs produced, the detected stack, and the suggested next step:
    `/app-audit` to grade the app against the House KB and build a remediation plan.
 
 ## Safety

@@ -10,7 +10,7 @@ It takes your idea from **scope → design → code → review → store**, buil
 and fixing its own work, and stopping for you at only the two moments that matter:
 **what we're building** and **whether to ship**.
 
-[![version](https://img.shields.io/badge/version-1.4.0-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.5.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-lightgrey)]()
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A2BE2)]()

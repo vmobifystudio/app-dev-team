@@ -49,6 +49,24 @@ const BUILD_SPAWNABLE_OWNERS = new Set([
 ]);
 
 const VALID_STATUS = new Set(['todo', 'in_progress', 'review', 'qa', 'done', 'blocked']);
+
+/**
+ * Statuses where the sprint loop can still act on the ticket.
+ *
+ * `qa`/`done` are terminal and `blocked` is already surfaced by its own checks, so a rule about
+ * "what should happen next" must not fire on them. The review-cycle cap did, and a ticket that
+ * legitimately spent its two cycles and then merged stayed flagged as a BLOCKING anomaly forever —
+ * the pre-spawn gate went permanently red on any sprint that had ever used its review budget.
+ */
+const ACTIVE_STATUS = new Set(['todo', 'in_progress', 'review']);
+
+/**
+ * Statuses that mean "this sprint is not finished". Used by the ship gate.
+ *
+ * `blocked` belongs here: a blocked ticket is unfinished work with a reason attached, not an
+ * exemption. Leaving it out let a sprint with a blocked ticket ship silently.
+ */
+const IN_FLIGHT_STATUS = new Set([...ACTIVE_STATUS, 'blocked']);
 const POST_REVIEW_STATUS = new Set(['qa', 'done']);
 const LEDGER_ACTIONS = new Set(['requested', 'started', 'changes', 'approved', 'merged']);
 const MAX_REVIEW_CYCLES = 2;
@@ -92,7 +110,18 @@ const HEADER_ALIASES = {
   notes: 'notes',
 };
 
-/** Locate the widest pipe table in the file and return its rows keyed by canonical column name. */
+/**
+ * Locate the TICKET table in the file and return its rows keyed by canonical column name.
+ *
+ * "First pipe table with an id-ish header" is not the same thing, and the difference is a live
+ * defect: `Ticket` aliases to `id`, so a board whose review ledger is written above the ticket
+ * table parsed the LEDGER as the board — every ticket vanished and the doctor reported a clean
+ * sprint. Anchor on the columns only the ticket table has (status + owner) so the ledger, the
+ * message ledger and any other id-bearing table can never be mistaken for it.
+ *
+ * A board whose Status column is absent or renamed therefore yields NO rows. That is deliberate:
+ * callers must treat "no ticket table" as "cannot evaluate", never as "nothing to report".
+ */
 function parseBoard(text) {
   const lines = text.split(/\r?\n/);
   let header = null;
@@ -103,6 +132,8 @@ function parseBoard(text) {
     if (!isSeparatorRow(lines[i + 1])) continue;
     const cells = splitRow(lines[i]);
     if (!cells.some((cell) => normalizeHeader(cell) === 'id' || /^app-?nnn$/i.test(cell))) continue;
+    const canonical = cells.map((cell) => HEADER_ALIASES[normalizeHeader(cell)] || normalizeHeader(cell));
+    if (!canonical.includes('status') || !canonical.includes('owner')) continue;
     header = cells;
     headerIndex = i;
     break;
@@ -232,6 +263,8 @@ export {
   KNOWN_OWNERS,
   BUILD_SPAWNABLE_OWNERS,
   VALID_STATUS,
+  ACTIVE_STATUS,
+  IN_FLIGHT_STATUS,
   POST_REVIEW_STATUS,
   LEDGER_ACTIONS,
   MAX_REVIEW_CYCLES,

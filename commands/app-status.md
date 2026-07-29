@@ -22,10 +22,12 @@ allowed-tools: Read, Glob, Grep, Bash
 3a. **Render the board** so the shape is visible, not tabular:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-render.mjs" docs/31-board.md
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-render.mjs" docs/31-board.md --out docs/32-board-view.md
    ```
 
-   Print the kanban, the per-owner load, and the NEEDS ATTENTION block.
+   Print the kanban, the per-owner load, and the NEEDS ATTENTION block. **`--out` is not optional:**
+   without it, checking status never refreshes the committed `docs/32-board-view.md`, which is the
+   view humans actually read on GitHub — it silently drifts away from the board it claims to show.
 
 3b. **Open team threads.** From `docs/team/messages.md`, list any `question` with no matching
    `answer`, and any `escalation` not yet closed by a `decision`. These are the conversations the

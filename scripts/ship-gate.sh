@@ -10,7 +10,14 @@
 # gate is the most consequential gate in the plugin and it did not have one. This is it.
 #
 # Usage:  sh scripts/ship-gate.sh [project-root]
-# Exit:   0 clear to ship · 1 blocked (reasons printed) · 2 cannot evaluate (missing inputs)
+# Exit:   0 clear to ship
+#         1 BLOCKED — the gate evaluated every precondition and one of them says no
+#         2 CANNOT EVALUATE — an input was missing or unreadable, so some precondition was never
+#           checked at all. Distinct from 1 on purpose: "I could not look" is not "I looked and it
+#           was fine", and a missing bug board or test plan used to be reported as a plain blocker,
+#           which invited "it's only blocked because the file isn't there yet" as an override.
+#
+# There is no path from a check that did not run to exit 0.
 
 set -u
 ROOT=${1:-.}
@@ -21,39 +28,53 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 
 BLOCKERS=""
 NOTES=""
-block() { BLOCKERS="${BLOCKERS}  BLOCKED  $1
+UNKNOWNS=""
+block()   { BLOCKERS="${BLOCKERS}  BLOCKED  $1
 "; }
-note()  { NOTES="${NOTES}  note     $1
+note()    { NOTES="${NOTES}  note     $1
+"; }
+unknown() { UNKNOWNS="${UNKNOWNS}  UNKNOWN  $1
 "; }
 
-[ -f "$BOARD" ] || { echo "ship-gate: no board at $BOARD" >&2; exit 2; }
+# Every exit-2 path prints its reason on STDOUT in the same shape as the verdict below, because
+# /app-ship displays that output verbatim to name the missing artifact and its owning role. A bare
+# exit 2 with the reason only on stderr gives the command nothing to show.
+cannot_evaluate_now() {
+  echo "SHIP GATE"
+  echo "  UNKNOWN  $1"
+  echo
+  echo "RESULT: CANNOT EVALUATE — do not release. Supply the missing input and re-run."
+  exit 2
+}
+
+[ -f "$BOARD" ] || cannot_evaluate_now "no board at $BOARD — tech-manager owns it. Run /app-plan."
+
+# node is required, not optional. The board checks are the two most consequential preconditions;
+# skipping them with a note was a gate that passed while checking nothing.
+command -v node >/dev/null 2>&1 || \
+  cannot_evaluate_now "node is not on PATH, so the board cannot be read. Install node and re-run."
 
 # --- 1. the board must be coherent ---------------------------------------------------------------
 # A stranded or unspawnable ticket at release time is work the sprint never reported.
-if command -v node >/dev/null 2>&1 && [ -f "$HERE/board-doctor.mjs" ]; then
-  if ! node "$HERE/board-doctor.mjs" "$BOARD" >/dev/null 2>&1; then
-    block "board-doctor reports anomalies. Run it and clear them before releasing."
-  fi
-else
-  note "board-doctor not runnable here — board coherence NOT checked (say so in the release notes)."
-fi
+node "$HERE/board-doctor.mjs" "$BOARD" >/dev/null 2>&1
+case $? in
+  0) ;;
+  1) block "board-doctor reports anomalies. Run it and clear them before releasing." ;;
+  *) unknown "board-doctor could not read $BOARD (exit 2) — board coherence was NOT checked." ;;
+esac
 
 # --- 2. no ticket may still be in flight ----------------------------------------------------------
-# Parse the Status column by position rather than by guessing a field index: find which column the
-# header calls "Status", then read that cell. A hardcoded index silently reads the wrong column when
-# the board gains a column — which is exactly how Reviewer/Cycles broke earlier readers.
-INFLIGHT=$(awk -F'|' '
-  /^[[:space:]]*\|/ {
-    if (!found) {
-      for (i = 1; i <= NF; i++) { gsub(/^ +| +$/, "", $i); if (tolower($i) == "status") { col = i; found = 1 } }
-      next
-    }
-    id = $2; st = $col
-    gsub(/^ +| +$/, "", id); gsub(/^ +| +$/, "", st)
-    if (id ~ /^[A-Za-z]+-[0-9]+/ && (st == "todo" || st == "in_progress" || st == "review"))
-      printf "%s(%s) ", id, st
-  }' "$BOARD")
-[ -n "$INFLIGHT" ] && block "tickets still in flight: $INFLIGHT"
+# Delegated to scripts/ship-inflight.mjs, which reads the board through lib/board.mjs — the one
+# parser. The inline awk this replaced was a third parser and failed open four separate ways; they
+# are catalogued in that file's header.
+ERRFILE=$(mktemp); trap 'rm -f "$ERRFILE"' EXIT
+INFLIGHT=$(node "$HERE/ship-inflight.mjs" "$BOARD" 2>"$ERRFILE"); RC=$?
+INFLIGHT_ERR=$(cat "$ERRFILE")
+if [ "$RC" -ne 0 ]; then
+  unknown "${INFLIGHT_ERR:-ship-inflight failed} — whether work is still in flight is UNKNOWN."
+elif [ -n "$INFLIGHT" ]; then
+  block "tickets still in flight: $(printf '%s' "$INFLIGHT" | tr '\n' ' ')"
+fi
 
 # --- 3. no open S1/S2 bug -------------------------------------------------------------------------
 if [ -f "$BUGS" ]; then
@@ -71,7 +92,9 @@ if [ -f "$BUGS" ]; then
   DEFERRED=$(grep -oE '\*\*S[34]\*\*' "$BUGS" | wc -l | tr -d ' ')
   [ "$DEFERRED" -gt 0 ] && note "$DEFERRED open S3/S4 bug(s) — not blocking, but name them in the release notes."
 else
-  block "no bug board at $BUGS. QA has not run; a release without a QA pass is not a release."
+  # Normal on a brownfield project that has not run a /app-build QA wave — that file is only ever
+  # written inside one. A routine outcome, not an exceptional one: name the owner and the fix.
+  unknown "no bug board at $BUGS — qa-engineer owns it. The open-defect count is UNKNOWN, not zero. Run a QA pass (or have qa-engineer write the file recording that none was needed), then re-run."
 fi
 
 # --- 4. QA's own verdict --------------------------------------------------------------------------
@@ -85,13 +108,23 @@ if [ -f "$PLAN" ]; then
     note "the test plan contains rows that were reasoned, not executed. Do not report those as tested."
   fi
 else
-  block "no test plan at $PLAN. Nothing states what was verified or what the exit criteria were."
+  unknown "no test plan at $PLAN — qa-engineer owns it. Nothing states what was verified or what the exit criteria were. Have qa-engineer write it (a brownfield ship still needs its exit criteria on paper), then re-run."
 fi
 
 # --- verdict ---------------------------------------------------------------------------------------
 echo "SHIP GATE"
+if [ -n "$UNKNOWNS" ]; then printf '%s' "$UNKNOWNS"; fi
 if [ -n "$BLOCKERS" ]; then printf '%s' "$BLOCKERS"; fi
 if [ -n "$NOTES" ]; then printf '%s' "$NOTES"; fi
+
+# UNKNOWN outranks BLOCKED: a blocker is a finding you can go and fix, an unknown means the gate
+# never evaluated that precondition and nobody should reason about what it would have said.
+if [ -n "$UNKNOWNS" ]; then
+  echo
+  echo "RESULT: CANNOT EVALUATE — do not release. Supply the missing inputs and re-run."
+  echo "        This is NOT a pass. A precondition above was never checked."
+  exit 2
+fi
 
 if [ -n "$BLOCKERS" ]; then
   echo

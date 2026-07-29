@@ -7,7 +7,11 @@
  * table hides.
  *
  * Renders: a terminal kanban, owner swimlanes with load, a Mermaid dependency graph (stranded and
- * blocked tickets flagged), and review/message activity.
+ * blocked tickets flagged), and recent REVIEW-LEDGER activity.
+ *
+ * It does not render message activity. The comment claimed it did, and this file has never opened
+ * docs/team/messages.md — a description that promises a view nobody built is how a reader concludes
+ * the messages were checked. (A message renderer is a separate piece of work.)
  *
  * Usage:
  *   node scripts/board-render.mjs [path/to/31-board.md] [--out docs/32-board-view.md] [--no-color]
@@ -145,10 +149,20 @@ function renderAttention(model) {
   for (const row of model.rows) {
     if (row.status === 'blocked') lines.push(`  ${red('BLOCKED ')}  ${row.id}  ${truncate(row.notes || row.title, 60)}`);
   }
-  for (const row of model.rows) {
-    if (row.status === 'review' && isEmpty(row.reviewer)) {
-      lines.push(`  ${yellow('NO REVIEWER')} ${row.id}  in review with nobody assigned`);
+  // Agree with the validator. board-doctor deliberately degrades this finding on a board that has
+  // no Reviewer column at all — the column's absence is one migration to fix, not a per-ticket
+  // accusation — while the renderer printed NO REVIEWER against every row in review, so a legacy
+  // board looked like a team that had stopped assigning reviewers. Two readings of one board.
+  if (model.capabilities.hasReviewColumns) {
+    for (const row of model.rows) {
+      if (row.status === 'review' && isEmpty(row.reviewer)) {
+        lines.push(`  ${yellow('NO REVIEWER')} ${row.id}  in review with nobody assigned`);
+      }
     }
+  } else if (model.rows.some((row) => row.status === 'review')) {
+    lines.push(
+      `  ${yellow('LEGACY BOARD')} no Reviewer column, so self-review cannot be detected — migrate the board (see sprint-planner)`
+    );
   }
   return lines.length ? lines : [dim('  nothing needs attention')];
 }

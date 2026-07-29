@@ -1,6 +1,6 @@
 ---
 description: Start a new mobile app project — runs requirements intake, then CEO vision, then PRD + architecture in parallel
-argument-hint: [one-line idea, optional]
+argument-hint: [one-line idea, optional] [--yolo to skip the scope-lock gate]
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
 ---
 
@@ -32,10 +32,35 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    - the target project's **`CLAUDE.md`** — chosen stack, build/run commands, the team's working
      rules, the picked commit convention, and canonical names (so agents never guess);
    - stubs `docs/15-aso.md`, `docs/41-monetization.md`, `docs/52-analytics.md` when those concerns
-     are in scope per the architecture.
+     are in scope per the architecture;
+   - **the team channel `docs/team/messages.md`, if it does not already exist**, with exactly this
+     header and nothing else (`team-protocol` defines the shape; `board-doctor` parses it):
+
+     ```bash
+     [ -f docs/team/messages.md ] || { mkdir -p docs/team && printf '%s\n\n%s\n%s\n' \
+       '## Team messages (append-only — never edit or delete a line)' \
+       '| Timestamp | From | To | Ticket | Kind | Summary | Body |' \
+       '|---|---|---|---|---|---|---|' > docs/team/messages.md; }
+     ```
+
+     No command created this file. Observed live: an agent reported raising a question on the
+     channel when the channel had never existed, and nothing contradicted it.
 
 6. **Print a summary**: list every doc produced, with one-line description each, and the suggested
    next command (`/app-run` for the mostly-autonomous flow, or `/app-plan` → `/app-build` for manual control).
+
+7. **GATE 1 — scope-lock (human).** Print a one-screen brief — vision, P0 feature list, architecture
+   headline, rough effort, top risk — and ask *"Approve scope and proceed to planning?"* Wait for the
+   answer and record it in `docs/00-vision.md` under a `## Scope lock` heading, with the date and
+   anything the user cut or added.
+
+   This is the same Gate 1 `/app-run` runs, and it is the **only** place the manual flow
+   (`/app-init` → `/app-plan` → `/app-build`) asks a human to approve scope before the pod starts
+   spending agents on it. Without it, the design's two-gate contract held for `/app-run` only.
+
+   `--yolo` skips the question, auto-approves, and logs in the vision doc that it did.
+   **When `/app-init` was invoked by `/app-run`, `/app-run` owns this gate — skip it here rather
+   than asking twice.**
 
 ## Output contract
 
@@ -61,6 +86,7 @@ docs/
   23-git-strategy.md
   41-monetization.md         (if monetized)
   52-analytics.md
+  team/messages.md           (empty team channel, header row only)
 ```
 
 If anything is missing, name it explicitly in the summary with a reason.

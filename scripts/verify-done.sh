@@ -9,11 +9,19 @@
 # This script makes the claim falsifiable. It is pure POSIX sh + git — no Node, no dependencies.
 #
 # Usage:
-#   scripts/verify-done.sh <branch> [base] [test-command]
+#   scripts/verify-done.sh [--docs-only] <branch> [base] [test-command]
 #
 # Examples:
 #   scripts/verify-done.sh feat/APP-001-login
 #   scripts/verify-done.sh feat/APP-001-login main "./gradlew test"
+#   scripts/verify-done.sh --docs-only docs/APP-007-flows
+#   scripts/verify-done.sh docs/APP-007-flows main --docs-only   (same thing — any position)
+#
+# --docs-only: the ticket's deliverable is a document, not code. Branch, commits and changed files
+# are still verified; the test command is not required and is not run. ux-designer, qa-engineer,
+# aso-specialist and data-analyst own tickets that produce a document and no test — without this
+# flag their DONE was structurally un-passable, so the loop either re-spawned them forever or
+# skipped verification for them entirely.
 #
 # Exit codes:
 #   0  claim verified (see "tests=" in the output for whether tests were actually run)
@@ -22,12 +30,34 @@
 
 set -u
 
+# --docs-only is accepted in ANY position. It was accepted only as $1, while the contract in
+# skills/team-protocol/SKILL.md is the trailing form `<branch> <base> --docs-only` — so the flag
+# landed in $3, was taken as the TEST COMMAND, and was executed: `sh: --: invalid option`, exit 1,
+# REJECTED. A doc ticket failed a "test" that was the flag exempting it from tests, and it failed
+# looking legitimate, so the loop would re-spawn the developer forever. Two correct halves written
+# independently, disagreeing at the interface. Position-independent parsing is the fix; moving the
+# check to $3 would just relocate the seam.
+DOCS_ONLY=0
+ARGC=$#
+i=0
+while [ "$i" -lt "$ARGC" ]; do
+  i=$((i + 1))
+  arg="$1"; shift
+  if [ "$arg" = "--docs-only" ]; then DOCS_ONLY=1; else set -- "$@" "$arg"; fi
+done
+
 BRANCH="${1:-}"
 BASE="${2:-main}"
 TEST_CMD="${3:-}"
 
 if [ -z "$BRANCH" ]; then
-  echo "verify-done: usage: verify-done.sh <branch> [base] [test-command]" >&2
+  echo "verify-done: usage: verify-done.sh [--docs-only] <branch> [base] [test-command]" >&2
+  exit 2
+fi
+
+if [ "$DOCS_ONLY" -eq 1 ] && [ -n "$TEST_CMD" ]; then
+  echo "verify-done: --docs-only takes no test command (got '$TEST_CMD')." >&2
+  echo "  A docs ticket that does have a test is not a docs ticket — drop the flag." >&2
   exit 2
 fi
 
@@ -83,7 +113,9 @@ fi
 # "already checked out at ...", which would reject every honest DONE and send the loop re-spawning
 # developers until the spawn budget trips. Run the tests where the branch actually lives.
 TESTS_STATUS="unverified"
-if [ -n "$TEST_CMD" ]; then
+[ "$DOCS_ONLY" -eq 1 ] && TESTS_STATUS="n/a (docs-only)"
+
+if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
   # Locate a worktree holding this branch. `git worktree list --porcelain` emits, per worktree:
   #   worktree <path>\n ... \n branch refs/heads/<name>
   WT=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$BRANCH" '
@@ -108,7 +140,14 @@ if [ -n "$TEST_CMD" ]; then
 
   if [ -z "$FAILURES" ]; then
     echo "verify-done: running tests on $BRANCH: $TEST_CMD" >&2
-    if ( cd "$RUN_DIR" && sh -c "$TEST_CMD" ) >/dev/null 2>&1; then
+    # Capture, never discard. The verdict below tells the loop to "re-spawn the developer with
+    # these failures verbatim" — and the output went to /dev/null, so there were no verbatim
+    # failures to hand over. The re-spawned developer was told only that something failed, and
+    # guessed at what; an instruction that cannot be followed is the same defect class as a gate
+    # that cannot fail.
+    TEST_LOG=$(mktemp)
+    trap 'rm -f "$TEST_LOG"' EXIT INT TERM
+    if ( cd "$RUN_DIR" && sh -c "$TEST_CMD" ) >"$TEST_LOG" 2>&1; then
       TESTS_STATUS="green"
     else
       TESTS_STATUS="failing"
@@ -124,6 +163,10 @@ if [ -n "$FAILURES" ]; then
   echo "REJECTED: $BRANCH"
   echo "Blocking:"
   printf '%s' "$FAILURES"
+  if [ "$TESTS_STATUS" = "failing" ] && [ -s "${TEST_LOG:-}" ]; then
+    echo "Test output (last 30 lines of: $TEST_CMD):"
+    tail -n 30 "$TEST_LOG" | sed 's/^/  | /'
+  fi
   echo "Next: re-spawn the developer with these failures verbatim. Do not move the board row to review."
   exit 1
 fi

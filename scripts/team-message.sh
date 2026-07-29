@@ -47,6 +47,19 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Sanitize EVERY interpolated field, not just the prose ones.
+#
+# Only SUMMARY and BODY were cleaned. A `|` in --ticket, --from or --to (an agent pasting
+# "APP-001 | APP-002", a role written as "tech-lead | acting") splits the row into extra cells, and
+# every field after it shifts one column left for the parser: the Kind column reads a role name, the
+# ticket disappears, and the guards below then count a thread that does not exist. A row is only as
+# trustworthy as its least-escaped field.
+clean() { printf '%s' "$1" | tr '\n' ' ' | sed 's/|/\//g; s/  */ /g; s/^ //; s/ $//'; }
+FROM=$(clean "$FROM"); TO=$(clean "$TO"); TICKET=$(clean "$TICKET"); KIND=$(clean "$KIND")
+SUMMARY=$(clean "$SUMMARY"); BODY=$(clean "$BODY")
+[ -n "$BODY" ] || BODY="—"
+[ -n "$TICKET" ] || TICKET="-"
+
 [ -n "$FROM" ] && [ -n "$TO" ] && [ -n "$KIND" ] && [ -n "$SUMMARY" ] || {
   echo "team-message: --from, --to, --kind and --summary are required" >&2; exit 2; }
 
@@ -70,10 +83,6 @@ esac
 
 [ "$FROM" = "$TO" ] && { echo "team-message: refusing a message from $FROM to itself" >&2; exit 2; }
 
-# Pipes would break the table; newlines would break the row.
-clean() { printf '%s' "$1" | tr '\n' ' ' | sed 's/|/\//g; s/  */ /g; s/^ //; s/ $//'; }
-SUMMARY=$(clean "$SUMMARY"); BODY=$(clean "$BODY"); [ -n "$BODY" ] || BODY="—"
-
 mkdir -p "$(dirname "$LEDGER")"
 if [ ! -f "$LEDGER" ]; then
   {
@@ -88,10 +97,22 @@ fi
 # Counted from the ledger itself, not from anything the sender claims. An escalation is always
 # allowed through: it is the prescribed way *out* of a breach, so blocking it would trap the team.
 
-MAX_PER_ROLE=10        # messages from one role in the recent window
-MAX_PAIR=2             # A->B on one ticket without a third party
-MAX_CHAIN=4            # distinct roles involved on one ticket
-WINDOW=40              # trailing rows considered "this round"
+# These MUST match scripts/board-doctor.mjs's diagnoseMessages (search MAX_PAIR there). The two
+# disagreed: this script counted pairs over the trailing 40 rows and refused a chain at >=4 roles,
+# while the doctor counted the whole thread and warned only above 4 — so a ledger this script had
+# happily written was reported as a breach, and a chain this script refused was invisible to the
+# doctor. One agreed window, stated in both files:
+#
+#   window   the whole thread for one ticket, for all time (the ledger is append-only)
+#   pair     at most 2 messages from one role to another on one ticket without a third party
+#   chain    at most 4 distinct roles involved in one ticket's thread
+#
+# MAX_PER_ROLE is the exception and has no counterpart in the doctor: it is a rate limit on one
+# agent's current turn, which is a property of the sender and not of the ledger. It keeps WINDOW.
+MAX_PER_ROLE=10        # messages from one role in the trailing window
+MAX_PAIR=2             # A->B on one ticket without a third party (whole thread)
+MAX_CHAIN=4            # distinct roles involved on one ticket (whole thread)
+WINDOW=40              # trailing rows considered "this round" — MAX_PER_ROLE only
 
 if [ "$KIND" != "escalation" ]; then
   RECENT=$(tail -n "$WINDOW" "$LEDGER")
@@ -103,20 +124,31 @@ if [ "$KIND" != "escalation" ]; then
     exit 1
   fi
 
+  # Ticketless rows (--ticket -) are broadcast chatter and carry no thread, so the per-ticket
+  # guards do not apply to them. Counting them as one pseudo-thread made every unrelated FYI
+  # deepen the same "chain" and refuse sends on tickets nobody had discussed. board-doctor skips
+  # them for the same reason.
   if [ "$TICKET" != "-" ]; then
-    PAIR_COUNT=$(printf '%s\n' "$RECENT" | awk -F'|' -v f=" $FROM " -v t=" $TO " -v k=" $TICKET " \
-      'NF>6 && $3==f && $4==t && $5==k {n++} END{print n+0}')
+    # Whole ledger, not the trailing window: the thread for a ticket is the thread for that ticket,
+    # and a busy sprint pushed the earlier half of a two-message pair out of the last 40 rows —
+    # which reset the pair count and let the stall continue.
+    PAIR_COUNT=$(awk -F'|' -v f=" $FROM " -v t=" $TO " -v k=" $TICKET " \
+      'NF>6 && $3==f && $4==t && $5==k {n++} END{print n+0}' "$LEDGER")
     if [ "$PAIR_COUNT" -ge "$MAX_PAIR" ]; then
       echo "REFUSED: $FROM -> $TO on $TICKET already happened $PAIR_COUNT times (max $MAX_PAIR)." >&2
       echo "Two is a conversation; three is a stall. Escalate to tech-manager with both positions." >&2
       exit 1
     fi
 
-    CHAIN=$(printf '%s\n' "$RECENT" | awk -F'|' -v k=" $TICKET " \
-      'NF>6 && $5==k {gsub(/^ +| +$/,"",$3); gsub(/^ +| +$/,"",$4); r[$3]=1; r[$4]=1} END{print length(r)}')
-    if [ "$CHAIN" -ge "$MAX_CHAIN" ]; then
-      echo "REFUSED: $TICKET already involves $CHAIN roles (max $MAX_CHAIN)." >&2
-      echo "A question relayed through four roles is an escalation. Send it to tech-manager." >&2
+    # Count the roles this message WOULD create, not the ones already there. Refusing at ">= 4
+    # existing" capped real threads at three roles while the doctor only complained above four.
+    CHAIN=$(awk -F'|' -v k=" $TICKET " -v f="$FROM" -v t="$TO" \
+      'BEGIN{r[f]=1; r[t]=1}
+       NF>6 && $5==k {gsub(/^ +| +$/,"",$3); gsub(/^ +| +$/,"",$4); r[$3]=1; r[$4]=1}
+       END{print length(r)}' "$LEDGER")
+    if [ "$CHAIN" -gt "$MAX_CHAIN" ]; then
+      echo "REFUSED: $TICKET would involve $CHAIN roles (max $MAX_CHAIN)." >&2
+      echo "A question relayed through more than four roles is an escalation. Send it to tech-manager." >&2
       exit 1
     fi
   fi

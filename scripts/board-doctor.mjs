@@ -25,6 +25,7 @@ import {
   KNOWN_OWNERS,
   BUILD_SPAWNABLE_OWNERS,
   VALID_STATUS,
+  ACTIVE_STATUS,
   POST_REVIEW_STATUS,
   MAX_REVIEW_CYCLES,
   LEDGER_ACTIONS,
@@ -49,9 +50,31 @@ import {
  * Team-message checks. `team-protocol` promises these; until now nothing performed them.
  * An unanswered question is how a developer ends up guessing, and the guess ships.
  */
+/**
+ * Guard windows, kept identical to scripts/team-message.sh (which refuses the send) so the two
+ * cannot disagree about what a breach is. They diverged once: the script counted pairs over the
+ * trailing 40 rows and refused a chain at >=4 roles, the doctor counted the whole ledger and warned
+ * at >4 — so a ledger the script had happily written was reported as a breach, and a real breach
+ * the script refused was invisible to the doctor. One window, stated in both files:
+ *
+ *   window   the whole thread for one ticket, for all time (the ledger is append-only)
+ *   pair     at most 2 messages from one role to another on one ticket without a third party
+ *   chain    at most 4 distinct roles involved in one ticket's thread
+ *
+ * `MAX_PER_ROLE` in team-message.sh has no counterpart here on purpose: it is a rate limit on one
+ * agent's current turn, not a property of the ledger.
+ */
+const MAX_PAIR = 2;
+const MAX_CHAIN = 4;
+
 function diagnoseMessages(messages, rowsById, warnings) {
   const byTicket = new Map();
   for (const m of messages) {
+    // Ticketless rows (`--ticket -`) are broadcast chatter, not a thread. Bucketing them together
+    // collapsed every unrelated FYI into one pseudo-ticket that tripped the chain-depth warning on
+    // a team that had done nothing wrong — and team-message.sh already exempts them, so the doctor
+    // was flagging sends the script itself permits.
+    if (isEmpty(m.ticketId)) continue;
     if (!byTicket.has(m.ticketId)) byTicket.set(m.ticketId, []);
     byTicket.get(m.ticketId).push(m);
   }
@@ -88,24 +111,24 @@ function diagnoseMessages(messages, rowsById, warnings) {
       pairs.set(key, (pairs.get(key) || 0) + 1);
     }
     for (const [pair, count] of pairs) {
-      if (count > 2) {
+      if (count > MAX_PAIR) {
         warnings.push({
           code: 'message_pair_exceeded',
           ticketId,
           line: 0,
-          detail: `${pair} exchanged ${count} messages on ${ticketId} (limit 2 without a third party). Two is a conversation; more is a stall.`,
+          detail: `${pair} exchanged ${count} messages on ${ticketId} (limit ${MAX_PAIR} without a third party). Two is a conversation; more is a stall.`,
           action: 'tech-manager: resolve it or escalate. Do not let the pair keep going.',
         });
       }
     }
 
     const roles = new Set(thread.flatMap((m) => [m.from, m.to]));
-    if (roles.size > 4) {
+    if (roles.size > MAX_CHAIN) {
       warnings.push({
         code: 'message_chain_too_deep',
         ticketId,
         line: 0,
-        detail: `${ticketId} has involved ${roles.size} roles (limit 4). A question relayed that far is an escalation.`,
+        detail: `${ticketId} has involved ${roles.size} roles (limit ${MAX_CHAIN}). A question relayed that far is an escalation.`,
         action: 'tech-manager: take the decision rather than relaying it further.',
       });
     }
@@ -359,7 +382,10 @@ function diagnose(board, ledger, capabilities, messages = []) {
     } else {
       const effectiveCycles = Number.isNaN(cycles) ? 0 : cycles;
 
-      if (effectiveCycles >= MAX_REVIEW_CYCLES && row.status !== 'blocked') {
+      // Only while the ticket is still being worked. `status !== 'blocked'` meant a ticket that
+      // legitimately used its two review cycles and then merged stayed a BLOCKING anomaly for the
+      // life of the board, so the pre-spawn gate went permanently red on any real sprint.
+      if (effectiveCycles >= MAX_REVIEW_CYCLES && ACTIVE_STATUS.has(row.status)) {
         push(
           'cycle_cap_breached',
           `Cycles = ${effectiveCycles} (cap is ${MAX_REVIEW_CYCLES}) but status is "${row.status}", not blocked.`,

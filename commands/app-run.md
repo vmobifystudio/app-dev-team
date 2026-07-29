@@ -30,7 +30,8 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    whether the target directory already contains an app.
    - **Empty / no app → greenfield:** run `/app-init` with the idea (requirements-intake → CEO
      vision → parallel CPO/CTO → parallel ux-designer/tech-lead/devops-engineer → project bootstrap
-     incl. `CLAUDE.md` + git).
+     incl. `CLAUDE.md` + git). `/app-init` ends with its own scope-lock gate — **this command owns
+     that gate (step 2), so `/app-init` skips it here** and the user is asked once, not twice.
    - **Existing app → brownfield:** run `/app-onboard` (reverse-engineer the as-built baseline +
      `CLAUDE.md`), then `/app-audit` (grade vs the House KB → `docs/80-audit.md` → remediation
      backlog). If an idea/goal was given, treat it as the upgrade goal and add it as feature tickets
@@ -44,28 +45,41 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    Wait for the answer. With `--yolo`, skip the gate (greenfield: auto-approve scope; brownfield:
    fix all S1/S2 + Safe, defer Risky) and log the decision.
 
-3. **Plan.** Run `/app-plan` (tech-manager builds the parallel board via `sprint-planner`). Ensure
-   every P0 feature has a paired `APP-NNN-analytics` ticket (data-analyst schema feeds this).
+3. **Plan.** Run `/app-plan` (tech-manager builds the parallel board via `sprint-planner`), which
+   runs **non-interactively here** — scope was approved at Gate 1 and this command has no third
+   gate. Ensure every P0 feature has a paired `APP-NNN-analytics` ticket (data-analyst schema feeds
+   this).
+
+   Brownfield reaches this step with a real backlog: `/app-onboard` writes `docs/11-backlog.md`
+   (existing features as baseline rows) and `docs/00-vision.md`, and `/app-audit` has already put
+   `AUDIT-NNN` remediation tickets on the board. `/app-plan` sequences those plus the upgrade goal;
+   it does not re-propose the app that already exists.
 
 4. **Build loop.** Run the `/app-build` loop autonomously, round after round:
-   - board doctor gate → parallel devs (`ios-developer`, `android-developer`,
-     `monetization-engineer`, `backend-developer` if in scope) → verified `DONE` →
-     streaming `code-reviewer` (Axiom audit gate on iOS) → `tech-manager` merge gate →
-     `qa-engineer` → bug loop.
-   - After each round, spawn `tech-manager` to write `docs/daily/standup-<today>.md` and print a
-     3-line standup: counts per status, what merged, blockers.
+   - board doctor gate → parallel ICs **spawned by each ticket's `Owner`, per `/app-build` step 2**
+     (never a list named here — an out-of-date copy is how `AUDIT-NNN` tickets stopped being picked
+     up) → verified `DONE` → streaming `code-reviewer` (Axiom audit gate on iOS) → `tech-manager`
+     merge gate → `qa-engineer` → bug loop.
+   - After each round, spawn `tech-manager` to write the standup at `docs/daily/<today>.md`
+     (`team-protocol`'s canonical path — not `standup-<today>.md`, which nothing else reads) and
+     print a 3-line summary: counts per status, what merged, blockers.
    - **Escalate to the user only** for: a blocker the team can't resolve, the 2-cycle review cap
      being hit, or a scope/architecture conflict. Surface verbatim with a proposed answer.
 
 5. **Ship-readiness.** When the board is drained and there are zero open S1/S2 bugs, spawn in
    parallel: `aso-specialist` (store assets + readiness), `security-reviewer` (MASVS), and
-   `data-analyst` (instrumentation + consent verification).
+   `data-analyst` (instrumentation + consent verification). A readiness agent that cannot evaluate —
+   the artifact it reads was never written — reports `CANNOT EVALUATE` and goes to Gate 2 as a
+   produce-or-waive decision (`/app-ship` step 1a). **Never resolve one by skipping it here:**
+   `--yolo` skips human gates, not correctness gates, and this is a correctness gate.
 
    "Drained" means the doctor is clean **and** every non-`done` row is named with its reason.
    A board with an open anomaly is not drained, however empty the `todo` column looks.
 
 6. **GATE 2 — ship (human).** Hand off to `/app-ship`, which summarizes readiness and asks for
-   explicit confirmation before any store upload. Never upload without it.
+   explicit confirmation before any store upload. Never upload without it. `/app-ship`'s last step
+   harvests the run's `LEARNING:` lines into `docs/90-learnings.md` and folds them into the House KB
+   via `/app-learn` — that is where an autonomous run pays its knowledge back.
 
 ## Output
 

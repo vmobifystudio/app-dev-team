@@ -3,6 +3,99 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.0] — The gates now fail closed, and something finally runs the app
+
+A full-system review — all 18 agents, 11 commands, 12 skills, 9 scripts, 8 knowledge packs — found
+that the team would break on its first real run, and that **almost every defect was fail-open**: a
+gate that silently passed, a ticket that silently dropped, a flow that dead-ended. The suite ran
+green at 48 assertions throughout, because nothing tested any of it.
+
+Every fix below was verified by executing it, and every new assertion was confirmed to fail against
+the old behaviour before being trusted.
+
+### Broke a real run
+
+- **`security-reviewer` could not write its own deliverable** — it lacked `Write`/`Edit` while being
+  required to produce `docs/70-security-review.md`, which `/app-ship` gates on.
+- **The iOS audit gate was a dead instruction.** `code-reviewer` and `qa-engineer` are told to spawn
+  Axiom auditor and test-runner agents; neither had the `Task` tool. The ~25-auditor review the
+  README advertises had never once run.
+- **`/app-plan` rejected every single-platform and every brownfield project**, demanding both an iOS
+  and an Android impl spec and then suggesting `/app-init` — which brownfield is explicitly told not
+  to run. `/app-onboard` also never wrote `docs/11-backlog.md`, so the brownfield path could not
+  reach a board at all.
+- **The board went permanently red.** `cycle_cap_breached` was guarded only by `status !== 'blocked'`,
+  so any ticket that legitimately used its two review cycles and merged blocked the pre-spawn gate
+  for the life of the project.
+- **Doc-owning tickets were structurally un-passable.** `ux-designer`, `qa-engineer`,
+  `aso-specialist` and `data-analyst` returned no `Branch:` line, and `verify-done.sh` hard-rejects a
+  missing branch. `verification-engineer` was a spawnable owner with no `DONE` contract at all.
+
+### Gates that fail closed
+
+- **`ship-gate.sh` shipped silently three ways**: a renamed or absent `Status` column returned CLEAR
+  with no output, backticked status cells were invisible to its `awk`, and `blocked` was not counted
+  as in flight. Board reading now goes through `lib/board.mjs` (`scripts/ship-inflight.mjs`) — one
+  parser, as the library header always required.
+- **A three-state contract**, now shared by every gate: `0` clear · `1` blocked by a real condition ·
+  `2` **cannot evaluate**, naming the missing input. Exit 2 is never a pass. Proceeding past it takes
+  a recorded `WAIVED:` line with a human and a reason — because a skipped gate and a waived gate are
+  indistinguishable in a log unless the waiver is written down.
+- **`team-doctor`'s `skill_missing` could never fire**, gated behind a whitelist of eleven names that
+  all existed. It now validates against `skills/` and still ignores external plugin skills.
+- **`verify-done.sh` discarded test output** while instructing the loop to re-spawn the developer
+  "with these failures verbatim". There were none. Output is captured and the tail is printed.
+- **`team-message.sh` sanitised only two of five fields**, so a `|` in a ticket ID corrupted the
+  ledger table and shifted every downstream field. Its guard windows also disagreed with
+  `board-doctor`'s, and ticketless rows all collapsed into one pseudo-thread.
+
+### New: something finally runs the app
+
+Every gate in this repo verified that *the process was followed*. None verified that the artifact
+works — a sprint could go green end to end on an app that does not compile. `defect-hunting` has
+always said *execute constants, never certify by reading*; the team had simply never pointed that at
+the app.
+
+- **`scripts/runtime-gate.sh` + the `runtime-gate` skill** — build, launch, drive the P0 flow, write
+  evidence to `docs/evidence/`. Escalates to `axiom:simulator-tester` / `axiom:test-runner` /
+  XcodeBuildMCP where present. `qa-engineer` runs it; `verification-engineer` certifies it;
+  `/app-build` runs it before the QA wave and `/app-ship` blocks on it.
+- Absent toolchain is **CANNOT EVALUATE**, never a pass. A runtime gate that reports success on a
+  machine that could not run anything is worse than no gate.
+
+### New: ambiguity dies upstream
+
+- **The `spec-critic` skill** runs after the impl specs exist and before any developer is spawned,
+  filing one batch of `question` rows for `tech-lead`. The channel went unused in 10 of 10 dry-run
+  agent-runs because an agent that can proceed will proceed — "declare, don't dispatch" catches the
+  guess after it is made, at the cost of a rework cycle. This removes the ambiguity first. It is a
+  skill invoked by `tech-lead`, deliberately not a nineteenth role.
+- `docs/team/messages.md` is now **scaffolded by `/app-init` and `/app-onboard`**. It never was, and
+  an agent once reported raising a question on a ledger that had never existed.
+
+### Leaner
+
+- **The canonical output contract** now lives once in `team-protocol`, with a CODE and a DOC profile
+  plus a canonical paths table. The daily fragment previously had five spellings, one of which
+  `/app-build` gated on.
+- **~300 lines of duplicated boilerplate removed** from the agent corpus — the team-protocol block
+  alone was copy-pasted into 12 files and into the skill it pointed at. Every line was context paid
+  for on every spawn, every round.
+- `scripts/integration-branch.sh` resolves the merge base from `docs/23-git-strategy.md` instead of
+  four call sites hardcoding `main`, which contradicted the House KB's flagship `develop` model.
+- `code-reviewer` and `verification-engineer` no longer duplicate each other's work or double-spawn
+  the same security scanner: the reviewer **routes** constants and guard rules; the verifier
+  **executes and certifies** them.
+- `release-manager` and `monetization-engineer` moved to opus — the roles doing irreversible actions
+  and money paths were running the cheapest model in the roster.
+
+### Tests
+
+48 → **82 assertions**, covering every defect above. Each was confirmed to fail against the old
+behaviour first. The 1.4.0 note claiming all four `team-message` guard branches were tested firing
+was **false** — only the pair limit was; the per-role cap, chain depth and ticketless-row cases are
+covered now.
+
 ## [1.4.0] — Coordination, isolation, and gates that actually run
 
 What began as "add worktree isolation" grew, across four dry runs, into a release that found and fixed

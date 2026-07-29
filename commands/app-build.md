@@ -40,63 +40,59 @@ Tickets (optional, default = all ready): $ARGUMENTS
    **git worktree per writing agent, created before the spawn** (`agent-isolation`), and serializes
    any ticket pair that shares a file. Launch IC agents concurrently in a **single assistant
    message** — one Task invocation per owner, each passed its worktree path and the full list of
-   tickets they're working this round:
-   **Spawn by the ticket's `Owner` column — never from a hardcoded list.** Any of these can own and
-   work a ticket, and the board doctor rejects an owner this loop cannot spawn:
+   tickets they're working this round.
 
-   | Owner | Spawn when |
-   |---|---|
-   | `ios-developer` | iOS-ready tickets |
-   | `android-developer` | Android-ready tickets |
-   | `backend-developer` | backend is in scope per `docs/20-architecture.md` |
-   | `monetization-engineer` | paywall / IAP / ads tickets |
-   | `data-analyst` | `APP-NNN-analytics` instrumentation tickets |
-   | `devops-engineer` | CI / signing / build-config tickets |
-   | `aso-specialist` | store-asset tickets |
-   | `verification-engineer` | tickets that add a constant, threshold, guard rule, or baseline |
-   | `ux-designer`, `qa-engineer` | in the same message when their work is ready (early flows / test plan drafts) |
+   **Spawn by the ticket's `Owner` column — never from a hardcoded list.** The authority on which
+   owners this loop can spawn is `board-doctor` (Manual-fallback check 4) and the
+   `BUILD_SPAWNABLE_OWNERS` set it shares with `scripts/lib/board.mjs`; `team-doctor.mjs` fails the
+   build if this file and that set disagree, which is the only reason naming them here is safe:
+   `ios-developer`, `android-developer`, `backend-developer`, `monetization-engineer`,
+   `ux-designer`, `qa-engineer`, `data-analyst`, `devops-engineer`, `aso-specialist`,
+   `verification-engineer`. **Do not copy this roster into any file `team-doctor` does not check** —
+   the unchecked copy in `/app-audit` had already dropped `ux-designer` and `qa-engineer`, so its
+   accessibility and test-plan remediation tickets were filed to roles nothing spawned: never picked
+   up, never blocked, never reported, and the loop drained around them and printed a successful
+   sprint.
 
-   The previous version listed only the three platform developers. `/app-audit` files `AUDIT-NNN`
-   tickets against monetization, analytics, ASO, DevOps and security findings and then says
-   "remediate via the normal `/app-build` loop" — so those tickets were owned by roles this step
-   never spawned. They were never picked up, never blocked, and never reported: the loop drained
-   around them and printed a successful sprint. Same silent-drop class as a stranded dependency.
-
-   `security-reviewer`, `code-reviewer`, `release-manager`, `tech-lead` and `tech-manager` do
-   **not** work tickets — they gate, review, and coordinate. A ticket owned by one of them is a
-   board error (`owner_not_spawnable`).
+   Spawn only what the project actually has this round: `backend-developer` when backend is in scope
+   per `docs/20-architecture.md`, `ux-designer` / `qa-engineer` when their flow or test-plan work is
+   ready. `security-reviewer`, `code-reviewer`, `release-manager`, `tech-lead` and `tech-manager`
+   gate and coordinate — they never own a ticket, and the doctor rejects one that does
+   (`owner_not_spawnable`).
 
 3. **Streaming review.** As each developer agent returns `DONE: APP-NNN`:
-   - **Verify the claim before you believe it** (`board-doctor` skill):
+   - **Verify the claim before you believe it** (`board-doctor` skill). The base is the project's
+     integration branch, resolved once from its own git strategy — never a hardcoded `main`, because
+     the flagship model integrates on `develop` (`knowledge/git-workflow.md`) and merging features
+     straight to `main` there is not recoverable by a later fix:
 
      ```bash
-     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> main "<project test command>"
+     BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh")
+     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" "<project test command>"
      ```
+
+     Use that same `$BASE` for the merge gate in step 4 — one resolution per round, not one per
+     call site.
 
      `REJECTED` → leave the row where it is and re-spawn the developer with the blocking lines
      verbatim. This counts as a **developer** retry, not a review cycle.
      `VERIFIED` → continue. If it reports `tests=unverified`, say so in the daily fragment; never
      restate the agent's "all green" as confirmed.
    - **Read the `Shared surfaces touched` line.** If two returning agents name the same file, or
-     both report *creating* a cross-cutting abstraction for the same concern, you have a duplication
-     or conflict you can act on now — before the merge gate, while both agents still exist. Route it
-     to `tech-manager` to pick one shape and re-spawn the loser with the winner named. Both dry-run
-     agents spotted this risk themselves and had nowhere to put it but the closing paragraph of a
-     report nobody parsed.
-   - **Verify the `Assumptions & open questions` line against the ledger.** For every question the
-     agent says it raised, `docs/team/messages.md` must contain the row. Observed live: an agent's
-     daily fragment stated "Raised to tech-lead on the team channel per the ticket instructions"
-     and no message existed — the ledger had never been created. The claim was sincere and false,
-     in the one artifact `tech-manager` aggregates into the standup, and nothing checked it.
-
-     If a claimed message is missing, do not quietly fix it: file the question yourself, note in the
-     standup that the agent reported raising it and had not, and treat every other unverifiable
-     claim in that report with the same suspicion. An `ASSUMED, NOT RAISED` line is fine and needs
-     routing; a false "raised" line is a defect in the report.
-   - **Check the daily fragment exists** at `docs/daily/<today>-<role>-APP-NNN.md` on the branch.
-     Across two dry runs only **1 of 4** agent-runs wrote one, though every IC role requires it —
-     and it is the sole input to the standup, so `tech-manager` was aggregating nothing. If it is
-     missing, ask that agent for it before moving the row; do not write it on their behalf.
+     both report *creating* a cross-cutting abstraction for the same concern, route it to
+     `tech-manager` **now** — before the merge gate, while both agents still exist — to pick one
+     shape and re-spawn the loser with the winner named.
+   - **Verify the `Assumptions & open questions` line against the ledger.** Every question the agent
+     says it raised must have its row in `docs/team/messages.md`. A missing row is a defect in the
+     report, not something to quietly fix: file the question yourself, note in the standup that the
+     agent reported raising it and had not, and treat that report's other unverifiable claims with
+     the same suspicion. `ASSUMED, NOT RAISED` is fine and just needs routing. (Observed live —
+     a sincere, false "raised" line in the one artifact the standup aggregates; see `defect-hunting`
+     on claims that read fine and are not true.)
+   - **Check the daily fragment exists** at `docs/daily/<today>-<role>-<ticket>.md` on the branch —
+     that exact spelling, per `team-protocol`'s canonical paths table; no other is recognised. It is
+     the sole input to the standup and only 1 of 4 dry-run agents wrote one. Missing → ask that
+     agent for it before moving the row; never write it on their behalf.
    - Move the board row to `Status = review`, set the `Reviewer` column, and append to the review
      ledger: `<ts> | APP-NNN | requested | <owner> -> code-reviewer`.
    - **The reviewer must not be the owner.** For a ticket owned by `code-reviewer` (or any review of
@@ -104,7 +100,9 @@ Tickets (optional, default = all ready): $ARGUMENTS
    - Spawn a `code-reviewer` agent for that branch immediately — do not wait for the other devs. Multiple reviewers can run in parallel, and they can run in parallel with still-running developers.
 
 4. **Process reviewer verdicts.**
-   - `APPROVED` → spawn `tech-manager` to run the Merge gate (see `agents/tech-manager.md`). After merge, board row goes `review → qa`.
+   - `APPROVED` → spawn `tech-manager` to run the Merge gate (see `agents/tech-manager.md`), passing
+     the `$BASE` resolved in step 3 as the branch to merge into. After merge, board row goes
+     `review → qa`.
    - `REQUEST CHANGES` → re-spawn the original developer **pointed at
      `docs/53-reviews/APP-NNN-cycle-N.md`**, not at notes you are holding in context, and
      **increment the `Cycles` column** (not a substring in `Notes`). If that file does not exist,
@@ -117,10 +115,36 @@ Tickets (optional, default = all ready): $ARGUMENTS
 4a. **Clean up worktrees.** After each merge, remove the ticket's worktree so the next round starts
    clean: `git worktree remove .agent-wt/APP-NNN && git worktree prune`.
 
-5. **QA pass.** Once a wave of tickets is in `qa`, spawn `qa-engineer` once to exercise the acceptance criteria. QA writes new defects to `docs/51-bugs.md`. S1/S2 bugs come back into the loop in step 1 next round.
+5. **QA pass — starting with the runtime gate.** Once a wave of tickets is in `qa`, run the
+   `runtime-gate` skill's script **on the integration branch, before spawning `qa-engineer`**:
 
-6. **Daily report + board view.** Collect the per-agent fragments at `docs/daily/<today>-*.md` and
-   spawn `tech-manager` to concatenate them into `docs/daily/<today>.md`. Then render the board so
+   ```bash
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root .
+   ```
+
+   **Why here and not per-ticket after `verify-done.sh`:** one app build per wave instead of one per
+   ticket, run on the merged tree — which is the only place "three individually-approved tickets and
+   no composition root" is visible at all. A per-ticket run costs N builds to ask a question no
+   single feature branch can answer.
+
+   - Exit `0` → the app builds and launches. Name the evidence path in the standup and continue.
+   - Exit `1` → **the wave does not advance.** No row moves `qa → done`. File it as an `S1` in
+     `docs/51-bugs.md` (an app that does not build or launch is data-loss-tier by definition), so
+     step 1 turns it into a `BUG-NNN-fix` ticket next round. Re-spawn the owning developer with the
+     gate's compiler output **verbatim** — it printed it precisely so you would not have to
+     paraphrase it.
+   - Exit `2` → **CANNOT EVALUATE, which is not a pass.** Print its lines verbatim in the standup
+     under `RUNTIME GATE: CANNOT EVALUATE`. QA still runs and rows may still advance on QA's own
+     verdict, but nothing anywhere may record this build as having been launched — `/app-ship`
+     re-runs the same gate and will ask again.
+
+   Then spawn `qa-engineer` once to exercise the acceptance criteria; where the Axiom toolchain is
+   present it drives the P0 journey per the `runtime-gate` skill rather than stopping at launch. QA
+   writes new defects to `docs/51-bugs.md`. S1/S2 bugs come back into the loop in step 1 next round.
+
+6. **Daily report + board view.** Collect the per-agent fragments at
+   `docs/daily/<today>-<role>-<ticket>.md` and spawn `tech-manager` to concatenate them into the
+   standup at `docs/daily/<today>.md` (both spellings from `team-protocol`'s paths table). Render the board so
    the state is visible rather than tabular:
 
    ```bash
@@ -147,6 +171,9 @@ Tickets (optional, default = all ready): $ARGUMENTS
   cost of ignoring this: `docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
 - **Never spawn while the board doctor reports an anomaly.**
 - **Never move a row to `review` on an unverified `DONE`.**
+- **Never advance a wave across a `RUNTIME GATE: FAIL`, and never record a `CANNOT EVALUATE` as a
+  launched build.** Every other gate here checks that the process was followed; this is the only one
+  that runs the artifact.
 - **Never merge a branch containing another ticket's files.** That means a shared tree was used and
   the sibling ticket's branch is probably wrong too — stop the round and check both.
 - Never spawn more than one agent for the same ticket simultaneously.

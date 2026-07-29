@@ -18,10 +18,17 @@ Dimension (optional, default = all): $ARGUMENTS
 
 1. **Fan out the auditors in parallel** (single message), matched to the detected platform(s). Each
    checks ONE dimension against the House KB pack it owns and returns findings, read-only:
-   - **iOS** — spawn the Axiom auditor agents that fit the code: `axiom:concurrency-auditor`,
+   - **iOS** — `code-reviewer` grading against `ios-conventions.md`, always. The `axiom:*` auditors
+     are a **soft** dependency: they ship in a separate plugin that may not be installed, so detect
+     what is available, spawn the ones that fit the code — `axiom:concurrency-auditor`,
      `axiom:memory-auditor`, `axiom:security-privacy-scanner`, `axiom:swiftdata-auditor`,
-     `axiom:accessibility-auditor`, `axiom:swiftui-performance-analyzer`; plus `code-reviewer`
-     grading against `ios-conventions.md`.
+     `axiom:accessibility-auditor`, `axiom:swiftui-performance-analyzer` — and cover every dimension
+     they would have covered with the House KB defaults instead (`ios-conventions.md`,
+     `defect-hunting`, `security-reviewer` for the privacy/security dimension).
+
+     **State which auditors ran and which dimensions fell back, in the scorecard.** Never skip a
+     dimension silently: an unaudited dimension that prints no findings is indistinguishable from a
+     clean one, and it is the scorecard the user makes the ship decision on.
    - **Android** — `code-reviewer` against `android-conventions.md` (the five ViewModel patterns,
      Room/DataStore rules, no logic in composables), plus lint/detekt/ktlint results.
    - **Monetization** — `monetization-engineer` vs `monetization.md` (paywall gateway, entitlement
@@ -68,15 +75,22 @@ Dimension (optional, default = all): $ARGUMENTS
    on `docs/31-board.md`, prioritized by severity, each carrying its violated-rule + Safe/Risky tag.
    Risky tickets also get a short written plan and are marked `needs-approval`.
 
-   **Owner must be a role `/app-build` can spawn** — `ios-developer`, `android-developer`,
-   `backend-developer`, `monetization-engineer`, `data-analyst`, `devops-engineer`,
-   `aso-specialist`, `verification-engineer`. Never `security-reviewer`: it *finds* the gap, it
-   does not work the ticket. The board doctor rejects it as `owner_not_spawnable`.
+   **Owner must be a role `/app-build` can spawn.** The roster is in `board-doctor`'s
+   Manual-fallback check 4 — read it there, never from a copy. The copy that used to live in this
+   step had already dropped `ux-designer` and `qa-engineer`, which are the natural owners of this
+   command's own Safe-fix class (accessibility labels, Dynamic Type, touch targets, design tokens,
+   test-plan gaps), so those remediation tickets were filed to nobody. Never `security-reviewer` or
+   any other gating role: it *finds* the gap, it does not work the ticket, and the board doctor
+   rejects it as `owner_not_spawnable`.
 
    A finding with no ticket stays `OPEN` in the register. A ticket with no finding is a scope leak.
 
 4. **GATE — present the gap summary to the user.** Print the scorecard and the backlog grouped by
    severity and Safe/Risky. Ask which to fix (e.g. "all S1/S2", "safe-only", a specific set). Wait.
+
+   This is `/app-run`'s Gate 1 for a brownfield project. **When `/app-audit` was invoked by
+   `/app-run`, `/app-run` owns the gate — print the summary and return it rather than asking, so
+   the user approves scope once.** Invoked directly, ask here.
 
 5. **Remediate** via the normal `/app-build` loop on the approved tickets:
    - **Safe** tickets are fixed automatically, gated by `code-reviewer` (+ Axiom audits on iOS) and
@@ -93,8 +107,18 @@ Dimension (optional, default = all): $ARGUMENTS
    named instance. It closes when a test, lint rule, or CI check would fail if the pattern
    reappeared — and `verification-engineer` has watched that check fail once.
 
-   Then offer to re-run `/app-audit` to confirm the gaps closed and update `docs/80-audit.md` with
-   the new scorecard.
+   Then re-run `/app-audit` to confirm the gaps closed and update `docs/80-audit.md` with the new
+   scorecard — over the dimensions that had findings, and **at most twice.**
+
+   Exit the re-audit loop on the first of these, and say which one ended it:
+   - the register is closed (every row terminal), or
+   - a re-audit pass adds no new `S1`/`S2` finding, or
+   - the second re-audit completes.
+
+   Then stop and report what is still open, with the finding counts per round. Three passes that
+   keep turning up new S1s is a scope decision for the user, not a loop to keep running — and this
+   was the only unbounded loop in the plugin, next to `/app-build`'s 2-cycle cap and 6-retry spawn
+   budget.
 
 ## Safety
 
