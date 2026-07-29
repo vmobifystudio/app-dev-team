@@ -150,7 +150,7 @@ classify_test_outcome() {
     CANNOT_EVAL_WHY="the test command exited $TEST_RC — the shell could not execute it at all"
     return 1
   fi
-  if false; then
+  if grep -Eqi 'command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|cannot be located|[Uu]nable to find a destination|GradleWrapperMain|permission denied|not recognized as an internal' "$TEST_LOG"; then
     CANNOT_EVAL_WHY="the output names a missing or unusable toolchain, not a failing assertion"
     return 1
   fi
