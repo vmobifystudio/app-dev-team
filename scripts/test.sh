@@ -2256,6 +2256,67 @@ assert_exit 2 "parses the payload without GNU sed extensions" hk "git stash"
 
 rm -rf "$HKD"
 
+echo
+# --------------------------------------------------------------------------------------------
+echo "mutate (the tool that proves this suite can go red)"
+# --------------------------------------------------------------------------------------------
+# `defect-hunting` §3's corollary: the tool you build to catch this problem is subject to it too.
+# These are cheap and static — running the real thing takes ~1 min per mutation, so the suite does
+# not, but the failure mode that makes it worthless (a drifted anchor) is caught here in ms.
+
+MUT="$HERE/mutate.sh"
+assert_exit 0 "--list prints the catalogue"          sh "$MUT" --list
+sh "$MUT" --list > "$TMP/mutlist.txt" 2>&1
+assert_has "$TMP/mutlist.txt" "NOT MUTATABLE HERE" "...and declares what it cannot test, rather than omitting it"
+assert_exit 2 "an unknown --only id is CANNOT RUN, not an empty pass" sh "$MUT" --only NO-SUCH-ID
+assert_exit 2 "a non-numeric --sample is refused"    sh "$MUT" --sample notanumber
+
+# THE assertion. Every anchor must occur EXACTLY ONCE in its target file. Zero means the mutation
+# silently stopped being applied and the score is inflated by a mutation that never ran; more than
+# one means it lands at an arbitrary site. Both look like a healthy score from the outside, which is
+# precisely the class of failure this whole file exists to stop.
+awk '/^CATALOGUE$/ { p = 0 } p { print } /<<.CATALOGUE.$/ { p = 1 }' "$MUT" > "$TMP/cat.txt"
+CAT_N=$(grep -c . "$TMP/cat.txt")
+[ "$CAT_N" -ge 10 ] && ok "the catalogue parses ($CAT_N mutations)" \
+                    || bad "the catalogue parses" "found $CAT_N entries — the here-doc markers moved"
+
+# APP_TEAM_MUTATING is set by mutate.sh, and only by mutate.sh. Under it, one anchor in this tree
+# has been deliberately replaced, so this check would fail for EVERY mutation — turning the whole
+# suite into a detector of its own mutation tester and reporting every gate as CAUGHT. It did
+# exactly that on the first run, and masked the one genuine survivor. Standing down here is not the
+# "gate that switches itself off" anti-pattern: mutate.sh already exits 2 on a drifted anchor at the
+# moment it tries to apply it, which is a stronger check than this one, made at the right time.
+if [ -n "${APP_TEAM_MUTATING:-}" ]; then
+  ok "anchor drift is checked by mutate.sh itself while it is running (skipped here)"
+else
+  drift=""
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    mid=${entry%%@@*}; rest=${entry#*@@}
+    mfile=${rest%%@@*}; rest=${rest#*@@}
+    mold=${rest%%@@*}
+    if [ ! -f "$HERE/../$mfile" ]; then
+      drift="$drift $mid(no-file)"
+      continue
+    fi
+    n=$(MUT_OLD="$mold" awk 'BEGIN{o=ENVIRON["MUT_OLD"]}
+        { r=$0; while ((i=index(r,o))>0) { n++; r=substr(r,i+length(o)) } }
+        END{print n+0}' "$HERE/../$mfile")
+    [ "$n" = "1" ] || drift="$drift $mid(x$n)"
+  done < "$TMP/cat.txt"
+  [ -z "$drift" ] && ok "every mutation anchor occurs exactly once in its target file" \
+                  || bad "every mutation anchor occurs exactly once in its target file" "drifted:$drift"
+fi
+
+# A gate nobody runs is not a gate — this repo's own sentence. mutate.sh only means something if CI
+# runs it, and only if CI can go red doing so (DR4-023).
+grep -q 'scripts/mutate.sh --sample' "$HERE/../.github/workflows/checks.yml" \
+  && ok "CI runs a sample of mutations on every PR" \
+  || bad "CI runs a sample of mutations on every PR"
+grep -nE 'mutate\.sh.*(\|\|[[:space:]]*(true|:))' "$HERE/../.github/workflows/checks.yml" >/dev/null 2>&1 \
+  && bad "...and its exit code is not masked" \
+  || ok "...and its exit code is not masked"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
