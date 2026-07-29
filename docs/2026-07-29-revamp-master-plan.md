@@ -347,6 +347,27 @@ Deferred out of Phase 0 deliberately: mid-sprint Q&A (→ P3), self-metrics (→
 | 1.6 | Fix knowledge-pack self-contradictions (RV-032): XCTest vs Swift Testing in `architecture-builder`, 95% vs 90% coverage, the iOS min-target row that contradicts its own note, `aso.md`'s mining artifacts ("Emma", "no app checked in a keyword file") | each contradiction grepped and shown resolved |
 | 1.7 | Trim `defect-hunting` §3's shell-authoring subsection out of the review path (dead context on every review) into its own reference | reviewer-loaded line count drops |
 
+> **Scope note added mid-Phase-1 (owner direction).** The end goal is a team of specialists that,
+> once requirements are sorted, builds **iOS, Android, or any other product** autonomously and in
+> coordination. Today the roster is hard-wired to mobile: `ios-developer`, `android-developer`,
+> `aso-specialist` and the store-readiness gate assume an app-store product. That means item 1.3 has
+> **two axes, not one**:
+>
+> - **Tier** (Flagship / Utility) — how much process the work deserves.
+> - **Product type** (iOS app · Android app · backend service · web app · CLI · library) — *which
+>   specialists exist at all*.
+>
+> Build the activation mechanism to take both from the start. A backend-only product should never
+> spawn an ASO specialist or a store-readiness gate, and should never be blocked by a runtime gate
+> looking for an `.xcodeproj`. Getting this shape right in Phase 1 is what makes the team
+> generalisable later without a second rewrite; getting it wrong hard-codes "mobile app studio" into
+> the activation layer, which is the one place it is most expensive to undo.
+>
+> Corollary for `runtime-gate` (shipped in Phase 0): it already detects project type and returns
+> CANNOT EVALUATE for a tree that is neither iOS nor Android. When product types broaden, that
+> detection is the natural extension point — a web product's runtime gate is "does it build and does
+> the page render", a CLI's is "does it run `--help` and exit 0". Same three-state contract.
+
 ### Phase 2 — Event-sourced board + self-metrics
 
 | # | Item | Proof |
@@ -356,6 +377,57 @@ Deferred out of Phase 0 deliberately: mid-sprint Q&A (→ P3), self-metrics (→
 | 2.3 | Agents and orchestrator stop hand-editing the board table; `board-doctor` stays as the backstop for hand edits and legacy boards | legacy board still degrades to warnings, not errors |
 | 2.4 | **Self-metrics** (moved from P5): cycle time per ticket, review pass rate, rework rate, gate-fire counts — derived from the event log | `/app-status` prints a trend block on a seeded event log |
 | 2.5 | Migration path for an existing hand-written board → events | run against `scripts/fixtures/*.md` |
+
+#### Phase 2 design — the state machine (decided up front)
+
+The whole point of event-sourcing is that **illegal states become unrepresentable**, so the
+transition table is the design. Anything not in it is rejected at write time rather than detected
+afterwards by the doctor.
+
+```
+                 ┌──────────── changes ─────────────┐
+                 v                                  │
+todo ──claimed──> in_progress ──done_reported──> (verify) ──review_requested──> in_review
+  ^                   │                                                            │
+  │                   └── blocked ──> blocked ──unblocked──┐                        │
+  │                                                        │                   approved
+  └────────────────────── (re-open, admin only) ───────────┘                        │
+                                                                                    v
+                                          done <──closed── qa <──merged──── (merge gate)
+```
+
+**Events** (append-only, `{ts, ticket, event, by, detail}`):
+`created · claimed · done_reported · verified · rejected · review_requested · started · approved ·
+changes · merged · qa_passed · qa_failed · blocked · unblocked · closed`
+
+**Rules the CLI enforces at write time** — each one exists because the current hand-edited board
+allows its violation and the doctor can only catch it later:
+
+| Rule | Replaces the anomaly |
+|---|---|
+| `review_requested` requires a preceding `verified` for that ticket | `DONE` believed unverified |
+| `approved` must be authored by someone ≠ the ticket's owner | `self_review` |
+| `merged` requires a preceding `approved` **by a non-owner** | `done_without_review`, and the live merge that slipped through the check/append window |
+| `changes` increments the cycle counter; the 3rd is refused and forces `blocked` | `cycle_cap_breached` drift between the column and the ledger |
+| a `claimed` on a ticket whose dependency has no `merged` is refused | `stranded` — the silent one |
+| `blocked` on a ticket cascades a recomputed readiness for its dependents | dependents stranded by a mid-round block |
+| any event on an unknown ticket is refused | `malformed_row` |
+
+**`docs/31-board.md` becomes a generated view.** It stays human-readable and diffable — that
+property is non-negotiable — but it is regenerated from the log, never hand-authored. `board-doctor`
+survives unchanged as the backstop for hand edits, legacy boards, and anything that bypasses the
+CLI; its job shifts from *primary gate* to *drift detector*, and a divergence between the log and
+the rendered table becomes its own anomaly.
+
+**Why the cycle counter moves into the log.** Today `Cycles` is a column an agent edits and the
+ledger is a separate list, so the two drift — dry run 3's finding 1 was exactly this, a drifted
+ledger word silently filtered by the parser, which then reported a milder anomaly than the real one.
+Derived-on-read means they cannot disagree.
+
+**Migration.** `board.mjs migrate` reads an existing hand-written board plus its ledger and emits a
+best-effort event log, marking anything it cannot reconstruct as `provenance: inferred` rather than
+inventing timestamps. An inferred log is honest; a fabricated one is the same class of lie as a
+false `DONE`.
 
 ### Phase 3 — Communication, finished
 

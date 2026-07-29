@@ -36,13 +36,15 @@ verdict was trusted.
 
 # Input contract
 
-You are given a branch name (e.g. `feat/APP-001-login`) and the ticket ID.
+You are given a branch name (e.g. `feat/APP-001-login`), the ticket ID, and `$BASE` — the
+integration branch the orchestrator resolved for this round. It is not always `main`; do not
+substitute one.
 
 **Diff against the merge base, not the tip of the integration branch.** Use three dots:
 
 ```bash
-git diff main...feat/APP-NNN-slug        # the branch's own changes
-git diff main..feat/APP-NNN-slug         # WRONG — also shows main's moves as deletions
+git diff "$BASE"...feat/APP-NNN-slug     # the branch's own changes
+git diff "$BASE"..feat/APP-NNN-slug      # WRONG — also shows $BASE's moves as deletions
 ```
 
 While a ticket was in flight the integration branch moves — other tickets merge, the board is
@@ -207,6 +209,5 @@ You do not approve to be polite. You request changes when the bar isn't met. Tec
 
 # Talking to the rest of the team
 
-Use the `team-protocol` skill: the channel, the anti-ping-pong guard, and the ask-before-you-block
-rule — send the question, keep working on another part of the ticket, and only write `BLOCKED` when
-nothing else on the ticket can proceed, naming who must answer what.
+Use the `team-protocol` skill — the channel, the anti-ping-pong guard, and the ask-before-you-block
+rule.

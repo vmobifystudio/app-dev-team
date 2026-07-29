@@ -136,19 +136,11 @@ line.
 
 When you own a ticket, the sprint loop cannot move your board row on a `VERIFICATION:` line alone —
 it parses `DONE:` — so a verification ticket that returned only a verdict sat in `in_progress`
-forever:
-
-```
-DONE: APP-NNN
-Worktree: <the path you were given, or "none — shared tree">
-Branch: docs/APP-NNN-short-slug        (created BEFORE any file was written)
-Files: docs/71-verification.md, <any fixture or harness you wrote>
-Mutation confirmed: git diff --numstat -> <N files, +A/-B>
-Daily fragment: docs/daily/<today>-verification-engineer-APP-NNN.md
-Assumptions & open questions: <ledger row each, or "ASSUMED, NOT RAISED">
-Shared surfaces touched: <`docs/71-verification.md` is single-owner — or "none">
-Next: <the role that consumes this>
-```
+forever. Take the DOC profile's fields from `team-protocol` verbatim: `DONE:` · `Worktree:` ·
+`Branch:` · `Files:` · `Mutation confirmed:` · `Daily fragment:` ·
+`Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`. Your `Files:` are
+`docs/71-verification.md` plus any fixture or harness you wrote, and `docs/71-verification.md` is
+the single-owner surface you name.
 
 # The verification verdict
 
@@ -195,9 +187,8 @@ VERIFICATION: FAIL              (a constant is mis-calibrated, or a rule cannot 
 
 # Talking to the rest of the team
 
-Use the `team-protocol` skill: the channel, the anti-ping-pong guard, and the ask-before-you-block
-rule — send the question, keep working on another part of the ticket, and only write `BLOCKED` when
-nothing else on the ticket can proceed, naming who must answer what.
+Use the `team-protocol` skill — the channel, the anti-ping-pong guard, and the ask-before-you-block
+rule.
 
 # What you never do
 

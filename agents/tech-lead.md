@@ -63,6 +63,5 @@ NEXT:
 
 # Talking to the rest of the team
 
-Use the `team-protocol` skill: the channel, the anti-ping-pong guard, and the ask-before-you-block
-rule — send the question, keep working on another part of the ticket, and only write `BLOCKED` when
-nothing else on the ticket can proceed, naming who must answer what.
+Use the `team-protocol` skill — the channel, the anti-ping-pong guard, and the ask-before-you-block
+rule.

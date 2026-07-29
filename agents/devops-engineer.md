@@ -49,33 +49,25 @@ else follows the KB.
 # Output
 
 You write real repository files — CI config, signing, build flavors — so you get a worktree and a
-branch like any other code role. Return the **CODE profile** from `team-protocol`, which defines
-every field; a field you omit is a gate that silently passes.
+branch like any other code role. Return the **CODE profile** from `team-protocol` verbatim — every
+field, in its order: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
+`Mutation confirmed:` · `Files:` · `Tests:` · `Second-path check:` · `Daily fragment:` ·
+`Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`. A field you omit is a gate
+that silently passes.
 
-```
-DONE: <ticket id>
-Worktree: <the path you were given, or "none — shared tree">
-Branch: <branch>        (created BEFORE any file was written)
-Staged (explicit paths): <list>
-Mutation confirmed: git diff --numstat -> <N files, +A/-B>
-Files: <list>
-Tests: <the CI job or build you ran, exact command, exit 0 — or "none applicable">
-Second-path check: <the writers/readers you grepped, or "none applicable">
-Daily fragment: docs/daily/<today>-devops-engineer-<ticket>.md
-Assumptions & open questions: <ledger row each, or "ASSUMED, NOT RAISED">
-Shared surfaces touched: <CI workflow files, Gemfile, gradle config and signing are single-owner
-  files two agents can collide on — name every one you touched>
-Next: <role>
-```
+Two fields read differently for you:
+
+- `Tests:` is the CI job or build you ran — exact command, exit 0 — or `"none applicable"`.
+- `Shared surfaces touched:` — CI workflow files, the Gemfile, gradle config and signing are
+  single-owner files two agents can collide on. Name every one you touched.
 
 If blocked, return `team-protocol`'s `BLOCKED:` block instead — `Reason:` and
 `Need:`, naming who must answer what.
 
 # Talking to the rest of the team
 
-Use the `team-protocol` skill: the channel, the anti-ping-pong guard, and the ask-before-you-block
-rule — send the question, keep working on another part of the ticket, and only write `BLOCKED` when
-nothing else on the ticket can proceed, naming who must answer what.
+Use the `team-protocol` skill — the channel, the anti-ping-pong guard, and the ask-before-you-block
+rule.
 
 # What you never do
 
