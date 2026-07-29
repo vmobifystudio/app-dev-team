@@ -222,11 +222,27 @@ The `APP-011` reviewer, unprompted:
 A feature that is written, gated, covered by passing tests and never constructed anywhere is dead
 code that passes review. `code-reviewer` now has an explicit "is it wired, or merely written?" check.
 
+### The durability fix proved itself in production
+
+Both round-2 reviewer messages arrived **after** their tickets had already been reviewed and merged.
+The sprint completed correctly anyway, because the orchestrator read
+`docs/53-reviews/APP-NNN-cycle-0.md` rather than waiting on a message.
+
+Under the old design that is the exact scenario that stalled round 1: a verdict existed only in a
+message, the message went missing, and the loop could not proceed at all. Two rounds later the same
+message-delivery lag was a non-event. The fix was not validated by a test — it was validated by the
+failure recurring and no longer mattering.
+
 ### Finding 10: reviewers were being told to diff wrongly
 
 The same reviewer noticed that a two-dot `git diff main..branch` renders everything that merged into
 `main` while the ticket was in flight as *deletions on the branch* — making a clean ticket look like
 it reverted half the repo. It re-diffed against the branch's real parent and said so.
+
+**Both round-2 reviewers hit this independently**, on different branches, and both worked around it
+by re-diffing against the branch's real merge-base — one naming the exact three later commits on
+`main` that made `docs/team/messages.md` and a review file appear to be deletions. Two independent
+discoveries of the same trap is a strong signal it was the guidance at fault, not the reviewers.
 
 `code-reviewer` now specifies the three-dot merge-base form. (`verify-done.sh` was already correct.)
 
