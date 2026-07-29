@@ -18,7 +18,8 @@
 #   scripts/verify-done.sh docs/APP-007-flows main --docs-only   (same thing — any position)
 #
 # --docs-only: the ticket's deliverable is a document, not code. Branch, commits and changed files
-# are still verified; the test command is not required and is not run. ux-designer, qa-engineer,
+# are still verified; the test command is not required and is not run. ux-architect, product-designer,
+# product-manager, product-researcher, qa-engineer,
 # aso-specialist and data-analyst own tickets that produce a document and no test — without this
 # flag their DONE was structurally un-passable, so the loop either re-spawned them forever or
 # skipped verification for them entirely.

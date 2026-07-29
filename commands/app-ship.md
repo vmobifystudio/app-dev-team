@@ -138,7 +138,8 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    Where the Axiom toolchain is present, the `runtime-gate` skill escalates past launch to driving
    the PRD's P0 journey. On a release, prefer that: launching is the floor.
 
-2. **Spawn the `active` roles among `security-reviewer`, `verification-engineer`, `aso-specialist`,
+2. **Spawn the `active` roles among `security-reviewer`, `verification-engineer`, `privacy-reviewer`,
+   `reliability-engineer`, `red-team-agent`, `aso-specialist`,
    and `data-analyst` in parallel** in a single message. Read `docs/02-team-roster.md` first — for
    an `off` role, print its gate as `N/A: <gate> — <role> is off(<reason>) per
    docs/02-team-roster.md` (see step 1a: an N/A is not a waiver) and record the same line in
@@ -150,6 +151,17 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      the release can actually fail. `VERIFICATION: FAIL` → stop. This is the gate that catches a
      mis-calibrated threshold and a green rule that cannot fail, neither of which any amount of
      reading will find.
+   - `privacy-reviewer` produces `docs/73-privacy-review.md` — data inventory, consent, retention,
+     third-party sharing, regional obligation. `PRIVACY: FAIL` → stop. **On a utility project this
+     role is `off` and the gate is NOT `N/A`:** `security-reviewer` runs it as its privacy *mode*
+     and returns the `PRIVACY:` line as well (`role-activation` §Tier deltas). Utility means one
+     reviewer, never one checklist — an `N/A` here would be recording a decision nobody made.
+   - `reliability-engineer` produces `docs/75-reliability-review.md` — offline, retries,
+     idempotency, sync conflict, state restoration, recovery. `RELIABILITY: FAIL` → stop; data loss
+     is not a note.
+   - `red-team-agent` produces `docs/74-red-team.md` — it attacks the product **and** the studio's
+     own assumptions, including which gate should have caught the last defect in
+     `knowledge/failure-corpus.md`. `RED TEAM: FAIL` → stop.
    - `aso-specialist` runs the store-readiness gate (`docs/15-aso.md`, screenshots, compliance).
      It returns `ASO READY` or `ASO BLOCKED` with the missing items — **or `ASO: CANNOT EVALUATE —
      docs/15-aso.md` when the doc does not exist**, which follows step 1a's produce-or-waive rule,
@@ -170,7 +182,27 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
 3. **Spawn `release-manager`** as a Task with the version (if given) and the precondition checklist. It either returns `SHIP CANDIDATE: vX.Y.Z` or `BLOCKED: ...`.
 
-4. **If SHIP CANDIDATE**: print release-manager's output verbatim. Ask the user one question before any upload command runs: "Confirm upload to TestFlight + Play internal track for vX.Y.Z?" Do not push without explicit confirmation.
+3a. **Spawn `release-auditor`** — *you* spawn it, **never `release-manager`**, and only after step 3
+   has assembled the candidate. It reads the artifacts, not the summaries: `docs/60-releases.md`,
+   `docs/50-test-plan.md`, `docs/54-evidence/`, `docs/51-bugs.md`, and every gate verdict above. It
+   writes `docs/72-release-audit.md` and returns `RELEASE AUDIT: PASS | PASS WITH NOTES | FAIL`.
+
+   **`release-manager` cannot satisfy this gate.** The actor performing an irreversible action must
+   not be its sole evaluator, so:
+   - `release-auditor` is spawned by this command directly and takes no input from `release-manager`
+     other than artifacts it can read itself;
+   - an artifact whose only witness is `release-manager` is a *claim*, and the auditor marks it
+     `unverified`;
+   - **a test claim with no discoverable evidence bundle stays `unverified`** (`team-protocol`
+     §Evidence bundle), and a release whose critical journeys are `unverified` is a `FAIL`;
+   - `release-manager` may correct a fact and the audit re-runs; it may never grade the verdict.
+
+   `RELEASE AUDIT: FAIL` → stop, print the audit's checklist verbatim, and do not ask the upload
+   question. Only a **human** may waive, and the waiver is recorded in `docs/60-releases.md` in the
+   `WAIVED: <artifact> — <who> — <reason>` form with a real name.
+
+4. **If SHIP CANDIDATE and `RELEASE AUDIT` is not `FAIL`**: print release-manager's output and the
+   audit verdict verbatim. Ask the user one question before any upload command runs: "Confirm upload to TestFlight + Play internal track for vX.Y.Z?" Do not push without explicit confirmation.
 
 5. **If BLOCKED**: print the blocker list and the proposed unblock. Suggest the right command (`/app-build` for missing tickets, `/app-status` for context).
 

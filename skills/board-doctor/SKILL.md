@@ -191,7 +191,8 @@ Read `docs/31-board.md` and check, in this order:
    check below, and as an OPEN item everywhere else: it may reach `qa`, it may not reach `done`.
 4. Every `Owner` is non-empty, is a real role, **and is a role `/app-build` actually spawns to work
    a ticket** — `ios-developer`, `android-developer`, `backend-developer`, `monetization-engineer`,
-   `ux-designer`, `qa-engineer`, `data-analyst`, `devops-engineer`, `aso-specialist`,
+   `ux-architect`, `product-designer`, `product-manager`, `product-researcher`, `qa-engineer`,
+   `data-analyst`, `devops-engineer`, `aso-specialist`, `web-developer`, `test-automation-engineer`,
    `verification-engineer`. Never `security-reviewer`, `code-reviewer`, `release-manager`,
    `tech-lead` or `tech-manager`: those gate and coordinate, they do not work tickets, so a ticket
    owned by one is never picked up and never reported.

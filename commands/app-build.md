@@ -182,9 +182,10 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    `BUILD_SPAWNABLE_OWNERS` set it shares with `scripts/lib/board.mjs`; `team-doctor.mjs` fails the
    build if this file and that set disagree, which is the only reason naming them here is safe:
    `ios-developer`, `android-developer`, `backend-developer`, `monetization-engineer`,
-   `ux-designer`, `qa-engineer`, `data-analyst`, `devops-engineer`, `aso-specialist`,
+   `ux-architect`, `product-designer`, `product-manager`, `product-researcher`, `qa-engineer`,
+   `data-analyst`, `devops-engineer`, `aso-specialist`, `web-developer`, `test-automation-engineer`,
    `verification-engineer`. **Do not copy this roster into any file `team-doctor` does not check** —
-   the unchecked copy in `/app-audit` had already dropped `ux-designer` and `qa-engineer`, so its
+   the unchecked copy in `/app-audit` had already dropped the design and QA owners, so its
    accessibility and test-plan remediation tickets were filed to roles nothing spawned: never picked
    up, never blocked, never reported, and the loop drained around them and printed a successful
    sprint.
@@ -196,7 +197,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    so the flip is on the record.
 
    Spawn only what the project actually has this round: `backend-developer` when backend is in scope
-   per `docs/20-architecture.md`, `ux-designer` / `qa-engineer` when their flow or test-plan work is
+   per `docs/20-architecture.md`, `web-developer` when the product has a browser surface, `ux-architect` / `product-designer` / `qa-engineer` when their flow, screen or test-plan work is
    ready. `security-reviewer`, `code-reviewer`, `release-manager`, `tech-lead` and `tech-manager`
    gate and coordinate — they never own a ticket, and the doctor rejects one that does
    (`owner_not_spawnable`).
@@ -232,7 +233,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      call site.
 
      **For a ticket whose deliverable is a document, not code, pass `--docs-only` instead of a test
-     command** — that is, tickets owned by `ux-designer`, `qa-engineer`, `aso-specialist`,
+     command** — that is, tickets owned by `ux-architect`, `product-designer`, `product-manager`, `product-researcher`, `qa-engineer`, `aso-specialist`,
      `data-analyst`, or `verification-engineer`:
 
      ```bash
@@ -335,6 +336,33 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      **It fires only when the reviewer flags one.** Most tickets name no constant and cost nothing
      extra. Do not spawn it per-ticket "to be safe" — a gate that runs on everything is a gate
      someone turns off.
+
+   - **The `design-qa` gate — a pass, like code review, not a role.** Run it on every ticket whose
+     branch changes a user-facing surface, in parallel with the code review and before the merge
+     gate. It answers five questions against `docs/12-flows.md` and `docs/14-components.md`:
+
+     1. **Implementation versus design** — does the built screen match the composition, or did it
+        drift silently during implementation?
+     2. **Component consistency** — is it built from `docs/14-components.md`, or is there a new
+        one-off that nobody recorded (`design-system`)?
+     3. **State completeness** — **every** state the flow inventory lists for this screen exists:
+        empty, loading, loaded, error, offline, and any product-specific one. A missing state is the
+        most common finding here and the one users find first.
+     4. **Responsive behaviour** — smallest supported size, largest, and the largest font scale,
+        without clipping or overlap.
+     5. **Accessibility implementation** — the `accessibility-gate` skill, run against the build
+        rather than against the intention.
+
+     **Who runs it: `ux-architect`, or `code-reviewer` when `ux-architect` is off.**
+     **Never `product-designer` on its own design.** The designer who created the design must not be
+     the only agent approving its fidelity — that is the same separation-of-duties rule as
+     `release-auditor` versus `release-manager`, and it is the reason this is a gate rather than a
+     line in the designer's own checklist.
+
+     Verdict is `DESIGN QA: PASS` or `DESIGN QA: FAIL — <n> item(s)`. A `FAIL` blocks the merge
+     exactly as a `REQUEST CHANGES` does and is re-worked the same way — re-spawn the ticket's
+     owner, increment `Cycles` — with the verdict persisted alongside the review at
+     `docs/53-reviews/APP-NNN-cycle-N.md`.
    - `APPROVED` (and `VERIFICATION: PASS`, if one was required above) → the reviewer appends
      `board.mjs move APP-NNN approved --by code-reviewer --detail "docs/53-reviews/APP-NNN-cycle-N.md"`.
      Then spawn `tech-manager` to run the Merge gate (see `agents/tech-manager.md`), passing the

@@ -1,6 +1,6 @@
 ---
 name: role-activation
-description: Use at project start — /app-init, /app-onboard, or /app-run's first step — to decide which of the 19 roles this product actually needs, and to write the durable roster the rest of the flow reads. Triggers whenever a command is about to fan out to a team, or a gate is about to run for a role that may not be on this project.
+description: Use at project start — /app-init, /app-onboard, or /app-run's first step — to decide which of the roles this product actually needs, and to write the durable roster the rest of the flow reads. Triggers whenever a command is about to fan out to a team, or a gate is about to run for a role that may not be on this project.
 ---
 
 # Role activation
@@ -48,43 +48,81 @@ question — do not guess.** A wrong product type turns off the wrong specialist
 
 | Role | ios-app | android-app | mobile-app | backend-service | web-app | cli | library | Trigger for `?` / reason for `—` |
 |---|---|---|---|---|---|---|---|---|
-| **staffed?** | yes | yes | yes | yes | **no** | **no** | yes | `no` = recognised but unstaffed — activation refuses, see below |
-| `ceo` | on | on | on | on | — | — | on | utility: absorbs the `cpo` charter (founder pass) |
-| `cpo` | on | on | on | on | — | — | on | utility: off, merged into `ceo` |
-| `cto` | on | on | on | on | — | — | on | utility: off, merged into `tech-lead` |
-| `tech-lead` | on | on | on | on | — | — | on | utility: absorbs the `cto` charter (one technical pass) |
-| `tech-manager` | on | on | on | on | — | — | on | someone must run the board on every staffed product |
-| `ux-designer` | on | on | on | — | — | — | — | `—` no human-facing surface; API ergonomics belong to `tech-lead` |
+| **staffed?** | yes | yes | yes | yes | yes | **no** | yes | `no` = recognised but unstaffed — activation refuses, see below |
+| `ceo` | on | on | on | on | on | — | on | utility: absorbs the `cpo` charter (founder pass) |
+| `cpo` | on | on | on | on | on | — | on | utility: off, merged into `ceo` |
+| `cto` | on | on | on | on | on | — | on | utility: off, merged into `tech-lead` |
+| `chief-of-staff` | ? | ? | ? | ? | ? | — | ? | `?` flagship **and** the founder is fielding more than one project or more than five open decisions — otherwise `ceo` is already the founder interface and this role adds load instead of removing it |
+| `product-manager` | on | on | on | on | on | — | — | utility: off, merged into `cpo`/`ceo` · `—` a library's consumers are engineers; `tech-lead` fields their questions |
+| `product-researcher` | ? | ? | ? | ? | ? | — | — | `?` new-product or repositioning work, i.e. `docs/01-intake.md` names a market or user assumption nobody has tested · `—` a library's market question is API design |
+| `tech-lead` | on | on | on | on | on | — | on | utility: absorbs the `cto` charter (one technical pass) |
+| `tech-manager` | on | on | on | on | on | — | on | someone must run the board on every staffed product |
+| `ux-architect` | on | on | on | — | on | — | — | `—` no human-facing surface; API ergonomics belong to `tech-lead` |
+| `product-designer` | on | on | on | — | on | — | — | `—` no human-facing surface. utility: `?` more than one non-trivial screen, or any custom component |
 | `ios-developer` | on | — | on | — | — | — | ? | `?` the library ships an Apple-platform target · `—` no Apple target |
 | `android-developer` | — | on | on | — | — | — | ? | `?` the library ships an Android target · `—` no Android target |
-| `backend-developer` | ? | ? | ? | on | — | — | ? | `?` `docs/20-architecture.md` names a server, API, or hosted component |
-| `monetization-engineer` | ? | ? | ? | — | — | — | — | `?` the product sells IAP/subscriptions or serves ads · `—` no store-billing or ad surface (this role's charter is StoreKit 2 / Play Billing / AdMob) |
+| `backend-developer` | ? | ? | ? | on | ? | — | ? | `?` `docs/20-architecture.md` names a server, API, or hosted component. Its `ai` / `data` / `integration` variants are named below |
+| `web-developer` | — | — | — | — | on | — | ? | `?` the library ships a JS/TS or browser target · `—` no browser surface |
+| `monetization-engineer` | ? | ? | ? | — | ? | — | — | `?` the product sells IAP/subscriptions or serves ads · `—` no store-billing or ad surface (this role's charter is StoreKit 2 / Play Billing / AdMob) |
 | `aso-specialist` | on | on | on | — | — | — | — | `—` no app-store listing exists to prepare |
-| `data-analyst` | on | on | on | ? | — | — | — | `?` the product emits telemetry or the vision states KPI targets · `—` a library must not phone home; its consumers own analytics |
-| `devops-engineer` | on | on | on | on | — | — | on | every staffed product has a branch model, CI, and a release channel |
-| `product-validator` | on | on | on | on | — | — | on | flagship: always on. utility: `?` — on when `docs/00-founder-intent/` holds a record to validate against. **Outside the cpo/cto/tech-manager chain by construction; it reports to the founder gate** |
-| `qa-engineer` | on | on | on | on | — | — | on | never tier-gated |
-| `code-reviewer` | on | on | on | on | — | — | on | never tier-gated |
-| `security-reviewer` | on | on | on | on | — | — | on | **never off on a staffed type, never tier-gated.** Anything handling user data or credentials gets a review; cheapness is not a reason |
-| `verification-engineer` | on | on | on | on | — | — | on | **never off on a staffed type.** It certifies constants and proves guard rules can fail — every product has both |
-| `release-manager` | on | on | on | on | — | — | on | the channel differs (store · deploy · package registry), the role does not |
+| `data-analyst` | on | on | on | ? | on | — | — | `?` the product emits telemetry or the vision states KPI targets · `—` a library must not phone home; its consumers own analytics |
+| `devops-engineer` | on | on | on | on | on | — | on | every staffed product has a branch model, CI, and a release channel |
+| `product-validator` | on | on | on | on | on | — | on | flagship: always on. utility: `?` — on when `docs/00-founder-intent/` holds a record to validate against. **Outside the cpo/cto/tech-manager chain by construction; it reports to the founder gate** |
+| `qa-engineer` | on | on | on | on | on | — | on | never tier-gated |
+| `test-automation-engineer` | ? | ? | ? | ? | ? | — | ? | `?` flagship **and** the device-and-state matrix exceeds what one exploratory pass can cover, or a suite already exists to maintain. Utility: off — `qa-engineer` covers it |
+| `code-reviewer` | on | on | on | on | on | — | on | never tier-gated |
+| `security-reviewer` | on | on | on | on | on | — | on | **never off on a staffed type, never tier-gated.** Anything handling user data or credentials gets a review; cheapness is not a reason. On utility it also runs the **privacy mode** — see below |
+| `privacy-reviewer` | on | on | on | on | on | — | ? | flagship only — utility folds it into `security-reviewer`'s privacy mode. `?` a library that itself collects or transmits data |
+| `reliability-engineer` | ? | ? | ? | ? | ? | — | ? | `?` flagship **and** the product syncs, works offline, holds user-created data, or performs an operation that costs money |
+| `red-team-agent` | ? | ? | ? | ? | ? | — | ? | `?` flagship **and** (the product handles money, personal data, or user-to-user content) — or the last release shipped a defect a gate should have caught |
+| `verification-engineer` | on | on | on | on | on | — | on | **never off on a staffed type.** It certifies constants and proves guard rules can fail — every product has both |
+| `release-auditor` | on | on | on | on | on | — | on | **never off on a staffed type, never tier-gated.** Separation of duties: `release-manager` performs an irreversible action and must not be its sole evaluator |
+| `release-manager` | on | on | on | on | on | — | on | the channel differs (store · deploy · package registry), the role does not |
 
-The `—` down the `web-app` and `cli` columns is not a judgement about those roles. Those product
-types are unstaffed, so **nothing** activates on them and no team is assembled at all.
+The `—` down the `cli` column is not a judgement about those roles. That product type is unstaffed,
+so **nothing** activates on it and no team is assembled at all.
+
+`web-app` was in the same position until `web-developer` existed. It is now staffed, and the column
+is a real activation, not a courtesy: `web-developer` owns its implementation tickets and
+`ux-architect` / `product-designer` its surface.
+
+**`cli` stays unstaffed.** No IC on this team can own a CLI implementation ticket, and adding one to
+make the table look complete is exactly what the "unstaffed" state exists to prevent. Activation
+refuses on `cli`, by design, until a real CLI product is on the table and someone adds the IC.
+
+### `backend-developer` activation variants
+
+`ai-engineer`, `data-engineer` and `integration-engineer` are **not roles and get no agent file.**
+They are `backend-developer` activated with a different conventions pack and a different set of
+review dimensions. The workflow — `ic-workflow`, the CODE contract, the gates — is identical, which
+is the whole reason they are variants: three more agent files would be three more things that can
+drift from each other.
+
+Record the variant in the roster row's reason, so a reader knows which pack was loaded:
+
+| Variant | Trigger | Conventions delta | Extra review dimension |
+|---|---|---|---|
+| **ai-engineer** | the architecture names a model, embedding store, or prompt-driven feature | prompt and model versioning, token/cost budget, eval set before rollout, deterministic fallback when the model is unavailable | non-determinism: what does this do when the model returns nonsense, refuses, or times out |
+| **data-engineer** | the architecture names a pipeline, warehouse, or scheduled transform | schema contracts, idempotent and replayable jobs, backfill plan, late and duplicate data | `database-migration`, plus: what happens when yesterday's job is re-run today |
+| **integration-engineer** | the architecture names a third-party API the product depends on | contract test against the real API, versioning and deprecation policy, secret handling, rate limits | the vendor being down, slow, or breaking its contract without telling you |
+
+`board-doctor` still sees `backend-developer` as the owner — the variant is a roster annotation, not
+a new spawnable name.
 
 ### Every product type must name an IC — or it is unstaffed
 
 A product type is **staffed** only if at least one of `ios-developer`, `android-developer`,
-`backend-developer` is `on` or `?` for it. Those three are the roles that can own an implementation
-ticket and actually build the thing; the rest review, coordinate, design, test, or ship it.
+`backend-developer`, `web-developer` is `on` or `?` for it. Those four are the roles that can own an
+implementation ticket and actually build the thing; the rest review, coordinate, design, test, or
+ship it.
 
-`web-app` and `cli` are **recognised but unstaffed**. Detection can identify them — a `package.json`
-with a web framework is a real answer — but **activation then refuses and writes no roster**:
+`cli` is **recognised but unstaffed**. Detection can identify it — a `main.go` with no UI is a real
+answer — but **activation then refuses and writes no roster**:
 
 ```
-ACTIVATION REFUSED — product type `web-app` is recognised but unstaffed.
-No IC role on this team can own a web-app implementation ticket:
-there is no web-developer in agents/, and backend-developer builds services, not UI.
+ACTIVATION REFUSED — product type `cli` is recognised but unstaffed.
+No IC role on this team can own a cli implementation ticket:
+there is no cli-developer in agents/, and backend-developer builds services, not command-line tools.
 To proceed, either: (a) build this as a different product type, or
 (b) add the missing IC role — see below — and add it to the activation matrix.
 ```
@@ -100,13 +138,14 @@ configuration error, and an `unstaffed` type whose column names an IC is worse �
 
 **Adding an IC is cheap and well-defined**, which is what makes "unstaffed" a costed decision rather
 than an accident. `ic-workflow` already holds the whole ticket lifecycle and is product-agnostic by
-design (its own description names web, CLI and library). A `web-developer` is that skill, plus a
-conventions delta for the stack, plus one matrix column flipped to `yes`. Do that deliberately, when
-a real web product is on the table — not to make this table look complete.
+design (its own description names web, CLI and library). `web-developer` is exactly that: the skill,
+plus a conventions delta for the stack, plus one matrix column flipped to `yes` — and it is what
+moved `web-app` from unstaffed to staffed. A `cli-developer` would be the same three things. Do it
+deliberately, when a real CLI product is on the table — not to make this table look complete.
 
 ### Tier deltas — `utility` only
 
-Flagship uses the matrix as-is. Utility applies exactly these five changes and no others:
+Flagship uses the matrix as-is. Utility applies exactly these eight changes and no others:
 
 1. `cpo` → `off(merged-into: ceo — utility founder pass)`. `ceo` runs one pass covering both
    charters and writes `00-vision.md`, `10-prd.md`, `11-backlog.md`.
@@ -114,17 +153,27 @@ Flagship uses the matrix as-is. Utility applies exactly these five changes and n
    writes `20-architecture.md`, `21-engineering-principles.md`, and the impl spec.
    The surviving role in each pair is the one with obligations *after* planning: `tech-lead` is on
    call for the pod all sprint, `cto` is not.
-3. `ux-designer` → `conditional(more than one non-trivial screen, or any custom component)`.
-4. `data-analyst` → `conditional(the vision states a KPI target)`.
-5. `product-validator` → `conditional(docs/00-founder-intent/ holds a record)`. The trigger is the
+3. `product-manager` → `off(merged-into: ceo — the utility founder pass answers ticket questions
+   directly)`. On a three-screen tool there is no clarification queue to absorb.
+4. `product-designer` → `conditional(more than one non-trivial screen, or any custom component)`.
+   `ux-architect` stays on: a flow that is wrong is wrong on every screen, however small.
+5. `data-analyst` → `conditional(the vision states a KPI target)`.
+6. `product-validator` → `conditional(docs/00-founder-intent/ holds a record)`. The trigger is the
    record, not the tier: a utility app built from a real brief still drifts from it, and a utility
    app built from a one-line idea has nothing to validate against — which the role would report as
    `INTENT: CANNOT EVALUATE` anyway. **The one thing that never flips is the independence:** on
    utility the `ceo` runs the founder pass and writes the PRD, so `product-validator` is the only
    role left that did not write what it checks. Merging it into anything defeats it.
+7. `privacy-reviewer` → `off(merged-into: security-reviewer — privacy MODE)`. One role, two
+   checklists: `security-reviewer` runs its own list and then `agents/privacy-reviewer.md`'s,
+   and reports both verdict lines. **Utility means one reviewer, never one checklist.**
+8. `chief-of-staff`, `test-automation-engineer`, `reliability-engineer`, `red-team-agent` →
+   `off(flagship-only)`. Their triggers are flagship-gated in the matrix already; this states it in
+   the roster so the reason is on the record rather than inferred from a blank.
 
 **Never a tier delta:** `security-reviewer`, `verification-engineer`, `code-reviewer`,
-`qa-engineer`. Utility means less ceremony, not less safety.
+`qa-engineer`, `release-auditor`. Utility means less ceremony, not less safety — and `release-auditor`
+in particular is *separation of duties*, which a small project needs exactly as much as a large one.
 
 ## Writing the roster — `docs/02-team-roster.md`
 
@@ -146,7 +195,10 @@ Product type: <one of the seven>  (source: docs/01-intake.md §Product type | de
 | aso-specialist | off | product type backend-service has no app-store listing |
 | backend-developer | conditional | trigger: docs/20-architecture.md names a server component |
 | monetization-engineer | conditional | trigger: product sells IAP/subscriptions or serves ads |
-| ...one row per role in the matrix, all 19, none omitted |
+| backend-developer | active | variant: data-engineer — architecture names a scheduled transform |
+| product-validator | conditional | trigger: docs/00-founder-intent/ holds a record to validate against |
+| privacy-reviewer | off | merged-into: security-reviewer — privacy MODE (utility) |
+| ...one row per role in the matrix, none omitted |
 ```
 
 Three states only: `active`, `conditional`, `off`. **Every role gets a row.** A role missing from

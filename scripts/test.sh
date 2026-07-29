@@ -483,7 +483,7 @@ grep -q 'verify-done.sh" <branch> "\$BASE" --docs-only' "$HERE/../commands/app-b
   || bad "/app-build actually passes --docs-only for doc-profile tickets"
 # The roster has to be named where the flag is used, or the loop cannot tell which tickets get it.
 MISSING_ROLE=""
-for role in ux-designer qa-engineer aso-specialist data-analyst verification-engineer; do
+for role in ux-architect product-designer product-manager product-researcher qa-engineer aso-specialist data-analyst verification-engineer; do
   grep -q -- "--docs-only" "$HERE/../commands/app-build.md" \
     && sed -n '/pass .--docs-only. instead/,/^     Branch, commits/p' "$HERE/../commands/app-build.md" \
        | grep -q "$role" || MISSING_ROLE="$MISSING_ROLE $role"
@@ -858,7 +858,7 @@ assert_has "$TMP/tdbad.json" "no-such-skill-here" "...naming the skill it could 
 sed 's/no-such-skill-here/axiom-ios-ui/' "$PLUG/agents/ios-developer.md" > "$TMP/iosdev.md"
 cp "$TMP/iosdev.md" "$PLUG/agents/ios-developer.md"
 printf '\nUse the `ui-design:mobile-ios-design` skill, then invoke `superpowers:brainstorming`.\n' \
-  >> "$PLUG/agents/ux-designer.md"
+  >> "$PLUG/agents/ux-architect.md"
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdext.json" 2>/dev/null
 grep -q "skill_missing" "$TMP/tdext.json" \
   && bad "external plugin skills are not reported missing" "$(grep -m1 'References skill' "$TMP/tdext.json")" \
@@ -873,20 +873,20 @@ MATRIX="$PLUG/skills/role-activation/SKILL.md"
 cp "$MATRIX" "$TMP/matrix-pristine.md"
 restore_matrix() { cp "$TMP/matrix-pristine.md" "$MATRIX"; }
 
-grep -v '^| `ux-designer` |' "$TMP/matrix-pristine.md" > "$MATRIX"
+grep -v '^| `ux-architect` |' "$TMP/matrix-pristine.md" > "$MATRIX"
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx1.json" 2>/dev/null
 [ $? = 1 ] && ok "a role missing from the activation matrix blocks" \
             || bad "a role missing from the activation matrix blocks"
 assert_finding "$TMP/tdmx1.json" role_not_in_matrix \
-  "...as role_not_in_matrix, naming the role nothing would activate" "ux-designer"
+  "...as role_not_in_matrix, naming the role nothing would activate" "ux-architect"
 restore_matrix
 
 # Appended, not renamed: renaming a real row ALSO removes that role from the matrix, so this case
 # passed on role_not_in_matrix while matrix_role_unknown was disabled. Proven by breaking it.
-{ cat "$TMP/matrix-pristine.md"; echo '| `ux-designerr` | on | on | on | on | on | on | on | typo |'; } > "$MATRIX"
+{ cat "$TMP/matrix-pristine.md"; echo '| `ux-architectt` | on | on | on | on | on | on | on | typo |'; } > "$MATRIX"
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx2.json" 2>/dev/null
 assert_finding "$TMP/tdmx2.json" matrix_role_unknown \
-  "a matrix row for a role that does not exist blocks" "ux-designerr"
+  "a matrix row for a role that does not exist blocks" "ux-architectt"
 restore_matrix
 
 # Two rows for one role is not a duplicate to tidy up later: they can disagree, and whichever is
@@ -899,22 +899,79 @@ restore_matrix
 
 # A product type nothing can build. web-app and cli were declared supported with no IC role able to
 # own their implementation tickets — the ticket strands with no spawnable owner, or lands on
-# backend-developer and gets built against the wrong conventions.
-sed 's/^| \*\*staffed?\*\* | yes | yes | yes | yes | \*\*no\*\*/| **staffed?** | yes | yes | yes | yes | yes/' \
+# backend-developer and gets built against the wrong conventions. web-app is now genuinely staffed
+# (web-developer exists and is in the ICS list), so `cli` is the remaining unstaffed column and the
+# one these two cases have to be aimed at. Both fixtures moved when the staffing did — a fixture
+# aimed at a column that is now staffed asserts nothing.
+sed 's/^| \*\*staffed?\*\* | yes | yes | yes | yes | yes | \*\*no\*\*/| **staffed?** | yes | yes | yes | yes | yes | yes/' \
   "$TMP/matrix-pristine.md" > "$MATRIX"
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx5.json" 2>/dev/null
 assert_finding "$TMP/tdmx5.json" product_type_unstaffed \
-  "a product type staffed by no IC blocks" "web-app"
+  "a product type staffed by no IC blocks" "cli"
 restore_matrix
 
 # ...and the mirror, which is worse: an "unstaffed" type activation is supposed to refuse for, whose
 # column still names an IC, quietly assembles a team anyway.
-sed 's/^| `backend-developer` | ? | ? | ? | on | —/| `backend-developer` | ? | ? | ? | on | on/' \
+sed 's/^| `backend-developer` | ? | ? | ? | on | ? | —/| `backend-developer` | ? | ? | ? | on | ? | on/' \
   "$TMP/matrix-pristine.md" > "$MATRIX"
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx6.json" 2>/dev/null
 assert_finding "$TMP/tdmx6.json" product_type_staffing_contradiction \
-  "an unstaffed product type that would still activate an IC blocks" "web-app"
+  "an unstaffed product type that would still activate an IC blocks" "cli"
 restore_matrix
+
+# The staffing flip itself, both directions. `web-app` moved from unstaffed to staffed when
+# web-developer landed, and that is exactly the change where team-doctor's ICS list and the matrix's
+# staffed? row can silently disagree: drop web-developer from ICS and `web-app` reads as a staffed
+# type nothing can build, which is the original defect arriving from the opposite side.
+grep -v '^| `web-developer` |' "$TMP/matrix-pristine.md" \
+  | sed 's/^| `backend-developer` | ? | ? | ? | on | ? |/| `backend-developer` | ? | ? | ? | on | — |/' > "$MATRIX"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx7.json" 2>/dev/null
+assert_finding "$TMP/tdmx7.json" product_type_unstaffed \
+  "removing the only IC for web-app makes it a staffed type nothing can build" "web-app"
+restore_matrix
+
+# --- a skill nothing triggers (P2) ---------------------------------------------------------------
+# The mirror of skill_missing, and the direction that was missing entirely. Proven on the shipped
+# tree before the rule existed: `architecture-builder` sat in skills/ named by no agent, command or
+# other skill, while team-doctor's own DOC_WRITERS asserted it produced two architecture documents.
+# Nothing could see it, because the only check ran the other way. A procedure nobody runs still
+# reads as coverage, which is the failure this catches.
+#
+# The fixture is the real shape: strip every reference to a skill and leave the skill in place.
+SKILLREFS=$( cd "$PLUG" && grep -rl 'architecture-builder' agents commands skills \
+             | grep -v 'skills/architecture-builder/' )
+mkdir -p "$TMP/skillsave"
+for f in $SKILLREFS; do
+  mkdir -p "$TMP/skillsave/$(dirname "$f")"
+  cp "$PLUG/$f" "$TMP/skillsave/$f"
+  grep -v 'architecture-builder' "$TMP/skillsave/$f" > "$PLUG/$f"
+done
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdskill1.json" 2>/dev/null
+assert_finding "$TMP/tdskill1.json" skill_unreferenced \
+  "a skill no agent, command or skill ever names blocks" "architecture-builder"
+for f in $SKILLREFS; do cp "$TMP/skillsave/$f" "$PLUG/$f"; done
+
+# ...and it must not fire on a skill that IS referenced, or the rule is a blanket failure rather
+# than a check. Every other skill in the shipped tree has a trigger; none may be reported.
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdskill2.json" 2>/dev/null
+node -e '
+const j=require(process.argv[1]);
+process.exit(j.findings.some(f=>f.code==="skill_unreferenced")?1:0);
+' "$TMP/tdskill2.json" && ok "...and every shipped skill has a trigger, so the rule reports none" \
+                       || bad "...and every shipped skill has a trigger, so the rule reports none"
+
+# --- the evidence bundle contract (P2.7) ---------------------------------------------------------
+# A test result is a claim by the actor that ran it; the bundle is what makes it checkable, and
+# `release-auditor` refuses one that is short a field. team-doctor cannot inspect a project's
+# bundles, but it can stop the field list rotting: every agent reads team-protocol's table and
+# nothing reads team-doctor, so a row quietly dropped from the table is a field nobody records and
+# a claim that stays `unverified` with nobody able to say which field is missing.
+cp "$PLUG/skills/team-protocol/SKILL.md" "$TMP/protocol-pristine.md"
+grep -v 'Artifact hash:' "$TMP/protocol-pristine.md" > "$PLUG/skills/team-protocol/SKILL.md"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdev1.json" 2>/dev/null
+assert_finding "$TMP/tdev1.json" evidence_field_undocumented \
+  "an evidence-bundle field dropped from the published contract blocks" "Artifact hash:"
+cp "$TMP/protocol-pristine.md" "$PLUG/skills/team-protocol/SKILL.md"
 
 # And the matrix has to exist at all — the roster is generated from it. Asserted on the finding
 # code, not on exit status: removing the file also trips skill_missing, so exit 1 proves nothing.
@@ -945,30 +1002,32 @@ assert_finding "$TMP/tddoc1.json" doc_undeclared \
   "a document referenced with no declared producer blocks" "docs/99-nonexistent.md"
 plugrestore agents/qa-engineer.md
 
-# 2. RV-035 itself: the last reader of a document goes away and nothing notices. `docs/12-flows.md`
-#    is written by ux-designer and read by exactly one step, which is what makes it the sharp case.
-#    It gained a second reader when `intent-trace` landed (the flow doc is where `[D-NNN]` design
-#    nodes are declared), so both readers go away here — one at a time no longer proves anything,
-#    and an assertion that quietly stopped being able to fire is this repo's oldest defect class.
-plugfile skills/ic-workflow/SKILL.md
-grep -v 'docs/12-flows' "$TMP/plug-restore.md" > "$PLUG/skills/ic-workflow/SKILL.md"
-cp "$PLUG/skills/intent-trace/SKILL.md" "$TMP/plug-restore-2.md"
-grep -v 'docs/12-flows' "$TMP/plug-restore-2.md" > "$PLUG/skills/intent-trace/SKILL.md"
+# 2. RV-035 itself: the LAST reader of a document goes away and nothing notices. `docs/12-flows.md`
+#    is written by ux-architect; every other mention of it is a reader, so the case is "delete them
+#    all and leave the writer alone". Deleting one named reader stopped proving anything the moment
+#    the flow doc gained a second — the assertion has to remove every reader, not the one that
+#    happened to exist when it was written.
+mkdir -p "$TMP/flowsave"
+FLOWREADERS=$( cd "$PLUG" && grep -rl 'docs/12-flows' agents commands skills | grep -v 'agents/ux-architect.md' )
+for f in $FLOWREADERS; do
+  mkdir -p "$TMP/flowsave/$(dirname "$f")"
+  cp "$PLUG/$f" "$TMP/flowsave/$f"
+  grep -v 'docs/12-flows' "$TMP/flowsave/$f" > "$PLUG/$f"
+done
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tddoc2.json" 2>/dev/null
 assert_finding "$TMP/tddoc2.json" doc_unread \
   "a document written by a step and read by none blocks (RV-035)" "docs/12-flows.md"
-plugrestore skills/ic-workflow/SKILL.md
-cp "$TMP/plug-restore-2.md" "$PLUG/skills/intent-trace/SKILL.md"
+for f in $FLOWREADERS; do cp "$TMP/flowsave/$f" "$PLUG/$f"; done
 
 # 3. The mirror, and the one a refactor produces: the declared writer stops mentioning its own
 #    document. Either the producer moved and the declaration is stale, or the doc is now written by
 #    nobody — and the readers downstream would wait forever either way.
-plugfile agents/ux-designer.md
-grep -v 'docs/12-flows' "$TMP/plug-restore.md" > "$PLUG/agents/ux-designer.md"
+plugfile agents/ux-architect.md
+grep -v "docs/12-flows" "$TMP/plug-restore.md" > "$PLUG/agents/ux-architect.md"
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tddoc3.json" 2>/dev/null
 assert_finding "$TMP/tddoc3.json" doc_writer_silent \
   "a declared writer that no longer mentions its own document blocks" "docs/12-flows.md"
-plugrestore agents/ux-designer.md
+plugrestore agents/ux-architect.md
 
 # 4. ...and a row for a document no step touches at all. The table would otherwise be free to
 #    accumulate artifacts the pipeline stopped producing years ago, which is how it starts lying.
@@ -2916,6 +2975,52 @@ grep -qE '^- (When you start|On approve|On request-changes): append' "$CR" \
 grep -q 'tech-manager increments the Cycles column' "$CR" \
   && bad "Cycles is documented as derived from changes events, not a column anyone increments" \
   || ok "Cycles is documented as derived from changes events, not a column anyone increments"
+
+# --- separation of duties (P2.4, P2.1) -----------------------------------------------------------
+# Two gates in this repo exist ONLY because an actor must not evaluate its own irreversible work.
+# Both are prose in a command file, and prose is exactly what drifts back: the rule reads as
+# obviously true, so the sentence carrying it gets tidied away in an unrelated edit and the gate
+# quietly becomes self-approval again. Proven to fail by deleting each sentence.
+
+AB="$HERE/../commands/app-build.md"
+grep -q 'design-qa' "$AB" \
+  && ok "/app-build runs design-qa as a pass in the loop, not as a role" \
+  || bad "/app-build runs design-qa as a pass in the loop, not as a role"
+grep -q 'Never `product-designer` on its own design' "$AB" \
+  && ok "...and the designer who created the design may not be the only agent approving fidelity" \
+  || bad "...and the designer who created the design may not be the only agent approving fidelity"
+# The five things the gate actually checks. A gate named but not specified is a gate improvised.
+DQ_MISSING=""
+for item in 'Implementation versus design' 'Component consistency' 'State completeness' \
+            'Responsive behaviour' 'Accessibility implementation'; do
+  grep -q "$item" "$AB" || DQ_MISSING="$DQ_MISSING [$item]"
+done
+[ -z "$DQ_MISSING" ] && ok "...naming all five checks it makes" \
+                     || bad "...naming all five checks it makes" "missing:$DQ_MISSING"
+
+AS="$HERE/../commands/app-ship.md"
+grep -q 'release-auditor' "$AS" \
+  && ok "/app-ship runs release-auditor before the upload question" \
+  || bad "/app-ship runs release-auditor before the upload question"
+grep -q 'never `release-manager`' "$AS" \
+  && ok "...spawned by the command, never by the actor it audits" \
+  || bad "...spawned by the command, never by the actor it audits"
+grep -q '`release-manager` cannot satisfy this gate' "$AS" \
+  && ok "...and release-manager cannot satisfy the gate that evaluates it" \
+  || bad "...and release-manager cannot satisfy the gate that evaluates it"
+grep -q 'no discoverable evidence bundle stays `unverified`' "$AS" \
+  && ok "...a test claim with no discoverable evidence bundle stays unverified" \
+  || bad "...a test claim with no discoverable evidence bundle stays unverified"
+
+# The device and state matrix is a matrix, not a device list: the states come from the flow
+# inventory, so a state nobody designed is a state nobody tests.
+QA="$HERE/../agents/qa-engineer.md"
+grep -q 'device and state matrix' "$QA" \
+  && ok "qa-engineer's test plan carries a device AND state matrix" \
+  || bad "qa-engineer's test plan carries a device AND state matrix"
+grep -q 'docs/54-evidence/' "$QA" \
+  && ok "...and every critical journey leaves an evidence bundle" \
+  || bad "...and every critical journey leaves an evidence bundle"
 
 PO="$HERE/../skills/parallel-orchestrator/SKILL.md"
 grep -q 'verified_static' "$PO" \

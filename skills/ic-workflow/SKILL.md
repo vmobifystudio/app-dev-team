@@ -61,7 +61,9 @@ between parallel agents — then exit.
    debug print/log noise — use the spec's logger — and no unhandled failure path. If what you build
    has a user-facing surface, user-visible strings go into the localization file from the start and
    every interactive element carries an accessibility label; retrofitting either is far more
-   expensive than doing it now.
+   expensive than doing it now. The two skills that hold those rules are `localisation` and
+   `accessibility-gate` — run the second on your own diff before you claim done, because
+   `code-reviewer` will, and its `FAIL` is a `REQUEST CHANGES`.
 
 5. **Test.** Unit tests for the logic you added and for the layer that persists or fetches it, plus
    whatever integration, UI or snapshot test the spec requires for this ticket.

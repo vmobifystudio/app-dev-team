@@ -29,10 +29,11 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 1a. **Activate the roster.** Invoke the `role-activation` skill: fix the **tier** (`--utility` /
    `--flagship`, else derived from the intake) and the **product type** (from the intake's
    `## Product type` answer), then write `docs/02-team-roster.md` — copy
-   `${CLAUDE_PLUGIN_ROOT}/docs/02-team-roster.md` and fill it in from the matrix; all 19 roles, each
+   `${CLAUDE_PLUGIN_ROOT}/docs/02-team-roster.md` and fill it in from the matrix; every role in the
+   activation matrix, each
    `active` / `conditional` / `off` with its trigger or reason.
 
-   **If the product type is unstaffed (`web-app`, `cli`), refuse and stop here** — print the skill's
+   **If the product type is unstaffed (`cli`), refuse and stop here** — print the skill's
    `ACTIVATION REFUSED` block naming the missing IC role. Write no roster and spawn nobody. A team
    that cannot build the product is not a lesser start, it is a sprint of stranded tickets.
 
@@ -48,9 +49,10 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    Skip either if the roster has it `off`: on `utility` both are, `cpo` merged into `ceo` above and
    `cto` into `tech-lead` below.
 
-4. **Spawn the `active` roles among `ux-designer`, `tech-lead`, and `devops-engineer` in parallel**
+4. **Spawn the `active` roles among `ux-architect`, `product-designer`, `tech-lead`, and `devops-engineer` in parallel**
    in a single message:
-   - `ux-designer` reads PRD, writes flows + tokens + components docs.
+   - `ux-architect` reads PRD, writes docs/12-flows.md — flows and the screen-and-state inventory.
+   - `product-designer` composes that inventory into docs/13-design-tokens.md and docs/14-components.md.
    - `tech-lead` reads architecture + PRD, writes per-platform impl specs — and on `utility` tier
      also writes `docs/20-architecture.md` + `docs/21-engineering-principles.md`, the technical pass
      `cto` would have run. Write only the impl specs for platforms the product type actually has:
@@ -122,7 +124,7 @@ docs/
   00-founder-intent/          (always — the brief verbatim, plus MANIFEST.sha256)
   00-vision.md
   01-intake.md
-  02-team-roster.md          (always — all 19 roles, active/conditional/off with reasons)
+  02-team-roster.md          (always — every activation-matrix role, active/conditional/off + reason)
   10-prd.md
   11-backlog.md
   12-flows.md

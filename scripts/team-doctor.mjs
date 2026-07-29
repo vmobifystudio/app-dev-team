@@ -57,6 +57,7 @@ const roleNames = [...roles.keys()];
 
 const appBuild = commands.find((c) => c.rel.endsWith('app-build.md'));
 const appTeam = commands.find((c) => c.rel.endsWith('app-team.md'));
+const protocolSkill = skills.find((s) => s.rel.endsWith('team-protocol/SKILL.md'));
 
 // --- 1. every role is reachable -------------------------------------------------------------------
 
@@ -126,10 +127,20 @@ const CODE_ROLES = [
   'ios-developer',
   'android-developer',
   'backend-developer',
+  'web-developer',
   'monetization-engineer',
   'devops-engineer',
+  'test-automation-engineer',
 ];
-const ARTIFACT_ROLES = ['ux-designer', 'qa-engineer', 'data-analyst', 'aso-specialist'];
+const ARTIFACT_ROLES = [
+  'ux-architect',
+  'product-designer',
+  'product-manager',
+  'product-researcher',
+  'qa-engineer',
+  'data-analyst',
+  'aso-specialist',
+];
 
 for (const [list, fields, tier] of [
   [CODE_ROLES, CODE_CONTRACT, 'code'],
@@ -193,7 +204,10 @@ if (!existsSync(MATRIX)) {
   // either: the ticket strands with no spawnable owner, or lands on backend-developer and gets
   // built against the wrong conventions. Both are the silent-drop class. The mirror check matters
   // more — an "unstaffed" type whose column still names an IC would quietly activate anyway.
-  const ICS = ['ios-developer', 'android-developer', 'backend-developer'];
+  // `web-developer` joined this list when it was added: without it, `web-app` reads as staffed with
+  // no IC and product_type_unstaffed fires on a type that IS now buildable. The list and the
+  // matrix's staffed? row have to move in the same change, in both directions.
+  const ICS = ['ios-developer', 'android-developer', 'backend-developer', 'web-developer'];
   // `**no**` is still no: the matrix bolds the unstaffed cells for readers, and comparing the raw
   // cell made both branches below unreachable for exactly the two types they exist to catch.
   const cells = (line) => line.split('|').slice(1, -1).map((c) => c.trim().replace(/\*/g, ''));
@@ -285,6 +299,51 @@ for (const file of [...agents, ...commands]) {
   }
 }
 
+// --- 3b. every skill is triggered by something ------------------------------------------------------
+//
+// The mirror of skill_missing, and the one that was absent. A skill nothing invokes is a procedure
+// nobody runs: the corpus grows, the rule reads as coverage, and no agent has ever been told to
+// apply it. Proven live — `architecture-builder` sat in skills/ referenced by no agent, command or
+// other skill at all, while team-doctor's own DOC_WRITERS asserted it produced two architecture
+// documents. The check that existed only ran the other direction, so it could not see it.
+//
+// A skill's own directory does not count as a reference to itself.
+
+for (const skill of skills) {
+  const name = frontmatterName(skill.text, basename(dirname(skill.path)));
+  const dir = `skills/${basename(dirname(skill.path))}/`;
+  const referenced = [...agents, ...commands, ...skills].some(
+    (f) => !f.rel.startsWith(dir) && new RegExp(`\\b${name}\\b`).test(f.text)
+  );
+  if (!referenced) {
+    add(findings, 'skill_unreferenced', skill.rel,
+      `Skill "${name}" is defined but no agent, command or other skill ever names it, so nothing triggers it. A procedure nobody runs still reads as coverage — that is worse than not having it.`,
+      'Name it in the agent or command that should invoke it, or delete the skill.');
+  }
+}
+
+// --- 3c. the evidence bundle contract is published where agents read it ------------------------------
+//
+// P2.7. A test result is a claim by the actor that ran it; the bundle is what makes it checkable.
+// team-doctor cannot verify a bundle it has never seen (bundles live in a project, not here), but it
+// CAN enforce the half that rots silently: the field list agents are told to fill must still be the
+// field list team-protocol publishes. Same shape as canonical_path_undocumented below, same reason —
+// every agent reads the skill, nothing reads this script, so a field dropped from the table is a
+// field nobody records and `release-auditor` then marks the claim `unverified` forever.
+const EVIDENCE_FIELDS = [
+  'Build id:', 'Device:', 'OS:', 'Inputs:', 'Screenshot/recording:', 'Logs:',
+  'Analytics events:', 'Result:', 'Requirement IDs:', 'Tester identity:', 'Timestamp:',
+  'Artifact hash:',
+];
+if (protocolSkill) {
+  const missing = EVIDENCE_FIELDS.filter((f) => !protocolSkill.text.includes(f));
+  if (missing.length > 0) {
+    add(findings, 'evidence_field_undocumented', 'skills/team-protocol/SKILL.md',
+      `The evidence bundle contract is missing ${missing.length} required field(s): ${missing.join(' ')} — qa-engineer and test-automation-engineer fill in what this table publishes, and release-auditor refuses a bundle that is short of it. A dropped field is a claim that stays unverified with nobody able to say which field is missing.`,
+      'Restore the row in the Evidence bundle table, or change the table and EVIDENCE_FIELDS together.');
+  }
+}
+
 // --- 4. handoff targets resolve --------------------------------------------------------------------
 
 for (const agent of agents) {
@@ -325,12 +384,14 @@ const DOC_WRITERS = new Map([
   ['docs/01-intake.md',                 ['skills/requirements-intake/SKILL.md']],
   ['docs/02-team-roster.md',            ['skills/role-activation/SKILL.md']],
   ['docs/10-prd.md',                    ['agents/cpo.md', 'skills/prd-builder/SKILL.md']],
-  ['docs/11-backlog.md',                ['agents/cpo.md', 'skills/prd-builder/SKILL.md']],
-  ['docs/12-flows.md',                  ['agents/ux-designer.md']],
-  ['docs/13-design-tokens.md',          ['agents/ux-designer.md']],
-  ['docs/14-components.md',             ['agents/ux-designer.md']],
+  ['docs/11-backlog.md',                ['agents/cpo.md', 'skills/prd-builder/SKILL.md', 'agents/product-manager.md']],
+  ['docs/12-flows.md',                  ['agents/ux-architect.md']],
+  ['docs/13-design-tokens.md',          ['agents/product-designer.md']],
+  ['docs/14-components.md',             ['agents/product-designer.md']],
   ['docs/15-aso.md',                    ['agents/aso-specialist.md']],
   ['docs/16-intent-validation.md',      ['agents/product-validator.md']],
+  ['docs/16-research.md',               ['agents/product-researcher.md']],
+  ['docs/17-founder-inbox.md',          ['agents/chief-of-staff.md']],
   ['docs/20-architecture.md',           ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
   ['docs/21-engineering-principles.md', ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
   // One artifact per platform, so every `docs/22-impl-spec-<anything>` folds into this row.
@@ -353,9 +414,17 @@ const DOC_WRITERS = new Map([
   ['docs/51-bugs.md',                   ['agents/qa-engineer.md']],
   ['docs/52-analytics.md',              ['agents/data-analyst.md']],
   ['docs/53-reviews/',                  ['agents/code-reviewer.md']],
+  // The evidence bundles behind every test claim. Written by whoever ran the test, read
+  // independently by release-auditor — which is the whole point: a claim whose only witness is the
+  // actor that made it is not evidence.
+  ['docs/54-evidence/',                 ['agents/qa-engineer.md', 'agents/test-automation-engineer.md']],
   ['docs/60-releases.md',               ['agents/release-manager.md']],
   ['docs/70-security-review.md',        ['agents/security-reviewer.md']],
   ['docs/71-verification.md',           ['agents/verification-engineer.md']],
+  ['docs/72-release-audit.md',          ['agents/release-auditor.md']],
+  ['docs/73-privacy-review.md',         ['agents/privacy-reviewer.md']],
+  ['docs/74-red-team.md',               ['agents/red-team-agent.md']],
+  ['docs/75-reliability-review.md',     ['agents/reliability-engineer.md']],
   ['docs/80-audit.md',                  ['commands/app-audit.md']],
   ['docs/81-findings.md',               ['commands/app-audit.md']],
   ['docs/90-learnings.md',              ['commands/app-ship.md', 'commands/app-run.md']],

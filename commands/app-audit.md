@@ -75,7 +75,7 @@ Dimension (optional, default = all): $ARGUMENTS
 
    **Owner must be a role `/app-build` can spawn.** The roster is in `board-doctor`'s
    Manual-fallback check 4 — read it there, never from a copy. The copy that used to live in this
-   step had already dropped `ux-designer` and `qa-engineer`, which are the natural owners of this
+   step had already dropped the designers and `qa-engineer`, which are the natural owners of this
    command's own Safe-fix class (accessibility labels, Dynamic Type, touch targets, design tokens,
    test-plan gaps), so those remediation tickets were filed to nobody. Never `security-reviewer` or
    any other gating role: it *finds* the gap, it does not work the ticket, and the board doctor

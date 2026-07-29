@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** post-revamp (`revamp/phase-r-fixes`) · **Date:** 2026-07-29
-**Scale:** 19 roles · 16 skills · 13 commands · 21 scripts · 9 knowledge packs · 438 assertions
+**Scale:** 29 roles · 27 skills · 13 commands · 20 scripts · 9 knowledge packs · TBD assertions
 
 ---
 
@@ -113,10 +113,10 @@ with no iOS SDK. Every gate refused and each said which one it was. That is the 
 
 ---
 
-## Part 3 — The 19 roles
+## Part 3 — The roles
 
 Roles are Markdown files in `agents/`. Each declares its tools and model. They are activated per
-project by tier and product type (§6), so not all 19 run on every project.
+project by tier and product type (§6), so not all of them run on every project.
 
 ### Executive — decides what and why
 
@@ -158,7 +158,17 @@ silent error is most expensive.
 
 | Role | Model | Owns |
 |---|---|---|
-| `ux-designer` | sonnet | Flows, design tokens, component inventory |
+| `ux-architect` | sonnet | Information architecture, navigation, flows, screen-and-state inventory |
+| `product-designer` | sonnet | Screen composition, hierarchy, interaction, tokens, components |
+| `product-manager` | sonnet | Ticket clarification, backlog grooming, in-sprint scope calls |
+| `product-researcher` | sonnet | Independent evidence gathering, labelled fact/user/competitor/hypothesis/inference |
+| `chief-of-staff` | sonnet | Decision briefs, unresolved commitments, founder inbox |
+| `web-developer` | sonnet | TypeScript/browser implementation — makes `web-app` staffed |
+| `test-automation-engineer` | sonnet | Test infrastructure, device and state matrix, evidence bundles, flake detection |
+| `privacy-reviewer` | opus | Data inventory, consent, retention, regional compliance (flagship) |
+| `reliability-engineer` | opus | Offline, retries, idempotency, sync conflict, restoration, recovery |
+| `red-team-agent` | opus | Attacks the product and the studio own assumptions |
+| `release-auditor` | opus | Independent review of the evidence bundle and gate record; can block the release |
 | `aso-specialist` | sonnet | Store listing, keywords, screenshots, readiness |
 | `data-analyst` | sonnet | Analytics schema, instrumentation check, post-launch KPIs |
 
@@ -176,7 +186,8 @@ riskiest actor should not be the cheapest model.
 ### Who may own a ticket
 
 Ten roles can own an implementation ticket: the four developers, plus `devops-engineer`,
-`ux-designer`, `qa-engineer`, `data-analyst`, `aso-specialist`, `verification-engineer`.
+`ux-architect`, `product-designer`, `product-manager`, `product-researcher`, `qa-engineer`,
+`data-analyst`, `aso-specialist`, `verification-engineer`.
 
 `code-reviewer`, `security-reviewer`, `release-manager`, `tech-lead` and `tech-manager` **gate,
 review and coordinate — they do not work tickets.** Assigning one is a board error, because the
@@ -333,9 +344,9 @@ off and never tier-gated.** Cheapness is not a reason to skip a security review,
 type has constants that need executing.
 
 And a rule learned by getting it wrong: **every product type must name at least one IC that can own
-an implementation ticket.** `web-app` and `cli` are currently *recognised but unstaffed* — activation
-refuses and names what is missing, rather than silently assembling a team that cannot build the
-product.
+an implementation ticket.** `cli` is currently *recognised but unstaffed* — activation refuses and
+names what is missing, rather than silently assembling a team that cannot build the product.
+`web-app` was in that state until `web-developer` existed; adding the IC is what moved it.
 
 ---
 
