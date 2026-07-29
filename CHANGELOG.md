@@ -126,6 +126,34 @@ Also confirmed: **worktrees are necessary but not sufficient.** The two clean br
 add/add conflicts on **7 of 10 files** — isolation removes the corruption, file-overlap serialization
 removes the unmergeable pile. Both rules are load-bearing.
 
+### Fixed — QA, verification, and the bug loop, run for the first time
+
+**The board ID parser could not handle the plugin's own bug-ticket convention.**
+`agents/tech-manager.md` mandates `BUG-NNN-fix` for bug-intake tickets. `parseDependencies` matched
+`[A-Za-z]+-\d+`, which truncated `BUG-001-fix` to `BUG-001` — so the doctor reported
+`dependency_missing` against a ticket sitting on the same board. Found the first time the bug loop
+was actually exercised. Fixed with an optional suffix group; all seven fixtures unchanged.
+
+**Definition-of-Done gates must name a runnable command.** The independent verifier graded
+`verify-done.sh` as `NOT-GATED` because the script was nowhere in the project tree. It *had* run —
+invoked by the orchestrator from the plugin install — but nothing on the board said where it lived,
+so from inside the project the gate was unauditable. `sprint-planner` now requires every DoD gate to
+be written out as a runnable command: **a gate whose location is unstated is indistinguishable from
+a gate that does not exist.**
+
+**A stated invariant that only a comment enforces.** `ConsentGatedAnalyticsLogger`'s kdoc said every
+event must route through it; both ViewModels took the bare `AnalyticsLogger` interface and one
+*defaulted* to `NoOpAnalyticsLogger`. Correct in isolation, unenforceable in composition — true only
+because nothing was wired yet to break it. `code-reviewer` now grades stated invariants
+`EXECUTES` / `TEXT-GUARDED` / `TEXT-NAIVE` and prefers structural enforcement (the analytics events
+carry no `String` field at all, so PII cannot leak by shape rather than by discipline).
+
+**What QA found that no per-ticket review could.** Three integration defects, each invisible to a
+review scoped to one diff: no composition root wiring Add and Export to one repository (S2); the
+`[x]` completed-rendering unreachable end to end because nothing this sprint calls `setCompleted`
+(S3); and consent-gating proven only in isolation, with neither feature's tests passing a gated
+logger (S2). Both S2s are now `BUG-NNN-fix` tickets on the board.
+
 ### Fixed — a relative default path wrote a team message into an unrelated repository
 
 **Corrects an earlier entry in this release.** It originally read "an agent reported doing work it

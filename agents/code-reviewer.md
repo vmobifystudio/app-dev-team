@@ -121,7 +121,22 @@ Never edit or delete an existing line. Correct a mistake by appending a later li
      guard rules were bypassable for exactly this reason, and a green false gate is worse than no
      gate because it stops people looking.
 
-7. **Is it wired, or merely written?** A feature that is implemented, tested and green but never
+7. **Is a stated invariant enforced, or merely commented?** When a doc or kdoc says "every X must
+   go through Y", check what actually prevents it. A type that accepts the general interface, or a
+   parameter that *defaults* to the unguarded implementation, means the invariant holds only while
+   nobody violates it.
+
+   Observed live: `ConsentGatedAnalyticsLogger`'s kdoc said every event must route through it. Both
+   ViewModels took the generic `AnalyticsLogger`, and one **defaulted** to `NoOpAnalyticsLogger`.
+   The consent gate was correct in isolation and unenforceable in composition — true only because
+   nothing was wired yet to break it. Grade it as the verifier does: `EXECUTES` (the type or code
+   makes violation impossible), `TEXT-GUARDED`, or `TEXT-NAIVE` (a comment).
+
+   The strongest form is structural. `AnalyticsEvent`'s cases carry only an enum and an `Int` — no
+   `String` field exists for a todo's text to leak into, so "no PII in events" is enforced by shape
+   rather than by remembering. Prefer that to a rule whenever the design allows it.
+
+8. **Is it wired, or merely written?** A feature that is implemented, tested and green but never
    reachable from the running app is dead code that passes review. Check that whatever this ticket
    built is actually *constructed* somewhere — registered in the composition root / DI graph,
    reachable from a route, subscribed to, or scheduled.
@@ -131,7 +146,7 @@ Never edit or delete an existing line. Correct a mistake by appending a later li
    passed. If the wiring genuinely belongs to a later ticket, say so explicitly in your verdict and
    name the ticket — an unstated gap here ships as a silently dead feature.
 
-8. **Isolation hygiene.** Does the branch contain **only** this ticket's files? A diff carrying
+9. **Isolation hygiene.** Does the branch contain **only** this ticket's files? A diff carrying
    another ticket's work means the developer worked in a shared tree. `REQUEST CHANGES` and tell
    `tech-manager` — the other ticket's branch is probably also wrong.
 

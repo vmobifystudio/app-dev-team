@@ -190,9 +190,15 @@ function parseLedger(text) {
 
 const isEmpty = (value) => EMPTY_CELL.has((value ?? '').trim().toLowerCase());
 
+/**
+ * Ticket IDs are `<PREFIX>-<NUMBER>` with an optional trailing word — the bug-intake convention in
+ * agents/tech-manager.md mandates `BUG-NNN-fix`. Without the suffix group this truncated
+ * `BUG-001-fix` to `BUG-001` and then reported `dependency_missing` against a ticket that was
+ * sitting right there on the board. Found by running the bug loop for the first time.
+ */
 function parseDependencies(cell) {
   if (isEmpty(cell)) return [];
-  return (cell.match(/[A-Za-z]+-\d+/g) || []).map((id) => id.toUpperCase());
+  return (cell.match(/[A-Za-z]+-\d+(?:-[A-Za-z]+)?/g) || []).map((id) => id.toUpperCase());
 }
 
 /** Walk the dependency graph from `id`; returns the first blocking reason found, or null. */

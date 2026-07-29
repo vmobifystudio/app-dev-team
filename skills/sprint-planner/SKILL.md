@@ -65,9 +65,21 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
    Lines are appended, never rewritten. A wrong line is corrected by appending a later one.
 
-7. **Definition of done** — list it at the top of the board so everyone uses the same one:
+7. **Definition of done** — list it at the top of the board so everyone uses the same one.
+   **Every gate named here must be runnable by someone reading the board**, with the command
+   written out. A DoD that cites a tool the project cannot invoke is a gate nobody can audit:
+
+   ```
+   - Tests green — verified by:
+       sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> <integration-branch> "<test cmd>"
+     NOT by the developer's own report.
+   ```
+
+   An independent verifier once graded this `NOT-GATED` because the script was nowhere in the
+   project tree — it had in fact run, invoked by the orchestrator from the plugin install, but
+   nothing on the board said where it lived, so from inside the project the gate was unverifiable.
+   **A gate whose location is unstated is indistinguishable from a gate that does not exist.**
    - Code merged
-   - Tests green — **verified by `verify-done.sh`, not by the developer's own report**
    - Code-reviewer approved, by a role that is not the owner, with an `approved` ledger line
    - QA exercised the acceptance criteria
    - Daily report mentions the close
