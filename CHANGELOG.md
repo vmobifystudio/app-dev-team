@@ -3,6 +3,43 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] — Phase 5: isolation becomes a mechanism, and the loop gets a brake
+
+- **`scripts/spawn-gate.sh` — the orchestrator can no longer forget worktree isolation.** Given the
+  ticket IDs about to be spawned, it exits `1 REFUSED` when two or more writing agents exist and any
+  of them lacks a worktree, names them, and prints the `git worktree add` line for each; `0 GO` when
+  all are isolated; `0 GO … SERIALIZED` for a lone writer (the legal "or serialize" branch, stated so
+  it reaches the standup); `2 CANNOT EVALUATE` outside a git repo, which is never a pass.
+  `/app-build` step 2 and `parallel-orchestrator` step 2a run it as the last command before the
+  launch message. **Why:** DR4-027 — the operator who had spent a day hardening the isolation prose
+  then spawned two writers into one checkout; one `git stash` + `git reset` discarded 22 files of the
+  other's work, and recovery was luck. A rule broken by the person best placed to remember it is a
+  rule that needs an exit code.
+- **The destructive-command ban is now explicit.** `git reset`, `git stash`, `git checkout -- .`,
+  `git clean` join `git add -A` / `git add .` as banned for any agent sharing a tree, in
+  `agent-isolation` Rule 2, `parallel-orchestrator` and `/app-build`'s Safety list — with the
+  alternative named: copy the repo to a temp dir if you need a clean tree to test.
+- **`scripts/round-journal.mjs` — one JSONL line per round, and the loop's first economic brake.**
+  `docs/33-rounds.jsonl` records tickets waved, verdicts, retries, refusals, spawns, wall-clock and
+  spend; `check` stops the loop and reports *which* ceiling was reached (`--max-rounds`,
+  `--max-spawns`, `--max-retries`, `--max-spend-usd`, or `APP_TEAM_MAX_*`) instead of continuing
+  silently; `/app-status` prints the trend and the position every time. **Token spend is not
+  measurable in this harness and nothing pretends otherwise** — `spendUsd` stays `null` and every
+  reader says so rather than printing a number nobody measured.
+- **Model escalation on retry.** A re-spawn after `REQUEST CHANGES` runs one tier up
+  (`haiku → sonnet → opus`, capped); a `rejected` verify-done retry does not escalate, because
+  nothing was reviewed. Specified in `/app-build` step 4, `parallel-orchestrator` step 6a, and
+  CONTRIBUTING.
+- **Warm managers, documented as optional.** Where the harness has named agents + `SendMessage`,
+  `tech-manager`/`tech-lead` may persist across a sprint. All durable state stays in files, so the
+  modes are interchangeable mid-sprint; respawn-per-round remains the portable default.
+- **One canonical auditor list (RV-019).** It lives in `agents/code-reviewer.md`; `/app-audit` points
+  at it instead of keeping a second copy that drifts. Detect-else-degrade is spelled out: an absent
+  auditor produces a stated `N/A` plus a hand-covered dimension, never a silent skip. Every external
+  skill reference across `agents/`, `knowledge/` and `skills/` is marked external-and-optional
+  (DR4-011), asserted by the suite so a new one cannot be added unmarked.
+- Suite: 210 → **259 assertions**, each new one proven to fail against the old behaviour first.
+
 ## [1.5.0] — The gates now fail closed, and something finally runs the app
 
 A full-system review — all 18 agents, 11 commands, 12 skills, 9 scripts, 8 knowledge packs — found

@@ -1325,6 +1325,197 @@ grep -q '"event":"verified_static"' "$TMP/static.jsonl" \
   || bad "migrate reads a static-only board back as verified_static, not as a full verification"
 
 echo
+# --------------------------------------------------------------------------------------------
+echo "spawn-gate (DR4-027)"
+# --------------------------------------------------------------------------------------------
+# The isolation rule was prose, backed by a measured collision, for a whole release — and then the
+# operator who wrote and defended that prose spawned two writers into one checkout, one ran
+# `git stash` + `git reset`, and 22 files of the other's work were lost. These assertions exist so
+# the rule is a command with an exit code rather than something an orchestrator must remember.
+SG="$HERE/spawn-gate.sh"
+WT="$TMP/wtrepo"; mkdir -p "$WT"
+( cd "$WT" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+
+( cd "$WT" && sh "$SG" APP-001 APP-002 ) >"$TMP/sg.txt" 2>&1
+[ $? = 1 ] && ok "REFUSES two writing agents when neither has a worktree" \
+           || bad "REFUSES two writing agents when neither has a worktree"
+assert_has "$TMP/sg.txt" "REFUSED" "...saying REFUSED on line 1, so the headline matches the code"
+assert_has "$TMP/sg.txt" "git worktree add" "...and printing the command that makes it GO"
+
+# The lone-writer path is legal — "worktree, or serialize" — but it must SAY it serialized, or the
+# standup cannot tell an isolated round from an unisolated one.
+( cd "$WT" && sh "$SG" APP-001 ) >"$TMP/sg1.txt" 2>&1
+[ $? = 0 ] && ok "allows a single writer with no worktree" || bad "allows a single writer with no worktree"
+assert_has "$TMP/sg1.txt" "SERIALIZED" "...and labels it SERIALIZED rather than passing silently"
+
+( cd "$WT" && git worktree add -q .agent-wt/APP-001 -b feat/APP-001-x \
+           && git worktree add -q .agent-wt/APP-002 -b feat/APP-002-x ) >/dev/null 2>&1
+( cd "$WT" && sh "$SG" APP-001 APP-002 ) >"$TMP/sg2.txt" 2>&1
+[ $? = 0 ] && ok "passes two writing agents that each have a worktree" \
+           || bad "passes two writing agents that each have a worktree"
+# Partial isolation is the DR4-027 shape exactly: one agent isolated, one not, in the same round.
+( cd "$WT" && sh "$SG" APP-001 APP-003 ) >"$TMP/sg3.txt" 2>&1
+[ $? = 1 ] && ok "refuses when only SOME of the batch is isolated" \
+           || bad "refuses when only SOME of the batch is isolated"
+assert_has "$TMP/sg3.txt" "APP-003" "...naming the ticket that is missing one, not just the count"
+
+NOGIT="$TMP/nogit"; mkdir -p "$NOGIT"
+( cd "$NOGIT" && sh "$SG" APP-001 APP-002 ) >"$TMP/sg4.txt" 2>&1
+[ $? = 2 ] && ok "outside a git repo it is CANNOT EVALUATE, never a pass" \
+           || bad "outside a git repo it is CANNOT EVALUATE, never a pass"
+( cd "$WT" && sh "$SG" ) >/dev/null 2>&1
+[ $? = 2 ] && ok "no ticket IDs is CANNOT EVALUATE, not an empty GO" \
+           || bad "no ticket IDs is CANNOT EVALUATE, not an empty GO"
+
+# A gate nothing calls is the `--docs-only` defect again: documented, correct, never invoked.
+for f in ../commands/app-build.md ../skills/parallel-orchestrator/SKILL.md ../skills/agent-isolation/SKILL.md; do
+  grep -q "spawn-gate.sh" "$HERE/$f" \
+    && ok "$(basename "$(dirname "$HERE/$f")")/$(basename "$f") runs the spawn gate" \
+    || bad "$(basename "$(dirname "$HERE/$f")")/$(basename "$f") runs the spawn gate"
+done
+grep -q "spawn nobody" "$HERE/../commands/app-build.md" \
+  && ok "...and /app-build says exit 1 means spawn NOBODY" \
+  || bad "...and /app-build says exit 1 means spawn NOBODY"
+
+# The command that actually destroyed the work. Banning blanket staging was not enough: the loss
+# came from `git stash` + `git reset`, neither of which was named anywhere as forbidden.
+for c in "git reset" "git stash" "git clean" "checkout -- ."; do
+  grep -q -- "$c" "$HERE/../skills/agent-isolation/SKILL.md" \
+    && ok "agent-isolation bans \`$c\` by name" \
+    || bad "agent-isolation bans \`$c\` by name"
+done
+grep -q "temp dir" "$HERE/../skills/agent-isolation/SKILL.md" \
+  && ok "...and gives the alternative: copy to a temp dir to get a clean tree" \
+  || bad "...and gives the alternative: copy to a temp dir to get a clean tree"
+grep -q "git stash" "$HERE/../skills/parallel-orchestrator/SKILL.md" \
+  && ok "parallel-orchestrator passes the destructive-command ban on to every agent it spawns" \
+  || bad "parallel-orchestrator passes the destructive-command ban on to every agent it spawns"
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "round-journal (loop economics)"
+# --------------------------------------------------------------------------------------------
+# The event log answers "what happened to this TICKET". Nothing answered "what happened to the
+# LOOP" — so an unattended /app-run had no budget awareness at all, and no way to say whether it
+# was converging or thrashing.
+RJ="$HERE/round-journal.mjs"
+J="$TMP/rounds.jsonl"
+
+assert_exit 0 "an absent journal is 0 rounds, not an error" node "$RJ" check --journal "$J"
+node "$RJ" check --journal "$J" >"$TMP/rj0.txt" 2>&1
+assert_has "$TMP/rj0.txt" "rounds 0/" "...and reports the position against the ceiling"
+
+node "$RJ" append --journal "$J" --round 1 --tickets APP-001,APP-002 --verdicts approved=1,changes=1 \
+  --spawns 3 --retries 1 --refusals 1 --wall-clock-sec 600 >/dev/null 2>&1
+node "$RJ" append --journal "$J" --round 2 --tickets APP-003 --spawns 2 --retries 2 >/dev/null 2>&1
+node "$RJ" append --journal "$J" --round 3 --tickets APP-004 --spawns 1 >/dev/null 2>&1
+[ "$(wc -l < "$J" | tr -d ' ')" = "3" ] \
+  && ok "a 3-round sprint produces exactly 3 journal lines" \
+  || bad "a 3-round sprint produces exactly 3 journal lines"
+node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
+process.exit(l[0].verdicts.approved===1 && l[0].retries===1 && l[0].refusals===1 && l[0].tickets.length===2 ? 0 : 1)' "$J" \
+  && ok "...each carrying its tickets, verdicts, retries and refusals" \
+  || bad "...each carrying its tickets, verdicts, retries and refusals"
+
+# The ceiling must STOP the loop and say which one, rather than warn and continue.
+node "$RJ" check --journal "$J" --max-rounds 3 >"$TMP/rj1.txt" 2>&1
+[ $? = 1 ] && ok "a reached ceiling exits 1 so the loop stops" || bad "a reached ceiling exits 1 so the loop stops"
+assert_has "$TMP/rj1.txt" "CEILING REACHED" "...naming that a ceiling was reached"
+assert_has "$TMP/rj1.txt" "rounds 3 / 3" "...and which ceiling, with the number that reached it"
+assert_has "$TMP/rj1.txt" "STOP THE LOOP" "...and what to do about it"
+assert_exit 1 "the spawn ceiling fires independently of the round ceiling" \
+  node "$RJ" check --journal "$J" --max-spawns 6
+assert_exit 1 "so does the retry ceiling" node "$RJ" check --journal "$J" --max-retries 3
+assert_exit 0 "and within budget it exits 0" node "$RJ" check --journal "$J"
+
+# Honesty: this harness cannot report token spend, and a number nobody measured is worse than
+# saying so. `spendUsd` stays null unless a round passed a real one.
+node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
+process.exit(l.every((r)=>r.spendUsd===null) ? 0 : 1)' "$J" \
+  && ok "an unreported spend is null, never 0 — they are different claims" \
+  || bad "an unreported spend is null, never 0 — they are different claims"
+node "$RJ" show --journal "$J" >"$TMP/rj2.txt" 2>&1
+assert_has "$TMP/rj2.txt" "not measurable in this harness" \
+  "show says token cost is not measurable rather than inventing a figure"
+node "$RJ" append --journal "$J" --round 4 --spawns 1 --spend-usd 2.5 >/dev/null 2>&1
+node "$RJ" show --journal "$J" >"$TMP/rj3.txt" 2>&1
+assert_has "$TMP/rj3.txt" '\$2.50' "...and prints a real figure once one is actually reported"
+assert_exit 1 "the spend ceiling applies once spend is reported" \
+  node "$RJ" check --journal "$J" --max-spend-usd 1
+
+# Wiring: journaled but never checked is a metric nobody reads; checked but never surfaced is a
+# spend you first see when it stops you.
+grep -q 'round-journal.mjs" check' "$HERE/../commands/app-build.md" \
+  && ok "/app-build runs the budget gate at the top of the round" \
+  || bad "/app-build runs the budget gate at the top of the round"
+grep -q 'round-journal.mjs" append' "$HERE/../commands/app-build.md" \
+  && ok "...and journals the round before looping" \
+  || bad "...and journals the round before looping"
+grep -q 'round-journal.mjs" show' "$HERE/../commands/app-status.md" \
+  && grep -q "not measurable in this harness" "$HERE/../commands/app-status.md" \
+  && ok "/app-status surfaces the trend and the honest spend line" \
+  || bad "/app-status surfaces the trend and the honest spend line"
+grep -q "ceiling" "$HERE/../commands/app-run.md" \
+  && ok "/app-run's unattended loop stops on the ceiling and says why" \
+  || bad "/app-run's unattended loop stops on the ceiling and says why"
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "model escalation · warm managers · auditor routing"
+# --------------------------------------------------------------------------------------------
+# A ticket that failed review is by definition harder than it looked. Re-spawning it at the tier
+# that just failed it is paying twice for the same answer.
+for f in ../commands/app-build.md ../skills/parallel-orchestrator/SKILL.md; do
+  grep -q "haiku → sonnet → opus" "$HERE/$f" \
+    && ok "$(basename "$f") states the retry escalation ladder" \
+    || bad "$(basename "$f") states the retry escalation ladder"
+done
+tr '\n' ' ' < "$HERE/../skills/parallel-orchestrator/SKILL.md" | tr -s ' ' \
+  | grep -q "verify-done retry is \*not\* an escalation" \
+  && ok "...and excludes a rejected verify-done retry, which reviewed nothing" \
+  || bad "...and excludes a rejected verify-done retry, which reviewed nothing"
+
+# Warm managers are an optional optimisation. The moment durable state lives only in a warm
+# agent's context, the two modes stop being interchangeable and the portable path is broken.
+grep -q "Warm managers" "$HERE/../skills/parallel-orchestrator/SKILL.md" \
+  && grep -q "durable state stays in files" "$HERE/../skills/parallel-orchestrator/SKILL.md" \
+  && ok "warm managers are documented as optional with all durable state in files" \
+  || bad "warm managers are documented as optional with all durable state in files"
+grep -q "portable baseline" "$HERE/../skills/parallel-orchestrator/SKILL.md" \
+  && ok "...and the respawn model stays the portable default" \
+  || bad "...and the respawn model stays the portable default"
+
+# RV-019: one canonical auditor list. A second copy is the /app-audit spawnable-owner roster all
+# over again — the copy nobody looks at is the copy that drifts.
+grep -q "canonical auditor list" "$HERE/../agents/code-reviewer.md" \
+  && ok "code-reviewer holds the canonical auditor list" \
+  || bad "code-reviewer holds the canonical auditor list"
+grep -q "axiom:concurrency-auditor" "$HERE/../commands/app-audit.md" \
+  && bad "...and /app-audit points at it instead of keeping a second copy" \
+  || ok "...and /app-audit points at it instead of keeping a second copy"
+grep -q "code-reviewer.md" "$HERE/../commands/app-audit.md" \
+  && ok "...by name, so the pointer is followable" \
+  || bad "...by name, so the pointer is followable"
+grep -q "not installed" "$HERE/../agents/code-reviewer.md" \
+  && grep -q "Detect, else degrade" "$HERE/../agents/code-reviewer.md" \
+  && ok "an absent auditor produces a stated degrade, never a silent skip" \
+  || bad "an absent auditor produces a stated degrade, never a silent skip"
+
+# DR4-011: an agent hunted the local skills/ dir for an Axiom skill, failed, and filed a false
+# defect. Every external reference must say it is external at the point of reference.
+UNMARKED=""
+for f in "$HERE"/../agents/*.md "$HERE"/../knowledge/*.md "$HERE"/../skills/*/SKILL.md; do
+  grep -q "axiom\|aso-screenshots\|ui-ux-pro-max\|xcodebuildmcp\|admob-android" "$f" || continue
+  # Whitespace-normalized: the marker is prose and gets line-wrapped by the next editor to touch
+  # the paragraph. An assertion that a reflow can break is one someone deletes rather than fixes.
+  tr '\n' ' ' < "$f" | tr -s ' ' | grep -qi "external and optional" \
+    || UNMARKED="$UNMARKED $(basename "$(dirname "$f")")/$(basename "$f")"
+done
+[ -z "$UNMARKED" ] && ok "every file referencing an external skill marks it external-and-optional" \
+                   || bad "every file referencing an external skill marks it external-and-optional" "unmarked:$UNMARKED"
+
+echo
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

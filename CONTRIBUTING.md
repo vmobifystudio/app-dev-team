@@ -32,9 +32,24 @@ the suite that proves them:
 - `scripts/integration-branch.sh` — resolves the branch feature work integrates into
 - `scripts/team-message.sh` — appends to the team ledger with the anti-ping-pong guard enforced
 - `scripts/team-doctor.mjs` — validates the plugin's own agents, commands and skills
+- `scripts/spawn-gate.sh` — refuses a parallel launch whose writing agents have no worktrees
+- `scripts/round-journal.mjs` — one JSONL line per round, and the loop's budget ceiling
 
-Nine is not a licence to add a tenth. Each one earned its place by being a rule an agent had
-already talked itself out of at least once.
+Eleven is not a licence to add a twelfth. Each one earned its place by being a rule an agent had
+already talked itself out of at least once — `spawn-gate.sh` most literally: the isolation rule was
+prose for a release, and then the person who wrote and defended that prose spawned two writers into
+one checkout and lost 22 files (DR4-027). **When a rule has been broken by the operator best placed
+to remember it, prose is the wrong medium. Make it a command with an exit code.**
+
+## Model tiers
+
+A role's default tier lives in its agent file's `model:`. Two rules move off it:
+
+- **Blast radius sets the default.** Irreversible actions and money paths (`release-manager`,
+  `monetization-engineer`) run high; an advisory pass that produces one document can run lower.
+- **A retry escalates one tier** — `haiku → sonnet → opus`, capped at opus — on a re-spawn after
+  `REQUEST CHANGES` only. A ticket that failed review is by definition harder than it looked. A
+  `rejected` verify-done retry does not escalate: nothing was reviewed, so nothing said it was hard.
 
 Rules for any script added here:
 
@@ -46,7 +61,7 @@ Rules for any script added here:
    branch fires before you ship it — and add the case to `scripts/test.sh`:
 
    ```bash
-   sh scripts/test.sh        # 82 assertions over committed fixtures, ~5s, no network
+   sh scripts/test.sh        # 259 assertions over committed fixtures, ~15s, no network
    sh scripts/test.sh -v     # list every passing assertion
    ```
 

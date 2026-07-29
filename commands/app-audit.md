@@ -19,12 +19,10 @@ Dimension (optional, default = all): $ARGUMENTS
 1. **Fan out the auditors in parallel** (single message), matched to the detected platform(s). Each
    checks ONE dimension against the House KB pack it owns and returns findings, read-only:
    - **iOS** — `code-reviewer` grading against `ios-conventions.md`, always. The `axiom:*` auditors
-     are a **soft** dependency: they ship in a separate plugin that may not be installed, so detect
-     what is available, spawn the ones that fit the code — `axiom:concurrency-auditor`,
-     `axiom:memory-auditor`, `axiom:security-privacy-scanner`, `axiom:swiftdata-auditor`,
-     `axiom:accessibility-auditor`, `axiom:swiftui-performance-analyzer` — and cover every dimension
-     they would have covered with the House KB defaults instead (`ios-conventions.md`,
-     `defect-hunting`, `security-reviewer` for the privacy/security dimension).
+     are **external and optional** (separate plugin, not this one's `skills/`) and are listed in
+     exactly one place: the canonical auditor list in `agents/code-reviewer.md`. Read the roster and
+     the detect-else-degrade rule there — do not re-list them here, because the copy that drifts is
+     always the one nobody is looking at.
 
      **State which auditors ran and which dimensions fell back, in the scorecard.** Never skip a
      dimension silently: an unaudited dimension that prints no findings is indistinguishable from a

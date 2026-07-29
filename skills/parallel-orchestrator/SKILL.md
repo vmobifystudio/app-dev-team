@@ -16,6 +16,17 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 0. **Doctor gate.** Run the `board-doctor` skill first. If it exits non-zero, spawn nobody — a
    parallel launch against an incoherent board multiplies the damage across every track at once.
 
+0a. **Budget gate.** The loop has no economic brake other than this one:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" check
+   ```
+
+   Exit `1` means a ceiling is reached: **stop the loop**, print the line verbatim, and report what
+   is unfinished. Do not start a round you cannot finish. Ceilings come from `--max-rounds` /
+   `--max-spawns` / `--max-retries` / `--max-spend-usd`, or `APP_TEAM_MAX_*` in the environment.
+   Raising one is a decision the user makes, not one you make to keep going.
+
 1. **Read the board.** Find tickets where `Status = todo` and all `Depends on` IDs are **merged**
    (`qa` or `done`) — a dependency is satisfied once its code is on the integration branch, not once
    QA has signed it off. Requiring `done` stalls every dependent behind a QA pass.
@@ -42,21 +53,45 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 
 2. **Group by owner.** One agent invocation per owner, batched. iOS dev gets all their ready tickets in one prompt; same for Android; same for backend.
 
-2a. **Create one worktree per writing agent — before you spawn anything** (`agent-isolation` skill):
+2a. **Create one worktree per writing agent, then let the gate check you** (`agent-isolation`):
 
    ```bash
    git worktree add .agent-wt/APP-001 -b feat/APP-001-short-slug
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" APP-001 APP-002 APP-003
    ```
 
-   This is not optional and it is not a nicety. Measured, in a real dry run of exactly this step
-   without it: a commit containing another ticket's half-written files, one agent burning ~50% of
-   its budget discovering and redoing work it had already done correctly, and two branches with
-   add/add conflicts on **all 8 files**. See
-   `docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+   The gate is the last thing you run before the launch message, and **its exit code decides
+   whether the launch happens**:
 
-   If worktrees are genuinely unavailable, **serialize the writers** — one at a time, each
-   committing before the next starts — and say in the standup that you serialized and why. Never
-   run parallel writers in one tree.
+   - `0 GO` → spawn. With one ticket it prints `SERIALIZED` instead — that is the legal one-writer
+     path, and it holds only while the writer stays alone. Say so in the standup.
+   - `1 REFUSED` → **spawn nobody.** Two or more writers, at least one with no worktree. It names
+     the missing IDs and prints the `git worktree add` line for each. Create them and re-run, or
+     serialize the round.
+   - `2 CANNOT EVALUATE` → not a git repo, so worktrees are unavailable. Serialize; never treat a
+     2 as a go-ahead.
+
+   **Why this is a script and not a paragraph.** The paragraph existed. It had existed since v1.4.0,
+   backed by a measured collision — a commit containing another ticket's half-written files, ~50% of
+   an agent's budget burned redoing work it had already done, add/add conflicts on all 8 files
+   (`docs/research/2026-07-29-dry-run-parallel-agent-collision.md`). Then, hours after spending a day
+   hardening that paragraph, the orchestrator spawned two writers into one checkout anyway; one ran
+   `git stash` + `git reset` and 22 files of the other's work vanished, recoverable only by luck
+   (DR4-027). Knowing a rule, having written it, and having defended it does not make you apply it.
+   Run the gate.
+
+2a-i. **Destructive commands are banned for any agent that shares a tree** — and you tell every
+   agent so in its prompt. Never, repo-wide:
+
+   ```
+   git reset (--hard or otherwise)   git stash   git checkout -- .
+   git clean                          git add -A / git add . / git commit -a
+   ```
+
+   Stage by explicit path (`agent-isolation` Rule 2). If you need a clean tree to run a check,
+   **copy the repo to a temp dir and dirty that instead** — `cp -R` or `git worktree add` a scratch
+   worktree. Those commands are all unrecoverable from inside your run, and one of them is exactly
+   how DR4-027 lost 22 files. If HEAD moved under you, stop and report (`agent-isolation` Rule 5).
 
 2b. **Check for file overlap, not just feature independence.** The sprint plan judges tickets
    independent by *feature*. Two "independent" tickets that touch the same files still produce a
@@ -94,6 +129,46 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 
 6. **Merge gate.** Only `APPROVED` PRs go to tech-manager for merge → board moves `review → qa`. `REQUEST CHANGES` re-spawns the original developer with the reviewer's notes. The review-cycle cap (2 cycles, per `/app-build` step 4) is enforced by the orchestrator — past it, surface to the user.
 
+6a. **Escalate the model on a retry.** The first attempt runs the role's default tier (its agent
+   file's `model:`). A re-spawn after `REQUEST CHANGES` runs **one tier up**, capped at the top:
+
+   ```
+   haiku → sonnet → opus → opus
+   ```
+
+   Pass the tier explicitly on the re-spawn (the subagent tool's `model` parameter, where the
+   harness has one; otherwise say so in the prompt and note it in the standup). A ticket that failed
+   review is by definition harder than it looked — this is the cheapest place in the loop to put
+   effort where the evidence already says it is needed. A `rejected` verify-done retry is *not* an
+   escalation: nothing was reviewed, so nothing said the work was hard.
+
+7. **Journal the round.** One line, at the end of every round, after the standup:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" append --round N \
+     --tickets APP-001,APP-002 --verdicts approved=1,changes=1 \
+     --spawns 4 --retries 1 --refusals 0 --wall-clock-sec 900
+   ```
+
+   The event log records what happened to **tickets**; this records what happened to the **loop**.
+   Only the first was answerable before, so "is this run converging or thrashing?" had no data
+   behind it. Omit `--spend-usd` when the harness cannot report token cost — the field stays `null`
+   and every reader says "not measurable here" rather than printing a number nobody measured.
+
+## Warm managers (optional — the portable default is respawn)
+
+Where the harness supports named agents plus `SendMessage`, `tech-manager` and `tech-lead` may
+**persist across a sprint** instead of being respawned cold each round: the manager keeps the
+round's context, and the mid-sprint Q&A round becomes a message rather than a fresh spawn.
+
+The condition that makes this safe, and the only one: **all durable state stays in files** — the
+event log, the ledger, the board, the fragments, this journal. A warm manager is a cache, never a
+source. Nothing may exist only in a warm agent's context, so the two modes are interchangeable
+mid-sprint: kill a warm manager and the next cold respawn reads the same files and continues.
+
+If the harness has no named agents, do nothing — respawn per round is the portable baseline and is
+what every other step here assumes.
+
 ## Anti-patterns
 
 - **Sequential launches when parallel is safe.** If APP-001 and APP-002 don't conflict, never launch them back-to-back in different messages.
@@ -108,6 +183,10 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
   "tests all green" line is a claim by the same agent that wrote the code.
 - **Spawning against a board you didn't check.** One bad dependency edge silently strands a whole
   track, and the loop will still report the sprint complete.
+- **Spawning without running `spawn-gate.sh`.** Isolation you remembered is not isolation you
+  checked, and the one operator best placed to remember it is the one who has already forgotten.
+- **Re-spawning after `REQUEST CHANGES` at the same tier.** The default tier is the one that just
+  failed a review on this exact ticket.
 
 ## Worked example
 

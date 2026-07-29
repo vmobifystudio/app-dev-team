@@ -78,13 +78,33 @@ path), then agents that write **must be serialized** — one at a time, each com
 next starts. Never run parallel writers in one tree. Say in the daily fragment that you serialized
 and why.
 
-## Rule 2 — never stage blindly
+**The orchestrator does not get to claim it remembered.** Before the launch message:
+
+```bash
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" APP-001 APP-002
+```
+
+Exit 1 = REFUSED, spawn nobody; it names which tickets lack a worktree and prints the command to
+create each. Exit 0 with one ticket = the serialized path, stated in the output so it reaches the
+standup. See `parallel-orchestrator` step 2a.
+
+## Rule 2 — never stage blindly, and never run a repo-wide destructive command
 
 Banned, without exception:
 
 ```bash
 git add -A        git add .        git add --all        git commit -a
+git reset         git stash        git checkout -- .    git clean
 ```
+
+The top row attributes someone else's work to your ticket. The bottom row **destroys** it, and none
+of those four can be undone from inside your run. DR4-027: one `git stash` + `git reset`, run by an
+agent that only wanted a clean tree for a check, discarded 22 files and 332 insertions of another
+agent's in-progress work. It survived only because it happened to land in the stash; `git checkout
+-- .` would have made all 22 unrecoverable.
+
+**If you need a clean tree to test, copy the repo to a temp dir and dirty that** — `cp -R . "$TMP"`,
+or `git worktree add` a scratch worktree. Never clean the tree you are standing in.
 
 Stage by explicit path, every time:
 
@@ -148,6 +168,7 @@ discarded working tree is not recoverable.
 
 Before a parallel launch:
 
+- [ ] `spawn-gate.sh <the ticket IDs>` exits 0 — not "I believe each has a worktree", the gate said so
 - [ ] Each writing agent has its own worktree, created before spawn
 - [ ] Each agent's prompt names **its worktree path** as the project root, not the repo root
 - [ ] No two agents are assigned the same file (if unavoidable, serialize those tickets)

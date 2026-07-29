@@ -2,7 +2,8 @@
 
 Mined from our internal iOS apps. These are house law for new iOS apps.
 Pair with the Axiom iOS skills (`axiom-ios-ui`, `axiom-ios-concurrency`, `axiom-ios-data`,
-`axiom-swiftui-26-ref`, etc.) for the up-to-date API details.
+`axiom-swiftui-26-ref`, etc.) for the up-to-date API details — **external and optional**, a separate
+plugin, not this one's `skills/`. Absent → this pack is the authority; never file their absence.
 
 ## Layering (non-negotiable)
 

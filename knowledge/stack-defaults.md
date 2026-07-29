@@ -27,7 +27,7 @@ the rule, where a reviewer caught it, into agent knowledge, where nothing does.
 
 So: route the question to whatever iOS reference this install actually has — an `axiom-*` skill
 (`axiom-apple-docs`, `axiom-ios-build`) if one is present, otherwise Apple's published list of
-released iOS majors. These ship in **other plugins and are optional**; if none is installed, say so
+released iOS majors. Those are **external and optional** — other plugins; if none is installed, say so
 and resolve against Apple's published list directly. Never answer it from recollection.
 
 Record in `docs/20-architecture.md`, on one line: **the number, the source you resolved it against,

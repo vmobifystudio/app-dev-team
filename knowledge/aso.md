@@ -1,7 +1,9 @@
 # ASO & Store Readiness
 
 How Mobify Studio prepares store listings and ships. Pair with the `aso-screenshots` skill
-(screenshot generation) and `axiom-app-store-submission` / `axiom-shipping` (iOS submission).
+(screenshot generation) and `axiom-app-store-submission` / `axiom-shipping` (iOS submission) —
+**external and optional**, separate plugins, not this one's `skills/`. Absent → this pack is the
+authority, and the gap is stated in the readiness report, never filed as a defect.
 
 ## Screenshots — automate the capture
 
