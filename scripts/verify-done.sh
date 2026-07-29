@@ -150,7 +150,7 @@ classify_test_outcome() {
     CANNOT_EVAL_WHY="the test command exited $TEST_RC — the shell could not execute it at all"
     return 1
   fi
-  if grep -Eqi 'command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|cannot be located|[Uu]nable to find a destination|GradleWrapperMain|permission denied|not recognized as an internal' "$TEST_LOG"; then
+  if false; then
     CANNOT_EVAL_WHY="the output names a missing or unusable toolchain, not a failing assertion"
     return 1
   fi
@@ -225,38 +225,70 @@ if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
     if ( cd "$RUN_DIR" && sh -c "$TEST_CMD" ) >"$TEST_LOG" 2>&1; then
       TESTS_STATUS="green"
     else
-      TESTS_STATUS="failing"
-      fail "test command exited non-zero: $TEST_CMD"
+      TEST_RC=$?
+      if classify_test_outcome; then
+        TESTS_STATUS="failing"
+      else
+        TESTS_STATUS="cannot-run"
+      fi
     fi
   fi
 
 fi
 
 # --- verdict --------------------------------------------------------------------------------------
+# Print the test log on any outcome that has one. Whichever verdict this is, the next actor's first
+# question is "what did it actually say", and the only copy is in $TEST_LOG.
+quote_test_output() {
+  [ -s "${TEST_LOG:-}" ] || return 0
+  echo "Test output (last 30 lines of: $TEST_CMD):"
+  tail -n 30 "$TEST_LOG" | sed 's/^/  | /'
+}
+
+# 1. The CLAIM is false — the branch, the commits or the changed files do not support it.
 if [ -n "$FAILURES" ]; then
   echo "REJECTED: $BRANCH"
   echo "Blocking:"
   printf '%s' "$FAILURES"
-  if [ "$TESTS_STATUS" = "failing" ] && [ -s "${TEST_LOG:-}" ]; then
-    echo "Test output (last 30 lines of: $TEST_CMD):"
-    tail -n 30 "$TEST_LOG" | sed 's/^/  | /'
-  fi
   echo "Next: re-spawn the developer with these failures verbatim. Do not move the board row to review."
   exit 1
 fi
 
-echo "VERIFIED: $BRANCH"
-echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=$TESTS_STATUS"
+# 2. A suite RAN and REPORTED failures. The only path to "re-spawn the developer" that is about code.
+if [ "$TESTS_STATUS" = "failing" ]; then
+  echo "REJECTED: $BRANCH"
+  echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=failing"
+  echo "Decided REJECTED, not CANNOT EVALUATE: the output shows a test suite that ran and reported"
+  echo "  failures, so this is a defect in the code, not a problem with the machine."
+  quote_test_output
+  echo "Next: re-spawn the developer with these failures verbatim. Do not move the board row to review."
+  exit 1
+fi
 
-# The branch half of the claim is verified either way — but "tests were never run" is not the same
-# outcome as "tests passed", and exit 0 said both. The only caller reads the exit code and does not
-# parse this text, so the note below was addressed to nobody. Give the unknown its own code.
-if [ "$TESTS_STATUS" = "unverified" ]; then
-  echo "  CANNOT EVALUATE: no test command was supplied, so 'tests: all green' in the DONE report is"
-  echo "        unproven. This is NOT a pass — the branch checks out, the tests were never run."
-  echo "        Pass the project's test command as the 3rd argument, or --docs-only if the ticket"
-  echo "        genuinely produces a document and no test."
+# 3. The tests were never settled. The branch half of the claim IS verified — but the headline says
+#    CANNOT EVALUATE, because an agent reads line 1 and acts on it, and this used to say VERIFIED.
+if [ "$TESTS_STATUS" = "unverified" ] || [ "$TESTS_STATUS" = "cannot-run" ]; then
+  echo "CANNOT EVALUATE: $BRANCH"
+  echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=$TESTS_STATUS"
+  echo "  The branch, the commits and the changed files all check out. The test suite did NOT run,"
+  echo "  so 'tests: all green' in the DONE report is unproven. This is NOT a pass and NOT a"
+  echo "  rejection — do not re-spawn the developer, there is no failure to fix."
+  if [ "$TESTS_STATUS" = "unverified" ]; then
+    echo "  Why: no test command was supplied for a code ticket."
+    echo "  Fix: pass the project's test command as the 3rd argument, or --docs-only if the ticket"
+    echo "       genuinely produces a document and no test."
+  else
+    echo "  Why: $CANNOT_EVAL_WHY."
+    quote_test_output
+  fi
+  echo "Next: this ticket is INSPECTABLE BUT NOT RUNNABLE. Static review is still owed and still"
+  echo "  possible — record it and let the code-reviewer work:"
+  echo "    board.mjs move <ID> verified_static --by tech-manager --detail \"the executable test suite\""
+  echo "  That unlocks review, approval and merge, and refuses \`closed\` until the suite has run."
   exit 2
 fi
+
+echo "VERIFIED: $BRANCH"
+echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=$TESTS_STATUS"
 echo "Next: move the board row to review and spawn the code-reviewer."
 exit 0

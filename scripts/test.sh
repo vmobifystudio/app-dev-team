@@ -249,8 +249,12 @@ assert_exit 1 "rejects a branch that does not exist" sh "$HERE/verify-done.sh" n
 ( cd "$R" && git checkout -q feat/empty && echo b > b.txt && git add b.txt && git commit -qm work && git checkout -q main ) >/dev/null 2>&1
 ( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "true" ) >/dev/null 2>&1
 [ $? = 0 ] && ok "accepts real work with passing tests" || bad "accepts real work with passing tests"
-( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "false" ) >/dev/null 2>&1
-[ $? = 1 ] && ok "rejects failing tests" || bad "rejects failing tests"
+# A suite that RAN and reported failures. The command must LOOK like a test run: `false` alone used
+# to satisfy this assertion, and after DR4-001 it no longer can — a bare non-zero exit with no
+# output is exactly the case that is now CANNOT EVALUATE, asserted a few lines below.
+printf '#!/bin/sh\necho "Test Case testSplit failed"\necho "1 test, 1 failure"\nexit 1\n' > "$TMP/realfail.sh"
+( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "sh $TMP/realfail.sh" ) >"$TMP/vreal.txt" 2>&1
+[ $? = 1 ] && ok "rejects failing tests" || bad "rejects failing tests" "$(head -3 "$TMP/vreal.txt")"
 
 # Regression: agent-isolation puts every branch in a worktree, and `git checkout` refuses a branch
 # already checked out elsewhere. verify-done rejected every honest DONE until it ran tests in place.
@@ -338,6 +342,54 @@ fi
 [ "$( cd "$D" && cat a.txt )" = "uncommitted work by another agent" ] \
   && ok "...and without touching its uncommitted files" \
   || bad "...and without touching its uncommitted files"
+
+# --- DR4-001: a MISSING TOOLCHAIN is not a FAILING TEST -----------------------------------------
+# The script ran the test string and branched on zero/non-zero, so a host with no Xcode produced
+# `1 REJECTED`, whose literal instruction is "re-spawn the developer with these failures verbatim".
+# A developer was sent to fix a bug that did not exist. `runtime-gate` has distinguished UNKNOWN
+# from FAIL since it was written; this is the same three-state contract applied to the third gate.
+#
+# The fixture reproduces the exact string the live run produced, from a script file so the grep
+# cannot match verify-done's own echo of the command (the trap the NOPE_MARKER_7 case fell into).
+#
+# It also emits `** TEST FAILED **`, because that is what xcodebuild really prints when it cannot
+# find an SDK — the environment failure wears the costume of a test failure. Without that line the
+# assertion passed on the conservative fall-through instead of on the toolchain signature, and
+# deleting the signature branch entirely left the suite green. Proven, and this is the fix.
+printf '#!/bin/sh\necho "xcode-select: error: tool '"'"'xcodebuild'"'"' requires Xcode, but active developer directory is a command line tools instance"\necho "** TEST FAILED **"\nexit 1\n' > "$TMP/notoolchain.sh"
+( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "sh $TMP/notoolchain.sh" ) >"$TMP/vtc.txt" 2>&1
+[ $? = 2 ] && ok "a missing toolchain is CANNOT EVALUATE, not REJECTED" \
+            || bad "a missing toolchain is CANNOT EVALUATE, not REJECTED" "$(head -3 "$TMP/vtc.txt")"
+# Both halves. The exit code alone cannot tell this apart from the usage errors that were already
+# exit 2, and the headline is what an agent acts on.
+assert_has "$TMP/vtc.txt" "^CANNOT EVALUATE" "...and says so on line 1, where an agent reads it"
+grep -q "^REJECTED" "$TMP/vtc.txt" && bad "...and never says REJECTED anywhere in that output" \
+                                   || ok "...and never says REJECTED anywhere in that output"
+assert_has "$TMP/vtc.txt" "not a failing assertion" "...and states WHY it decided cannot-evaluate"
+# The other side of the fork, so this is a discrimination and not a blanket downgrade: a suite that
+# genuinely ran and reported failures is still exit 1, and says which way it decided.
+assert_has "$TMP/vreal.txt" "^REJECTED" "a suite that ran and failed still says REJECTED on line 1"
+assert_has "$TMP/vreal.txt" "Decided REJECTED, not CANNOT EVALUATE" "...and prints which it decided and why"
+
+# The conservative tie-break, stated as an assertion so it cannot be quietly reversed: a bare
+# non-zero exit with no output proves nothing ran. A false REJECTED costs a developer a phantom
+# hunt and looks legitimate the whole way; a false CANNOT EVALUATE costs one question.
+( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "false" ) >"$TMP/vsilent.txt" 2>&1
+[ $? = 2 ] && ok "a silent non-zero exit prefers CANNOT EVALUATE over REJECTED" \
+            || bad "a silent non-zero exit prefers CANNOT EVALUATE over REJECTED" "$(head -3 "$TMP/vsilent.txt")"
+
+# The headline word must match the exit code. This path printed `VERIFIED: <branch>` while exiting
+# 2 for "the tests never ran" — an agent reading line 1 saw VERIFIED and acted on it.
+grep -q "^VERIFIED" "$TMP/vnone.txt" && bad "the no-test-command path never headlines VERIFIED while exiting 2" \
+                                     || ok "the no-test-command path never headlines VERIFIED while exiting 2"
+assert_has "$TMP/vnone.txt" "^CANNOT EVALUATE" "...it headlines CANNOT EVALUATE, matching its exit code"
+# ...and it routes to the board state that exists for exactly this ticket, rather than dead-ending.
+assert_has "$TMP/vnone.txt" "verified_static" "...and names the board event that keeps static review possible"
+
+# Backwards compatibility: the two outcomes that were already settled keep their exit codes.
+# Downgrading a green run or a docs-only exemption to 2 would stall every honest sprint.
+grep -q "^VERIFIED" "$TMP/doc1.txt" && ok "a --docs-only exemption is still VERIFIED / exit 0" \
+                                    || bad "a --docs-only exemption is still VERIFIED / exit 0"
 # The temporary worktree is cleaned up by the trap, or the next round starts in a littered repo.
 [ "$( cd "$D" && git worktree list | wc -l | tr -d ' ' )" = "1" ] \
   && ok "...and the temporary worktree is removed on exit" \
@@ -851,7 +903,7 @@ bm "$V" move V-001 claimed       --by ios-developer >/dev/null 2>&1
 bm "$V" move V-001 done_reported --by ios-developer >/dev/null 2>&1
 assert_exit 1 "review_requested on a DONE with no verify-done result is refused" \
   bm "$V" move V-001 review_requested --by ios-developer
-assert_has "$TMP/err" "verified, rejected" "...and offers only the two verdicts that can come next"
+assert_has "$TMP/err" "verified, verified_static, rejected" "...and offers only the verdicts that can come next"
 # NOTE: the refusal arrives from the status table ("review_requested is not legal on ... it is
 # in_progress"), not from validate()'s bespoke "a DONE nobody checked is not reviewable" branch —
 # legalEvents() excludes review_requested while a verification is pending, so that branch is
@@ -1072,6 +1124,118 @@ assert_has "$TMP/err" "unreadable line" "...naming the line it refused to guess 
 W=$(newboard bd-violations "$FIX/events/violations.jsonl")
 assert_exit 1 "a readable log that folds illegally reports violations, not CANNOT EVALUATE" bm "$W" show
 assert_has "$TMP/err" "sequence violation" "...and says which lines, so it can be repaired by appending"
+
+# --- DR4-002: INSPECTABLE BUT NOT RUNNABLE ------------------------------------------------------
+# The most expensive finding of dry run 4. `review_requested` demanded a prior `verified`, and
+# `verified` cannot honestly be written when the toolchain is absent — so a ticket blocked on the
+# ENVIRONMENT also lost its STATIC review, though the Definition of Done defines four checks needing
+# only `git diff` and `grep`. `code-reviewer` never ran once in the entire sprint.
+#
+# `verified_static` is the missing lane: it unlocks review, approval and merge, and refuses `closed`.
+S=$(newboard bd-static)
+bm "$S" add S-001 --title "Written on a host with no SDK" --owner ios-developer >/dev/null 2>&1
+bm "$S" move S-001 claimed       --by ios-developer >/dev/null 2>&1
+bm "$S" move S-001 done_reported --by ios-developer >/dev/null 2>&1
+assert_exit 0 "verified_static is a legal verdict on a pending DONE" \
+  bm "$S" move S-001 verified_static --by tech-manager --detail "the executable test suite"
+assert_exit 0 "...and it unlocks the review that a missing toolchain used to cost the ticket" \
+  bm "$S" move S-001 review_requested --by ios-developer --detail "-> code-reviewer"
+bm "$S" move S-001 approved --by code-reviewer >/dev/null 2>&1
+assert_exit 0 "...and approval and merge are reachable, so real progress is still made" \
+  bm "$S" move S-001 merged --by tech-manager
+bm "$S" move S-001 qa_passed --by qa-engineer >/dev/null 2>&1
+
+# The other half, and the reason this is not just a rubber stamp: the fact that the suite never ran
+# survives every later transition, and `done` — the one word asserting the suite ran green — is
+# refused. A sprint closes as "merged, verification deferred", which is what the tech-manager had to
+# write by hand because the machine could not express it.
+assert_exit 1 "a static-only ticket is refused closed — merged is not done" \
+  bm "$S" move S-001 closed --by tech-manager
+assert_has "$TMP/err" "verified STATICALLY only" "...and says which verification is outstanding"
+assert_has "$TMP/err" "the executable test suite" "...naming the thing that has still not run"
+
+# The derived state must CARRY it, not merely refuse on it — a refusal nobody can see coming reads
+# as a broken CLI. Both the rendered Markdown and `show` must say so.
+grep -q 'qa (static only)' "$S/docs/31-board.md" \
+  && ok "...and the rendered board shows \"qa (static only)\", never a bare qa" \
+  || bad "...and the rendered board shows \"qa (static only)\", never a bare qa"
+bm "$S" show S-001 2>/dev/null | grep -q "NOT RUN" \
+  && ok "...and show names what is still unrun" \
+  || bad "...and show names what is still unrun"
+
+# BACKWARDS COMPATIBILITY, and the reason the marker lives in the Status cell rather than a new
+# column: board-doctor validates Status against VALID_STATUS and would call a legally generated
+# board `status_invalid`. lib/board.mjs splits the suffix back off, so every existing check —
+# the doctor, the ship gate, board-render — keeps reading the bare word it always read.
+node -e '
+import("'"$HERE"'/lib/board.mjs").then(async (m) => {
+  const fs = await import("node:fs");
+  const board = m.parseBoard(fs.readFileSync(process.argv[1] + "/docs/31-board.md", "utf8"));
+  const row = board.rows.find((r) => r.id === "S-001");
+  process.exit(row && row.status === "qa" && row.staticOnly === true && m.VALID_STATUS.has(row.status) ? 0 : 1);
+});' "$S" && ok "...and the shared parser reads it back as a VALID status plus a flag, not as drift" \
+          || bad "...and the shared parser reads it back as a VALID status plus a flag, not as drift"
+assert_exit 0 "board-doctor stays clean on a legally generated static-only board" \
+  node "$HERE/board-doctor.mjs" "$S/docs/31-board.md"
+
+# The honest way out: run the suite later, append the real `verified`, and the ticket can close.
+# Without this the static lane would be a one-way street into a board that can never reach done.
+assert_exit 0 "running the suite later and appending verified clears the static flag" \
+  bm "$S" move S-001 verified --by tech-manager --detail "suite ran green"
+assert_exit 0 "...and only then is closed accepted" bm "$S" move S-001 closed --by tech-manager
+grep -q 'static only' "$S/docs/31-board.md" \
+  && bad "...and the marker is gone from the board once it is earned" \
+  || ok "...and the marker is gone from the board once it is earned"
+
+# --- DR4-005: a bug ticket can be BORN blocked --------------------------------------------------
+# `BUG-NNN-fix` inherits the original's owner and depends on the original being done. When the
+# original is blocked, depending on it strands the new ticket the instant it is created (observed
+# live: one `add` broke a board that had just been repaired), and dropping the dependency is a lie.
+# There was no `--status`, so a row could only be created `todo` and then moved — and the window in
+# between is what the next gate reads.
+BI=$(newboard bd-intake)
+bm "$BI" add APP-002 --title "Original" --owner ios-developer >/dev/null 2>&1
+bm "$BI" move APP-002 blocked --by tech-manager --detail "no iOS SDK on this host" >/dev/null 2>&1
+assert_exit 0 "a bug ticket can be created already blocked, in one call" \
+  bm "$BI" add BUG-001-fix --title "Fix rounding" --owner ios-developer --depends APP-002 \
+     --status blocked --notes "blocked behind APP-002"
+# The dependency is KEPT — that is the point. It is not stranded because it is not todo, so the
+# doctor has nothing to report and the loop is not held up by an honest row.
+assert_exit 0 "...and the doctor reports no stranded ticket, so the board stays spawnable" \
+  node "$HERE/board-doctor.mjs" "$BI/docs/31-board.md"
+# The counter-case, or the assertion above proves only that the doctor is quiet: filed the OLD way,
+# the identical ticket IS stranded. The check still works; `--status` is what makes it satisfiable.
+bm "$BI" add BUG-002-fix --title "Filed the old way" --owner ios-developer --depends APP-002 >/dev/null 2>&1
+assert_exit 1 "...while the same ticket filed as todo is still correctly reported stranded" \
+  node "$HERE/board-doctor.mjs" "$BI/docs/31-board.md"
+assert_has "$TMP/out" "stranded" "...by that exact code"
+# Nothing past blocked may be asserted at creation time: `review` would claim a verification and an
+# approval that no event records — the "rule that cannot fail" class, in the intake path.
+assert_exit 1 "add --status refuses a state no event in the log could support" \
+  bm "$BI" add BUG-003-fix --title "Born in review" --owner ios-developer --status review
+assert_has "$TMP/err" "asserts a verification or an approval" "...and says why that state is not offered"
+
+# --- DR4-008: the CLI upcased ticket IDs --------------------------------------------------------
+# `BUG-001-fix` was stored and rendered `BUG-001-FIX` while tech-manager.md and /app-build mandate
+# the lowercase suffix — so anything grepping the documented spelling missed a ticket that was
+# sitting right there on the board.
+grep -q 'BUG-001-fix' "$BI/docs/31-board.md" \
+  && ok "the documented lowercase spelling BUG-001-fix survives onto the rendered board" \
+  || bad "the documented lowercase spelling BUG-001-fix survives onto the rendered board"
+grep -q 'BUG-001-FIX' "$BI/docs/31-board.md" \
+  && bad "...and is not silently upcased" || ok "...and is not silently upcased"
+bm "$BI" show BUG-001-fix 2>/dev/null | grep -q 'BUG-001-fix' \
+  && ok "...and show finds it under the spelling the docs mandate" \
+  || bad "...and show finds it under the spelling the docs mandate"
+# The prefix is still normalised, so `app-001` and `APP-001` are one ticket rather than two.
+bm "$BI" show app-002 2>/dev/null | grep -q 'APP-002' \
+  && ok "...while the alphabetic prefix is still normalised, so case cannot fork a ticket in two" \
+  || bad "...while the alphabetic prefix is still normalised, so case cannot fork a ticket in two"
+# Every log ever written used the upcased form. Lookups must keep resolving it, or this fix
+# strands every board created before today.
+bm "$BI" show bug-001-FIX 2>/dev/null | grep -q 'BUG-001-fix' \
+  && ok "...and an ID typed in any case still resolves to the one row (old logs keep working)" \
+  || bad "...and an ID typed in any case still resolves to the one row (old logs keep working)"
 
 echo
 # --------------------------------------------------------------------------------------------

@@ -109,6 +109,45 @@ Severity: **S1** breaks a run · **S2** silently wrong · **S3** friction.
 
 ---
 
+### DR4-027 — the orchestrator reproduced the collision the plugin exists to prevent
+
+Not from the dry run. From the **remediation of the dry run**, hours later, by the orchestrator who
+had spent the day hardening the documentation for exactly this.
+
+Two writing agents were spawned into **one shared working tree with no worktree isolation** —
+`state-model-fixer` on `scripts/`, `contract-fixer` on `agents/`+`skills/`+`commands/`. Their file
+scopes were disjoint, which is precisely the reasoning dry run 1 already proved insufficient:
+`agent-isolation` has mandated one worktree per writing agent since v1.4.0, on the evidence of a
+measured commit containing another ticket's half-written files and ~50% of an agent's budget burned
+rediscovering work it had already done correctly.
+
+One agent ran `git stash` + `git reset` to get a clean tree for a check. That silently discarded 22
+files and 332 insertions of the other agent's in-progress work.
+
+Three things worth recording:
+
+1. **The victim behaved correctly** — it stopped and reported rather than clobbering back. That is
+   `agent-isolation` **Rule 5** ("if HEAD moved under you, do not discard anything you did not
+   write"), which Phase 0's deduplication silently deleted this morning, which the independent
+   review caught, and which was restored hours earlier the same day. It justified its restoration
+   within the day.
+2. **Recovery was luck, not design.** The work happened to be in `git stash`, and the rescue
+   `git stash show` raced against an agent popping it and lost. Had the command been
+   `git checkout -- .`, all 22 files were unrecoverable.
+3. **A red suite was committed deliberately** as a rescue point, with the failing assertion named in
+   the message. Committing red violates the repo's discipline; losing the work a second time was
+   worse. Recording the trade rather than hiding it.
+
+**The generalisable lesson, and it is the sharpest one of the day:** *knowing a rule, having written
+it, and having spent hours defending it does not make you apply it.* Isolation cannot be a
+convention that a careful operator remembers — it has to be the mechanism, created before the spawn,
+by the thing doing the spawning. The plugin already says this; the orchestrator did not do it.
+
+Rules now in force: explicit paths on every `git add`; no repo-wide `reset`/`stash`/`checkout`/
+`clean` by anyone; commit each coherent chunk immediately; one worktree per writing agent, or
+serialize. **`parallel-orchestrator` should refuse to spawn a second writing agent when the first
+has no worktree** — a rule the orchestrator cannot forget is worth more than one it must remember.
+
 ## The four pillars
 
 | Pillar | Verdict | Evidence |
