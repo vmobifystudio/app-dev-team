@@ -24,7 +24,31 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 
 2. **Group by owner.** One agent invocation per owner, batched. iOS dev gets all their ready tickets in one prompt; same for Android; same for backend.
 
+2a. **Create one worktree per writing agent — before you spawn anything** (`agent-isolation` skill):
+
+   ```bash
+   git worktree add ../.agent-wt/APP-001 -b feat/APP-001-short-slug
+   ```
+
+   This is not optional and it is not a nicety. Measured, in a real dry run of exactly this step
+   without it: a commit containing another ticket's half-written files, one agent burning ~50% of
+   its budget discovering and redoing work it had already done correctly, and two branches with
+   add/add conflicts on **all 8 files**. See
+   `docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+
+   If worktrees are genuinely unavailable, **serialize the writers** — one at a time, each
+   committing before the next starts — and say in the standup that you serialized and why. Never
+   run parallel writers in one tree.
+
+2b. **Check for file overlap, not just feature independence.** The sprint plan judges tickets
+   independent by *feature*. Two "independent" tickets that touch the same files still produce a
+   total merge conflict. Before launching a batch, list the files each ticket is likely to touch
+   (from the impl spec and the ticket's own description). Any ticket pair sharing a file is
+   **serialized**, not parallelised.
+
 3. **Launch in a single message.** Use the subagent tool (`Task`/`Agent`) with multiple invocations in the same assistant message so they run concurrently. This is the critical step — sequential launches give up the parallelism we just earned.
+
+   Each agent's prompt must name **its worktree path** as the project root — never the repo root.
 
 4. **Each agent prompt** includes:
    - The ticket ID(s)

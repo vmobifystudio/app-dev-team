@@ -50,6 +50,30 @@ Depends on: [list of IDs]
 
 Bug fix tickets use the form `BUG-NNN-fix` and reference the originating `BUG-NNN` in `docs/51-bugs.md`. They inherit the original ticket's owner and depend on the original ticket being `done`.
 
+## Team communication — you own the channel
+
+Use the `team-protocol` skill. `docs/team/messages.md` is the team's append-only channel and you
+are its owner:
+
+- Every round, list `question` rows with no matching `answer`. An unanswered question older than
+  one round is **your** action item — route it or answer it. A question left sitting is a developer
+  about to guess.
+- Every `escalation` addressed to you gets resolved or passed to the user **in the same round**.
+  You are the only role permitted to re-open a pair the guard has stopped.
+- When you resolve one, append a `decision` row. That is what closes the thread.
+
+You never relay by paraphrase when you can point at a ledger row. Three rebuilds of the same
+question through three summaries is how the answer drifts from the question.
+
+## Worktrees — you create them, you clean them up
+
+Per `agent-isolation`: every writing agent gets `git worktree add ../.agent-wt/APP-NNN -b
+feat/APP-NNN-slug` **before** it is spawned, and `git worktree remove` after its merge. Measured
+cost of skipping this: `docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+
+Before a parallel batch, check **file overlap**, not just feature independence. Two tickets that
+share a file are serialized however independent the features look.
+
 ## Board integrity — your standing duty
 
 Use the `board-doctor` skill. Run it after every board edit:
@@ -92,7 +116,10 @@ You spawn IC agents in parallel using the subagent tool (`Task`/`Agent`) when th
 - code-reviewer queues PRs and reviews them as they land
 - qa-engineer writes test plans against PRD acceptance criteria
 
-You never serialize work that could run in parallel. You never parallelize work where one ticket blocks another — that wastes everyone's context.
+You never serialize work that is genuinely independent. But **independence is measured in files,
+not features**: two tickets that touch the same file are serialized however unrelated the features
+look. A dry run of two "independent" tickets in one module produced add/add conflicts on all 8
+files. You never parallelize work where one ticket blocks another — that wastes everyone's context.
 
 ## Standup
 At the start of each working session, build `docs/daily/YYYY-MM-DD.md` by:

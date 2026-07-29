@@ -3,6 +3,73 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.0] — Coordination, isolation, and reviews that find real defects
+
+Driven by a **live dry run** of the documented process (two developer agents, two deliberately
+independent tickets, one working tree) and by four hard-won lessons from a real remediation
+programme. Evidence: `docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+
+### Fixed
+
+- **Parallel agents corrupted each other.** The process told developers to write files first and
+  branch last (`android-developer` step 7), and told the orchestrator to launch them concurrently —
+  in one shared working tree. Observed result: the first agent to branch swept the other's
+  in-progress files into its commit (8 files / 333 insertions); the second detected the corruption,
+  discarded its work, and reimplemented from scratch, spending **588s and 102k tokens**, roughly
+  half of it wasted; both branches ended with add/add conflicts on **all 8 files**. The recovery
+  was safe only because the other agent had already committed — with different timing the same
+  judgment call would have destroyed uncommitted work.
+- **Parallelism was judged on features, not files.** `sprint-planner` said "run in parallel when
+  tickets touch different modules". The two tickets above were different features in the same
+  module and conflicted totally. Independence is now measured in **files**.
+- **Nothing in the plugin said "execute it rather than read it".** No agent verified a constant by
+  running it, and no agent proved a guard rule could fail. Both are now required.
+- **There was no way for one agent to ask another a question.** ICs had no channel; `BLOCKED` and a
+  full re-spawn was the only escalation, and `tech-lead`'s "then you ping the ICs" referred to a
+  mechanism that did not exist.
+- **`tech-manager` contradicted itself** — "never serialize work that could run in parallel" now
+  reconciled with the file-overlap rule.
+
+### Added
+
+- **`agent-isolation` skill** — one git worktree per writing agent (verifiers included), branch
+  **before** writing, explicit-path staging only (`git add -A` banned), and confirm the mutation
+  landed before believing any result.
+- **`team-protocol` skill + `scripts/team-message.sh`** — an append-only team channel
+  (`docs/team/messages.md`) with kinds `question · answer · handoff · blocker · fyi · escalation ·
+  decision`, an org-chart routing table, and a hard **anti-ping-pong guard**: 10 messages per role
+  per round, 2 per pair per ticket, 4 roles per chain. Escalations always pass. All four guard
+  branches were tested firing.
+- **`defect-hunting` skill** — the four lessons, operationalized: audit the data's entry points not
+  the screens ("what is the second way this value gets written?"); never certify a number by
+  reading it; a rule that cannot fail is worse than no rule; findings need IDs and terminal
+  statuses. Includes the corollary that the checker you write to catch the problem is subject to it.
+- **`verification-engineer` agent (18th role)** — executes what everyone else asserts. Sweeps
+  constants across their real range against outside reference data, grades every guard rule
+  (`EXECUTES` / `TEXT-GUARDED` / `TEXT-NAIVE` / `NOT-GATED`), and must watch each rule fail before
+  trusting it. Produces `docs/71-verification.md` and gates `/app-ship`.
+- **`scripts/board-render.mjs`** — terminal kanban, per-owner load, NEEDS ATTENTION block, and a
+  Mermaid dependency graph (`docs/32-board-view.md`) that renders on GitHub with stranded/blocked
+  tickets outlined in red.
+- **`scripts/lib/board.mjs`** — one shared board parser. Two parsers of the same file drift, and a
+  renderer that disagrees with its validator is the exact "second path" defect class.
+
+### Changed
+
+- `code-reviewer` gains a **step 0: the second path** (enumerate every writer and reader of the
+  data the diff touches), a constants-and-rules execution check, an isolation-hygiene check, and a
+  verdict that must state each explicitly — `NOT CHECKED — <why>` rather than silence, because an
+  unstated gap reads as a cleared one.
+- All four IC agents: branch-first ordering as **step 0**, an isolation section, a fix-at-the-choke-
+  point rule (grep every caller before editing), and an output contract reporting worktree, staged
+  paths, mutation confirmation, exact test command, and the second-path check.
+- `tech-manager` owns the message channel and the worktree lifecycle; unanswered questions and open
+  escalations are its per-round action items.
+- `/app-build` creates worktrees before spawning and removes them after merge; `/app-status` and
+  `/app-build` render the board; `/app-ship` gates on `VERIFICATION: FAIL` alongside security.
+- `board-doctor` knows the new role; refactored onto the shared parser with all five fixtures
+  re-run and byte-identical results (13 anomalies / 5 warnings, same codes, same exit codes).
+
 ## [1.2.0] — Board integrity
 
 Informed by a study of a production multi-agent orchestrator

@@ -82,8 +82,24 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
 ## Parallelism rules
 
-- **Run in parallel** when ticket A and ticket B touch different modules or different platforms.
-- **Serialize** when A's output is B's input (e.g., shared component, API contract change).
+**Judge parallelism on files, not features.** Two tickets can be perfectly independent as features
+and still be the same handful of files. A dry run of "add a todo" and "complete a todo" — planned
+as independent, different features, no shared acceptance criteria — produced add/add conflicts on
+**all 8 files**, including both test files. See
+`docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+
+For every ticket, write a **Touches** note: the files or packages it will most likely modify, taken
+from the impl spec. Then:
+
+- **Run in parallel** when A and B touch **disjoint files** — different modules, different
+  platforms, different feature packages.
+- **Serialize** when A and B share any file, even if the features are unrelated. The second picks
+  up the first's commit.
+- **Serialize** when A's output is B's input (shared component, API contract change).
+
+A first ticket that establishes a shared surface — the ViewModel, the repository, the UI state type
+— should be sequenced **alone**, with everything that touches it stacked behind it. One serialized
+foundation ticket is cheaper than three parallel tickets and a merge.
 - **Never spawn more dev agents in parallel than there are independent tickets ready.** Idle agents waste tokens; busy agents waste each other's context with merge conflicts.
 
 ## Output format for the tech-manager handoff

@@ -4,13 +4,13 @@
 
 **Describe your app idea in one line. Get a shipped iOS & Android app.**
 
-AI App Studio is a *team* of 17 AI specialists — a CEO, product manager, designers, iOS/Android
+AI App Studio is a *team* of 18 AI specialists — a CEO, product manager, designers, iOS/Android
 engineers, a code reviewer, QA, and a release manager — that works like a real software studio.
 It takes your idea from **scope → design → code → review → store**, building in parallel, reviewing
 and fixing its own work, and stopping for you at only the two moments that matter:
 **what we're building** and **whether to ship**.
 
-[![version](https://img.shields.io/badge/version-1.1.0-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-lightgrey)]()
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A2BE2)]()
@@ -76,6 +76,7 @@ flowchart TD
         MON[Monetization]
         REV[Code Reviewer]
         QA[QA]
+        VER[Verification]
     end
 
     subgraph GROW["🎨 Design and Growth"]
@@ -141,6 +142,54 @@ editing a Markdown table. So two checks run mechanically rather than on trust:
 Both are plain Node + POSIX `sh` with no dependencies, and the `board-doctor` skill carries a manual
 checklist so a vanilla install without Node still performs the check by hand.
 
+### How the agents coordinate
+
+Agents don't shout into one shared room, and they don't route every sentence through a human.
+
+- **Isolation.** Every writing agent gets its **own git worktree**, created before it is spawned.
+  Without this, parallel agents corrupt each other — measured, not theorised: a dry run of two
+  *deliberately independent* tickets in one tree produced a commit containing the other ticket's
+  half-written files, one agent burning ~50% of its budget discovering and redoing work it had
+  already done correctly, and two branches with add/add conflicts on **all 8 files**.
+  ([full write-up](docs/research/2026-07-29-dry-run-parallel-agent-collision.md))
+- **A real channel.** `docs/team/messages.md` is an append-only ledger — `question`, `answer`,
+  `handoff`, `blocker`, `escalation`, `decision` — so an IC can ask the tech lead one question and
+  keep working, instead of hard-blocking and paying for a full re-spawn.
+- **An anti-ping-pong guard.** Two agents can burn a whole budget agreeing with each other, so the
+  send helper enforces limits: 10 messages per role per round, 2 per pair per ticket, 4 roles per
+  chain. Breach one and you must escalate to the tech manager instead of re-sending.
+- **Parallelism judged on files, not features.** Two tickets that touch the same file are
+  serialized however unrelated they look on the board.
+
+### Seeing the state
+
+```bash
+node scripts/board-render.mjs docs/31-board.md --out docs/32-board-view.md
+```
+
+A terminal kanban, per-owner load, a NEEDS ATTENTION block, and a Mermaid dependency graph that
+renders on GitHub — with stranded and blocked tickets outlined in red. `/app-status` prints it;
+`/app-build` regenerates it each round.
+
+### Reviews that find real defects
+
+The reviewer no longer just reads a diff. It applies the `defect-hunting` skill, mined from a real
+remediation programme where twelve screen-by-screen review rounds found nothing new and one round
+organised by **data path** found dozens of live defects:
+
+- **The second write path.** In every miss, the reviewed surface was correct and the bug was
+  elsewhere — add validated but edit didn't; the reader was fixed and the writer destroyed data;
+  the picker's success branch was right and its cancel branch wiped the photo. The reviewer must
+  enumerate every writer and reader of the data a diff touches.
+- **Execute constants, never certify by reading.** A plausibility envelope that read perfectly and
+  survived 35 sprints rejected the *median* subject at 26 of 61 ages. Mis-calibration is invisible
+  to inspection because the code is correct.
+- **A rule that cannot fail is worse than no rule.** Ten of nineteen real guard rules were
+  bypassable, all from `contains()` over prose — one was tripped by its own comment. New rules must
+  be watched failing before they are trusted.
+
+`verification-engineer` owns this at release time and gates `/app-ship`.
+
 ### Two ways in: new app or existing app
 
 ```mermaid
@@ -191,7 +240,7 @@ flowchart TD
 
 | | 🤖 One AI agent improvising | 🏗️ **AI App Studio** |
 |---|---|---|
-| **Structure** | One context doing everything; forgets the plan | 17 focused roles with clear handoffs and ownership |
+| **Structure** | One context doing everything; forgets the plan | 18 focused roles with clear handoffs and ownership |
 | **Code review** | None — it ships whatever it wrote | A real review gate; nothing merges until it passes |
 | **Quality bar** | Generic AI defaults | Your house conventions + ~25 iOS specialist auditors |
 | **Parallelism** | Sequential, slow | Engineers build features in parallel |
@@ -215,7 +264,7 @@ This repo is its own Claude Code **marketplace**, so installing is two commands.
 > 💡 **AI App Studio** is the friendly name for the **`app-dev-team`** plugin — that's the ID you
 > install and the command prefix (`/app-*`) you'll use.
 
-The plugin is enabled automatically — its 17 agents, 11 commands, and skills are now available.
+The plugin is enabled automatically — its 18 agents, 11 commands, and skills are now available.
 Run `/plugin` anytime to browse, enable/disable, or remove it. To update later, re-run
 `/plugin marketplace add vmobifystudio/app-dev-team` and reinstall.
 
@@ -274,7 +323,7 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 
 ---
 
-## The roster (17 agents)
+## The roster (18 agents)
 
 | Layer | Agent | Owns |
 |---|---|---|
@@ -289,6 +338,7 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 | | `monetization-engineer` | StoreKit/Play Billing IAP, paywall gateway, AdMob + consent |
 | | `code-reviewer` | The gate — runs **Axiom auditor agents** on iOS branches |
 | | `qa-engineer` | Test plans, bug filing, ship sign-off |
+| | `verification-engineer` | **Executes** what everyone else asserts — constants, guard rules, agent reports |
 | **Design & Growth** | `ux-designer` | Flows, design tokens, component inventory |
 | | `aso-specialist` | Store listing, keywords, screenshots, readiness gate |
 | | `data-analyst` | Analytics schema, instrumentation check, post-launch KPIs |
@@ -296,8 +346,9 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 | | `security-reviewer` | Pre-ship MASVS pass, severity-classified findings |
 | | `release-manager` | Versioning, signing, store upload, release notes |
 
-Every build agent invokes the `house-conventions` skill before working. Roles are just Markdown
-files — add, remove, or retune them.
+Every build agent invokes the `house-conventions` skill before working, plus `agent-isolation`
+(its own git worktree) and `team-protocol` (how it talks to the rest of the team). Roles are just
+Markdown files — add, remove, or retune them.
 
 ## Commands
 

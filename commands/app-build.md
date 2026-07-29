@@ -28,7 +28,11 @@ Tickets (optional, default = all ready): $ARGUMENTS
    - `docs/31-board.md` — find tickets where `Status = todo` and every `Depends on` ID is `done`.
    - `docs/51-bugs.md` (if it exists) — for every open `S1` or `S2`, ensure a matching `BUG-NNN-fix` row exists on the board; if not, spawn `tech-manager` once with the instruction to create them, then re-read the board.
 
-2. **Spawn developers in parallel.** Use the `parallel-orchestrator` skill. Launch IC agents concurrently in a **single assistant message** — one Task invocation per owner, each passed the full list of tickets they're working this round:
+2. **Spawn developers in parallel.** Use the `parallel-orchestrator` skill, which now requires a
+   **git worktree per writing agent, created before the spawn** (`agent-isolation`), and serializes
+   any ticket pair that shares a file. Launch IC agents concurrently in a **single assistant
+   message** — one Task invocation per owner, each passed its worktree path and the full list of
+   tickets they're working this round:
    - `ios-developer` for iOS-ready tickets
    - `android-developer` for Android-ready tickets
    - `backend-developer` only if backend is in scope per `docs/20-architecture.md`
@@ -59,9 +63,24 @@ Tickets (optional, default = all ready): $ARGUMENTS
    - Setting a ticket `blocked` here is exactly what strands its dependents — which is why step 0
      re-runs at the top of every round.
 
+4a. **Clean up worktrees.** After each merge, remove the ticket's worktree so the next round starts
+   clean: `git worktree remove ../.agent-wt/APP-NNN && git worktree prune`.
+
 5. **QA pass.** Once a wave of tickets is in `qa`, spawn `qa-engineer` once to exercise the acceptance criteria. QA writes new defects to `docs/51-bugs.md`. S1/S2 bugs come back into the loop in step 1 next round.
 
-6. **Daily report.** Collect the per-agent fragments at `docs/daily/<today>-*.md` and spawn `tech-manager` to concatenate them into `docs/daily/<today>.md`.
+6. **Daily report + board view.** Collect the per-agent fragments at `docs/daily/<today>-*.md` and
+   spawn `tech-manager` to concatenate them into `docs/daily/<today>.md`. Then render the board so
+   the state is visible rather than tabular:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-render.mjs" docs/31-board.md --out docs/32-board-view.md
+   ```
+
+   Print the terminal view in the standup. `docs/32-board-view.md` carries a Mermaid dependency
+   graph that renders on GitHub — stranded and blocked tickets are outlined in red.
+
+   Also surface unanswered team messages: any `question` in `docs/team/messages.md` with no matching
+   `answer` is a `tech-manager` action item, not a thing to leave sitting.
 
 7. **Loop** back to step 0 until the board has no ready `todo` rows and nothing in `review`/`qa`.
 
@@ -73,8 +92,12 @@ Tickets (optional, default = all ready): $ARGUMENTS
 
 ## Safety
 
+- **Never spawn a writing agent without its own worktree** (or, failing that, serialized). Measured
+  cost of ignoring this: `docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
 - **Never spawn while the board doctor reports an anomaly.**
 - **Never move a row to `review` on an unverified `DONE`.**
+- **Never merge a branch containing another ticket's files.** That means a shared tree was used and
+  the sibling ticket's branch is probably wrong too — stop the round and check both.
 - Never spawn more than one agent for the same ticket simultaneously.
 - Never auto-merge across a `REQUEST CHANGES`.
 - Never re-spawn a developer past the 2-cycle cap without user input.

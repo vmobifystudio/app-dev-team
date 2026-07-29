@@ -19,6 +19,18 @@ allowed-tools: Read, Glob, Grep, Bash
      Anomalies go at the **top** of the status output, not the bottom. A `stranded` ticket is the
      single most important thing on this screen: it is work the sprint loop will never surface on
      its own.
+3a. **Render the board** so the shape is visible, not tabular:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-render.mjs" docs/31-board.md
+   ```
+
+   Print the kanban, the per-owner load, and the NEEDS ATTENTION block.
+
+3b. **Open team threads.** From `docs/team/messages.md`, list any `question` with no matching
+   `answer`, and any `escalation` not yet closed by a `decision`. These are the conversations the
+   team is stuck inside.
+
 4. Print today's daily report if it exists at `docs/daily/<today>.md`.
 5. Print recent bug list from `docs/51-bugs.md` if it exists — show open S1/S2 only.
 6. Suggest the next action: `/app-build`, `/app-plan`, or "ship".

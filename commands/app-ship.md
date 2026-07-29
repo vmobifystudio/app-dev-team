@@ -10,10 +10,24 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
 ## Steps
 
-1. **Sanity check the board.** Read `docs/31-board.md`. If anything is `todo`, `in_progress`, or `review`, stop and tell the user "Sprint isn't done — run `/app-build` first."
+1. **Sanity check the board.** Run the board doctor — a release is the worst possible moment to
+   discover a stranded ticket:
 
-2. **Spawn `security-reviewer`, `aso-specialist`, and `data-analyst` in parallel** in a single message:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md
+   ```
+
+   Exit `1` → stop. Then read `docs/31-board.md`: if anything is `todo`, `in_progress`, or `review`,
+   stop and tell the user "Sprint isn't done — run `/app-build` first."
+
+2. **Spawn `security-reviewer`, `verification-engineer`, `aso-specialist`, and `data-analyst` in
+   parallel** in a single message:
    - `security-reviewer` produces `docs/70-security-review.md`. Open `critical`/`high` → stop.
+   - `verification-engineer` produces `docs/71-verification.md` — it **executes** every constant
+     that makes a real-world claim against outside reference data, and proves every guard rule in
+     the release can actually fail. `VERIFICATION: FAIL` → stop. This is the gate that catches a
+     mis-calibrated threshold and a green rule that cannot fail, neither of which any amount of
+     reading will find.
    - `aso-specialist` runs the store-readiness gate (`docs/15-aso.md`, screenshots, compliance).
      Returns `ASO READY` or `ASO BLOCKED` with the missing items.
    - `data-analyst` confirms P0 features are instrumented and the consent gate works.
