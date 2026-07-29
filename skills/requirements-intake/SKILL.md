@@ -35,6 +35,16 @@ You are converting fuzzy human intent into a structured intake doc. You are not 
    4. What does success look like in 6 months? (numbers if possible)
    5. Anything that's explicitly out of scope?
 
+2a. **Record the raw material first.** Before you structure anything, put the user's own words —
+   the original one-liner, your five questions and their answers, and anything they pasted or
+   linked — into `docs/00-founder-intent/` verbatim and dated, then run
+   `node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root . --write`.
+
+   The intake below is already an interpretation: it clusters, it phrases, it drops what did not fit
+   a heading. That is fine as long as the un-interpreted version still exists to check it against —
+   `product-validator` compares the two, and it cannot compare against something nobody kept. The
+   directory is append-only; a later change of mind is a new dated line in its `decisions.md`.
+
 3. Write `docs/01-intake.md` with the answers, verbatim where possible:
 
 ```

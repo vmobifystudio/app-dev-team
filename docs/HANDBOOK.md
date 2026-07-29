@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** post-revamp (`revamp/phase-r-fixes`) · **Date:** 2026-07-29
-**Scale:** 18 roles · 15 skills · 13 commands · 19 scripts · 9 knowledge packs · 438 assertions
+**Scale:** 19 roles · 16 skills · 13 commands · 21 scripts · 9 knowledge packs · 438 assertions
 
 ---
 
@@ -113,10 +113,10 @@ with no iOS SDK. Every gate refused and each said which one it was. That is the 
 
 ---
 
-## Part 3 — The 18 roles
+## Part 3 — The 19 roles
 
 Roles are Markdown files in `agents/`. Each declares its tools and model. They are activated per
-project by tier and product type (§6), so not all 18 run on every project.
+project by tier and product type (§6), so not all 19 run on every project.
 
 ### Executive — decides what and why
 
@@ -149,6 +149,7 @@ On **utility tier**, `ceo` absorbs the `cpo` charter (one founder pass) and `cto
 | `code-reviewer` | opus | The review gate; routes constants to verification |
 | `qa-engineer` | sonnet | Test plans, bug filing, ship recommendation |
 | `verification-engineer` | opus | **Executes what everyone else asserts** — constants, thresholds, guard rules |
+| `product-validator` | opus | **Compares the recorded founder brief to the PRD** — omitted intent, invented requirements, silent scope change. Outside the cpo/cto/tech-manager chain; blocks scope-lock; never writes the PRD |
 
 `monetization-engineer` is opus deliberately: it owns money-correctness paths, which is where a
 silent error is most expensive.
@@ -488,6 +489,15 @@ its own PRD, implements against its own spec, and tests against its own criteria
 loop. The external oracles are the compiler, the two human gates, and real users. **It can tell you
 "this builds, launches, and matches the spec we wrote." It cannot tell you "this is what you
 wanted."**
+
+*Narrowed, not closed (P1).* `docs/00-founder-intent/` keeps the founder's words as a reference the
+team cannot edit to match its plan (`scripts/founder-intent.mjs`); `product-validator` compares that
+record to the PRD from outside the cpo/cto/tech-manager chain and can block scope-lock;
+`scripts/trace.mjs` fails when the chain from goal to release breaks, when two documents disagree,
+and when a conditional founder gate fires. What that buys is **drift** detection — the PRD no longer
+gets to quietly stop representing the brief. What it does not buy is correctness of the brief: a
+founder who is wrong about the market now gets a validated, traceable, well-evidenced product nobody
+wants. That is what the human gates and real users are still for, and no script replaces them.
 
 Every open item is specified with a reproduction in
 `docs/research/2026-07-29-dry-run-4-findings.md`.

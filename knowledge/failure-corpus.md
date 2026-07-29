@@ -178,6 +178,39 @@ artifact without a `DOC_WRITERS` row fails the doc-graph check by construction.
 
 ---
 
+### FC-007 — The specification that confirms itself
+
+**Shape:** an artifact is validated against another artifact the same team wrote from it. Criteria
+derived from the requirement's wording, tests derived from the criteria's wording, evidence citing
+the spec as its reference. Every link is internally correct and the chain never leaves the team's own
+documents, so the result is conformity to an *interpretation* — provable, green, and silent about
+whether the interpretation was right. Distinct from FC-002: each check here can fail; they simply all
+measure the same assumption.
+
+**Tell:** take any green claim and walk its `src:` chain upward one link at a time. **Name the step
+where it leaves documents this team authored.** If there is no such step, it is this class. The
+mechanical form is `node scripts/trace.mjs --project-root .`, whose `goal_no_founder_source` is
+exactly the question "where does this stop being our own opinion?"; the human form is
+`agents/product-validator.md` §5. Also treat as this class any requirement with no acceptance
+criterion (nothing to disagree with it) and any criterion whose test was written by the role that
+wrote the criterion.
+
+**Rule:** `scripts/trace.mjs` fails on `goal_no_founder_source`, `requirement_no_criterion`,
+`criterion_no_test` and `decision_no_artifact`; `docs/00-founder-intent/` plus
+`scripts/founder-intent.mjs` keep an external reference that cannot be quietly edited to match the
+plan; `agents/product-validator.md` compares the two from outside the cpo/cto/tech-manager chain and
+can block scope-lock, and `scripts/team-doctor.mjs` (`validator_writes_prd`) stops it becoming a
+writer of the document it approves. `skills/intent-trace` is the prose.
+
+**Rule shipped:** 2026-07-29
+
+| Date | Instance |
+|---|---|
+| 2026-07-29 | The handbook's own Part 12 admission: the team writes the PRD, derives acceptance criteria from that PRD, implements against its own spec and tests against its own criteria. It can say "this builds, launches and matches the spec we wrote" and cannot say "this is what you wanted" |
+| 2026-07-29 | An export ticket said nothing about the empty-list case. The developer decided alone, the criterion was written to match the decision, the test passed, and it shipped on an assumption nobody had approved — every gate green, the whole chain inside one head |
+
+---
+
 ### FC-006 — The proxy trigger that misses the incident it was written for
 
 **Shape:** a guard fires on a *proxy* for the hazard rather than the hazard itself, and the proxy was

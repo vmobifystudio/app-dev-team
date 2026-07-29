@@ -947,12 +947,18 @@ plugrestore agents/qa-engineer.md
 
 # 2. RV-035 itself: the last reader of a document goes away and nothing notices. `docs/12-flows.md`
 #    is written by ux-designer and read by exactly one step, which is what makes it the sharp case.
+#    It gained a second reader when `intent-trace` landed (the flow doc is where `[D-NNN]` design
+#    nodes are declared), so both readers go away here — one at a time no longer proves anything,
+#    and an assertion that quietly stopped being able to fire is this repo's oldest defect class.
 plugfile skills/ic-workflow/SKILL.md
 grep -v 'docs/12-flows' "$TMP/plug-restore.md" > "$PLUG/skills/ic-workflow/SKILL.md"
+cp "$PLUG/skills/intent-trace/SKILL.md" "$TMP/plug-restore-2.md"
+grep -v 'docs/12-flows' "$TMP/plug-restore-2.md" > "$PLUG/skills/intent-trace/SKILL.md"
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tddoc2.json" 2>/dev/null
 assert_finding "$TMP/tddoc2.json" doc_unread \
   "a document written by a step and read by none blocks (RV-035)" "docs/12-flows.md"
 plugrestore skills/ic-workflow/SKILL.md
+cp "$TMP/plug-restore-2.md" "$PLUG/skills/intent-trace/SKILL.md"
 
 # 3. The mirror, and the one a refactor produces: the declared writer stops mentioning its own
 #    document. Either the producer moved and the declaration is stale, or the doc is now written by
@@ -2943,6 +2949,144 @@ grep -q 'or `—` for project-wide' "$HERE/../skills/team-protocol/SKILL.md" \
   || ok "team-protocol names the ASCII hyphen team-message.sh actually accepts"
 grep -q 'ASCII hyphen' "$HERE/../skills/team-protocol/SKILL.md" \
   && ok "...and says so explicitly" || bad "...and says so explicitly"
+
+echo
+echo "founder-intent (the record that cannot be edited to match the plan)"
+# --------------------------------------------------------------------------------------------
+# The founder record is the only artifact in the pipeline whose correct state is UNCHANGED. Every
+# other check in this repo runs inside the loop it is checking; this one holds the loop's one
+# external reference still. Its whole value is that an edit is DETECTED — so every assertion below
+# is about the tool going red, and the last one is about the WRITER refusing, because a writer that
+# re-records a changed file erases the evidence of the edit and reports success doing it.
+
+FI="$HERE/founder-intent.mjs"
+rm -rf "$TMP/fi"
+cp -R "$FIX/trace-clean" "$TMP/fi"
+
+assert_exit 2 "an unrecorded founder record is CANNOT EVALUATE, not INTACT" node "$FI" --project-root "$TMP/fi"
+assert_exit 0 "--write records it"                node "$FI" --project-root "$TMP/fi" --write
+assert_exit 0 "...and the check then passes"      node "$FI" --project-root "$TMP/fi"
+
+# An edit to the founder's own words. This is the incident: a brief quietly reworded to match the
+# PRD makes every downstream gate green about a document nobody agreed to.
+echo "and also a social feed" >> "$TMP/fi/docs/00-founder-intent/brief.md"
+assert_exit 1 "an edited brief is detected" node "$FI" --project-root "$TMP/fi"
+node "$FI" --project-root "$TMP/fi" --json > "$TMP/fi.json" 2>/dev/null
+assert_finding "$TMP/fi.json" intent_record_modified "...and named as intent_record_modified" "brief.md"
+assert_exit 1 "--write REFUSES to re-record a changed file" node "$FI" --project-root "$TMP/fi" --write
+node "$FI" --project-root "$TMP/fi" --write --json > "$TMP/fiw.json" 2>/dev/null
+assert_finding "$TMP/fiw.json" intent_write_refused "...and says so rather than laundering the record"
+
+# The other two directions: a source that arrived and was never recorded is indistinguishable from
+# one the team invented; a recorded source that vanished is a deleted oracle.
+rm -rf "$TMP/fi2"
+cp -R "$FIX/trace-clean" "$TMP/fi2"
+node "$FI" --project-root "$TMP/fi2" --write >/dev/null 2>&1
+echo "a competitor screenshot they sent" > "$TMP/fi2/docs/00-founder-intent/example-rival.md"
+node "$FI" --project-root "$TMP/fi2" --json > "$TMP/fi2.json" 2>/dev/null
+assert_finding "$TMP/fi2.json" intent_record_unrecorded "an unrecorded source file is a finding" "example-rival.md"
+rm "$TMP/fi2/docs/00-founder-intent/example-rival.md" "$TMP/fi2/docs/00-founder-intent/decisions.md"
+node "$FI" --project-root "$TMP/fi2" --json > "$TMP/fi2b.json" 2>/dev/null
+assert_finding "$TMP/fi2b.json" intent_record_removed "a removed source file is a finding" "decisions.md"
+
+# Deleting a manifest LINE un-records a file without any hash ever disagreeing. The body digest is
+# the only thing standing between that and a clean report.
+rm -rf "$TMP/fi3"
+cp -R "$FIX/trace-clean" "$TMP/fi3"
+node "$FI" --project-root "$TMP/fi3" --write >/dev/null 2>&1
+grep -v "  brief.md" "$TMP/fi3/docs/00-founder-intent/MANIFEST.sha256" > "$TMP/m" && mv "$TMP/m" "$TMP/fi3/docs/00-founder-intent/MANIFEST.sha256"
+node "$FI" --project-root "$TMP/fi3" --json > "$TMP/fi3.json" 2>/dev/null
+assert_finding "$TMP/fi3.json" intent_manifest_tampered "a deleted manifest line breaks the body digest"
+
+rm -rf "$TMP/fi4"; mkdir -p "$TMP/fi4/docs/00-founder-intent"
+assert_exit 2 "an empty founder record is CANNOT EVALUATE, never a pass" node "$FI" --project-root "$TMP/fi4"
+
+echo
+echo "trace (the intent graph, its conflicts, and the founder gates)"
+# --------------------------------------------------------------------------------------------
+# Each finding below is a distinct way the chain from what-was-asked-for to what-shipped can break
+# while every existing gate stays green. `trace-broken` carries one instance of each, so a code that
+# stops firing is caught here rather than by a founder six weeks later.
+
+TR="$HERE/trace.mjs"
+assert_exit 0 "a fully traced project passes"        node "$TR" --project-root "$FIX/trace-clean"
+assert_exit 1 "a broken chain blocks"                node "$TR" --project-root "$FIX/trace-broken"
+assert_exit 2 "no board and no record is CANNOT EVALUATE, not clean" node "$TR" --project-root "$FIX/trace-cannot"
+assert_exit 2 "an unknown --only is refused"         node "$TR" --project-root "$FIX/trace-clean" --only nonsense
+
+node "$TR" --project-root "$FIX/trace-broken" --json > "$TMP/trace.json" 2>/dev/null
+TCODES=$(node -e 'const j=require(process.argv[1]);console.log([...new Set(j.findings.map(f=>f.code))].sort().join(" "))' "$TMP/trace.json")
+for c in goal_no_founder_source requirement_no_criterion criterion_no_test ticket_no_requirement \
+         stale_coverage design_no_ticket code_no_analytics decision_no_artifact state_invalid \
+         conflict_resolved conflict_unresolvable founder_gate_required; do
+  case " $TCODES " in *" $c "*) ok "emits $c" ;; *) bad "emits $c" "not in: $TCODES" ;; esac
+done
+
+# A conflict is never resolved silently: the report names both sides AND the rule that decided it.
+assert_finding "$TMP/trace.json" conflict_resolved "a resolved conflict names the rule that resolved it" "outranks"
+assert_finding "$TMP/trace.json" conflict_unresolvable "an equal-rank conflict is REFUSED, not guessed" "Refusing"
+
+# Each of the eight conditional founder gates must be DETECTED, not merely described. `trace-gates`
+# plants one line per trigger; a trigger that stops firing is a decision an agent starts making
+# alone, and nothing else in the system would notice.
+node "$TR" --project-root "$FIX/trace-gates" --only gates --json > "$TMP/gates.json" 2>/dev/null
+assert_exit 1 "an unapproved trigger stops the loop" node "$TR" --project-root "$FIX/trace-gates" --only gates
+for t in pricing sensitive-data destructive-migration account-deletion legal-disclosure \
+         visual-direction paid-infrastructure waiver; do
+  node -e '
+const [, json, id] = process.argv;
+process.exit(require(json).findings.some((f) => f.detail.includes(`TRIGGER ${id} `)) ? 0 : 1);
+' "$TMP/gates.json" "$t" && ok "founder gate \`$t\` fires" || bad "founder gate \`$t\` fires"
+done
+
+# ...and every one must be able to go quiet, or it is a permanent red that gets switched off. Only a
+# recorded founder decision clears one — not an agent deciding the trigger was fine.
+rm -rf "$TMP/gates-ok"
+cp -R "$FIX/trace-gates" "$TMP/gates-ok"
+for t in pricing sensitive-data destructive-migration account-deletion legal-disclosure \
+         visual-direction paid-infrastructure waiver; do
+  echo "2026-07-29 FOUNDER DECISION: $t — approved by the founder." >> "$TMP/gates-ok/docs/00-founder-intent/decisions.md"
+done
+assert_exit 0 "...and recorded founder decisions clear all eight" node "$TR" --project-root "$TMP/gates-ok" --only gates
+
+# One parser. A second reading of the board is how the last four fail-open gates in this repo got
+# written, and a graph validator is exactly the kind of tool that grows its own board regex.
+grep -q "from './lib/board.mjs'" "$TR" \
+  && ok "trace reads the board through lib/board.mjs and not a second regex" \
+  || bad "trace reads the board through lib/board.mjs"
+
+# The third state, published where the agents read it — a vocabulary trace.mjs enforces and the
+# skill no longer states is a rule enforcing itself.
+IT="$HERE/../skills/intent-trace/SKILL.md"
+for w in unverified not-reviewed no-event-data; do
+  grep -q "$w" "$IT" && ok "intent-trace publishes the third state \`$w\`" \
+                     || bad "intent-trace publishes the third state \`$w\`"
+done
+
+echo
+echo "product-validator (independence, enforced in the doc graph)"
+# --------------------------------------------------------------------------------------------
+# The role's entire value is that it did not write what it checks. That is one plausible edit away
+# at any time — "the validator found the gap, so it filled it" — so the rule is asserted by BREAKING
+# it here: a shadow copy of the plugin with product-validator added to the PRD row must go red.
+
+grep -q '^name: product-validator' "$HERE/../agents/product-validator.md" \
+  && ok "product-validator exists as a role" || bad "product-validator exists as a role"
+grep -q 'INTENT: ALIGNED' "$HERE/../agents/product-validator.md" \
+  && ok "...with the three-state verdict the gates read" || bad "...with the three-state verdict"
+grep -q 'product-validator' "$HERE/../skills/role-activation/SKILL.md" \
+  && ok "...and a row in the activation matrix" || bad "...and a row in the activation matrix"
+
+rm -rf "$TMP/shadow"; mkdir -p "$TMP/shadow"
+for d in agents commands skills scripts knowledge; do cp -R "$HERE/../$d" "$TMP/shadow/$d"; done
+( cd "$TMP/shadow" && node scripts/team-doctor.mjs --json > "$TMP/td-before.json" 2>/dev/null )
+node -e 'process.exit(require(process.argv[1]).findings.some(f=>f.code==="validator_writes_prd")?1:0)' "$TMP/td-before.json" \
+  && ok "the validator is not a writer of docs/10-prd.md today" \
+  || bad "the validator is not a writer of docs/10-prd.md today"
+sed -e "s|'agents/cpo.md', 'skills/prd-builder/SKILL.md'|'agents/product-validator.md', 'agents/cpo.md', 'skills/prd-builder/SKILL.md'|" \
+    "$HERE/team-doctor.mjs" > "$TMP/shadow/scripts/team-doctor.mjs"
+( cd "$TMP/shadow" && node scripts/team-doctor.mjs --json > "$TMP/td-after.json" 2>/dev/null )
+assert_finding "$TMP/td-after.json" validator_writes_prd "...and making it one is a blocking finding" "docs/10-prd.md"
 
 echo
 echo

@@ -12,6 +12,10 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 - cpo — PRD, user stories, backlog
 - cto — architecture, stack, engineering principles (starts from the House KB defaults)
 
+- product-validator — compares the founder's recorded brief to the PRD and flags omitted intent,
+  invented requirements and silent scope change. Sits outside the cpo/cto/tech-manager chain,
+  reports to the scope-lock gate, and never writes the PRD it checks
+
 **Management**
 - tech-lead — per-platform impl specs, patterns, hands-on senior
 - tech-manager — sprint plan, board, daily report, merge gate, standups, pod coordination
