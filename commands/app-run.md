@@ -35,7 +35,7 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    in this file — read it, do not re-derive it. `off` roles are not spawned; their gates report
    `N/A` with the roster's reason, never silence.
    - **Empty / no app → greenfield:** run `/app-init` with the idea (requirements-intake → CEO
-     vision → parallel CPO/CTO → parallel ux-designer/tech-lead/devops-engineer → project bootstrap
+     vision → parallel CPO/CTO → parallel ux-architect/product-designer/tech-lead/devops-engineer → project bootstrap
      incl. `CLAUDE.md` + git). `/app-init` ends with its own scope-lock gate — **this command owns
      that gate (step 2), so `/app-init` skips it here** and the user is asked once, not twice.
    - **Existing app → brownfield:** run `/app-onboard` (reverse-engineer the as-built baseline +

@@ -17,7 +17,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 1a. **Activate the roster.** Invoke the `role-activation` skill: fix the **tier** (`--utility` /
    `--flagship`, else derived from the intake) and the **product type** (from the intake's
    `## Product type` answer), then write `docs/02-team-roster.md` — copy
-   `${CLAUDE_PLUGIN_ROOT}/docs/02-team-roster.md` and fill it in from the matrix; all 18 roles, each
+   `${CLAUDE_PLUGIN_ROOT}/docs/02-team-roster.md` and fill it in from the matrix; every role in the activation matrix, each
    `active` / `conditional` / `off` with its trigger or reason.
 
    **If the product type is unstaffed (`web-app`, `cli`), refuse and stop here** — print the skill's
@@ -36,9 +36,10 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    Skip either if the roster has it `off`: on `utility` both are, `cpo` merged into `ceo` above and
    `cto` into `tech-lead` below.
 
-4. **Spawn the `active` roles among `ux-designer`, `tech-lead`, and `devops-engineer` in parallel**
+4. **Spawn the `active` roles among `ux-architect`, `product-designer`, `tech-lead`, and `devops-engineer` in parallel**
    in a single message:
-   - `ux-designer` reads PRD, writes flows + tokens + components docs.
+   - `ux-architect` reads PRD, writes docs/12-flows.md — flows and the screen-and-state inventory.
+   - `product-designer` composes that inventory into docs/13-design-tokens.md and docs/14-components.md.
    - `tech-lead` reads architecture + PRD, writes per-platform impl specs — and on `utility` tier
      also writes `docs/20-architecture.md` + `docs/21-engineering-principles.md`, the technical pass
      `cto` would have run. Write only the impl specs for platforms the product type actually has:
@@ -94,7 +95,7 @@ CLAUDE.md                    (project conventions, seeded from the House KB)
 docs/
   00-vision.md
   01-intake.md
-  02-team-roster.md          (always — all 18 roles, active/conditional/off with reasons)
+  02-team-roster.md          (always — every role in the activation matrix, active/conditional/off with reasons)
   10-prd.md
   11-backlog.md
   12-flows.md

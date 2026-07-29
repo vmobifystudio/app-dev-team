@@ -351,7 +351,8 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 | | `code-reviewer` | The gate — runs **Axiom auditor agents** on iOS branches |
 | | `qa-engineer` | Test plans, bug filing, ship sign-off |
 | | `verification-engineer` | **Executes** what everyone else asserts — constants, guard rules, agent reports |
-| **Design & Growth** | `ux-designer` | Flows, design tokens, component inventory |
+| **Design & Growth** | `ux-architect` | Information architecture, navigation, flows, screen-and-state inventory |
+| | `product-designer` | Screen composition, hierarchy, interaction, tokens, components |
 | | `aso-specialist` | Store listing, keywords, screenshots, readiness gate |
 | | `data-analyst` | Analytics schema, instrumentation check, post-launch KPIs |
 | **Platform & Release** | `devops-engineer` | Git strategy, CI, signing, flavors, secrets hygiene |

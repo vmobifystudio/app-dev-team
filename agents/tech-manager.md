@@ -94,7 +94,8 @@ Feature: F-NNN (the PRD feature this implements)
 Title: <verb-led>
 Owner: a role the build loop can actually spawn to work a ticket —
        ios-developer | android-developer | backend-developer | monetization-engineer |
-       ux-designer | qa-engineer | data-analyst | devops-engineer | aso-specialist |
+       ux-architect | product-designer | product-manager | product-researcher | qa-engineer |
+       data-analyst | devops-engineer | aso-specialist | web-developer | test-automation-engineer |
        verification-engineer
        NEVER security-reviewer / code-reviewer / release-manager / tech-lead / tech-manager:
        those roles gate and coordinate, they do not work tickets. Assigning one strands the

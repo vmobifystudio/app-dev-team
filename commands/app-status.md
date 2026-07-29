@@ -95,6 +95,10 @@ allowed-tools: Read, Glob, Grep, Bash
 5a. If `docs/81-findings.md` exists, print the findings register summary: counts per status, and
    **name every row still `OPEN` or `IN-PROGRESS`**. A register with open rows means the audit is
    not closed, however quiet the board looks.
-6. Suggest the next action: `/app-build`, `/app-plan`, or "ship".
+6. Print the founder inbox from `docs/17-founder-inbox.md` if it exists — the `## Needs you now`
+   section verbatim, plus the count of open and overdue commitments. It is written by
+   `chief-of-staff` and is the one place a decision waiting on the founder is visible; a status
+   report that omits it reports the machine and not the blockage.
+7. Suggest the next action: `/app-build`, `/app-plan`, or "ship".
 
 Be terse. This is a status print, not a narration.

@@ -13,7 +13,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
 2. **Sprint goal** — one sentence at the top of `docs/30-sprint-plan.md`.
 
-3. **Capacity** — default 3 developer agents (iOS, Android, optional Backend), 1 code-reviewer, 1 qa-engineer, 1 ux-designer. Tune to project scope.
+3. **Capacity** — default 3 developer agents (iOS, Android, optional Backend), 1 code-reviewer, 1 qa-engineer, 1 ux-architect, 1 product-designer. Tune to project scope.
 
 4. **Assign for parallelism** — group tickets so each developer has independent work to start with. Stack dependent work behind it.
 
@@ -21,7 +21,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    Track A (ios-developer)  : APP-001 → APP-004 → APP-007
    Track B (android-dev)    : APP-002 → APP-005 → APP-008
    Track C (backend-dev)    : APP-003 → APP-006
-   Continuous: code-reviewer, qa-engineer, ux-designer (early)
+   Continuous: code-reviewer, qa-engineer, ux-architect + product-designer (early)
    ```
 
 5. **Board — create tickets through the CLI. Never hand-write the table.**
@@ -225,7 +225,8 @@ Parallel launch:
 - ios-developer ← APP-001, APP-004
 - android-developer ← APP-002, APP-005
 - backend-developer ← APP-003 (or skip if out of scope)
-- ux-designer ← finalize flows for sprint 1 features
+- ux-architect ← finalize flows and the screen-and-state inventory for sprint 1 features
+- product-designer ← compose the screens in that inventory
 - qa-engineer ← write test plan for sprint 1
 Reviewer queue: code-reviewer
 Daily report: docs/daily/<today>.md

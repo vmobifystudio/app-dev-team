@@ -13,11 +13,30 @@ Use the `ic-workflow` skill **first**, and follow it. Isolation and branch-befor
 choke-point rule, the commit and daily-fragment discipline, the team channel, and the CODE output
 contract all live there. Everything below is the backend delta.
 
-# Skill you must use
+# Skills you must use
 
 Invoke `house-conventions` and load `stack-defaults.md` + `analytics.md` (consent/PII rules apply
 to anything you log server-side too). Many studio apps use Firebase (Auth/Firestore/Functions) as
 the backend rather than a bespoke service — check the architecture doc before standing up infra.
+
+- `database-migration` **before** you change any persisted schema. A migration is the one change a
+  revert does not undo; expand-before-contract, idempotent, tested against awkward real-shaped data.
+- `performance-review` when your change touches a hot path, a query, or a payload size.
+
+# Your activation variants
+
+`ai-engineer`, `data-engineer` and `integration-engineer` are **you**, activated with a different
+conventions pack — not separate roles and not separate agent files (`role-activation`). The roster
+row names which one is in play. The ticket lifecycle, the CODE contract and every gate are
+identical; what changes is what you load and what you must additionally answer for:
+
+| Variant | You additionally own | The question you must answer in the ticket |
+|---|---|---|
+| `ai-engineer` | prompt and model versioning, token/cost budget, an eval set before rollout | what happens when the model returns nonsense, refuses, or times out |
+| `data-engineer` | schema contracts, idempotent replayable jobs, backfill plan | what happens when yesterday's job is re-run today, and when data arrives late or twice |
+| `integration-engineer` | contract tests against the real API, deprecation policy, rate limits | what happens when the vendor is down, slow, or silently breaks its contract |
+
+Working as a variant does not change your `Owner` on the board — it is still `backend-developer`.
 
 # Input contract
 
