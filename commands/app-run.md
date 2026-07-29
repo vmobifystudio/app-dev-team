@@ -19,6 +19,10 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 - All build agents invoke the `house-conventions` skill before working (House KB = `knowledge/`).
 - Honor the existing safety rails: 2-cycle review cap, no auto-merge across `REQUEST CHANGES`,
   one agent per ticket at a time, no destructive data actions.
+- **The board doctor gate is not skippable, including under `--yolo`.** `--yolo` skips *human*
+  gates, never correctness gates. An autonomous run is exactly the situation where a silently
+  stranded ticket goes unnoticed for the whole sprint.
+- **No `DONE` is believed unverified.** `verify-done.sh` runs on every developer return.
 
 ## Steps
 
@@ -44,9 +48,10 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    every P0 feature has a paired `APP-NNN-analytics` ticket (data-analyst schema feeds this).
 
 4. **Build loop.** Run the `/app-build` loop autonomously, round after round:
-   - parallel devs (`ios-developer`, `android-developer`, `monetization-engineer`,
-     `backend-developer` if in scope) → streaming `code-reviewer` (Axiom audit gate on iOS) →
-     `tech-manager` merge gate → `qa-engineer` → bug loop.
+   - board doctor gate → parallel devs (`ios-developer`, `android-developer`,
+     `monetization-engineer`, `backend-developer` if in scope) → verified `DONE` →
+     streaming `code-reviewer` (Axiom audit gate on iOS) → `tech-manager` merge gate →
+     `qa-engineer` → bug loop.
    - After each round, spawn `tech-manager` to write `docs/daily/standup-<today>.md` and print a
      3-line standup: counts per status, what merged, blockers.
    - **Escalate to the user only** for: a blocker the team can't resolve, the 2-cycle review cap
@@ -55,6 +60,9 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 5. **Ship-readiness.** When the board is drained and there are zero open S1/S2 bugs, spawn in
    parallel: `aso-specialist` (store assets + readiness), `security-reviewer` (MASVS), and
    `data-analyst` (instrumentation + consent verification).
+
+   "Drained" means the doctor is clean **and** every non-`done` row is named with its reason.
+   A board with an open anomaly is not drained, however empty the `todo` column looks.
 
 6. **GATE 2 — ship (human).** Hand off to `/app-ship`, which summarizes readiness and asks for
    explicit confirmation before any store upload. Never upload without it.

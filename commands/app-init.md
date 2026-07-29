@@ -23,6 +23,9 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    - `tech-lead` reads architecture + PRD, writes per-platform impl specs.
    - `devops-engineer` reads architecture, writes `docs/23-git-strategy.md`, a platform
      `.gitignore`, and the CI workflow — seeded from the House KB `git-workflow.md`.
+     The `.gitignore` **must include `.agent-wt/`** — that is where per-agent git worktrees live
+     (`agent-isolation`), and an un-ignored worktree dir shows up as untracked noise in every
+     agent's `git status`.
 
 5. **Bootstrap the project.** Generate, seeded from the House Knowledge Base (`knowledge/`) and the
    docs just produced:

@@ -23,6 +23,8 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 - monetization-engineer — StoreKit/Play Billing IAP, paywall gateway, AdMob + consent
 - code-reviewer — gate on every PR-equivalent; runs Axiom auditors on iOS branches
 - qa-engineer — test plans, bug filing, ship sign-off
+- verification-engineer — executes what everyone else asserts: sweeps constants against outside
+  reference data, grades every guard rule, and must watch a rule fail before trusting it
 
 **Design & Growth**
 - ux-designer — flows, design tokens, component inventory

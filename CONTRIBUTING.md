@@ -12,8 +12,39 @@ agents/                      One Markdown file per role (the system prompt for t
 commands/                    Slash commands (/app-init, /app-run, ...)
 skills/                      Reusable procedures agents invoke
 knowledge/                   Mobify Studio house knowledge base (mined house conventions)
+scripts/                     The few checks that must be deterministic (see below)
 docs/                        Design specs and plugin docs
 ```
+
+## When something may be a script instead of a prompt
+
+Almost everything here is Markdown, and it should stay that way. A script is justified only when
+**an agent checking its own work is the thing being fixed** — a correctness gate whose whole value
+is that it cannot be talked out of a verdict. Today that is exactly two:
+
+- `scripts/board-doctor.mjs` — validates the board before any agent is spawned (Node, no deps)
+- `scripts/verify-done.sh` — checks a `DONE` claim against git (POSIX `sh`, no deps)
+
+Rules for any script added here:
+
+1. **No dependencies, no build step, no install.** Plain Node or POSIX `sh`.
+2. **A documented manual fallback** in the owning skill, so a vanilla Claude Code install without
+   Node still performs the check by hand. The plugin must never hard-require a runtime.
+3. **A meaningful exit code**, so a command can gate on it.
+4. **A fixture-tested cascade.** Run it against a deliberately broken input and confirm every
+   branch fires before you ship it — and add the case to `scripts/test.sh`:
+
+   ```bash
+   sh scripts/test.sh        # 41 assertions over committed fixtures
+   sh scripts/test.sh -v     # list every passing assertion
+   ```
+
+   Fixtures live in `scripts/fixtures/`. Every assertion in the suite corresponds to a defect that
+   was really shipped and then found by running the thing; the comments name them, so a change that
+   breaks one can see what it is undoing.
+
+   **Prove your new assertion can fail.** Mutate the code it guards, watch it go red, revert. A test
+   that has never failed is indistinguishable from one that cannot.
 
 ## How to add or change a role
 

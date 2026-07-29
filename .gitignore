@@ -19,3 +19,6 @@ npm-debug.log*
 .env
 .env.*
 *.pem
+
+# Per-agent git worktrees (agent-isolation skill)
+.agent-wt/

@@ -32,6 +32,16 @@ Dimension (optional, default = all): $ARGUMENTS
    - **Security** — `security-reviewer` (MASVS).
    If a single dimension was named in $ARGUMENTS, run only that one.
 
+1a. **Verify the findings before you believe them.** Spawn `verification-engineer` over the
+   returned findings. An audit finding is a claim produced by the same agent that went looking for
+   it, and the two most expensive kinds of wrong finding are invisible to re-reading:
+   - a **mis-calibrated constant** reported as fine because it reads fine (execute it across its
+     range against outside reference data), and
+   - a **rule reported as present and working** that cannot actually fail (`contains()` over prose
+     finds its own comments — ten of nineteen real guard rules were bypassable this way).
+
+   Findings it cannot reproduce are marked `WRONG-FINDING(evidence)`, not silently dropped.
+
 2. **Consolidate into `docs/80-audit.md`.** Every finding gets:
    - a severity `S1`–`S4`,
    - the **exact House KB rule it violates** (e.g. "ios-conventions §Concurrency — uses `@Published`"),
@@ -39,9 +49,31 @@ Dimension (optional, default = all): $ARGUMENTS
    - a one-line recommended fix.
    Lead with a scorecard: per-dimension pass/gap counts and the top risks.
 
+2a. **Open the findings register — `docs/81-findings.md`.** The moment a finding is recorded it
+   gets a **stable ID** and a row:
+
+   ```
+   | ID | Source | Severity | One-line description | Status | Closing commit |
+   ```
+
+   `Status` is one of `OPEN` / `IN-PROGRESS` / `FIXED` / `DEFERRED(reason)` /
+   `WRONG-FINDING(evidence)`. **Never blank, and "not mentioned" is not a status.**
+
+   This exists because prose findings scattered across documents cannot be diffed. In a real
+   programme ~150 findings produced a plan that claimed to contain them all, and roughly **70 were
+   never scheduled, deferred, or even contradicted** — four review rounds missed it, because
+   reviewers check what was done, not what was left out.
+
 3. **Build the remediation backlog.** Spawn `tech-manager` to turn findings into `AUDIT-NNN` tickets
    on `docs/31-board.md`, prioritized by severity, each carrying its violated-rule + Safe/Risky tag.
    Risky tickets also get a short written plan and are marked `needs-approval`.
+
+   **Owner must be a role `/app-build` can spawn** — `ios-developer`, `android-developer`,
+   `backend-developer`, `monetization-engineer`, `data-analyst`, `devops-engineer`,
+   `aso-specialist`, `verification-engineer`. Never `security-reviewer`: it *finds* the gap, it
+   does not work the ticket. The board doctor rejects it as `owner_not_spawnable`.
+
+   A finding with no ticket stays `OPEN` in the register. A ticket with no finding is a scope leak.
 
 4. **GATE — present the gap summary to the user.** Print the scorecard and the backlog grouped by
    severity and Safe/Risky. Ask which to fix (e.g. "all S1/S2", "safe-only", a specific set). Wait.
@@ -52,8 +84,17 @@ Dimension (optional, default = all): $ARGUMENTS
    - **Risky** tickets execute only after the user approved them at the gate; the developer follows
      the ticket's plan, and migrations/data changes follow the House KB safe-migration rules.
 
-6. **Re-audit.** After the fix wave, offer to re-run `/app-audit` to confirm the gaps closed and
-   update `docs/80-audit.md` with the new scorecard.
+6. **Close the register, then re-audit.** Diff `docs/81-findings.md` against `docs/80-audit.md`
+   and assert **every finding appears exactly once with a terminal status**. Any row still `OPEN`
+   or `IN-PROGRESS` is named in the summary — a cluster is not done because the reviewer found
+   nothing new this round; it is done when the register is closed.
+
+   A finding whose fix was a *sweep* ("every", "all", "class of") does **not** close by fixing the
+   named instance. It closes when a test, lint rule, or CI check would fail if the pattern
+   reappeared — and `verification-engineer` has watched that check fail once.
+
+   Then offer to re-run `/app-audit` to confirm the gaps closed and update `docs/80-audit.md` with
+   the new scorecard.
 
 ## Safety
 

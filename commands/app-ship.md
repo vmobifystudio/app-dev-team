@@ -10,10 +10,59 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
 ## Steps
 
-1. **Sanity check the board.** Read `docs/31-board.md`. If anything is `todo`, `in_progress`, or `review`, stop and tell the user "Sprint isn't done — run `/app-build` first."
+1. **Sanity check the board.** Run the board doctor — a release is the worst possible moment to
+   discover a stranded ticket:
 
-2. **Spawn `security-reviewer`, `aso-specialist`, and `data-analyst` in parallel** in a single message:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md
+   ```
+
+   Exit `1` → stop. Then read `docs/31-board.md`: if anything is `todo`, `in_progress`, or `review`,
+   stop and tell the user "Sprint isn't done — run `/app-build` first."
+
+1a. **Run the ship gate.** These preconditions are a script, not prose to improvise:
+
+   ```bash
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/ship-gate.sh" .
+   ```
+
+   Exit `1` → **do not release.** Print its blockers verbatim and stop. Exit `0` → continue.
+
+   It was prose until improvising it went wrong three times in one session: a guard that could not
+   fail, a field-index mistake that read the wrong column, and a regex that reported zero open
+   S1/S2 bugs while two were open. `sprint-planner` requires every Definition-of-Done gate to name a
+   runnable command; the release gate is the most consequential one and did not have one.
+
+   The gate checks board coherence, that no ticket is still in `todo`/`in_progress`/`review`, that
+   no `S1`/`S2` bug is open, and that a test plan exists — and it *notes* (without blocking) open
+   S3/S4 bugs, any QA hold, and test-plan rows that were reasoned rather than executed.
+
+   What it deliberately does **not** do is decide for you. Read its notes:
+
+   - `docs/51-bugs.md` — **any open `S1` or `S2` stops the release.** This command's description and
+     Safety section have always claimed to gate on "QA sign-off and a clean bug board"; until this
+     was fixed, step 1 never actually opened the file. A cited gate that does not run is worse than
+     no gate, because it stops people looking.
+   - `docs/50-test-plan.md` — check the **exit criteria** QA wrote, and whether each row is marked
+     executed or only reasoned. A test plan whose rows all say "not performed" is not a QA pass.
+   - **`qa-engineer`'s ship recommendation is a first-class input, and it can differ from the
+     reviewers without either being wrong.** Observed live: three tickets were each individually
+     correct and approved by review, and QA still recommended holding — no composition root wired
+     the features together, so the sprint's core user journey had never been exercised by anything
+     that shipped. Per-ticket review is scoped to a diff and structurally cannot see that;
+     ticket-level correct is not the same as sprint-level shippable.
+
+   If QA recommends holding, stop and surface its reasoning verbatim, with the specific tickets that
+   would close it. Do not net a hold against a set of approvals.
+
+2. **Spawn `security-reviewer`, `verification-engineer`, `aso-specialist`, and `data-analyst` in
+   parallel** in a single message:
    - `security-reviewer` produces `docs/70-security-review.md`. Open `critical`/`high` → stop.
+   - `verification-engineer` produces `docs/71-verification.md` — it **executes** every constant
+     that makes a real-world claim against outside reference data, and proves every guard rule in
+     the release can actually fail. `VERIFICATION: FAIL` → stop. This is the gate that catches a
+     mis-calibrated threshold and a green rule that cannot fail, neither of which any amount of
+     reading will find.
    - `aso-specialist` runs the store-readiness gate (`docs/15-aso.md`, screenshots, compliance).
      Returns `ASO READY` or `ASO BLOCKED` with the missing items.
    - `data-analyst` confirms P0 features are instrumented and the consent gate works.
