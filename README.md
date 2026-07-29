@@ -123,6 +123,24 @@ flowchart LR
 ambiguous — it writes the blocker into the standup and surfaces it to you verbatim, instead of
 guessing and building the wrong thing.
 
+### Board integrity — the loop can't quietly drop work
+
+The board is the team's only memory across agent invocations, and every row is written by an agent
+editing a Markdown table. So two checks run mechanically rather than on trust:
+
+- **Board doctor** (`scripts/board-doctor.mjs`) runs before *any* agent is spawned, every round.
+  It catches the failure the loop is structurally blind to: a ticket whose dependency is `blocked`
+  is never "ready" and never in review, so the sprint would otherwise **exit and report success
+  without ever mentioning it**. It also catches missing/invalid owners, broken and circular
+  dependencies, self-review, tickets that reached `qa`/`done` without an approval on record, and a
+  breached review-cycle cap. Anomalies stop the loop; nothing spawns until the board is repaired.
+- **DONE verification** (`scripts/verify-done.sh`) checks a developer's `DONE: APP-NNN` against git
+  before the row moves to review — branch exists, commits are actually there, files changed, and
+  the test command exits zero. A self-reported "tests: all green" is never taken at face value.
+
+Both are plain Node + POSIX `sh` with no dependencies, and the `board-doctor` skill carries a manual
+checklist so a vanilla install without Node still performs the check by hand.
+
 ### Two ways in: new app or existing app
 
 ```mermaid
@@ -290,10 +308,10 @@ files — add, remove, or retune them.
 | `/app-onboard [path]` | **(Existing app)** Detect the stack, reverse-engineer the as-built architecture + feature inventory, generate `CLAUDE.md` — so the team understands the codebase. |
 | `/app-audit [dimension]` | **(Existing app)** Grade it against the House KB + Axiom auditors → severity-ranked gap report (`docs/80-audit.md`) → remediation backlog → gate → fix (safe auto, risky on approval). |
 | `/app-plan [focus]` | Tech-manager turns backlog + specs into a parallel-friendly board. |
-| `/app-build [tickets]` | Spawns devs/reviewers/QA in parallel; streams reviews; gates merges; loops the bug fixes. 2-cycle review cap. |
+| `/app-build [tickets]` | Board-doctor gate → spawns devs/reviewers/QA in parallel → verifies each `DONE` against git → streams reviews → gates merges → loops the bug fixes. 2-cycle review cap. |
 | `/app-review <branch>` | Code review on a single branch. |
 | `/app-ship [version]` | Parallel security + ASO + analytics readiness → release-manager. Confirms before any upload. |
-| `/app-status` | Vision, sprint goal, board summary, blockers, latest standup. |
+| `/app-status` | Vision, sprint goal, board doctor verdict, board summary, blockers, latest standup. |
 | `/app-learn <app paths>` | Mines a shipped app's conventions into the **living** House KB; flags conflicts for your decision. |
 | `/app-team` | Lists the roster. |
 

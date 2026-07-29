@@ -3,6 +3,56 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.0] — Board integrity
+
+Informed by a study of a production multi-agent orchestrator
+(`docs/research/2026-07-29-agent-teams-ai-orchestration-study.md`). The loop shape was already
+right; the **state model** was the weak part — every board row was an assertion by an agent, and
+nothing ever checked it.
+
+### Fixed
+- **The sprint loop could report success while silently stranding tickets.** `/app-build` treated a
+  ticket as ready when `Status = todo` and every dependency was `done`, and exited when there were
+  no ready `todo` rows and nothing in `review`/`qa`. A ticket behind a `blocked` dependency
+  satisfied neither condition, so the loop terminated and printed a successful sprint summary
+  without ever mentioning it. Now caught as `stranded`, and the sprint summary must account for
+  every non-`done` row by name.
+- **There was nowhere to record who reviewed.** The ticket shape had `Owner` but no `Reviewer`, so
+  self-review was undetectable, and a `done` ticket was indistinguishable from one that skipped the
+  gate. Added a `Reviewer` column and an append-only review ledger.
+- **The review-cycle cap lived in a free-text `Notes` cell** as `cycles=N`, so a safety counter
+  depended on an LLM correctly editing a substring inside prose. Promoted to its own `Cycles`
+  integer column, cross-checked against the ledger.
+- **`DONE: APP-NNN` was an unverified self-report** — nothing checked that the branch existed, that
+  commits landed, or that the tests named in "tests: all green" were ever run.
+
+### Added
+- `scripts/board-doctor.mjs` — validates `docs/31-board.md` before any agent is spawned. 14 blocking
+  anomaly codes (`stranded`, `owner_missing`, `owner_invalid`, `dependency_missing`,
+  `dependency_cycle`, `self_review`, `done_without_review`, `cycle_cap_breached`, …) plus warnings.
+  Exit `1` means spawn nobody. Node, zero dependencies.
+- `scripts/verify-done.sh` — proves a `DONE` claim against git: branch exists, commits present,
+  files changed, test command exits zero. POSIX `sh`, zero dependencies.
+- `board-doctor` skill — wires both, and carries a manual checklist so a vanilla install without
+  Node still performs the check by hand.
+- **Spawn budget:** max 6 developer retries per ticket across a sprint (review cycles plus
+  rejected-DONE retries), then blocked and surfaced.
+
+### Changed
+- Board columns: `ID | Feature | Title | Owner | **Reviewer** | Status | **Cycles** | Depends on |
+  Estimate | Spec | Acceptance | Notes`. `Notes` is free text only — never status or counters.
+- `docs/31-board.md` gains a `## Review ledger` section (append-only: `requested` · `started` ·
+  `approved` · `changes` · `merged`).
+- Doctor gate added to `/app-build` (step 0, **every round**), `/app-plan` (validate before
+  handoff), `/app-status` (verdict at the top), and `parallel-orchestrator`. Not skippable under
+  `--yolo` — that flag skips human gates, never correctness gates.
+- `code-reviewer` refuses a ticket it owns, and writes its verdict to the ledger.
+- `tech-manager` never merges a ticket lacking an `approved` ledger line from a non-owner, and
+  re-runs the doctor after setting anything `blocked` (which is what strands its dependents).
+- **Legacy boards degrade gracefully:** a board predating the Reviewer/Cycles columns and the ledger
+  still gets full structural checking; review-integrity findings become warnings, with a migration
+  hint. The doctor never blocks a project purely for predating this release.
+
 ## [1.1.0] — Brownfield support
 
 ### Added

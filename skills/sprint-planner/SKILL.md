@@ -27,22 +27,58 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 5. **Board** — `docs/31-board.md`. Columns must match the ticket shape in `agents/tech-manager.md`:
 
    ```
-   APP-NNN | F-NNN | Title | Owner | Status | Depends on | Estimate | Spec | Acceptance | Notes
+   ID | Feature | Title | Owner | Reviewer | Status | Cycles | Depends on | Estimate | Spec | Acceptance | Notes
    ```
 
    - `F-NNN` is the PRD feature ID this implements (so reviewers and QA can trace acceptance back to the PRD).
+   - `Reviewer` is the role that gates this ticket. Starts `—`; set when the row enters `review`.
+     **It must never equal `Owner`** — a role does not gate its own work.
+   - `Cycles` is the review-cycle counter as its own integer column, starting `0`. It is a safety
+     counter enforcing the 2-cycle cap, so it does not live inside prose where an edit can lose it.
    - `Spec` is a short anchor like `prd#F-001 + arch§3` so devs don't need to grep.
    - `Acceptance` is the Given/When/Then copied from the PRD (or a one-line summary plus pointer if long).
-   - `Notes` carries the review-cycle counter (`cycles=0`, `cycles=1`, `cycles=2 → blocked`) and any `BUG-NNN-fix` linkage.
+   - `Notes` carries free text only — `BUG-NNN-fix` linkage, caveats. Never status or counters.
 
    Status starts `todo`. Update through `in_progress → review → qa → done` (or `blocked`).
 
-6. **Definition of done** — list it at the top of the board so everyone uses the same one:
+6. **Review ledger** — append a section at the bottom of `docs/31-board.md`:
+
+   ```markdown
+   ## Review ledger (append-only — never edit or delete a line)
+
+   | Timestamp | Ticket | Action | Actor |
+   |---|---|---|---|
+   | 2026-07-29T09:00Z | APP-001 | requested | android-developer -> code-reviewer |
+   | 2026-07-29T09:20Z | APP-001 | started | code-reviewer |
+   | 2026-07-29T09:30Z | APP-001 | changes | code-reviewer |
+   | 2026-07-29T10:10Z | APP-001 | approved | code-reviewer |
+   | 2026-07-29T10:15Z | APP-001 | merged | tech-manager |
+   ```
+
+   Actions: `requested` · `started` · `approved` · `changes` · `merged`.
+
+   The table cells are the summary; **the ledger is the record.** It is what makes "this was
+   reviewed" checkable rather than asserted — the `Cycles` column is recomputable from it, an
+   approval by the owner is detectable in it, and a `qa`/`done` row with no `approved` line is a
+   ticket that skipped the gate. `board-doctor` checks all three.
+
+   Lines are appended, never rewritten. A wrong line is corrected by appending a later one.
+
+7. **Definition of done** — list it at the top of the board so everyone uses the same one:
    - Code merged
-   - Tests green
-   - Code-reviewer approved
+   - Tests green — **verified by `verify-done.sh`, not by the developer's own report**
+   - Code-reviewer approved, by a role that is not the owner, with an `approved` ledger line
    - QA exercised the acceptance criteria
    - Daily report mentions the close
+
+8. **Validate before handing off.** Run the board doctor on the board you just wrote:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md
+   ```
+
+   A plan that doesn't pass its own doctor is not a plan. Fix it before the handoff — a dependency
+   typo here becomes a silently stranded ticket three rounds into the sprint.
 
 ## Parallelism rules
 
