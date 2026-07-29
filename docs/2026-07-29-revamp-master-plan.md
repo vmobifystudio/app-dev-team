@@ -324,6 +324,103 @@ slot in anywhere after 0.
 
 ---
 
+## 4.5 Action items — the executable backlog
+
+One PR per phase. Each item is scoped to be verifiable on its own; the **Proof** column is what
+must be *executed* before the item is called done, because in this repo a fix certified by reading
+is not a fix.
+
+### Phase 0 — Soundness ✅ SHIPPED (v1.5.0, `dc21f65`)
+
+RV-001…025 closed, `runtime-gate` and `spec-critic` added, contracts unified, 48 → 82 assertions.
+Deferred out of Phase 0 deliberately: mid-sprint Q&A (→ P3), self-metrics (→ P2), CI (→ P6).
+
+### Phase 1 — Lean and prune
+
+| # | Item | Proof |
+|---|---|---|
+| 1.1 | Merge the `ios-developer` / `android-developer` shared body (~85% identical) into a `mobile-developer-core` skill; keep two thin platform files | corpus line count; both files still name their own conventions pack |
+| 1.2 | Collapse the remaining 4-copy board-doctor exit-code prose and the `verify-done` invocation copies to one pointer each | `grep -c` per duplicated block returns 1 |
+| 1.3 | **Role activation by tier.** The Flagship/Utility tier in the House KB gates nothing today — a 3-screen utility app still pays for CEO, CPO, CTO, ASO and security at init. Gate the roster by scope in `/app-init` and `/app-run` | run `/app-init --utility` dry and assert the exec fan-out is reduced and named |
+| 1.4 | Merge `ceo`+`cpo` into one founder pass **for utility tier only**; flagship keeps both | team-doctor clean; both paths documented |
+| 1.5 | Finish the `code-reviewer` / `verification-engineer` boundary — Phase 0 stated it; verify no duplicated section survives | diff the two files for shared paragraphs |
+| 1.6 | Fix knowledge-pack self-contradictions (RV-032): XCTest vs Swift Testing in `architecture-builder`, 95% vs 90% coverage, the iOS min-target row that contradicts its own note, `aso.md`'s mining artifacts ("Emma", "no app checked in a keyword file") | each contradiction grepped and shown resolved |
+| 1.7 | Trim `defect-hunting` §3's shell-authoring subsection out of the review path (dead context on every review) into its own reference | reviewer-loaded line count drops |
+
+### Phase 2 — Event-sourced board + self-metrics
+
+| # | Item | Proof |
+|---|---|---|
+| 2.1 | `docs/31-board-events.jsonl`, append-only: `{ts, ticket, event, by, detail}` | schema documented in `sprint-planner` |
+| 2.2 | `scripts/board.mjs` CLI: `add \| move \| assign \| show` — validates the transition, appends the event, regenerates `31-board.md` as a **view**, runs the doctor | illegal transition rejected at write time (probe it) |
+| 2.3 | Agents and orchestrator stop hand-editing the board table; `board-doctor` stays as the backstop for hand edits and legacy boards | legacy board still degrades to warnings, not errors |
+| 2.4 | **Self-metrics** (moved from P5): cycle time per ticket, review pass rate, rework rate, gate-fire counts — derived from the event log | `/app-status` prints a trend block on a seeded event log |
+| 2.5 | Migration path for an existing hand-written board → events | run against `scripts/fixtures/*.md` |
+
+### Phase 3 — Communication, finished
+
+| # | Item | Proof |
+|---|---|---|
+| 3.1 | **Mid-sprint Q&A — the open half of the loop.** Each round, batch open `question` rows and spawn `tech-lead` once to answer them into the ledger before the next dev wave | seed 3 open questions, run a round, assert `answer` rows appear and the questions close |
+| 3.2 | `scripts/messages-render.mjs` — per-ticket threads, open-questions list, per-role send counts vs guard budget. Wire into `/app-status` and the standup | render the fixture ledger; assert thread grouping |
+| 3.3 | Unify the anti-ping-pong guard: move counting into `lib/board.mjs`, called by both `team-message.sh` and `board-doctor` | one window definition; both agree on a seeded breach |
+| 3.4 | Give execs (`ceo`/`cpo`/`cto`) the `answer`/`decision` vocabulary so a routed escalation can actually close a question | seeded escalation closes; `question_unanswered` clears |
+| 3.5 | `board-render` "recent activity" panel to include message activity (its header has always claimed this) | rendered output contains both ledgers |
+
+### Phase 4 — The dashboard (control room)
+
+| # | Item | Proof |
+|---|---|---|
+| 4.1 | `scripts/studio-dashboard.mjs` — Node stdlib only (`http`, `fs`, `fs.watch`), single embedded HTML page, `localhost:4173` | starts with zero deps on a clean machine |
+| 4.2 | `GET /state` assembled via `lib/board.mjs`; `GET /events` SSE with 2s debounced `fs.watch` | edit a doc, assert the page refetches |
+| 4.3 | Panels: kanban w/ NEEDS ATTENTION, threaded team feed, **activity timeline replaying the event log**, sprint burn-down, dependency graph (SVG) | each panel renders against a seeded project |
+| 4.4 | **Control-room actions** — answer a question, approve a gate, re-prioritize — invoked strictly through the same validated CLI agents use. Never a direct state write | attempt a direct write and assert it is impossible by construction |
+| 4.5 | `/app-dashboard` command; `--export docs/32-board-view.html` static mode; `/app-run` prints the URL | both modes exercised |
+
+### Phase 5 — Smarter orchestration
+
+| # | Item | Proof |
+|---|---|---|
+| 5.1 | **Cost ceiling / economics.** No budget awareness exists today; an unattended `/app-run` has no economic brake. Track spend per round, enforce a ceiling, surface it in the standup | seeded ceiling stops a run and reports why |
+| 5.2 | **Model escalation on retry** — first attempt sonnet, re-spawn after `REQUEST CHANGES` goes opus. A ticket that failed review is by definition harder than it looked | assert the second spawn's tier differs |
+| 5.3 | Round journal (JSONL, one line per round) feeding burn-down and `/app-status` trend | a 3-round seeded sprint produces 3 lines |
+| 5.4 | Warm managers where the harness supports named agents + SendMessage; respawn model stays the portable baseline, all durable state stays in files | both modes interchangeable mid-sprint |
+| 5.5 | Auditor soft-routing made real (RV-019): one canonical list, detect-else-degrade, never a silent skip | run with the Axiom plugin absent; assert a stated degrade |
+
+### Phase 6 — The studio tests itself
+
+| # | Item | Proof |
+|---|---|---|
+| 6.1 | CI (one GitHub Actions workflow): `test.sh` + `team-doctor` + plugin validation on push/PR | a deliberately broken push goes red |
+| 6.2 | Doc-graph check in `team-doctor`: every `docs/NN-*.md` written by some step must be read by some step | would have caught RV-035; prove on a seeded orphan |
+| 6.3 | Path-spelling check: fragments/standups must match one canonical pattern | would have caught RV-031; prove on a seeded variant |
+| 6.4 | Remaining ship-gate/board-render assertion gaps from RV-039 | suite count rises; each new assertion proven to fail first |
+
+### Phase 7 — Portfolio (multi-project)
+
+| # | Item | Proof |
+|---|---|---|
+| 7.1 | A registry of app projects with lifecycle state | lists N seeded projects |
+| 7.2 | Dashboard multi-project view answering "where should the next hour go?" | ranks seeded projects by attention needed |
+| 7.3 | Cross-project learning: failure corpus accumulated from every app, not just conventions from shipped ones | a defect class seen in 2 projects is surfaced |
+
+### Phase R — The one that matters most: **run it**
+
+Not a code phase. Nine of ten commands have never executed once; `/app-build` is the sole exception
+and even that was human-driven over three tickets with QA and the bug loop never reached. Every
+previous time this system was actually run, running it found defects reading had not.
+
+| # | Item | Proof |
+|---|---|---|
+| R.1 | One small real greenfield app, end to end through `/app-run` | a built, launching app + every command exercised at least once |
+| R.2 | Write it up as `docs/research/<date>-dry-run-4-*.md` in the house format: hypotheses in advance, so it can fail | ≥2 hypotheses falsified (the previous runs each falsified 2) |
+| R.3 | Feed findings back as the next register | a new RV-NNN table |
+
+**Sequencing note.** Phase R should run **after Phase 1 and Phase 2** — Phase 2 gives the event log
+that makes a dry run legible, and Phase 1 keeps the context cost sane — but **before Phase 4**,
+because building a dashboard for a pipeline nobody has run end to end is designing a cockpit for an
+aircraft that has not flown.
+
 ## 5. Principles that must survive the revamp
 
 1. **Markdown/JSONL on disk is the only durable state.** Dashboards, warm agents, and CLIs are
