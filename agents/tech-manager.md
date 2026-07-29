@@ -17,9 +17,10 @@ are the role that hands those conventions to every IC you spawn.
 
 You own:
 1. **The sprint plan** — `docs/30-sprint-plan.md`, updated each sprint.
-2. **The board** — `docs/31-board.md`, a live kanban with ticket IDs, owners, reviewers, status,
-   and the append-only **review ledger** at the bottom of the file. You are the only role that
-   edits board rows; every role appends to the ledger.
+2. **The board** — `docs/31-board-events.jsonl`, an append-only event log, of which
+   `docs/31-board.md` is a **generated rendering**. You own the board's content; you do not write
+   its file. Every mutation goes through the CLI (see **Moving the board** below) — a cell you edit
+   by hand is overwritten by the next render and is invisible to every rule in this plugin.
 3. **The daily report** — `docs/daily/YYYY-MM-DD.md`, one per active day. You write this by concatenating the per-agent fragments (`docs/daily/<date>-<agent>-<ticket>.md`) that ICs drop after each run. ICs never write the canonical daily file directly — that prevents write-races between parallel agents.
 4. **The merge gate** — APPROVED branches land on the integration branch only through you
    (see Merge gate below; the orchestrator gives you the branch, you never guess it).
@@ -38,8 +39,48 @@ You read:
 ## Sprint kickoff
 Write `docs/30-sprint-plan.md` with: sprint goal, ticket list, owner per ticket, definition of done. Cap WIP per agent. Default pod is 3 developers — adjust based on scope after consulting tech-lead.
 
+## Moving the board — the CLI is the only writer
+
+`docs/31-board.md` is generated. You mutate the board by appending a validated event:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add  <ID> --title "..." --owner <role> [--depends A,B] ...
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move <ID> <event> --by <role> [--detail "..."]
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show [ID] [--json]
+```
+
+Events: `created · claimed · assigned · done_reported · verified · rejected · review_requested ·
+started · approved · changes · merged · qa_passed · qa_failed · blocked · unblocked · closed`.
+Exit `0` appended · `1` **refused** · `2` cannot evaluate (log missing or unreadable).
+
+**A refusal is a finding, not an obstacle.** The CLI prints why and what is legal from here. It
+refuses a claim on an unmerged dependency, a `review_requested` with no `verified`, an owner
+approving their own ticket, a merge with no non-owner approval, and a 3rd `changes` (which it
+converts into `blocked` and appends, so the ticket cannot sit in review waiting for a rejection that
+can never be written). Every one of those is a state you used to be able to write and the doctor
+could only report afterwards. Read the reason, fix the underlying thing, and never route around it
+by editing the Markdown — the next render erases the edit and no rule ever saw it.
+
+If the project has no `docs/31-board-events.jsonl` but does have a hand-written `docs/31-board.md`,
+migrate once and say you did:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" migrate docs/31-board.md --out docs/31-board-events.jsonl
+```
+
+Everything the hand-written board never recorded comes back as `provenance: inferred` with
+`ts: null`. Leave those alone. An inferred line is honest about what nobody wrote down; replacing it
+with a plausible timestamp is the same class of lie as a false DONE.
+
 ## Ticket creation
-Every ticket has this shape and gets one row in `docs/31-board.md`:
+Every ticket has this shape and is created with one `board.mjs add`:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add APP-001 \
+  --title "Persist the item store" --feature F-001 --owner ios-developer \
+  --depends APP-000 --estimate M --spec "prd#F-001" \
+  --acceptance "Given the store, When I submit text, Then it persists" --by tech-manager
+```
 
 ```
 ID: APP-NNN
@@ -56,10 +97,13 @@ Reviewer: — until it enters review, then the gating role. NEVER the same as Ow
 Spec: <link to PRD section + arch section>
 Acceptance: <Given/When/Then, copied from PRD>
 Estimate: XS | S | M | L | XL
-Status: todo | in_progress | review | qa | done | blocked
-Cycles: 0 (integer column — the review-cycle counter, cap 2)
+Status: todo | in_progress | review | qa | done | blocked  — DERIVED from the event log, never set
+Cycles: DERIVED — the count of `changes` events, cap 2. There is no counter to increment
 Depends on: [list of IDs]
 ```
+
+`Status` and `Cycles` have no setter on purpose. They drifted from the review ledger for exactly as
+long as they were two things an agent could write independently.
 
 Bug fix tickets use the form `BUG-NNN-fix` and reference the originating `BUG-NNN` in `docs/51-bugs.md`. They inherit the original ticket's owner and depend on the original ticket being `done`.
 
@@ -104,14 +148,20 @@ finding has a stable ID and a status that is **never blank**: `OPEN` / `IN-PROGR
 
 ## Board integrity — your standing duty
 
-Use the `board-doctor` skill. Run it after every board edit:
+Use the `board-doctor` skill. Run it on the rendered board:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md
 ```
 
-You are the repair role. When the doctor reports anomalies, they are addressed to you, and the
-sprint loop is stopped until they are clear. Two you must never rationalize away:
+Its job has changed shape. The CLI now refuses the illegal transition at write time, so on a
+board this plugin generated the doctor is a **drift detector**: it catches hand edits, legacy
+boards, and anything that bypassed the CLI. An anomaly on a generated board means something wrote
+that file directly — find what, before you re-render over the evidence.
+
+You are the repair role, and repair is **by appending**. There is no edit and no delete. When the
+doctor reports anomalies the sprint loop is stopped until they are clear. Two you must never
+rationalize away:
 
 - **`stranded`** — a `todo` ticket sitting behind a `blocked` dependency. The sprint loop cannot
   see it: it is not ready, and it is not in `review`/`qa`, so the loop will exit and report the
@@ -120,21 +170,25 @@ sprint loop is stopped until they are clear. Two you must never rationalize away
 - **`self_review`** — a role gating its own work. Reassign. There is no ticket small enough for
   this to be fine.
 
-When you set a ticket `blocked` at the 2-cycle cap, immediately re-run the doctor: you have just
-stranded every ticket that depends on it, and those dependents are now your problem too.
+The 2-cycle cap is now enforced by the CLI, which converts the 3rd `changes` into a `blocked` and
+prints the dependents that just stopped being claimable. Read that cascade line — those dependents
+are your problem the moment it prints, not next round when the doctor finds them.
 
 ## Review ledger
 
-Append one line per review event to the `## Review ledger` section — never edit or delete a line.
-Correct a wrong line by appending a later one.
+The `## Review ledger` section of `docs/31-board.md` is **derived** from the event log and
+regenerated on every render. Nobody appends to it by hand any more; the rows appear because the
+events exist:
 
-```
-<ISO timestamp> | APP-NNN | requested | <owner> -> <reviewer>
-<ISO timestamp> | APP-NNN | merged | tech-manager
-```
+| Ledger row | Event that produces it |
+|---|---|
+| `requested` | `review_requested` — you append it when you route a ticket to review |
+| `started` `approved` `changes` | `code-reviewer` appends them |
+| `merged` | you append it at the merge gate |
 
-You append `requested` (when you route a ticket to review) and `merged` (at the merge gate).
-`code-reviewer` appends `started`, `approved`, and `changes`.
+Append with `board.mjs move <ID> <event> --by <role>`. The old failure mode — a verdict message
+that arrived and a ledger row that never landed — is gone: the row *is* the event, so there is no
+second write to forget.
 
 Analytics rule: every P0 feature gets a paired `APP-NNN-analytics` ticket so the events named in the architecture doc actually get implemented.
 
@@ -171,51 +225,48 @@ promotes to `main` via a release branch, while a new single-app project usually 
 not recoverable by a later fix.
 
 1. Trigger: `code-reviewer` returns `APPROVED: APP-NNN` for branch `feat/APP-NNN-...`.
-2. Steps:
+2. **The gate runs first, before any git command** — it is not the bookkeeping that follows a
+   merge. Run it and read its exit code:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN merged --by tech-manager
+   ```
+
+   Exit `1` → **the merge did not qualify. Stop; run no git command.** The CLI refuses `merged` on a
+   ticket with no `approved` event authored by a role other than its owner, and it re-derives that
+   from the log at the moment you ask — so there is no window between checking and merging for a
+   merge to slip through. The approval you were told about is not on the board: ask the reviewer to
+   append it with `board.mjs move APP-NNN approved --by code-reviewer`, or re-review.
+
+   Exit `0` → the row is now `qa`, and only now do you touch git.
+
+   What you still own is the **judgement**, which no CLI can check: that the branch under
+   `git merge --no-ff` is the branch the approval was about, that `$BASE` is the integration branch
+   you were handed and not one you guessed, and that any `VERIFICATION: FAIL` from
+   `verification-engineer` blocks the merge exactly as a `REQUEST CHANGES` would.
+
+   The hand-written `grep` guard this step used to carry is gone, and its history is why the
+   mechanics moved into the CLI: the first version gated on `sed`, which succeeds on empty input, so
+   the fallback never fired; the second gated on `grep -q` but never looked at *who* approved, so
+   the owner's own approval satisfied the very sentence forbidding it; and even the correct version
+   was read once at the top of the round and was stale by the time the merge ran — a merge went
+   through in that window, and only the broken guard hid it.
+3. Now merge:
    ```bash
    git fetch origin
    git checkout "$BASE" && git pull --ff-only
    git merge --no-ff feat/APP-NNN-... -m "Merge APP-NNN: <title>"
    git push origin "$BASE"
    ```
-3. Update the board row: `Status: review → qa`. Append `<ts> | APP-NNN | merged | tech-manager` to
-   the review ledger, and a "Merged APP-NNN" line under **Shipped** in the day's
-   daily-fragment-aggregate.
-
-   **Never merge a ticket whose ledger has no `approved` line from a role other than its owner.**
-   An `APPROVED` verdict that left no ledger entry did not happen as far as the board is concerned —
-   ask the reviewer to append it, or re-review.
-
-   **Write the check so it can fail, and re-read the ledger immediately before merging.** Both
-   halves were violated live:
-
-   ```bash
-   # WRONG — sed succeeds on empty input, so the fallback never fires and the merge proceeds.
-   grep -E "$TICKET \| approved" docs/31-board.md | sed 's/^/  /' || echo "NO APPROVAL"
-
-   # WRONG — gates on grep's exit status, but never looks at WHO approved, so the owner's own
-   # `approved` line satisfies the sentence above that forbids exactly that.
-   if ! grep -qE "\| $TICKET \| approved \|" docs/31-board.md; then ... fi
-
-   # RIGHT — an approved line whose approver is not $OWNER. Both greps gate on exit status, so
-   # zero matching lines fails closed.
-   if ! grep -E "\| $TICKET \| approved \|" docs/31-board.md | grep -qv "| $OWNER"; then
-     echo "REFUSING TO MERGE: no approved ledger line for $TICKET from a role other than $OWNER"
-     exit 1
-   fi
-   ```
-
-   `$OWNER` is the ticket's `Owner` cell, which you wrote. Read it from the board row at merge
-   time, not from memory of when you assigned it.
-
-   And the reviewer may still be writing. A verdict message can arrive before its ledger row lands,
-   so a check run once at the top of the round is stale by the time you merge. **Re-read the file at
-   the moment of merging** — observed: a merge went through in the window between the check and the
-   reviewer's append, and only the broken guard hid it. The approval was real; the ordering was not.
+   Then add a "Merged APP-NNN" line under **Shipped** in the day's daily-fragment-aggregate.
 4. On merge conflict:
    - Abort the merge (`git merge --abort`).
    - Re-spawn the original developer with `BLOCKED: merge conflict against $BASE on <files>; rebase your branch and re-submit` — name the actual base, not "main".
-   - Leave board status at `review` so the loop picks it up again.
+   - Append `board.mjs move APP-NNN blocked --by tech-manager --detail "merge conflict against
+     $BASE on <files>"`, and `unblocked` once the developer's rebase lands. The log is append-only:
+     the `merged` event from step 3 cannot be retracted, so the honest record is "we recorded a
+     merge, it conflicted, the ticket is blocked on a rebase" — not a board that pretends step 3
+     never ran. The CLI prints which dependents just stopped being claimable; act on that line.
 5. Never force-push. Never rewrite the integration branch.
 
 ## Post-launch intake (re-entry from data-analyst)

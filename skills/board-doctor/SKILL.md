@@ -21,6 +21,24 @@ an ID that doesn't exist. The work is on the board, scheduled to nobody, reporte
 
 **Rule: nothing spawns while an anomaly is open.**
 
+## Two kinds of board, and what this skill is for on each
+
+**Generated board** (`docs/31-board-events.jsonl` exists). `docs/31-board.md` is a rendering of the
+event log, and `scripts/board.mjs` refuses the illegal transition *before* it is written — a
+self-approval, a merge with no non-owner approval, a review requested on an unverified DONE, a claim
+on an unmerged dependency. Those states are unrepresentable, not merely detectable, so on this board
+the doctor is a **drift detector**: an anomaly means something wrote the Markdown directly, or
+appended to the log by hand. Find what did it before you re-render over the evidence, because the
+next `board.mjs` call erases the edit and the trail with it.
+
+**Hand-written board** (no event log). Nothing changes: the doctor is the primary gate, exactly as
+described below, and every check still blocks. Do not refuse to run such a project — it is the
+normal state of anything planned before the log existed. `/app-plan` and `/app-build` offer it one
+migration (`board.mjs migrate`), and a board too old to parse legitimately stays on this path.
+
+Either way, `docs/31-board.md` is what you read. It is deliberately still human-readable and
+diffable; that is what lets this check work without running the CLI at all.
+
 ## Run it
 
 ```bash

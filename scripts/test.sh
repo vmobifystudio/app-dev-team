@@ -785,6 +785,350 @@ grep -q 'integration-branch.sh") \\' "$HERE/../commands/app-build.md" \
   && ok "a declared branch that exists is used" || bad "a declared branch that exists is used"
 
 echo
+# --------------------------------------------------------------------------------------------
+echo "board (event log)"
+# --------------------------------------------------------------------------------------------
+# The board used to BE the state: an LLM edited a Markdown cell, and every rule about what was
+# legal ran afterwards in board-doctor. Ten of nineteen guard rules turned out to be bypassable
+# that way. Each assertion below is one of those states made UNREPRESENTABLE — refused before the
+# append — plus its legal counterpart, because a validator that refuses everything is not a
+# validator. Both halves, always: a refusal proves nothing on its own.
+#
+# NOTE ON QUOTING: this plugin's own install path contains spaces ("Mobify Studio Apps"). Every
+# path variable below is quoted. An unquoted "$HERE/board.mjs" fragments into two arguments and
+# every assertion in this section fails identically, which reads exactly like a real finding.
+BD="$HERE/board.mjs"
+
+# newboard <name> [seed.jsonl] -> prints a scratch project directory
+newboard() {
+  d="$TMP/$1"; rm -rf "$d"; mkdir -p "$d/docs"
+  [ -n "${2:-}" ] && cp "$2" "$d/docs/31-board-events.jsonl"
+  printf '%s' "$d"
+}
+# bm <dir> <board.mjs args...> — run the CLI inside a scratch project
+bm() { d=$1; shift; ( cd "$d" && node "$BD" "$@" ); }
+# drive <dir> <id> <owner> — take a ticket all the way to merged through every legal step
+drive() {
+  bm "$1" move "$2" claimed          --by "$3" >/dev/null 2>&1
+  bm "$1" move "$2" done_reported    --by "$3" >/dev/null 2>&1
+  bm "$1" move "$2" verified         --by tech-manager >/dev/null 2>&1
+  bm "$1" move "$2" review_requested --by "$3" --detail "-> code-reviewer" >/dev/null 2>&1
+  bm "$1" move "$2" approved         --by code-reviewer >/dev/null 2>&1
+  bm "$1" move "$2" merged           --by tech-manager >/dev/null 2>&1
+}
+
+# --- an event on a ticket nobody created. `malformed_row`'s replacement: the work cannot be
+# recorded against an ID that does not exist, so it cannot be scheduled to nobody either.
+U=$(newboard bd-unknown "$FIX/events/clean.jsonl")
+assert_exit 1 "an event on a ticket that was never created is refused" \
+  bm "$U" move APP-404 claimed --by ios-developer
+# Both halves, because exit 1 alone cannot tell a refusal from a crash: removing the unknown-ticket
+# guard makes the reducer dereference an undefined ticket, and node also exits 1. Proven — the
+# exit-code assertion stayed green under that mutation and only these two caught it.
+assert_has "$TMP/err" "board: refused" "...as a refusal, not as a crash that happens to exit 1"
+assert_has "$TMP/err" "not on the board" "...and names the ticket it could not find"
+bm "$U" add APP-404 --title "Real now" --owner ios-developer >/dev/null 2>&1
+assert_exit 0 "...and the identical event is accepted once the ticket exists" \
+  bm "$U" move APP-404 claimed --by ios-developer
+
+# --- `stranded`, the silent one. A todo behind an unmerged dependency was previously claimable,
+# and the loop reported a successful sprint without ever mentioning what it left behind.
+D=$(newboard bd-deps)
+bm "$D" add DEP-001 --title "Foundation" --owner ios-developer >/dev/null 2>&1
+bm "$D" add DEP-002 --title "Feature" --owner android-developer --depends DEP-001 >/dev/null 2>&1
+assert_exit 1 "a claim on a ticket whose dependency has not merged is refused" \
+  bm "$D" move DEP-002 claimed --by android-developer
+assert_has "$TMP/err" "has not merged" "...and names the dependency that is holding it"
+drive "$D" DEP-001 ios-developer
+assert_exit 0 "...and is allowed the moment that dependency merges (qa, not done)" \
+  bm "$D" move DEP-002 claimed --by android-developer
+
+# --- a DONE nobody checked is not reviewable. verify-done.sh existed and its result was recorded
+# nowhere the board could gate on, so an unverified claim reached a reviewer by an agent's say-so.
+V=$(newboard bd-verify)
+bm "$V" add V-001 --title "Unchecked" --owner ios-developer >/dev/null 2>&1
+bm "$V" move V-001 claimed       --by ios-developer >/dev/null 2>&1
+bm "$V" move V-001 done_reported --by ios-developer >/dev/null 2>&1
+assert_exit 1 "review_requested on a DONE with no verify-done result is refused" \
+  bm "$V" move V-001 review_requested --by ios-developer
+assert_has "$TMP/err" "verified, rejected" "...and offers only the two verdicts that can come next"
+# NOTE: the refusal arrives from the status table ("review_requested is not legal on ... it is
+# in_progress"), not from validate()'s bespoke "a DONE nobody checked is not reviewable" branch —
+# legalEvents() excludes review_requested while a verification is pending, so that branch is
+# unreachable. The gate holds; only its wording is dead. Asserted on what actually prints, because
+# an assertion written against the message we WANTED would be green while testing nothing.
+bm "$V" move V-001 verified --by tech-manager >/dev/null 2>&1
+assert_exit 0 "...and is allowed once verify-done has passed" \
+  bm "$V" move V-001 review_requested --by ios-developer --detail "-> code-reviewer"
+
+# ...and a REJECTED verify-done leaves the ticket unreviewable. This is the other half: without it,
+# `rejected` would be a note rather than a gate, and the loop's "leave the row where it is" would
+# depend on the orchestrator remembering to.
+bm "$V" add V-002 --title "Verify rejected it" --owner ios-developer >/dev/null 2>&1
+bm "$V" move V-002 claimed       --by ios-developer >/dev/null 2>&1
+bm "$V" move V-002 done_reported --by ios-developer >/dev/null 2>&1
+bm "$V" move V-002 rejected      --by tech-manager  >/dev/null 2>&1
+assert_exit 1 "a REJECTED verify-done leaves the ticket unreviewable" \
+  bm "$V" move V-002 review_requested --by ios-developer
+# ...and the developer's re-submission is the only way forward, not a second attempt at routing.
+bm "$V" move V-002 done_reported --by ios-developer >/dev/null 2>&1
+bm "$V" move V-002 verified      --by tech-manager  >/dev/null 2>&1
+assert_exit 0 "...until a fresh DONE is reported and verified" \
+  bm "$V" move V-002 review_requested --by ios-developer --detail "-> code-reviewer"
+
+# --- `self_review`. There is no ticket small enough for a role to gate its own work.
+A=$(newboard bd-approve)
+bm "$A" add A-001 --title "Self approval" --owner ios-developer >/dev/null 2>&1
+bm "$A" move A-001 claimed          --by ios-developer >/dev/null 2>&1
+bm "$A" move A-001 done_reported    --by ios-developer >/dev/null 2>&1
+bm "$A" move A-001 verified         --by tech-manager  >/dev/null 2>&1
+bm "$A" move A-001 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
+assert_exit 1 "the ticket's owner approving their own ticket is refused" \
+  bm "$A" move A-001 approved --by ios-developer
+assert_has "$TMP/err" "does not gate its own work" "...and says why, in the reviewer's terms"
+assert_exit 0 "...and a different role's approval on the same ticket is accepted" \
+  bm "$A" move A-001 approved --by code-reviewer
+
+# --- `done_without_review`, and the live merge that slipped through the check/append window.
+# The guard this replaces was written three times and was wrong twice: once gating on sed (which
+# succeeds on empty input) and once on grep -q without looking at WHO approved.
+G=$(newboard bd-merge)
+bm "$G" add M-001 --title "Merge me" --owner ios-developer >/dev/null 2>&1
+bm "$G" move M-001 claimed          --by ios-developer >/dev/null 2>&1
+bm "$G" move M-001 done_reported    --by ios-developer >/dev/null 2>&1
+bm "$G" move M-001 verified         --by tech-manager  >/dev/null 2>&1
+bm "$G" move M-001 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
+assert_exit 1 "a merge with no approval at all is refused" bm "$G" move M-001 merged --by tech-manager
+assert_has "$TMP/err" "no \"approved\" by a role other than its owner" "...naming the owner it will not accept"
+
+# The sharper case, and the one the second broken guard let through: an approval EXISTS, and it is
+# the owner's. Unreachable through the CLI (the previous assertion forbids writing it), so it is
+# hand-appended — which is also the shape a repaired or migrated log can legitimately have.
+printf '{"ts":"2026-07-29T11:00:00Z","ticket":"M-001","event":"approved","by":"ios-developer","detail":"hand-appended","provenance":"cli"}\n' \
+  >> "$G/docs/31-board-events.jsonl"
+assert_exit 1 "a merge whose only approval is the owner's own is still refused" \
+  bm "$G" move M-001 merged --by tech-manager
+bm "$G" move M-001 approved --by code-reviewer >/dev/null 2>&1
+assert_exit 0 "...and clears once a non-owner has approved" bm "$G" move M-001 merged --by tech-manager
+
+# --- the review-cycle cap. /app-build allows 2 cycles and stops on the 3rd REQUEST CHANGES. The
+# 3rd is not merely refused: refusing alone leaves the ticket in review awaiting a rejection that
+# can never be written, which is the exact state the hand-edited board used to sit in. It is
+# converted into `blocked` and appended, so the escalation is visible.
+C=$(newboard bd-cycles)
+bm "$C" add C-001 --title "Cannot converge" --owner ios-developer >/dev/null 2>&1
+bm "$C" add C-002 --title "Waiting on it"   --owner android-developer --depends C-001 >/dev/null 2>&1
+rework() {
+  bm "$C" move C-001 done_reported    --by ios-developer >/dev/null 2>&1
+  bm "$C" move C-001 verified         --by tech-manager  >/dev/null 2>&1
+  bm "$C" move C-001 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
+}
+bm "$C" move C-001 claimed --by ios-developer >/dev/null 2>&1
+rework
+assert_exit 0 "the 1st REQUEST CHANGES is a normal review cycle" bm "$C" move C-001 changes --by code-reviewer
+rework
+assert_exit 0 "the 2nd is the last one the loop is allowed"      bm "$C" move C-001 changes --by code-reviewer
+rework
+assert_exit 1 "the 3rd REQUEST CHANGES is refused"               bm "$C" move C-001 changes --by code-reviewer
+assert_has "$TMP/err" "moved to blocked instead" "...and forces the escalation into the log rather than stalling in review"
+# A block strands its dependents, and the loop's exit condition cannot see them — it exits when
+# nothing is ready and nothing is in review/qa, which a stranded todo satisfies. Naming them at the
+# moment it happens is the difference between a reported blocker and a silently dropped ticket.
+# Read from the same invocation's stdout: the cascade is printed by the refusal that caused it.
+assert_has "$TMP/out" "C-002" "...and names the dependents that just became unclaimable"
+bm "$C" show C-001 2>/dev/null | grep -q "blocked" \
+  && ok "...so the ticket is blocked, not sitting in review forever" \
+  || bad "...so the ticket is blocked, not sitting in review forever"
+
+# --- Cycles is derived, not maintained. The column and the ledger were two independently written
+# things and they drifted; dry run 3 finding 1 was exactly that. Assert the rendered Markdown, the
+# derived state, and the raw count of `changes` events all agree, on a board that has spent cycles.
+node -e '
+import("'"$HERE"'/lib/board.mjs").then(async (m) => {
+  const fs = await import("node:fs");
+  const dir = process.argv[1];
+  const log = fs.readFileSync(dir + "/docs/31-board-events.jsonl", "utf8")
+    .trim().split("\n").map((l) => JSON.parse(l));
+  const board = m.parseBoard(fs.readFileSync(dir + "/docs/31-board.md", "utf8"));
+  if (!board.rows.length) process.exit(1);
+  let checked = 0;
+  for (const row of board.rows) {
+    const id = row.id.toUpperCase();
+    const fromLog = log.filter((e) => e.ticket === id && e.event === "changes").length;
+    if (String(fromLog) !== String(row.cycles).trim()) process.exit(1);
+    checked += 1;
+  }
+  // ...and it must actually have exercised a non-zero count, or this passes on an empty board.
+  process.exit(checked === 2 && log.some((e) => e.event === "changes") ? 0 : 1);
+});' "$C" && ok "the rendered Cycles column equals the count of changes events, per ticket" \
+           || bad "the rendered Cycles column equals the count of changes events, per ticket"
+
+# --- migration. A hand-written board records review verdicts and nothing else, so most of what a
+# migrated log contains was never written down by anyone. Those events carry ts: null and
+# provenance "inferred". A migration that filled in a plausible timestamp would produce a log that
+# reads as evidence and is not — the same class of lie as a false DONE.
+assert_exit 0 "migrate reconstructs a log from a hand-written board" \
+  node "$BD" migrate "$FIX/clean.md" --out "$TMP/migrated.jsonl"
+assert_has "$TMP/err" "inferred (ts: null)" "...and reports how much of it was inferred"
+node -e '
+const fs = require("node:fs");
+const ev = fs.readFileSync(process.argv[1], "utf8").trim().split("\n").map((l) => JSON.parse(l));
+const inferred = ev.filter((e) => e.provenance === "inferred");
+const sourced  = ev.filter((e) => e.provenance === "ledger");
+process.exit(
+  inferred.length > 0 &&
+  inferred.every((e) => e.ts === null) &&      // never a plausible-looking invented time
+  sourced.length  > 0 &&
+  sourced.every((e) => typeof e.ts === "string" && e.ts.length > 0)  // a real ledger line keeps its real time
+    ? 0 : 1
+);' "$TMP/migrated.jsonl" && ok "every inferred event has a null timestamp, every ledger event keeps its own" \
+                         || bad "every inferred event has a null timestamp, every ledger event keeps its own"
+
+# A board too old to parse has nothing to reconstruct from. That is exit 2 — CANNOT EVALUATE — so
+# the commands fall through to the legacy hand-written path instead of stranding the project.
+printf '# Sprint board\n\nNo table here yet.\n' > "$TMP/noboard.md"
+assert_exit 2 "a board with no parseable ticket table is CANNOT EVALUATE, not an empty log" \
+  node "$BD" migrate "$TMP/noboard.md" --out "$TMP/never.jsonl"
+[ -f "$TMP/never.jsonl" ] && bad "...and it writes no log on that path" \
+                          || ok "...and it writes no log on that path"
+
+# --- self-metrics. Exact values on the seeded log, because "sane" is unfalsifiable: APP-001 is
+# claimed 09:05 and closed 12:05 (3h), took one `changes`, and APP-002 never reached review.
+node -e '
+import("'"$HERE"'/lib/events.mjs").then(async (m) => {
+  const fs = await import("node:fs");
+  const { events, errors } = m.parseEventLog(fs.readFileSync(process.argv[1], "utf8"));
+  if (errors.length) process.exit(1);
+  const x = m.deriveMetrics(events);
+  const HOUR = 3600000;
+  process.exit(
+    x.tickets["APP-001"].cycleTimeMs === 3 * HOUR &&
+    x.medianCycleTimeMs === 3 * HOUR &&
+    x.tickets["APP-002"].cycleTimeMs === null &&   // claimed, never closed
+    x.reviewPassRate === 0 &&                      // 1 ticket reached review, and it was reworked
+    x.reworkRate === 1 &&
+    x.tickets["APP-001"].approvedFirstPass === false &&
+    x.gateFires.changes === 1 && x.gateFires.blocked === 0 &&
+    x.ticketsPerRound["2026-07-29"] === 2
+      ? 0 : 1
+  );
+});' "$FIX/events/clean.jsonl" && ok "metrics derive exact cycle time, pass rate, rework and gate fires" \
+                              || bad "metrics derive exact cycle time, pass rate, rework and gate fires"
+
+# ...and every gate counter must be shown to COUNT. On clean.jsonl three of the four are zero, so
+# a gateFires that had stopped incrementing them would still match it. sprint.jsonl is a five-ticket,
+# two-round sprint in which each gate fires at least once: a verify-done rejection, three review
+# cycles across two tickets, a QA failure, and a cycle-cap escalation.
+node -e '
+import("'"$HERE"'/lib/events.mjs").then(async (m) => {
+  const fs = await import("node:fs");
+  const { events, errors } = m.parseEventLog(fs.readFileSync(process.argv[1], "utf8"));
+  if (errors.length) process.exit(1);
+  const x = m.deriveMetrics(events);
+  const MIN = 60000;
+  process.exit(
+    x.gateFires.rejected === 1 && x.gateFires.changes === 3 &&
+    x.gateFires.qa_failed === 1 && x.gateFires.blocked === 1 &&
+    x.reviewPassRate === 0.5 &&        // 4 reached review, 2 of them first-pass
+    x.reworkRate === 0.5 &&
+    x.medianCycleTimeMs === 330 * MIN &&              // APP-003, the middle of three
+    x.tickets["APP-001"].cycleTimeMs === 245 * MIN && // claimed -> closed
+    x.tickets["APP-003"].cycleTimeMs === 330 * MIN && // no `closed`: falls back to `merged`
+    x.tickets["APP-004"].cycleTimeMs === null &&      // blocked, never merged
+    x.tickets["APP-004"].cycles === 2 &&
+    x.ticketsPerRound["2026-07-28"] === 3 && x.ticketsPerRound["2026-07-29"] === 2
+      ? 0 : 1
+  );
+});' "$FIX/events/sprint.jsonl" && ok "every gate counter counts, on a sprint where each one fires" \
+                                || bad "every gate counter counts, on a sprint where each one fires"
+
+# ...and an empty denominator is `null`, never 0. /app-status prints `n/a` for null; a 0% review
+# pass rate on a sprint where nothing has reached review reads as "every review failed".
+E=$(newboard bd-metrics-empty)
+bm "$E" add E-001 --title "Nothing has happened yet" --owner ios-developer >/dev/null 2>&1
+node -e '
+import("'"$HERE"'/lib/events.mjs").then(async (m) => {
+  const fs = await import("node:fs");
+  const { events } = m.parseEventLog(fs.readFileSync(process.argv[1], "utf8"));
+  const x = m.deriveMetrics(events);
+  process.exit(x.reviewPassRate === null && x.reworkRate === null && x.medianCycleTimeMs === null ? 0 : 1);
+});' "$E/docs/31-board-events.jsonl" && ok "rates are null (n/a), not 0%, before anything reaches review" \
+                                    || bad "rates are null (n/a), not 0%, before anything reaches review"
+
+# --- fail closed. A gate that cannot read its input must never report an empty board: "no tickets"
+# and "I could not read the file" are the same output to every caller downstream, and one of them
+# is CLEAR. This is the rule the whole repo turns on, applied to the newest reader.
+N=$(newboard bd-nolog)
+assert_exit 2 "a missing event log is CANNOT EVALUATE" bm "$N" show
+assert_exit 2 "...and render will not produce a board from one either" bm "$N" render
+[ -f "$N/docs/31-board.md" ] && bad "...and writes no board file on that path" \
+                             || ok "...and writes no board file on that path"
+X=$(newboard bd-corrupt "$FIX/events/corrupt.jsonl")
+assert_exit 2 "a half-readable log is CANNOT EVALUATE, never a partial board" bm "$X" show
+assert_has "$TMP/err" "unreadable line" "...naming the line it refused to guess at"
+# A log that READS fine but folds into illegal states is a different answer: the board renders,
+# and the violations are reported. Collapsing this into exit 2 would make a repairable board
+# indistinguishable from an unreadable one.
+W=$(newboard bd-violations "$FIX/events/violations.jsonl")
+assert_exit 1 "a readable log that folds illegally reports violations, not CANNOT EVALUATE" bm "$W" show
+assert_has "$TMP/err" "sequence violation" "...and says which lines, so it can be repaired by appending"
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "board (wiring)"
+# --------------------------------------------------------------------------------------------
+# A CLI nothing calls is the `--docs-only` defect one section up: the flag existed, was documented,
+# and no command ever passed it. Assert the INVOCATION in each caller, not the mention.
+grep -q 'board.mjs" add' "$HERE/../commands/app-plan.md" \
+  && ok "/app-plan creates tickets through the CLI, not as table rows" \
+  || bad "/app-plan creates tickets through the CLI, not as table rows"
+
+# Every status transition the loop makes must be an event. A step that still says "move the row"
+# is a step that hand-edits a generated file.
+MISSING_EVENT=""
+for e in claimed done_reported verified rejected review_requested started approved changes merged \
+         qa_passed qa_failed closed blocked; do
+  grep -q "$e" "$HERE/../commands/app-build.md" || MISSING_EVENT="$MISSING_EVENT $e"
+done
+[ -z "$MISSING_EVENT" ] && ok "/app-build maps every loop step to a board event" \
+                        || bad "/app-build maps every loop step to a board event" "missing:$MISSING_EVENT"
+grep -q 'board.mjs" move' "$HERE/../commands/app-build.md" \
+  && ok "...and moves the board with the CLI rather than by editing the table" \
+  || bad "...and moves the board with the CLI rather than by editing the table"
+grep -q "refusal is a finding" "$HERE/../commands/app-build.md" \
+  && ok "...and treats a refusal as a signal to surface, not to retry" \
+  || bad "...and treats a refusal as a signal to surface, not to retry"
+
+# The merge gate's mechanics moved into the CLI. The hand-written grep guard must be GONE, not
+# merely deprecated alongside it — two guards disagreeing is worse than either being wrong.
+grep -q 'board.mjs" move APP-NNN merged' "$HERE/../agents/tech-manager.md" \
+  && ok "tech-manager's merge gate is the CLI call" \
+  || bad "tech-manager's merge gate is the CLI call"
+grep -q 'grep -qv "| \$OWNER"' "$HERE/../agents/tech-manager.md" \
+  && bad "...and the superseded hand-written approval grep is gone" \
+  || ok "...and the superseded hand-written approval grep is gone"
+
+# Backwards compatibility is not optional: a project with a hand-written board and no event log
+# must keep working. Both entry points migrate once, announce it, and fall through on failure.
+for c in app-plan app-build; do
+  if grep -q 'board.mjs" migrate' "$HERE/../commands/$c.md" \
+     && grep -q "LEGACY BOARD" "$HERE/../commands/$c.md"; then
+    ok "/$c migrates a legacy board once and falls through if it cannot"
+  else
+    bad "/$c migrates a legacy board once and falls through if it cannot"
+  fi
+done
+
+# The metrics exist to be read. Derived and never surfaced is the same as not derived.
+grep -q "SELF-METRICS" "$HERE/../commands/app-status.md" \
+  && grep -q 'board.mjs" show --json' "$HERE/../commands/app-status.md" \
+  && ok "/app-status prints the derived self-metrics block" \
+  || bad "/app-status prints the derived self-metrics block"
+grep -q "never \`0%\`" "$HERE/../commands/app-status.md" \
+  && ok "...and prints n/a for an empty denominator instead of 0%" \
+  || bad "...and prints n/a for an empty denominator instead of 0%"
+
+echo
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

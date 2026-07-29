@@ -8,9 +8,58 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
 
 Tickets (optional, default = all ready): $ARGUMENTS
 
+## How this loop writes the board
+
+Every status change below is an append to `docs/31-board-events.jsonl` through one command:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move <ID> <event> --by <role> [--detail "..."]
+```
+
+`docs/31-board.md` is regenerated from that log on every append. **Never edit a cell** — the next
+render erases it and no rule in this plugin ever saw it. The loop's steps map to events exactly:
+
+| Step | Situation | Event |
+|---|---|---|
+| 2 | a developer picks the ticket up | `claimed` |
+| 3 | developer returns `DONE: APP-NNN` | `done_reported` |
+| 3 | `verify-done.sh` VERIFIED / REJECTED | `verified` / `rejected` |
+| 3 | routed to review | `review_requested` (`--detail "-> code-reviewer"`) |
+| 3 | reviewer begins | `started` |
+| 4 | `APPROVED` / `REQUEST CHANGES` | `approved` / `changes` |
+| 4 | merge gate clears | `merged` |
+| 5 | QA verdict | `qa_passed` / `qa_failed`, then `closed` |
+| any | stopped, for any reason | `blocked`, later `unblocked` |
+
+**Exit `1` is a refusal, and a refusal is a finding.** The CLI rejects the transition and prints why
+and what is legal from here. Do not retry it, do not work around it, and do not touch the Markdown:
+surface the refusal verbatim in the standup and fix the thing it names. Each refusal corresponds to
+a state this board could previously be written into and the doctor could only report afterwards — a
+review requested on an unverified DONE, an owner approving their own work, a merge with no non-owner
+approval, a claim on a dependency that never merged. Exit `2` means the log is missing or unreadable:
+**that is CANNOT EVALUATE, not an empty board.** Stop the round.
+
 ## Steps
 
-0. **Board doctor gate.** Use the `board-doctor` skill *before spawning anything*:
+0. **Adopt the event log, then run the board doctor gate** — *before spawning anything*.
+
+   ```bash
+   if [ ! -f docs/31-board-events.jsonl ] && [ -f docs/31-board.md ]; then
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" migrate docs/31-board.md --out docs/31-board-events.jsonl \
+       && node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" render \
+       && echo "MIGRATED: hand-written board -> event log"
+   fi
+   ```
+
+   Run this **once, at the top of the first round only** — after that the log exists and the guard
+   is a no-op. Announce what it reconstructed and how much of it is `inferred` (`ts: null`): those
+   are events the hand-written board never recorded, and the metrics in `/app-status` will be thin
+   for tickets that predate the log. If migrate exits non-zero the board is too old to reconstruct —
+   print `LEGACY BOARD: no event log — running the hand-written path`, use `board-doctor` as the
+   authority for the rest of this run, and move rows by hand as this command used to. Do not strand
+   the project over it.
+
+   Then, on either path, use the `board-doctor` skill:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md
@@ -25,8 +74,14 @@ Tickets (optional, default = all ready): $ARGUMENTS
    `stranded` the moment its dependency is blocked, which happens mid-loop at step 4.
 
 1. **Read state.**
-   - `docs/31-board.md` — find tickets where `Status = todo` and every `Depends on` ID is **merged**
-     — that is, `qa` **or** `done`.
+   - `node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json` — the derived state of every
+     ticket, from the log. Find tickets where `status` is `todo` and every `dependsOn` ID is
+     **merged** — that is, `qa` **or** `done`. (On the legacy path, read `docs/31-board.md`
+     directly; the readiness rule is identical.)
+
+     You do not have to get this exactly right, and that is the point: `claimed` is **refused** on a
+     ticket whose dependency has no `merged` event, so a mis-read of readiness costs a refusal
+     rather than a developer working on sand.
 
      A dependency is satisfied when its code is on the integration branch, not when QA has finished
      with it. Requiring `done` stalls every dependent behind a QA pass: observed live, a foundation
@@ -41,6 +96,15 @@ Tickets (optional, default = all ready): $ARGUMENTS
    any ticket pair that shares a file. Launch IC agents concurrently in a **single assistant
    message** — one Task invocation per owner, each passed its worktree path and the full list of
    tickets they're working this round.
+
+   **Claim each ticket before its agent is spawned**, so the board says who is working on what while
+   they work rather than after they return:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN claimed --by <owner-role>
+   ```
+
+   A refusal here means the ticket was not actually ready — read the reason and spawn nobody for it.
 
    **Spawn by the ticket's `Owner` column — never from a hardcoded list.** The authority on which
    owners this loop can spawn is `board-doctor` (Manual-fallback check 4) and the
@@ -67,6 +131,15 @@ Tickets (optional, default = all ready): $ARGUMENTS
    (`owner_not_spawnable`).
 
 3. **Streaming review.** As each developer agent returns `DONE: APP-NNN`:
+   - **Record the claim as a claim**, before you have checked anything:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN done_reported --by <owner-role>
+     ```
+
+     This is what makes the next step's outcome recordable at all: `review_requested` is refused on
+     a ticket with no `verified` since its last `done_reported`, so an unchecked DONE structurally
+     cannot reach a reviewer.
    - **Verify the claim before you believe it** (`board-doctor` skill). The base is the project's
      integration branch, resolved once from its own git strategy — never a hardcoded `main`, because
      the flagship model integrates on `develop` (`knowledge/git-workflow.md`) and merging features
@@ -99,10 +172,13 @@ Tickets (optional, default = all ready): $ARGUMENTS
      Without this the flag was unreachable — this loop always passed a test command — so a doc
      ticket either failed a test it structurally cannot have, or got waved through unverified.
 
-     `REJECTED` → leave the row where it is and re-spawn the developer with the blocking lines
-     verbatim. This counts as a **developer** retry, not a review cycle.
-     `VERIFIED` → continue. If it reports `tests=unverified`, say so in the daily fragment; never
-     restate the agent's "all green" as confirmed.
+     `REJECTED` → `board.mjs move APP-NNN rejected --by tech-manager --detail "<the blocking line>"`,
+     then re-spawn the developer with the blocking lines verbatim. The ticket stays `in_progress`
+     and is no longer reviewable until a fresh `done_reported` + `verified`. This counts as a
+     **developer** retry, not a review cycle — `rejected` does not touch the `Cycles` count.
+     `VERIFIED` → `board.mjs move APP-NNN verified --by tech-manager --detail "verify-done.sh green"`
+     and continue. If it reports `tests=unverified`, say so in the daily fragment **and in the
+     `--detail`**; never restate the agent's "all green" as confirmed.
      Exit `2` → **CANNOT EVALUATE**, not a pass: you supplied no test command for a code ticket, so
      nothing verified the "all green" claim. Supply the project's test command and re-run, or use
      `--docs-only` if the ticket really has no test.
@@ -121,11 +197,22 @@ Tickets (optional, default = all ready): $ARGUMENTS
      that exact spelling, per `team-protocol`'s canonical paths table; no other is recognised. It is
      the sole input to the standup and only 1 of 4 dry-run agents wrote one. Missing → ask that
      agent for it before moving the row; never write it on their behalf.
-   - Move the board row to `Status = review`, set the `Reviewer` column, and append to the review
-     ledger: `<ts> | APP-NNN | requested | <owner> -> code-reviewer`.
+   - Route it to review. One command sets the status, the reviewer, and the ledger row — they were
+     three separate writes, and the ledger row was the one that got forgotten:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN review_requested \
+       --by <owner-role> --detail "-> code-reviewer"
+     ```
+
+     The reviewer is read out of that `--detail`, so the arrow is not decoration. A refusal here
+     means no `verified` landed for the current `done_reported` — go back a bullet; do not route it.
    - **The reviewer must not be the owner.** For a ticket owned by `code-reviewer` (or any review of
-     review work), route to `tech-lead` instead.
+     review work), route to `tech-lead` instead. The CLI enforces the half that matters at the point
+     it matters: `approved` is refused when its author is the ticket's owner.
    - Spawn a `code-reviewer` agent for that branch immediately — do not wait for the other devs. Multiple reviewers can run in parallel, and they can run in parallel with still-running developers.
+     When it picks the ticket up it appends `board.mjs move APP-NNN started --by code-reviewer`, so
+     a review that was requested and never begun is visible while it is still fixable.
 
 4. **Process reviewer verdicts.**
    - **Read the two routing fields on every verdict, `APPROVED` or not:**
@@ -155,17 +242,26 @@ Tickets (optional, default = all ready): $ARGUMENTS
      **It fires only when the reviewer flags one.** Most tickets name no constant and cost nothing
      extra. Do not spawn it per-ticket "to be safe" — a gate that runs on everything is a gate
      someone turns off.
-   - `APPROVED` (and `VERIFICATION: PASS`, if one was required above) → spawn `tech-manager` to run
-     the Merge gate (see `agents/tech-manager.md`), passing the `$BASE` resolved in step 3 as the
-     branch to merge into. After merge, board row goes `review → qa`.
-   - `REQUEST CHANGES` → re-spawn the original developer **pointed at
-     `docs/53-reviews/APP-NNN-cycle-N.md`**, not at notes you are holding in context, and
-     **increment the `Cycles` column** (not a substring in `Notes`). If that file does not exist,
-     ask the reviewer to write it before re-spawning anyone — an unpersisted verdict is one
-     compaction away from being lost, and then nobody can say what was wrong.
-   - **Cap: 2 review cycles.** On the 3rd `REQUEST CHANGES`, stop the loop for that ticket, set status to `blocked`, and surface to the user with the full reviewer + developer history. Do not auto-retry beyond that.
-   - Setting a ticket `blocked` here is exactly what strands its dependents — which is why step 0
-     re-runs at the top of every round.
+   - `APPROVED` (and `VERIFICATION: PASS`, if one was required above) → the reviewer appends
+     `board.mjs move APP-NNN approved --by code-reviewer --detail "docs/53-reviews/APP-NNN-cycle-N.md"`.
+     Then spawn `tech-manager` to run the Merge gate (see `agents/tech-manager.md`), passing the
+     `$BASE` resolved in step 3. The gate **is** `board.mjs move APP-NNN merged --by tech-manager`,
+     which refuses without a non-owner `approved` and runs before any git command; on exit 0 the row
+     is `qa`.
+   - `REQUEST CHANGES` → `board.mjs move APP-NNN changes --by code-reviewer --detail
+     "docs/53-reviews/APP-NNN-cycle-N.md"`, then re-spawn the original developer **pointed at that
+     file**, not at notes you are holding in context. If the file does not exist, ask the reviewer to
+     write it before re-spawning anyone — an unpersisted verdict is one compaction away from being
+     lost, and then nobody can say what was wrong.
+
+     There is no `Cycles` column to increment any more. The count is the number of `changes` events,
+     so it cannot drift from the ledger the way the hand-maintained column did.
+   - **Cap: 2 review cycles, enforced at write time.** The 3rd `changes` is **refused**, and the CLI
+     appends `blocked` in its place and prints the dependents that just stopped being claimable.
+     That is not an error to work around: stop the loop for that ticket and surface it to the user
+     with the full reviewer + developer history. Do not auto-retry beyond it.
+   - A ticket going `blocked` here is exactly what strands its dependents — the CLI names them on
+     the spot, and step 0 re-runs at the top of every round to catch the rest.
 
 4a. **Clean up worktrees.** After each merge, remove the ticket's worktree so the next round starts
    clean: `git worktree remove .agent-wt/APP-NNN && git worktree prune`.
@@ -202,6 +298,19 @@ Tickets (optional, default = all ready): $ARGUMENTS
    Then spawn `qa-engineer` once to exercise the acceptance criteria; where the Axiom toolchain is
    present it drives the P0 journey per the `runtime-gate` skill rather than stopping at launch. QA
    writes new defects to `docs/51-bugs.md`. S1/S2 bugs come back into the loop in step 1 next round.
+
+   Record QA's verdict per ticket, then close what passed:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_passed --by qa-engineer
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN closed   --by tech-manager
+   # or, for a ticket QA rejected — it stays in qa and is named in the summary
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_failed --by qa-engineer --detail "BUG-NNN"
+   ```
+
+   `closed` is refused without a `qa_passed`, so `done` cannot be reached by a ticket QA never
+   exercised. A `RUNTIME GATE: FAIL` means no row in the wave gets a `qa_passed` at all — the app
+   does not launch, so nothing in it was exercised.
 
 6. **Daily report + board view.** Collect the per-agent fragments at
    `docs/daily/<today>-<role>-<ticket>.md` and spawn `tech-manager` to concatenate them into the
@@ -243,4 +352,10 @@ Tickets (optional, default = all ready): $ARGUMENTS
 - **Spawn budget:** at most 6 developer retries per ticket across the whole sprint (review cycles
   plus rejected-DONE retries). Past that the ticket is `blocked` and goes to the user — a ticket
   that cannot converge in six attempts is a spec problem, not an effort problem.
-- If any developer agent returns `BLOCKED: APP-NNN`, surface the blocker verbatim and stop that ticket; do not invent an answer.
+- If any developer agent returns `BLOCKED: APP-NNN`, surface the blocker verbatim, append
+  `board.mjs move APP-NNN blocked --by <owner-role> --detail "<the blocker>"`, and stop that ticket;
+  do not invent an answer. Read the readiness cascade the CLI prints after it — those dependents are
+  now unclaimable, and they are the tickets this loop has historically dropped in silence.
+- **Never hand-edit `docs/31-board.md`.** It is generated. An edit survives until the next append,
+  is read by nothing, and re-introduces exactly the drift between the table and the ledger that the
+  event log exists to make impossible.

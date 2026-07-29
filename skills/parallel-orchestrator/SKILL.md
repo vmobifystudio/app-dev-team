@@ -20,9 +20,25 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
    (`qa` or `done`) — a dependency is satisfied once its code is on the integration branch, not once
    QA has signed it off. Requiring `done` stalls every dependent behind a QA pass.
 
+   Read it from the log rather than the table where one exists —
+   `node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json` gives you `status` and `dependsOn`
+   per ticket already derived.
+
    Note what this readiness rule *cannot* express: a ticket behind a `blocked` dependency is not
    ready and never will be, but it is also never reported. That is the doctor's `stranded` check,
    and it is why step 0 exists.
+
+1a. **Claim before you spawn.** One append per ticket, and it is also the readiness check you cannot
+   forget to run:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 claimed --by ios-developer
+   ```
+
+   `claimed` is **refused** on a ticket whose dependency has never merged. That refusal is the
+   answer, not an obstacle: spawn nobody for that ticket and say why in the standup. Claiming before
+   the spawn also means the board says who is working on what *while* they work — the window in
+   which two orchestrators could both hand out the same ticket closes here.
 
 2. **Group by owner.** One agent invocation per owner, batched. iOS dev gets all their ready tickets in one prompt; same for Android; same for backend.
 
@@ -66,9 +82,13 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
    sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> main "<project test command>"
    ```
 
+   Every outcome is an append (`done_reported` on arrival, then `verified` or `rejected`, then
+   `review_requested`) — see `/app-build` step 3 for the exact commands.
+
    `REJECTED` → the row stays where it is; re-spawn that developer with the blocking lines. Only on
-   `VERIFIED` do you update the board row to `Status = review`, set `Reviewer`, append the
-   `requested` ledger line, and spawn a `code-reviewer` Task for that branch in the next message.
+   `VERIFIED` does `board.mjs move APP-NNN review_requested --by <owner> --detail "-> code-reviewer"`
+   succeed — status, reviewer and ledger row in one write instead of three — and then you
+   spawn a `code-reviewer` Task for that branch in the next message.
    Reviewers run in parallel with each other **and** with still-running developers. Waiting for the
    slowest dev before any review starts wastes wall-clock time.
 
@@ -78,7 +98,12 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 
 - **Sequential launches when parallel is safe.** If APP-001 and APP-002 don't conflict, never launch them back-to-back in different messages.
 - **Parallel launches when serial is required.** If two tickets touch the same module, serialize them — let the second pick up the first's commit.
-- **Forgetting to write the result back to the board.** The board is the only memory across agent invocations.
+- **Forgetting to write the result back to the board.** The event log is the only memory across
+  agent invocations.
+- **Editing `docs/31-board.md` to record a result.** It is generated from the log. The edit survives
+  until the next append, is read by nothing, and the work it recorded disappears with it.
+- **Retrying past a refusal.** Exit 1 from `board.mjs` is a rule catching something. Read the reason
+  it printed and fix that, rather than reaching for the file underneath it.
 - **Believing a `DONE` you didn't verify.** The branch may not exist, may carry no commits, and the
   "tests all green" line is a claim by the same agent that wrote the code.
 - **Spawning against a board you didn't check.** One bad dependency edge silently strands a whole
