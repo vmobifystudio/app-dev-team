@@ -3255,6 +3255,24 @@ grep -nE 'studio-eval\.mjs.*(\|\|[[:space:]]*(true|:))' "$HERE/../.github/workfl
   && bad "...and its exit code is not masked" \
   || ok "...and its exit code is not masked"
 
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "no conflict markers"
+# --------------------------------------------------------------------------------------------
+# agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
+# orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
+# conflicted file untouched. A broken agent file reached the base branch and was found two merges
+# later, by an agent that happened to open it. Nothing checked.
+#
+# This is FC-001 in the resolution itself: the fix landed in one file and stopped before the rest.
+CONFLICTED=$( { grep -rln '^<<<<<<< \|^>>>>>>> ' \
+    "$HERE/../agents" "$HERE/../commands" "$HERE/../skills" "$HERE/../knowledge" \
+    "$HERE/../scripts" "$HERE/../hooks" "$HERE/../.github" 2>/dev/null || true; } | tr '\n' ' ')
+[ -z "$CONFLICTED" ] \
+  && ok "no unresolved merge-conflict markers in any shipped file" \
+  || bad "no unresolved merge-conflict markers in any shipped file" "found in:$CONFLICTED"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
