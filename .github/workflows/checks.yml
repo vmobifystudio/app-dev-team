@@ -1,0 +1,99 @@
+# The studio tests itself.
+#
+# This repo's governing claim is that a rule nobody executes is not a rule — it is the sentence the
+# `defect-hunting` skill is built on and the reason `board-doctor`, `ship-gate` and `runtime-gate`
+# exist at all. Until now its own 113-assertion suite ran only when a human remembered, which made
+# the suite exactly the thing it warns about.
+#
+# Three checks, all zero-dependency, all already runnable locally by the same commands:
+#   scripts/test.sh          the assertion suite
+#   scripts/team-doctor.mjs  the team definition (roles, skills, commands, handoffs, contracts)
+#   plugin manifest parse    the two files that decide whether the plugin loads at all
+#
+# Runs on ubuntu-latest deliberately: the scripts are POSIX sh and Node stdlib, and macOS-only
+# behaviour hiding in them (a gawk-ism, a BSD `sed -i` flag, a `plutil` call outside the iOS
+# branch) is a portability defect we want to hear about from CI rather than from a user on Linux.
+
+name: checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # verify-done.sh and integration-branch.sh reason about branches and commit ancestry.
+          # A shallow clone makes `git rev-list --count base..branch` wrong rather than failing
+          # loudly, which is the worst shape for a check.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Assertion suite
+        run: sh scripts/test.sh
+
+      - name: Team definition
+        run: node scripts/team-doctor.mjs
+
+      - name: Plugin manifests parse
+        run: |
+          node -e "
+            const fs = require('fs');
+            for (const f of ['.claude-plugin/plugin.json', '.claude-plugin/marketplace.json']) {
+              JSON.parse(fs.readFileSync(f, 'utf8'));
+              console.log('ok', f);
+            }
+          "
+
+      - name: Every skill has valid frontmatter
+        run: |
+          # A skill whose frontmatter is malformed does not fail loudly — it silently never
+          # triggers, which is indistinguishable from a skill that exists and is simply never
+          # the right one. Checked mechanically so it cannot rot.
+          fail=0
+          for f in skills/*/SKILL.md; do
+            head -n 1 "$f" | grep -qx -- '---' || { echo "MISSING frontmatter opener: $f"; fail=1; continue; }
+            grep -qE '^name: *[a-z0-9-]+ *$' "$f" || { echo "MISSING or malformed name: $f"; fail=1; }
+            grep -qE '^description: *\S' "$f" || { echo "MISSING description: $f"; fail=1; }
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "ok — $(ls -d skills/*/ | wc -l | tr -d ' ') skills"
+
+      - name: Every agent has valid frontmatter
+        run: |
+          fail=0
+          for f in agents/*.md; do
+            grep -qE '^name: *[a-z0-9-]+ *$' "$f" || { echo "MISSING or malformed name: $f"; fail=1; }
+            grep -qE '^description: *\S' "$f" || { echo "MISSING description: $f"; fail=1; }
+            grep -qE '^tools: *\S' "$f" || { echo "MISSING tools: $f"; fail=1; }
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "ok — $(ls agents/*.md | wc -l | tr -d ' ') agents"
+
+      - name: No hardcoded integration branch
+        run: |
+          # scripts/integration-branch.sh is the single resolver. A reintroduced `git push origin
+          # main` in an agent or command is the one mistake that is not recoverable by a later fix
+          # on a project whose release process integrates on develop.
+          if grep -rnE 'git (checkout|push origin|merge) main\b' agents/ commands/ 2>/dev/null; then
+            echo "Hardcoded integration branch above. Use scripts/integration-branch.sh."
+            exit 1
+          fi
+          echo "ok"
