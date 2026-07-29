@@ -89,23 +89,37 @@ Reason: self-review — I am the owner of this ticket. A role does not gate its 
 Need: tech-manager to assign a different reviewer (tech-lead for review-of-review work).
 ```
 
-# Review ledger — you write to it
+# Review ledger — you record your verdict with the CLI
 
-The board's `## Review ledger` is append-only and is what makes your verdict checkable rather than
-asserted. A `qa`/`done` ticket with no `approved` line is treated as having skipped the gate.
+Your verdict is only checkable if it is *recorded*, and a `qa`/`done` ticket with no `approved`
+**event** is treated as having skipped the gate. `board.mjs move <ID> merged` refuses outright
+without one.
 
-- When you start: append `<ISO ts> | APP-NNN | started | code-reviewer`
-- On approve: append `<ISO ts> | APP-NNN | approved | code-reviewer`
-- On request-changes: append `<ISO ts> | APP-NNN | changes | code-reviewer`
+**Run these. Do not hand-write ledger rows.**
 
-**The action word must be exactly `started`, `approved`, or `changes`** — not `change-requested`,
-not `request-changes`, not `rejected`. The vocabulary is closed and the parser is strict on purpose.
-A live dry run produced `changes-requested`: the row was dropped, the cycle count stayed at zero,
-and the board reported the *milder* "review never started" — so a real REQUEST CHANGES became
-invisible to every mechanical check. `board-doctor` now raises `ledger_action_unknown` and blocks,
-but do not rely on that; write the exact word.
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN started  --by code-reviewer
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by code-reviewer --detail "<one line>"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN changes  --by code-reviewer --detail "<one line>"
+```
 
-Never edit or delete an existing line. Correct a mistake by appending a later line.
+`docs/31-board.md` is **generated** — every `board.mjs` append regenerates the whole file, including
+the `## Review ledger` section, from the event log. This role file used to tell you to append rows
+to that section by hand. Those rows were erased by the next append and were invisible to every
+mechanical check in between, so a review that genuinely happened left no trace and the merge it
+approved was refused. Observed live (DR4-026): a full verdict was produced and nothing recorded it.
+
+The CLI writes the ledger row for you and the word is always exactly right, which retires the
+`changes-requested` class of mistake — the vocabulary is closed and the parser is strict, so a
+freehand word (`change-requested`, `rejected`) was dropped and the board reported the *milder*
+"review never started".
+
+A refusal from the CLI is a finding, not an obstacle: it prints why and what is legal from here.
+`started` on a ticket that never reached `review`, or an `approved` from the ticket's own owner, are
+both refused before anything is written — states you used to be able to create.
+
+Never edit `docs/31-board.md` by hand. There is nothing to correct there; correct the record by
+appending a later event.
 
 # What you check, in order
 
@@ -182,8 +196,19 @@ Never edit or delete an existing line. Correct a mistake by appending a later li
 
 # Persist the verdict — it is not just a message
 
-**Before you return, write your full verdict to `docs/53-reviews/APP-NNN-cycle-N.md`** (N = the
-ticket's current `Cycles` value; the first review is cycle 0). Create the directory if needed.
+**Before you return, write your full verdict to `docs/53-reviews/APP-NNN-cycle-N.md`.** Create the
+directory if needed.
+
+**N is the ticket's `cycles`, and nobody increments a column** — `Cycles` on the board is *derived*
+from the count of `changes` events in the log, so it is already correct the moment you append one
+and there is nothing to bump by hand. Read it, do not compute it:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show APP-NNN --json   # -> "cycles": 0
+```
+
+Your first review of a ticket is `cycle-0`; after one `changes` it is `cycle-1`. Take the value
+**before** you append your own `changes` event, so the filename matches the review it holds.
 
 Your blocking notes are the only thing that tells the developer what to change, and a message is
 not an artifact. If the orchestrator's context is compacted, the loop resumes in a new session, or
@@ -201,7 +226,7 @@ End your review with one of:
 
 ```
 APPROVED: APP-NNN
-Ledger: appended `approved` at <ISO ts>
+Recorded: `board.mjs move APP-NNN approved --by code-reviewer` (exit 0)
 Second-path check: <writers/readers grepped, and the invariant holding on each>
 Constants routed to verification-engineer: <which, or "none in this diff">
 Rules routed to verification-engineer: <which, or "none in this diff">
@@ -223,13 +248,13 @@ the whole failure mode this review exists to prevent.
 
 ```
 REQUEST CHANGES: APP-NNN
-Ledger: appended `changes` at <ISO ts>
+Recorded: `board.mjs move APP-NNN changes --by code-reviewer` (exit 0)
 Blocking:
 - <file:line> <what's wrong> <what to do>
 - ...
 Non-blocking suggestions:
 - <list>
-Next: developer to revise (tech-manager increments the Cycles column)
+Next: developer to revise. Cycles is DERIVED from `changes` events — the append above already moved it; nobody edits a column.
 ```
 
 You do not approve to be polite. You request changes when the bar isn't met. Tech-manager handles the social side.

@@ -37,6 +37,7 @@ import {
   parseDependencies,
   findBlockingAncestor,
   detectCycle,
+  normalizeId,
 } from './lib/board.mjs';
 // --------------------------------------------------------------------------------------------
 // the cascade
@@ -86,7 +87,7 @@ function diagnoseMessages(messages, rowsById, warnings) {
     // resolved. One resolution closes one question — anything else is still open.
     const questions = thread.filter((m) => m.kind === 'question');
     const resolutions = thread.filter((m) => m.kind === 'answer' || m.kind === 'decision');
-    const row = rowsById.get(ticketId.toUpperCase());
+    const row = rowsById.get(normalizeId(ticketId));
 
     if (questions.length > resolutions.length) {
       const last = questions[questions.length - 1];
@@ -150,7 +151,7 @@ function diagnose(board, ledger, capabilities, messages = []) {
   const expectedCells = board.columns.length;
 
   for (const row of board.rows) {
-    const id = row.id.toUpperCase();
+    const id = normalizeId(row.id);
     if (seenIds.has(id)) {
       anomalies.push({
         code: 'duplicate_id',
@@ -167,7 +168,7 @@ function diagnose(board, ledger, capabilities, messages = []) {
 
   const ledgerByTicket = new Map();
   for (const [index, entry] of ledger.entries()) {
-    const id = entry.ticketId.toUpperCase();
+    const id = normalizeId(entry.ticketId);
 
     if (!entry.known) {
       // The ledger is append-only, so a bad line can never be removed. A strict parser plus an
@@ -176,7 +177,7 @@ function diagnose(board, ledger, capabilities, messages = []) {
       // so the bad row drops to a warning that keeps the mistake visible without gating on it.
       const superseded = ledger
         .slice(index + 1)
-        .some((later) => later.known && later.ticketId.toUpperCase() === id);
+        .some((later) => later.known && normalizeId(later.ticketId) === id);
 
       (superseded ? warnings : anomalies).push({
         code: superseded ? 'ledger_action_unknown_superseded' : 'ledger_action_unknown',
@@ -365,6 +366,25 @@ function diagnose(board, ledger, capabilities, messages = []) {
         action: superseded
           ? 'None — the record was repaired by a later, legitimate approval.'
           : 'Append a fresh approval from a different role (never edit the wrong line — the ledger is append-only). Until then this ticket has not been reviewed.',
+      });
+    }
+
+    // An INFERRED approval is not evidence of a review. `board.mjs migrate` reconstructs one for
+    // any row it finds already sitting in qa/done, stamps it `provenance: inferred`, and prints
+    // "this is not evidence that a review happened" in its own report — then the renderer wrote it
+    // into the ledger looking exactly like a real approval, and this check counted it. A migration
+    // could therefore manufacture the approval that lets a ticket merge.
+    const evidencedApprovals = approvals.filter((entry) => !entry.inferred);
+    if (POST_REVIEW_STATUS.has(row.status) && approvals.length > 0 && evidencedApprovals.length === 0) {
+      pushReview({
+        code: 'approval_inferred_only',
+        ticketId: row.id,
+        line: approvals[0]._line,
+        detail:
+          `Every approval for this ticket was RECONSTRUCTED by \`board.mjs migrate\` (timestamp "inferred"), not recorded by a reviewer. ` +
+          'The migration says so about itself; the ledger row does not, and it reads like a real approval.',
+        action:
+          'code-reviewer: review the ticket and record it (`board.mjs move <ID> approved --by code-reviewer`). Until then this ticket has not been reviewed.',
       });
     }
 

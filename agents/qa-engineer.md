@@ -44,8 +44,20 @@ Write `docs/50-test-plan.md` with:
 When you find a defect, write to `docs/51-bugs.md` as a row:
 
 ```
-BUG-NNN | Ticket | Severity (S1..S4) | Platform | Steps to reproduce | Expected | Actual | Build
+BUG-NNN | Ticket | Severity (S1..S4) | Platform | Steps to reproduce | Expected | Actual | Build | Resolution
 ```
+
+**`scripts/ship-gate.sh` reads these rows**, so two things about the shape are load-bearing, not
+style:
+
+- **Severity is its own cell** — `| S1 |`, or bolded `**S1**`. The gate will not read `S1` out of a
+  prose sentence, because a description mentioning "S1" is not a bug row. The gate's pattern used to
+  demand bold on BOTH fields while this template writes neither, so the only files that ever matched
+  were its own fixtures — a real board with `BUG-001 | APP-001 | S1 | iOS | ... | crashes on launch |`
+  produced `RESULT: CLEAR, exit 0`. Both spellings are accepted now; a third one will not be.
+- **Closing a bug means writing `FIXED`, `CLOSED` or `WONTFIX` ON THAT SAME LINE.** A bug closed in
+  a paragraph below the table is still an open S1 to the release gate — correctly, since nothing
+  mechanical can tie the paragraph to the row.
 
 Severity:
 - S1: data loss, crash on launch, security

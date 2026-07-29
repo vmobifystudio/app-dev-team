@@ -19,6 +19,7 @@ npm-debug.log*
 .env
 .env.*
 *.pem
+*.p8
 
 # Mobile signing material. This plugin has no app code of its own, so none of these can appear
 # here — they are listed because this file is the reference a generated project's .gitignore is

@@ -15,8 +15,17 @@
  *   - `id = $2` hardcoded the ID column, which is the field-index mistake the ship gate's own
  *     header comment records as having already happened once
  *
+ * It also carries the `verified_static` flag through, which nothing in the release path could see:
+ * lib/board.mjs split `qa (static only)` into `status` + `staticOnly`, and then board-doctor, this
+ * file and ship-gate.sh all keyed on the bare status. A ticket verified WITHOUT ITS SUITE EVER
+ * RUNNING therefore reached `qa`, passed every release precondition, and shipped CLEAR — the state
+ * was added to the state machine and the consumer that decides whether to release could not reach
+ * it. `qa`/`done` are not in IN_FLIGHT_STATUS on purpose, so the flag needs its own line.
+ *
  * Usage:  node scripts/ship-inflight.mjs <path/to/31-board.md>
- * Output: one `ID(status)` per line on stdout (nothing at all means nothing is in flight)
+ * Output: one `ID(status)` per line on stdout, `ID(status,static-only)` for a ticket verified
+ *         without running its suite (nothing at all means nothing is in flight and nothing is
+ *         static-only)
  * Exit:   0 evaluated · 2 CANNOT EVALUATE (reason on stderr) — never 0-with-no-output on a board
  *         that could not be parsed.
  */
@@ -49,8 +58,8 @@ if (board.rows.length === 0) {
   );
 }
 
-const inFlight = board.rows
-  .filter((row) => IN_FLIGHT_STATUS.has((row.status || '').toLowerCase().trim()))
-  .map((row) => `${row.id}(${row.status.toLowerCase().trim()})`);
+const reported = board.rows
+  .filter((row) => IN_FLIGHT_STATUS.has((row.status || '').toLowerCase().trim()) || row.staticOnly)
+  .map((row) => `${row.id}(${row.status.toLowerCase().trim()}${row.staticOnly ? ',static-only' : ''})`);
 
-if (inFlight.length > 0) process.stdout.write(`${inFlight.join('\n')}\n`);
+if (reported.length > 0) process.stdout.write(`${reported.join('\n')}\n`);

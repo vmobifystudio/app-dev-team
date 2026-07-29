@@ -67,22 +67,29 @@ jobs:
           # A skill whose frontmatter is malformed does not fail loudly — it silently never
           # triggers, which is indistinguishable from a skill that exists and is simply never
           # the right one. Checked mechanically so it cannot rot.
+          # BOUNDED TO THE FRONTMATTER BLOCK. These greps scanned the whole file, so a body line
+          # reading `name: x` — an example, a table cell, a quoted snippet — satisfied a check about
+          # YAML that is only meaningful in the first block. A frontmatter check that a paragraph
+          # can pass is the "rule that cannot fail" class, in the file that enforces the rules.
+          fm() { awk 'NR==1 && $0!="---" { exit } NR>1 && $0=="---" { exit } NR>1' "$1"; }
           fail=0
           for f in skills/*/SKILL.md; do
             head -n 1 "$f" | grep -qx -- '---' || { echo "MISSING frontmatter opener: $f"; fail=1; continue; }
-            grep -qE '^name: *[a-z0-9-]+ *$' "$f" || { echo "MISSING or malformed name: $f"; fail=1; }
-            grep -qE '^description: *\S' "$f" || { echo "MISSING description: $f"; fail=1; }
+            fm "$f" | grep -qE '^name: *[a-z0-9-]+ *$' || { echo "MISSING or malformed name: $f"; fail=1; }
+            fm "$f" | grep -qE '^description: *\S' || { echo "MISSING description: $f"; fail=1; }
           done
           [ "$fail" -eq 0 ] || exit 1
           echo "ok — $(ls -d skills/*/ | wc -l | tr -d ' ') skills"
 
       - name: Every agent has valid frontmatter
         run: |
+          fm() { awk 'NR==1 && $0!="---" { exit } NR>1 && $0=="---" { exit } NR>1' "$1"; }
           fail=0
           for f in agents/*.md; do
-            grep -qE '^name: *[a-z0-9-]+ *$' "$f" || { echo "MISSING or malformed name: $f"; fail=1; }
-            grep -qE '^description: *\S' "$f" || { echo "MISSING description: $f"; fail=1; }
-            grep -qE '^tools: *\S' "$f" || { echo "MISSING tools: $f"; fail=1; }
+            head -n 1 "$f" | grep -qx -- '---' || { echo "MISSING frontmatter opener: $f"; fail=1; continue; }
+            fm "$f" | grep -qE '^name: *[a-z0-9-]+ *$' || { echo "MISSING or malformed name: $f"; fail=1; }
+            fm "$f" | grep -qE '^description: *\S' || { echo "MISSING description: $f"; fail=1; }
+            fm "$f" | grep -qE '^tools: *\S' || { echo "MISSING tools: $f"; fail=1; }
           done
           [ "$fail" -eq 0 ] || exit 1
           echo "ok — $(ls agents/*.md | wc -l | tr -d ' ') agents"

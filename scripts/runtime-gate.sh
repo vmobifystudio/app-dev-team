@@ -202,7 +202,11 @@ ios_gate() {
 
     if [ -n "$SCHEME_OPT" ]; then
       # Explicitly requested: honour it, but only if it exists.
-      if ! printf '%s\n' "$SCHEMES" | grep -qx -- "$SCHEME_OPT"; then
+      # -F, not just -x: without it the scheme name is a REGEX, so `--scheme '.*'` matched every
+      # line and the gate accepted a scheme that does not exist — then built whatever xcodebuild
+      # picked. A false PASS on the wrong artifact is the worst outcome this gate can produce, and
+      # this is the check written to prevent exactly that.
+      if ! printf '%s\n' "$SCHEMES" | grep -qxF -- "$SCHEME_OPT"; then
         unknown "ios    " "--scheme '$SCHEME_OPT' is not a shared scheme of $(basename "$XCPROJ").
                     Available: $(printf '%s' "$SCHEMES" | tr '\n' ' ')"
         return

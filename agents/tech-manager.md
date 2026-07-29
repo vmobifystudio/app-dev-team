@@ -49,8 +49,14 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move <ID> <event> --by <role> [--
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show [ID] [--json]
 ```
 
-Events: `created · claimed · assigned · done_reported · verified · rejected · review_requested ·
-started · approved · changes · merged · qa_passed · qa_failed · blocked · unblocked · closed`.
+Events: `created · claimed · assigned · done_reported · verified · verified_static · rejected ·
+review_requested · started · approved · changes · merged · qa_passed · qa_failed · blocked ·
+unblocked · closed`.
+
+`verified_static` is yours to append and it was missing from this list — the role instructed to
+write it was never told it existed. It records "reviewed, but the executable suite could NOT be
+executed" (verify-done exit 2). It unlocks `review_requested`, `approved` and `merged`, refuses
+`closed`, and `ship-gate.sh` blocks the release while any ticket still carries it.
 Exit `0` appended · `1` **refused** · `2` cannot evaluate (log missing or unreadable).
 
 **A refusal is a finding, not an obstacle.** The CLI prints why and what is legal from here. It

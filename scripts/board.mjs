@@ -36,7 +36,7 @@
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 
-import { parseBoard, parseLedger, parseDependencies, isEmpty, MAX_REVIEW_CYCLES } from './lib/board.mjs';
+import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import {
   EVENTS,
   key,
@@ -56,21 +56,27 @@ const die = (code, message) => {
   process.exit(code);
 };
 
-/**
- * Normalise the PREFIX of a ticket ID and nothing else.
- *
- * This used to be `id.toUpperCase()`, so the bug-intake convention `BUG-001-fix` — mandated in
- * lowercase by agents/tech-manager.md and /app-build — was stored and rendered `BUG-001-FIX`, and
- * a grep for the documented spelling found nothing on a board that had the ticket. `app-001` still
- * becomes `APP-001`; the suffix is now the operator's to spell.
- */
-const normalizeId = (id) => String(id ?? '').replace(/^[A-Za-z]+/, (prefix) => prefix.toUpperCase());
-
 /** Resolve an ID the user typed to the one on the board, whatever case either is in. */
 function resolveId(tickets, id) {
   const state = tickets.get(key(id));
   return state ? state.id : normalizeId(id);
 }
+
+/**
+ * Flags that take a value. A token in a value position is a VALUE, whatever it looks like.
+ *
+ * It used to be "the next token is a value unless it starts with `--`", which made every
+ * agent-supplied string an argument injection: `--detail "--board=/tmp/x"` set `detail` to `true`
+ * and `board` to `/tmp/x`, so the CLI rendered the board OVER AN ARBITRARY FILE and the recorded
+ * reason — the one thing an unblock exists to preserve — was destroyed. Reproduced on the bare CLI
+ * with no dashboard involved, so validating at any one caller would have left every other open.
+ *
+ * `--name=value` still works; a value-taking flag with no token after it is exit 2, not `true`.
+ */
+const VALUE_FLAGS = new Set([
+  'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
+  'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
+]);
 
 function parseArgs(argv) {
   const flags = {};
@@ -82,9 +88,16 @@ function parseArgs(argv) {
       continue;
     }
     const [name, inline] = arg.slice(2).split(/=(.*)/s);
-    if (inline !== undefined) flags[name] = inline;
-    else if (argv[i + 1] && !argv[i + 1].startsWith('--')) flags[name] = argv[(i += 1)];
-    else flags[name] = true;
+    if (inline !== undefined) {
+      flags[name] = inline;
+    } else if (VALUE_FLAGS.has(name)) {
+      if (i + 1 >= argv.length) die(2, `--${name} needs a value`);
+      flags[name] = argv[(i += 1)];
+    } else if (argv[i + 1] && !argv[i + 1].startsWith('--')) {
+      flags[name] = argv[(i += 1)];
+    } else {
+      flags[name] = true;
+    }
   }
   return { flags, positional };
 }

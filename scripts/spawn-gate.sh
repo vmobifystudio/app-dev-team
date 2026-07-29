@@ -28,7 +28,12 @@ IDS=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dir) DIR="${2:-}"; shift 2 || exit 2 ;;
+    # `--dir` with no value used to be `shift 2 || exit 2` — a SILENT exit 2. Every other
+    # exit-2 path in this file prints `CANNOT EVALUATE: <reason>`, and a gate that exits non-zero
+    # saying nothing is indistinguishable from a crash to the thing reading its output.
+    --dir)
+      if [ $# -lt 2 ]; then echo "CANNOT EVALUATE: --dir needs a directory"; exit 2; fi
+      DIR="$2"; shift 2 ;;
     --dir=*) DIR="${1#--dir=}"; shift ;;
     -*) echo "CANNOT EVALUATE: unknown flag $1"; exit 2 ;;
     *) IDS="$IDS $1"; shift ;;

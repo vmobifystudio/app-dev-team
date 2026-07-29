@@ -114,13 +114,39 @@ esac
 # Delegated to scripts/ship-inflight.mjs, which reads the board through lib/board.mjs — the one
 # parser. The inline awk this replaced was a third parser and failed open four separate ways; they
 # are catalogued in that file's header.
-ERRFILE=$(mktemp); trap 'rm -f "$ERRFILE"' EXIT
+ERRFILE=$(mktemp); STATICF=$(mktemp); trap 'rm -f "$ERRFILE" "$STATICF"' EXIT
 INFLIGHT=$(node "$HERE/ship-inflight.mjs" "$BOARD" 2>"$ERRFILE"); RC=$?
 INFLIGHT_ERR=$(cat "$ERRFILE")
 if [ "$RC" -ne 0 ]; then
   unknown "${INFLIGHT_ERR:-ship-inflight failed} — whether work is still in flight is UNKNOWN."
-elif [ -n "$INFLIGHT" ]; then
-  block "tickets still in flight: $(printf '%s' "$INFLIGHT" | tr '\n' ' ')"
+else
+  STILL=$(printf '%s' "$INFLIGHT" | grep -v 'static-only' || true)
+  [ -n "$STILL" ] && block "tickets still in flight: $(printf '%s' "$STILL" | tr '\n' ' ')"
+
+  # --- 2b. no ticket may ship on a suite that never ran ------------------------------------------
+  # `verified_static` says "reviewed, but the executable suite was never executed". It unlocks
+  # review, approval and merge on purpose — a broken toolchain must not also cost the code review.
+  # It must NOT unlock a release. It did: lib/board.mjs parsed `qa (static only)` back to a plain
+  # `qa`, board-doctor never mentioned the flag, ship-inflight dropped it, and this gate printed
+  # CLEAR on a sprint asserting a suite that had never executed. A waiver is the only route past it,
+  # keyed on the ticket ID, and it is REPORTED — a waived gate must never look like a skipped one.
+  #
+  # Via a file, not a pipe: `... | while read` runs the loop in a SUBSHELL in POSIX sh, so every
+  # `block` it appended would be discarded and the gate would print CLEAR having found the defect.
+  printf '%s\n' "$INFLIGHT" | grep 'static-only' > "$STATICF" || true
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    TID=${entry%%(*}
+    if W=$(waiver_for "$TID"); then
+      note "WAIVED: $TID shipped static-only (suite never ran) by $W"
+    else
+      block "$TID is verified_static — its test suite has NEVER RUN, so 'tests green' is unproven.
+           Run the suite and append the real verdict:
+             board.mjs move $TID verified --by <role> --detail \"<what ran>\"
+           Or waive it deliberately in docs/60-releases.md:
+             WAIVED: $TID — <who waived it> — <reason>"
+    fi
+  done < "$STATICF"
 fi
 
 # --- 3. no open S1/S2 bug -------------------------------------------------------------------------
@@ -201,12 +227,38 @@ $(printf '%s' "$MASKED" | sed 's/^/             /')
     # A pipe is the subtler half: GitHub Actions' DEFAULT shell is `bash -e {0}` WITHOUT pipefail,
     # so `xcodebuild test | xcbeautify` exits with xcbeautify's status and the compiler's failure is
     # discarded. `shell: bash` (which adds -eo pipefail) or an explicit `set -o pipefail` fixes it.
-    if ! grep -q 'pipefail\|shell:[[:space:]]*bash' "$wf" 2>/dev/null; then
-      PIPED=$(grep -nE '(xcodebuild|gradlew|swift (build|test)|npm (test|run)|pytest|go test|cargo test|dotnet test)[^|]*\|[^|]' "$wf" 2>/dev/null || true)
-      [ -n "$PIPED" ] && block "$REL pipes a build/test command with no pipefail, so the build's exit code is thrown away:
+    #
+    # PER STEP, not per file. `grep -q pipefail "$wf"` scanned the WHOLE workflow, so the safety of
+    # one step cleared every other one — and a COMMENT reading "we do not set pipefail anywhere"
+    # disabled the check outright. Reproduced: the same unguarded `xcodebuild test | xcbeautify`
+    # went from BLOCKED to CLEAR when an unrelated step gained `shell: bash`. Comments are stripped
+    # before anything is matched, so no prose can vouch for a step.
+    #
+    # A `defaults:` block IS legitimately file-wide (GitHub applies it to every run step), so a
+    # `shell: bash` there really does clear the file — and only there.
+    PIPED=$(awk '
+      function flush(   i) {
+        if (nbuf == 0) return
+        if (!safe && !globalsafe)
+          for (i = 1; i <= nbuf; i++)
+            if (buf[i] ~ /(xcodebuild|gradlew|swift (build|test)|npm (test|run)|pytest|go test|cargo test|dotnet test)[^|]*\|[^|]/)
+              print bufno[i] ":" buf[i]
+        nbuf = 0; safe = 0
+      }
+      {
+        code = $0; sub(/#.*/, "", code)                       # a comment can never vouch for a step
+        if (code ~ /^[[:space:]]*defaults:/) { indefaults = 1; dind = match(code, /[^ ]/) }
+        else if (indefaults && code ~ /[^[:space:]]/ && match(code, /[^ ]/) <= dind) indefaults = 0
+        if (indefaults && code ~ /shell:[[:space:]]*bash/) globalsafe = 1
+        if (code ~ /^[[:space:]]*-[[:space:]]/) flush()        # a new list item starts a new step
+        nbuf++; buf[nbuf] = code; bufno[nbuf] = NR
+        if (code ~ /pipefail/ || code ~ /shell:[[:space:]]*bash/) safe = 1
+      }
+      END { flush() }
+    ' "$wf" 2>/dev/null || true)
+    [ -n "$PIPED" ] && block "$REL pipes a build/test command in a step with no pipefail, so the build's exit code is thrown away:
 $(printf '%s' "$PIPED" | sed 's/^/             /')
-           Add \`set -o pipefail\` (or \`shell: bash\`) to the step, or do not pipe (DR4-023)."
-    fi
+           Add \`set -o pipefail\` (or \`shell: bash\`) to THAT step, or do not pipe (DR4-023)."
 
     # An install in a workflow is a dependency the project never declared. It also silently pins
     # whatever version the package manager serves that morning.

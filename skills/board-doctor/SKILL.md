@@ -115,8 +115,13 @@ A developer agent's `DONE: APP-NNN / Branch / Files / Tests: N added, all green`
 Before moving the row to `review`, prove it:
 
 ```bash
-sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" feat/APP-001-login main "<project test command>"
+BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") || { echo "$BASE"; exit 1; }
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" feat/APP-001-login "$BASE" "<project test command>"
 ```
+
+`main` is not the base — the integration branch is whatever `docs/23-git-strategy.md` declares, and
+`integration-branch.sh` is the single resolver. Verifying against the wrong base compares a branch
+to a tree it never forked from.
 
 Checks that the branch exists, that it carries commits not already on the base, that those commits
 change files, and — if a test command is given — whether it ran and what it said. Pure `git` +
@@ -160,12 +165,20 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 verified_static \
 - To clear it, run the suite and append the real verdict: `move APP-001 verified`. Then `closed` is
   accepted.
 
-**A static-only ticket must never be reported as complete.** `board-doctor` does not yet emit a
-warning for it — the `(static only)` suffix parses back to a plain `qa`, so every structural check
-keeps working, and the doctor stays silent. Until it does, this is on the reader: when you read the
-board, treat `qa (static only)` as an open item and name what is unrun in the standup and the
-ship-readiness report. Cross-check with `board.mjs show --json`, where each ticket carries
-`verifiedStatic` and `unrun`.
+**A static-only ticket must never be reported as complete, and that is now a check, not a request.**
+`scripts/ship-gate.sh` **BLOCKS** on any ticket carrying the flag and names it, with the two routes
+out printed: run the suite and append `move <ID> verified`, or waive it deliberately with
+`WAIVED: <ID> — <who> — <why>` in `docs/60-releases.md`.
+
+This paragraph used to be prose asking the reader to remember — in the one place `ship-gate.sh`
+exists to replace. It was reproduced end to end: `APP-001 → verified_static → merged → qa_passed`
+gave `ship-inflight` no output, `board-doctor` "Board is coherent", and `ship-gate` `RESULT: CLEAR`,
+all exit 0. **A sprint shipped asserting a suite that never executed.** The state was in the state
+machine and the consumer that decides whether to release could not reach it.
+
+Still name it in the standup and the ship-readiness report — the gate stops the release, it does not
+tell the team. Cross-check with `board.mjs show --json`, where each ticket carries `verifiedStatic`
+and `unrun`.
 
 ## Manual fallback (no Node)
 

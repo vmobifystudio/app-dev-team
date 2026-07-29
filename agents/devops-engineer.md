@@ -33,6 +33,29 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
    `feature|fix|refactor|chore|audit|sprint|release|hotfix` branches), the chosen commit
    convention (Conventional Commits *or* `[Module]` style — pick one and state it), PR rules,
    squash-vs-merge policy, and the release/tag process from `git-workflow.md`.
+
+   **It MUST contain this line, on its own, spelled exactly like this:**
+
+   ```
+   Integration branch: develop
+   ```
+
+   (`develop` on the flagship model, `main` on a single-branch project — write the one that is
+   true.) This is not documentation. `scripts/integration-branch.sh` reads that line and it is the
+   ONLY source for the branch every feature is diffed against, reviewed against and merged into.
+   No role was ever told to write it, so the resolver found no declaration on every real project
+   and fell back to `main` — features on a develop-model project would have merged straight to
+   `main`, which is not recoverable by a later fix. A git-strategy doc that exists and declares
+   nothing is now **exit 2** and stops the round, so an omission is loud instead of silent.
+
+   Verify it before you hand off:
+
+   ```bash
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh" .   # must print your branch, exit 0
+   ```
+
+   The branch must also EXIST (locally or on origin) — a branch named only in prose fails the same
+   check, deliberately.
 2. **Repo hygiene** — `.gitignore` for the platform(s); ensure no `google-services.json`,
    `GoogleService-Info.plist`, keystores, `keystore.properties`, or API keys are ever tracked.
 3. **CI** — a GitHub Actions workflow:
@@ -98,6 +121,7 @@ rule.
 ```
 DEVOPS READY
 Branch model + conventions: docs/23-git-strategy.md
+Integration branch: <name> — declared in docs/23-git-strategy.md, confirmed by integration-branch.sh exit 0
 CI: <workflow paths>
 Signing/flavors: configured; prod guard active
 Next: tech-manager (merge gate uses this), developers (branch naming)

@@ -114,16 +114,39 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
    `DONE: APP-NNN`, **verify the claim before you act on it**:
 
    ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> main "<project test command>"
+   BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") || { echo "$BASE"; exit 1; }
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" "<project test command>"
    ```
 
-   Every outcome is an append (`done_reported` on arrival, then `verified` or `rejected`, then
-   `review_requested`) — see `/app-build` step 3 for the exact commands.
+   **Never hardcode `main` as the base.** The integration branch comes from the project's own
+   `docs/23-git-strategy.md` via that resolver, once per round; on a develop-model project a
+   hardcoded `main` diffs and merges against the wrong branch, which is not recoverable by a later
+   fix. If the resolver exits 2, stop the round and surface its message.
 
-   `REJECTED` → the row stays where it is; re-spawn that developer with the blocking lines. Only on
-   `VERIFIED` does `board.mjs move APP-NNN review_requested --by <owner> --detail "-> code-reviewer"`
-   succeed — status, reviewer and ledger row in one write instead of three — and then you
-   spawn a `code-reviewer` Task for that branch in the next message.
+   Every outcome is an append (`done_reported` on arrival, then `verified` / `verified_static` /
+   `rejected`, then `review_requested`) — see `/app-build` step 3 for the exact commands.
+
+   **verify-done has THREE outcomes, and the third is the one that keeps the review stage alive:**
+
+   | Line 1 | Exit | Do |
+   |---|---|---|
+   | `VERIFIED` | 0 | `board.mjs move APP-NNN verified --by <owner>`, then `review_requested` |
+   | `REJECTED` | 1 | The row stays where it is. Re-spawn that developer with the blocking lines verbatim |
+   | `CANNOT EVALUATE` | 2 | `board.mjs move APP-NNN verified_static --by tech-manager --detail "<what could not run>"`, then `review_requested`. **Do not re-spawn the developer — there is no failure to fix** |
+
+   This skill used to say there were two outcomes and that "only on `VERIFIED`" could a ticket reach
+   review. That is DR4-002, the most expensive finding of dry run 4: a ticket blocked on the
+   *environment* also lost its *code review*, and **`code-reviewer` never ran once in the entire
+   sprint**. `verified_static` was added to unlock exactly this lane — and `/app-build` delegates
+   streaming review to this skill, so the fix had to land here or the dead-end stays the rule.
+
+   `verified_static` unlocks `review_requested`, `approved` and `merged`, and refuses `closed`: the
+   sprint closes as *"merged, verification deferred"*, and `ship-gate.sh` blocks on any ticket still
+   carrying the flag. Real progress keeps happening; nobody gets to call it green.
+
+   On either passing outcome, `board.mjs move APP-NNN review_requested --by <owner> --detail
+   "-> code-reviewer"` succeeds — status, reviewer and ledger row in one write instead of three —
+   and then you spawn a `code-reviewer` Task for that branch in the next message.
    Reviewers run in parallel with each other **and** with still-running developers. Waiting for the
    slowest dev before any review starts wastes wall-clock time.
 

@@ -51,6 +51,23 @@ process.exit(require(json).findings.some(
 ' "$1" "$2" "${4:-}" && ok "$3" || bad "$3" "no blocking finding ${2}${4:+ naming $4}"
 }
 
+# assert_anomaly <board-doctor-json> <code> <label> [ticket-id]
+#
+# `assert_finding`'s sibling for board-doctor, whose blocking list is `anomalies` (team-doctor's is
+# `findings`). Same reason, same proof: `assert_has "$json" cycle_cap_breached` greps the WHOLE blob,
+# which carries warnings too — demoting `cycle_cap_breached` from anomaly to warning (i.e. deleting
+# the review-cycle gate outright) left that assertion green. `ledger_action_unknown` was worse: it is
+# a PREFIX of `ledger_action_unknown_superseded`, the warning emitted a few lines below, so the
+# superseded warning alone satisfied the grep and the blocking finding never had to exist.
+assert_anomaly() {
+  node -e '
+const [, json, code, ticket] = process.argv;
+process.exit(require(json).anomalies.some(
+  (a) => a.code === code && (!ticket || String(a.ticketId) === ticket)
+) ? 0 : 1);
+' "$1" "$2" "${4:-}" && ok "$3" || bad "$3" "no blocking anomaly ${2}${4:+ on $4}"
+}
+
 # assert_exit_within <seconds> <expected> <label> <command...>
 #
 # For assertions about a script that must not HANG. `assert_exit` would wait forever on a
@@ -119,7 +136,7 @@ import("'"$HERE"'/lib/board.mjs").then(m=>{
 
 # Regression: an unknown ledger word must never be silently dropped — a REQUEST CHANGES once
 # vanished because the parser filtered it and reported the milder 'review never started'.
-assert_has "$TMP/broken.json" "ledger_action_unknown" "unknown ledger action is raised, not dropped"
+assert_anomaly "$TMP/broken.json" "ledger_action_unknown" "unknown ledger action is raised, not dropped" "APP-005"
 
 # ...but an append-only log needs a repair path, or one typo blocks the board forever.
 cp "$FIX/broken.md" "$TMP/superseded.md"
@@ -178,7 +195,7 @@ node "$HERE/board-doctor.mjs" "$FIX/cycles-spent.md" --json 2>/dev/null | grep -
 # review: the loop can act on this ticket, so the cap is exactly what should stop it.
 sed 's/| done |/| review |/' "$FIX/cycles-spent.md" > "$TMP/cycles-review.md"
 node "$HERE/board-doctor.mjs" "$TMP/cycles-review.md" --json > "$TMP/cyc.json" 2>/dev/null
-assert_has "$TMP/cyc.json" "cycle_cap_breached" "the same Cycles on a ticket still in review does breach"
+assert_anomaly "$TMP/cyc.json" "cycle_cap_breached" "the same Cycles on a ticket still in review does breach"
 
 # Regression: the cap was off by one. `effectiveCycles >= MAX_REVIEW_CYCLES` fired at Cycles = 2,
 # but /app-build allows 2 review cycles and stops the loop on the THIRD REQUEST CHANGES — so the
@@ -298,12 +315,17 @@ R="$TMP/repo"; mkdir -p "$R"
 ( cd "$R" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
   && echo a > a.txt && git add a.txt && git commit -qm init ) >/dev/null 2>&1
 
+# A command that looks like a REAL passing suite. `true` is not one, and cannot be used to assert
+# VERIFIED any more: a zero exit is evidence that nothing errored, never evidence that a suite ran.
+printf '#!/bin/sh\necho "Test Suite '\''AppTests'\'' passed"\necho "Executed 3 tests, with 0 failures"\n' > "$TMP/realpass.sh"
+PASS_CMD="sh $TMP/realpass.sh"
+
 assert_exit 1 "rejects a branch that does not exist" sh "$HERE/verify-done.sh" nope main "true"
 ( cd "$R" && git checkout -q -b feat/empty && git checkout -q main ) >/dev/null 2>&1
 ( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "true" ) >/dev/null 2>&1
 [ $? = 1 ] && ok "rejects a branch with no commits" || bad "rejects a branch with no commits"
 ( cd "$R" && git checkout -q feat/empty && echo b > b.txt && git add b.txt && git commit -qm work && git checkout -q main ) >/dev/null 2>&1
-( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "true" ) >/dev/null 2>&1
+( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "$PASS_CMD" ) >/dev/null 2>&1
 [ $? = 0 ] && ok "accepts real work with passing tests" || bad "accepts real work with passing tests"
 # A suite that RAN and reported failures. The command must LOOK like a test run: `false` alone used
 # to satisfy this assertion, and after DR4-001 it no longer can — a bare non-zero exit with no
@@ -315,7 +337,7 @@ printf '#!/bin/sh\necho "Test Case testSplit failed"\necho "1 test, 1 failure"\n
 # Regression: agent-isolation puts every branch in a worktree, and `git checkout` refuses a branch
 # already checked out elsewhere. verify-done rejected every honest DONE until it ran tests in place.
 ( cd "$R" && git worktree add -q wt feat/empty ) >/dev/null 2>&1
-( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "true" ) >"$TMP/vd.txt" 2>&1
+( cd "$R" && sh "$HERE/verify-done.sh" feat/empty main "$PASS_CMD" ) >"$TMP/vd.txt" 2>&1
 if [ $? = 0 ] && grep -q "VERIFIED" "$TMP/vd.txt"; then
   ok "verifies a branch live in a worktree (no checkout)"
 else
@@ -384,7 +406,7 @@ D="$TMP/dirtyrepo"; mkdir -p "$D"
   && git add -A && git commit -qm work && git checkout -q main \
   && echo "uncommitted work by another agent" > a.txt ) >/dev/null 2>&1
 
-( cd "$D" && sh "$HERE/verify-done.sh" feat/rework main "test -f c.txt" ) >"$TMP/vdirty.txt" 2>&1
+( cd "$D" && sh "$HERE/verify-done.sh" feat/rework main "test -f c.txt && echo \"Executed 3 tests, with 0 failures\"" ) >"$TMP/vdirty.txt" 2>&1
 VDRC=$?
 if [ "$VDRC" = 0 ] && grep -q "VERIFIED" "$TMP/vdirty.txt"; then
   ok "verifies a branch while the shared tree is dirty (temporary worktree, no checkout)"
@@ -2283,21 +2305,40 @@ process.exit(s.panels.every((p) => typeof p.swept === "string" && p.swept.length
 ' "$TMP/state.json" && ok "every panel states the population it swept" \
                     || bad "every panel states the population it swept"
 
-# --- invariant 1: ONE PARSER --------------------------------------------------------------------
-# Not a grep for an import. The dashboard and the CLI must AGREE about every ticket on the same
-# project — which is the only thing "one parser" was ever a proxy for.
+# --- invariant 1: ONE PARSER, AND IT IS RIGHT ----------------------------------------------------
+# Agreement alone is tautological and was: studio-dashboard.mjs and board.mjs import `reduce` from
+# the SAME lib/events.mjs, so they agree by construction whatever the reducer computes. Proven by
+# mutation — making `merged` set status `todo` in the shared reducer made BOTH consumers wrong in
+# lockstep; 7 unrelated assertions caught it and this one stayed green. It proved only that one
+# function returns the same value twice.
+#
+# So the expectation is written down HERE, independently of both, and read off the fixture by hand:
+# APP-001 was blocked by tech-manager, APP-002 was never claimed, APP-003 is in review carrying the
+# verified_static flag. A wrong reducer now breaks this whether or not both readers share it.
+EXPECTED='APP-001=blocked,APP-002=todo,APP-003=review/static'
+node -e '
+const dash = require(process.argv[1]).tickets;
+const want = process.argv[2];
+const got = dash.map((t) => t.id + "=" + t.status + (t.staticOnly ? "/static" : "")).sort().join(",");
+if (got !== want) { console.error("want " + want + "\ngot  " + got); process.exit(1); }
+process.exit(0);
+' "$TMP/state.json" "$EXPECTED" 2>"$TMP/expected.txt" \
+  && ok "the dashboard reports the status the fixture independently says each ticket is in" \
+  || bad "the dashboard reports the status the fixture independently says each ticket is in" "$(cat "$TMP/expected.txt")"
+
+# ...and board.mjs must land on the SAME independently-stated answer. Two consumers, one written
+# expectation: this is what "one parser" was ever a proxy for, and it can now fail on its own.
 node "$HERE/board.mjs" show --json --log "$DFX/docs/31-board-events.jsonl" --board "$DFX/docs/31-board.md" \
   > "$TMP/cli-show.json" 2>/dev/null
 node -e '
-const dash = require(process.argv[1]).tickets;
-const cli = require(process.argv[2]).tickets;
-const a = dash.map((t) => t.id + "=" + t.status + (t.staticOnly ? "/static" : "")).sort();
-const b = Object.values(cli).map((t) => t.id.toUpperCase() + "=" + t.status + (t.verifiedStatic ? "/static" : "")).sort();
-if (JSON.stringify(a) !== JSON.stringify(b)) { console.error("dash " + a + "\ncli  " + b); process.exit(1); }
-process.exit(a.length ? 0 : 1);
-' "$TMP/state.json" "$TMP/cli-show.json" 2>"$TMP/parsers.txt" \
-  && ok "the dashboard and board.mjs agree on every ticket's status — one parser, proven by agreement" \
-  || bad "the dashboard and board.mjs agree on every ticket's status" "$(cat "$TMP/parsers.txt")"
+const cli = require(process.argv[1]).tickets;
+const want = process.argv[2];
+const got = Object.values(cli).map((t) => t.id + "=" + t.status + (t.verifiedStatic ? "/static" : "")).sort().join(",");
+if (got !== want) { console.error("want " + want + "\ngot  " + got); process.exit(1); }
+process.exit(0);
+' "$TMP/cli-show.json" "$EXPECTED" 2>"$TMP/parsers.txt" \
+  && ok "...and board.mjs reports the same independently-stated statuses" \
+  || bad "...and board.mjs reports the same independently-stated statuses" "$(cat "$TMP/parsers.txt")"
 
 # --- the action surface -------------------------------------------------------------------------
 [ "$(dfetch "http://127.0.0.1:$DPORT/action" '{"action":"render","params":{}}')" = "400" ] \
@@ -2332,6 +2373,57 @@ fi
 [ "$(dfetch "http://127.0.0.1:$DPORT/action" '{"action":"unblock","params":{"ticket":"APP-002","by":"tech-manager","reason":""}}')" = "400" ] \
   && ok "an unblock with no recorded reason is refused before the CLI is ever invoked" \
   || bad "an unblock with no recorded reason is refused before the CLI is ever invoked"
+
+# --- the action surface is a TRUST BOUNDARY, not just a whitelist ---------------------------------
+# dfetch always sends application/json and no Origin. These need the headers a hostile page sends.
+dfetch_hdr() { # <url> <content-type> <origin|-> <body>
+  node -e '
+const [, url, ctype, origin, body] = process.argv;
+const headers = { "content-type": ctype };
+if (origin !== "-") headers.origin = origin;
+fetch(url, { method: "POST", headers, body })
+  .then(async (r) => { require("fs").writeFileSync(process.env.RESP, await r.text()); console.log(r.status); })
+  .catch((e) => { require("fs").writeFileSync(process.env.RESP, String(e)); console.log("000"); });
+' "$1" "$2" "$3" "$4"
+}
+
+# Binding to 127.0.0.1 keeps the network out, not the operator's browser. `JSON.parse(body)` ignored
+# Content-Type, and a text/plain POST is a CORS-SIMPLE request — no preflight — so any page open in
+# another tab could drive all three actions. Requiring application/json reinstates the preflight.
+[ "$(dfetch_hdr "http://127.0.0.1:$DPORT/action" text/plain - '{"action":"unblock","params":{"ticket":"APP-002","by":"tech-manager","reason":"drive-by"}}')" = "415" ] \
+  && ok "POST /action refuses a CORS-simple text/plain body (no preflight = drive-by)" \
+  || bad "POST /action refuses a CORS-simple text/plain body" "$(head -c 200 "$RESP")"
+
+[ "$(dfetch_hdr "http://127.0.0.1:$DPORT/action" application/json https://evil.example '{"action":"unblock","params":{"ticket":"APP-002","by":"tech-manager","reason":"drive-by"}}')" = "403" ] \
+  && ok "...and refuses a foreign Origin" \
+  || bad "...and refuses a foreign Origin" "$(head -c 200 "$RESP")"
+
+[ "$(dfetch_hdr "http://127.0.0.1:$DPORT/action" application/json "http://127.0.0.1:$DPORT" '{"action":"nope","params":{}}')" = "400" ] \
+  && ok "...while a same-origin Origin still reaches the whitelist" \
+  || bad "...while a same-origin Origin still reaches the whitelist" "$(head -c 200 "$RESP")"
+
+# `ACTIONS[name]` is a bare lookup, so an INHERITED property passed the whitelist guard, then
+# `action.validate` was undefined, the TypeError escaped the async handler and Node killed the
+# process. The existing negative test uses "render" — not an inherited property — so it stayed green
+# over the hole. The proof this closes it is that /state still answers afterwards.
+for EVIL in constructor __proto__ toString valueOf hasOwnProperty; do
+  CODE=$(dfetch "http://127.0.0.1:$DPORT/action" "{\"action\":\"$EVIL\",\"params\":{}}")
+  [ "$CODE" = "400" ] || bad "POST /action refuses the inherited property \"$EVIL\"" "status $CODE"
+done
+ok "POST /action refuses every inherited Object.prototype key as an action name"
+[ "$(dfetch "http://127.0.0.1:$DPORT/state")" = "200" ] \
+  && ok "...and the server is still alive — the prototype lookup no longer kills the process" \
+  || bad "...and the server is still alive after the prototype lookups"
+
+# Defence in depth for the parseArgs injection below: a form field shaped like a flag is never a
+# legitimate reason, and the boundary says so before the CLI is ever invoked.
+FLAGBODY='{"action":"unblock","params":{"ticket":"APP-002","by":"tech-manager","reason":"--board=TMPDIR/PWNED.md"}}'
+FLAGBODY=$(printf '%s' "$FLAGBODY" | sed "s#TMPDIR#$TMP#")
+[ "$(dfetch "http://127.0.0.1:$DPORT/action" "$FLAGBODY")" = "400" ] \
+  && ok "an unblock reason shaped like a CLI flag is refused at the boundary" \
+  || bad "an unblock reason shaped like a CLI flag is refused at the boundary" "$(head -c 200 "$RESP")"
+[ ! -e "$TMP/PWNED.md" ] && ok "...and no file was written outside the project" \
+                         || bad "...and no file was written outside the project" "$TMP/PWNED.md exists"
 
 kill "$DASHPID" 2>/dev/null
 wait "$DASHPID" 2>/dev/null
@@ -2398,9 +2490,15 @@ process.exit(s.actions.length === 0 ? 0 : 1);
 grep -q "EventSource" "$TMP/empty.html" && grep -q "if (BOOT) render(BOOT)" "$TMP/empty.html" \
   && ok "...and the exported page renders from the baked-in state instead of polling a server" \
   || bad "...and the exported page renders from the baked-in state instead of polling a server"
-grep -qE "https?://(?!localhost|127)" "$TMP/empty.html" 2>/dev/null \
-  && bad "the page loads nothing from the network" \
-  || ok "the page loads nothing from the network (no CDN, no fonts, no images)"
+# `(?!...)` is a PCRE negative lookahead. POSIX ERE has no such construct, so `grep -qE` exited 2 on
+# a SYNTAX ERROR, stderr went to /dev/null, and control fell through to `|| ok` every single time —
+# this assertion had never once inspected the page. Proven: a live
+# `https://cdn.jsdelivr.net/npm/chart.js` baked into the exported HTML still reported 0 failed.
+# Two ERE-safe steps instead: list every URL, then subtract the loopback ones.
+NETREFS=$(grep -oE 'https?://[^"'"'"'` )<>]+' "$TMP/empty.html" 2>/dev/null | grep -vE '^https?://(localhost|127\.0\.0\.1)([:/]|$)' || true)
+[ -z "$NETREFS" ] \
+  && ok "the page loads nothing from the network (no CDN, no fonts, no images)" \
+  || bad "the page loads nothing from the network" "$(printf '%s' "$NETREFS" | tr '\n' ' ')"
 
 assert_exit 2 "a project directory that does not exist is exit 2" node "$DASH" --project "$TMP/nosuchproject" --export "$TMP/x.html"
 
@@ -2469,6 +2567,372 @@ assert_exit 2 "parses the payload without GNU sed extensions" hk "git stash"
 
 rm -rf "$HKD"
 
+echo "gates that could not fire"
+# --------------------------------------------------------------------------------------------
+# Every assertion below is a gate that was proven, by execution, to be incapable of catching the
+# defect it was written for. They are grouped because they are one disease: a check whose input
+# shape, scope or trust boundary did not match reality, reporting CLEAR either way.
+
+# --- the open-S1/S2 blocker could not fire on a real bug board ---------------------------------
+# The pattern demanded markdown bold on BOTH fields (`**BUG-001** ... **S1**`) while
+# agents/qa-engineer.md's template is plain pipe-delimited, so the only files it ever matched were
+# the fixtures written to satisfy it. Reproduced: a board carrying an S1 crash-on-launch produced
+# `RESULT: CLEAR, EXIT=0` from the most consequential blocker in the plugin.
+sh "$HERE/ship-gate.sh" "$FIX/ship-bugs-plain" >"$TMP/sgplain.txt" 2>&1
+[ $? = 1 ] && ok "the plain pipe-delimited bug board (the one qa-engineer is told to write) BLOCKS" \
+           || bad "the plain pipe-delimited bug board BLOCKS" "$(cat "$TMP/sgplain.txt")"
+assert_has "$TMP/sgplain.txt" "1 open S1/S2 bug" "...counting the open S1 and not the row marked FIXED"
+assert_has "$TMP/sgplain.txt" "1 open S3/S4 bug" "...and the deferred S3 in the same plain form"
+# The bold form must keep working — a fix that swaps one exclusive spelling for another is not a fix.
+assert_exit 1 "the bold form still blocks too (both spellings, not a swap)" \
+  sh "$HERE/ship-gate.sh" "$FIX/ship-blocked"
+# ...and a severity mentioned in PROSE is still not a bug row, or the gate blocks on its own docs.
+mkdir -p "$TMP/sgprose/docs"
+cp "$FIX/ship-clear/docs/31-board.md" "$FIX/ship-clear/docs/50-test-plan.md" "$TMP/sgprose/docs/"
+printf '# Bug log\n\nNo open defects. BUG-001 was an S1 and is closed; see the S2 triage notes.\n' \
+  > "$TMP/sgprose/docs/51-bugs.md"
+assert_exit 0 "a severity named in a sentence is not a bug row" sh "$HERE/ship-gate.sh" "$TMP/sgprose"
+
+# --- verified_static shipped CLEAR: the release gate could not see the flag ---------------------
+# lib/board.mjs split `qa (static only)` into status + staticOnly, and NO consumer in the release
+# path read it — board-doctor never mentioned it, ship-inflight filtered on IN_FLIGHT_STATUS (which
+# excludes qa) and dropped the flag, ship-gate had no check. A sprint shipped asserting a suite that
+# never executed. Proven end to end: APP-001 -> verified_static -> merged -> qa_passed gave no
+# ship-inflight output, "Board is coherent", and RESULT: CLEAR, all exit 0.
+node "$HERE/ship-inflight.mjs" "$FIX/ship-static/docs/31-board.md" > "$TMP/inflight-static.txt" 2>&1
+assert_has "$TMP/inflight-static.txt" "APP-002(qa,static-only)" "ship-inflight carries the static-only flag out of the board"
+sh "$HERE/ship-gate.sh" "$FIX/ship-static" >"$TMP/sgstatic.txt" 2>&1
+[ $? = 1 ] && ok "ship-gate BLOCKS a sprint holding a ticket whose suite never ran" \
+           || bad "ship-gate BLOCKS a static-only sprint" "$(cat "$TMP/sgstatic.txt")"
+assert_has "$TMP/sgstatic.txt" "APP-002 is verified_static" "...naming the ticket, not just the count"
+# A waiver is the only route past it, and a waived gate must never look like a skipped one.
+mkdir -p "$TMP/sgwaived/docs"
+cp "$FIX/ship-static/docs/"* "$TMP/sgwaived/docs/"
+printf 'WAIVED: APP-002 — head-of-eng — no simulator runtime on the release host, shipping deferred verification\n' \
+  > "$TMP/sgwaived/docs/60-releases.md"
+sh "$HERE/ship-gate.sh" "$TMP/sgwaived" >"$TMP/sgwaived.txt" 2>&1
+[ $? = 0 ] && ok "...and a well-formed waiver naming the ticket clears it" \
+           || bad "a well-formed waiver naming the ticket clears it" "$(cat "$TMP/sgwaived.txt")"
+assert_has "$TMP/sgwaived.txt" "WAIVED: APP-002 shipped static-only" "...REPORTING the waiver, never silently"
+# A ticket genuinely in flight must still block, and must not be confused with a static-only one.
+assert_exit 1 "an in-flight ticket still blocks, separately from the static-only check" \
+  sh "$HERE/ship-gate.sh" "$FIX/ship-blocked"
+
+# --- pipefail was disabled file-wide by any occurrence of the word -----------------------------
+# `grep -q 'pipefail\|shell: bash' "$wf"` scanned the WHOLE workflow, so one safe step vouched for
+# every other one — and a COMMENT saying "we do not set pipefail anywhere" switched the check off.
+WFP="$TMP/wf"; mkdir -p "$WFP/docs" "$WFP/.github/workflows"
+cp "$FIX/ship-clear/docs/"* "$WFP/docs/"
+cat > "$WFP/.github/workflows/ci.yml" <<'YML'
+name: ci
+jobs:
+  build:
+    steps:
+      - name: Lint
+        shell: bash
+        run: swiftformat --lint .
+      - name: Test
+        run: xcodebuild test -scheme App | xcbeautify
+YML
+sh "$HERE/ship-gate.sh" "$WFP" >"$TMP/wf1.txt" 2>&1
+[ $? = 1 ] && ok "an unguarded piped test step blocks even when ANOTHER step has shell: bash" \
+           || bad "an unguarded piped step blocks despite another step's shell: bash" "$(cat "$TMP/wf1.txt")"
+cat > "$WFP/.github/workflows/ci.yml" <<'YML'
+name: ci
+jobs:
+  build:
+    steps:
+      # we do not set pipefail anywhere
+      - name: Test
+        run: xcodebuild test -scheme App | xcbeautify
+YML
+sh "$HERE/ship-gate.sh" "$WFP" >"$TMP/wf2.txt" 2>&1
+[ $? = 1 ] && ok "...and a COMMENT mentioning pipefail cannot vouch for a step" \
+           || bad "a comment mentioning pipefail cannot vouch for a step" "$(cat "$TMP/wf2.txt")"
+cat > "$WFP/.github/workflows/ci.yml" <<'YML'
+name: ci
+jobs:
+  build:
+    steps:
+      - name: Test
+        shell: bash
+        run: xcodebuild test -scheme App | xcbeautify
+YML
+assert_exit 0 "...while the piped step guarding ITSELF is clear" sh "$HERE/ship-gate.sh" "$WFP"
+cat > "$WFP/.github/workflows/ci.yml" <<'YML'
+name: ci
+defaults:
+  run:
+    shell: bash
+jobs:
+  build:
+    steps:
+      - name: Test
+        run: xcodebuild test -scheme App | xcbeautify
+YML
+assert_exit 0 "...and a workflow-level defaults: shell bash IS legitimately file-wide" \
+  sh "$HERE/ship-gate.sh" "$WFP"
+
+# --- tests=green was asserted with zero evidence a suite ran -----------------------------------
+# classify_test_outcome's ran-evidence grep was consulted only on NON-ZERO exit; on exit 0 the
+# script wrote green unconditionally. Rigorous when the command fails, credulous when it succeeds —
+# backwards for a gate. `verify-done.sh feat/X main "true"` printed `VERIFIED ... tests=green`.
+VDG="$TMP/greenrepo"; mkdir -p "$VDG"
+( cd "$VDG" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && echo a > a.txt && git add a.txt && git commit -qm init \
+  && git checkout -q -b feat/X && echo b > b.txt && git add b.txt && git commit -qm work \
+  && git checkout -q main ) >/dev/null 2>&1
+for NOOP in "true" "echo 'skipping tests'" ":"; do
+  ( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "$NOOP" ) >"$TMP/vdg.txt" 2>/dev/null
+  RC=$?
+  if [ "$RC" = 2 ] && head -1 "$TMP/vdg.txt" | grep -q "CANNOT EVALUATE"; then :; else
+    bad "a test command that runs no suite is never green: $NOOP" "exit $RC: $(head -1 "$TMP/vdg.txt")"
+  fi
+done
+ok "a zero exit with no ran-evidence is CANNOT EVALUATE, not tests=green"
+( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "echo 'Executed 3 tests, with 0 failures'" ) >"$TMP/vdg2.txt" 2>/dev/null
+[ $? = 0 ] && grep -q "tests=green" "$TMP/vdg2.txt" \
+  && ok "...and output that PROVES a suite ran green still verifies" \
+  || bad "output that proves a suite ran green still verifies" "$(head -2 "$TMP/vdg2.txt")"
+
+# --- the integration branch resolver's input was never written by anyone ------------------------
+# `grep -rn "Integration branch" agents/ skills/ commands/` returned NOTHING: no role was told to
+# emit the line, so the resolver found no declaration on every real project and fell back to `main`
+# at exit 0 — the exact fail-open its header says it exists to remove.
+grep -q 'Integration branch: develop' "$HERE/../agents/devops-engineer.md" \
+  && ok "devops-engineer.md mandates the exact line integration-branch.sh reads" \
+  || bad "devops-engineer.md mandates the exact 'Integration branch: <name>' line"
+grep -q 'integration-branch.sh' "$HERE/../agents/devops-engineer.md" \
+  && ok "...and tells it to verify the line resolves before handing off" \
+  || bad "...and tells it to verify the line resolves before handing off"
+
+IBP="$TMP/ibphrasing"; mkdir -p "$IBP/docs"
+( cd "$IBP" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init && git branch develop ) >/dev/null 2>&1
+IBFAIL=""
+write_ib() { printf '%s\n' "$1" > "$IBP/docs/23-git-strategy.md"; }
+for FORM in 'Integration branch: develop' \
+            '- Integration branch — `develop`' \
+            'The integration branch is `develop`.' \
+            'Integration branch = develop' \
+            '| Integration branch | develop |' \
+            '**Integration branch:** `develop`'; do
+  write_ib "$FORM"
+  GOT=$(sh "$HERE/integration-branch.sh" "$IBP" 2>/dev/null)
+  [ "$GOT" = "develop" ] || IBFAIL="$IBFAIL [$FORM -> '$GOT']"
+done
+[ -z "$IBFAIL" ] && ok "every realistic phrasing of the declaration resolves, not just 'branch: name'" \
+                 || bad "every realistic phrasing of the declaration resolves" "$IBFAIL"
+
+# A git-strategy doc that EXISTS and declares nothing is exit 2, never a silent `main`: the document
+# that owns the answer is silent, and "the doc did not say" must not be spelled like "the doc said
+# main". A project with no such doc at all still gets `main` — brownfield runs must not be bricked.
+printf 'Branch model: trunk-based. Squash merges only.\n' > "$IBP/docs/23-git-strategy.md"
+assert_exit 2 "a git-strategy doc that declares no integration branch CANNOT RESOLVE" \
+  sh "$HERE/integration-branch.sh" "$IBP"
+rm -f "$IBP/docs/23-git-strategy.md"
+[ "$(sh "$HERE/integration-branch.sh" "$IBP" 2>/dev/null)" = "main" ] \
+  && ok "...while a project with no git-strategy doc at all still resolves main" \
+  || bad "a project with no git-strategy doc at all still resolves main"
+
+# --- CLI argument injection: a value that looks like a flag was read as a flag ------------------
+# board.mjs parseArgs read ANY `--`-prefixed token as a new flag even in a value position, so every
+# agent-supplied string was an injection point. `--detail "--board=<path>"` rendered the board over
+# an arbitrary file AND destroyed the recorded reason (the appended event carried "detail": true) —
+# the one guard an unblock exists to enforce.
+INJ="$TMP/inject"; mkdir -p "$INJ/docs"
+printf 'SENTINEL\n' > "$INJ/victim.txt"
+( cd "$INJ" && node "$HERE/board.mjs" add APP-001 --title t --owner ios-developer \
+    --acceptance "Given x when y then it shows" --spec s ) >/dev/null 2>&1
+( cd "$INJ" && node "$HERE/board.mjs" move APP-001 blocked --by tech-manager --detail "waiting" ) >/dev/null 2>&1
+( cd "$INJ" && node "$HERE/board.mjs" move APP-001 unblocked --by tech-manager \
+    --detail "--board=$INJ/victim.txt" ) >/dev/null 2>&1
+[ "$(head -1 "$INJ/victim.txt")" = "SENTINEL" ] \
+  && ok "a --detail value shaped like a flag does not redirect the CLI's output path" \
+  || bad "a --detail value shaped like a flag does not redirect the CLI's output path" \
+         "victim.txt was overwritten"
+grep -q -- '"detail":"--board=' "$INJ/docs/31-board-events.jsonl" \
+  && ok "...and the value is RECORDED verbatim, not swallowed as \"detail\": true" \
+  || bad "...and the value is RECORDED verbatim" "$(tail -1 "$INJ/docs/31-board-events.jsonl")"
+( cd "$INJ" && node "$HERE/board.mjs" move APP-001 blocked --by tech-manager --detail ) >/dev/null 2>&1
+[ $? = 2 ] && ok "...and a value-taking flag with nothing after it is exit 2, not silently true" \
+           || bad "a value-taking flag with nothing after it is exit 2"
+
+# --- the renderer escaped `|`, the reader never unescaped it -----------------------------------
+# CELL wrote `\|`; splitRow did a naive .split('|'). A title with a pipe shifted every later column,
+# so owner became the title's tail and status became `—`, and the ticket dropped out of every
+# status-keyed consumer — the ship gate's in-flight check included — while still rendering a row.
+# CELL also stripped no newlines, so a multi-line title forged phantom rows inside the table.
+node -e '
+import("'"$HERE"'/lib/events.mjs").then(async (ev) => {
+  const { parseBoard } = await import("'"$HERE"'/lib/board.mjs");
+  const { tickets } = ev.reduce([{ ts: "2026-07-29T09:00Z", ticket: "APP-001", event: "created",
+    by: "tech-manager", provenance: "cli",
+    detail: { title: "Export CSV | TSV\nphantom | row | forged", owner: "ios-developer",
+              acceptance: "Given x when y then it shows", spec: "s" } }]);
+  const rows = parseBoard(ev.renderBoard(tickets)).rows;
+  const bad = [];
+  if (rows.length !== 1) bad.push("rows=" + rows.length + " (a newline forged a phantom row)");
+  if (rows[0] && rows[0].owner !== "ios-developer") bad.push("owner=" + JSON.stringify(rows[0].owner));
+  if (rows[0] && rows[0].status !== "todo") bad.push("status=" + JSON.stringify(rows[0].status));
+  if (rows[0] && !rows[0].title.includes("CSV | TSV")) bad.push("title=" + JSON.stringify(rows[0].title));
+  if (bad.length) { console.error(bad.join("; ")); process.exit(1); }
+});' 2>"$TMP/pipecell.txt" \
+  && ok "a title carrying | and a newline round-trips without shifting a column or forging a row" \
+  || bad "a title carrying | and a newline round-trips intact" "$(cat "$TMP/pipecell.txt")"
+
+# --- IDs the doctor prints must be the IDs the CLI accepts --------------------------------------
+# board.mjs deliberately stopped upcasing whole ticket IDs (the convention is `BUG-001-fix`, and a
+# grep for the documented spelling found nothing on a board that had the ticket). board-doctor and
+# the dashboard kept their own id.toUpperCase() and put `BUG-001-FIX` back — and the doctor is the
+# tool a human copies an ID out of.
+IDF="$TMP/idcase.md"
+cat > "$IDF" <<'EOF'
+# Board
+
+| ID | Feature | Title | Owner | Reviewer | Status | Cycles | Depends on | Estimate | Spec | Acceptance | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| BUG-001-fix | F-001 | Fix the crash | ios-developer | code-reviewer | todo | 0 | APP-404 | S | s | Given x when y then it shows | — |
+EOF
+node "$HERE/board-doctor.mjs" "$IDF" --json > "$TMP/idcase.json" 2>/dev/null
+# The missing dependency guarantees a finding NAMING this ticket, so the assertion has something to
+# inspect. Without it the doctor is silent and the check passes vacuously — which it did, and the
+# mutation that put `id.toUpperCase()` back stayed green.
+node -e '
+const j = require(process.argv[1]);
+const ids = [...j.anomalies, ...j.warnings].map((f) => f.ticketId).filter(Boolean);
+if (!ids.length) { console.error("the fixture produced no finding — nothing was inspected"); process.exit(1); }
+const wrong = ids.filter((id) => /-FIX$/.test(id));
+if (wrong.length) { console.error("upcased: " + wrong.join(", ")); process.exit(1); }
+if (!ids.includes("BUG-001-fix")) { console.error("never named the ticket: " + ids.join(", ")); process.exit(1); }
+' "$TMP/idcase.json" 2>"$TMP/idcase.txt" \
+  && ok "board-doctor reports BUG-001-fix in the spelling the CLI accepts, not BUG-001-FIX" \
+  || bad "board-doctor reports BUG-001-fix in the spelling the CLI accepts" "$(cat "$TMP/idcase.txt")"
+
+# --- a reconstructed approval read as a real one -------------------------------------------------
+# `board.mjs migrate` invents an approval for any row already sitting in qa/done, stamps it
+# `provenance: inferred`, and its own report says "this is not evidence that a review happened".
+# The renderer wrote it into the ledger looking exactly like a reviewer's approval, and the doctor
+# counted it — so a migration could manufacture the approval that lets a ticket merge.
+INF="$TMP/inferred.md"
+cat > "$INF" <<'EOF'
+# Board
+
+| ID | Feature | Title | Owner | Reviewer | Status | Cycles | Depends on | Estimate | Spec | Acceptance | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| APP-001 | F-001 | Login | ios-developer | code-reviewer | done | 0 | — | S | s | Given x when y then it shows | — |
+
+## Review ledger (append-only — never edit or delete a line)
+
+| Timestamp | Ticket | Action | Actor |
+|---|---|---|---|
+| inferred | APP-001 | approved | code-reviewer |
+EOF
+node "$HERE/board-doctor.mjs" "$INF" --json > "$TMP/inferred.json" 2>/dev/null
+assert_anomaly "$TMP/inferred.json" "approval_inferred_only" \
+  "a reconstructed approval does not satisfy the approval requirement" "APP-001"
+# ...and a dated one still does, or the check is just noise on every migrated board.
+sed 's/| inferred |/| 2026-07-29T09:00Z |/' "$INF" > "$TMP/dated.md"
+node "$HERE/board-doctor.mjs" "$TMP/dated.md" --json > "$TMP/dated.json" 2>/dev/null
+node -e '
+const j = require(process.argv[1]);
+process.exit([...j.anomalies, ...j.warnings].some((f) => /approval_inferred|done_without_review/.test(f.code)) ? 1 : 0);
+' "$TMP/dated.json" \
+  && ok "...while a dated approval by a real reviewer still counts" \
+  || bad "...while a dated approval by a real reviewer still counts"
+
+# --- exit 2 with nothing on stdout ---------------------------------------------------------------
+# Every other exit-2 path in spawn-gate prints `CANNOT EVALUATE: <reason>`. `--dir` with no value
+# was `shift 2 || exit 2` — a silent non-zero, indistinguishable from a crash to whatever reads it.
+sh "$HERE/spawn-gate.sh" --dir >"$TMP/sg-dir.txt" 2>&1
+[ $? = 2 ] && [ -s "$TMP/sg-dir.txt" ] \
+  && ok "spawn-gate --dir with no value says CANNOT EVALUATE instead of exiting silently" \
+  || bad "spawn-gate --dir with no value names its reason" "$(cat "$TMP/sg-dir.txt")"
+assert_has "$TMP/sg-dir.txt" "CANNOT EVALUATE" "...in the same shape as every other exit-2 path here"
+
+# --- a scheme name was matched as a REGEX --------------------------------------------------------
+# `grep -qx -- "$SCHEME_OPT"` made `--scheme '.*'` match any line, so runtime-gate accepted a scheme
+# that does not exist and then built whatever xcodebuild picked — a false PASS on the wrong
+# artifact, in the check written to prevent exactly that.
+grep -q 'grep -qxF' "$HERE/runtime-gate.sh" \
+  && ok "runtime-gate compares the scheme name literally (-F), not as a pattern" \
+  || bad "runtime-gate compares the scheme name literally (-F)"
+printf 'App\nDemo\n' > "$TMP/schemes.txt"
+grep -qxF -- '.*' "$TMP/schemes.txt" \
+  && bad "a regex metacharacter no longer matches every scheme" \
+  || ok "a regex metacharacter no longer matches every scheme"
+
+# --- frontmatter greps that a body paragraph could satisfy ---------------------------------------
+# The CI greps scanned the whole file, so a body line reading `name: x` satisfied a check about YAML
+# that is only meaningful in the first block.
+CHK="$HERE/../.github/workflows/checks.yml"
+# EVERY frontmatter grep, not one of them. `grep -q 'fm() { awk' "$CHK"` was satisfied by the agents
+# block while the skills block scanned whole files again — one bounded check vouching for the other
+# is the same file-wide-scope mistake this assertion exists to catch.
+UNBOUND=$(grep -nE "grep -qE '\^(name|description|tools):[^|]*\" ?\"?\\\$f\"" "$CHK" || true)
+[ -z "$UNBOUND" ] \
+  && ok "every frontmatter grep in checks.yml reads the frontmatter block, never the whole file" \
+  || bad "every frontmatter grep in checks.yml reads the frontmatter block" "$UNBOUND"
+# ...and the extractor those greps pipe through is executed here, on a file whose BODY carries the
+# very lines the unbounded version accepted.
+FMPROBE="$TMP/fmprobe.md"
+printf -- '---\ndescription: real\n---\n\nBody text.\n\nname: not-frontmatter\ntools: not-frontmatter\n' > "$FMPROBE"
+FMEXTRACT=$(grep -o "awk 'NR==1 && \$0!=\"---\" { exit } NR>1 && \$0==\"---\" { exit } NR>1'" "$CHK" | head -1)
+[ -n "$FMEXTRACT" ] || bad "checks.yml still defines a frontmatter extractor" "none found"
+eval "$FMEXTRACT \"\$FMPROBE\"" | grep -qE '^name: *[a-z0-9-]+ *$' \
+  && bad "a body line cannot satisfy the frontmatter name check" \
+  || ok "a body line cannot satisfy the frontmatter name check"
+
+echo
+echo "the loop's own documentation"
+# --------------------------------------------------------------------------------------------
+# Following a role file must not be the thing that blocks the merge.
+
+CR="$HERE/../agents/code-reviewer.md"
+grep -q 'board.mjs" move APP-NNN approved --by code-reviewer' "$CR" \
+  && ok "code-reviewer records its verdict with board.mjs, the only writer of the board" \
+  || bad "code-reviewer records its verdict with board.mjs"
+grep -qE '^- (When you start|On approve|On request-changes): append' "$CR" \
+  && bad "code-reviewer no longer instructs a hand-append to a GENERATED file" \
+  || ok "code-reviewer no longer instructs a hand-append to a GENERATED file"
+grep -q 'tech-manager increments the Cycles column' "$CR" \
+  && bad "Cycles is documented as derived from changes events, not a column anyone increments" \
+  || ok "Cycles is documented as derived from changes events, not a column anyone increments"
+
+PO="$HERE/../skills/parallel-orchestrator/SKILL.md"
+grep -q 'verified_static' "$PO" \
+  && ok "parallel-orchestrator names the third verify-done outcome (DR4-002's fix, where the loop reads it)" \
+  || bad "parallel-orchestrator names the third verify-done outcome"
+grep -q 'CANNOT EVALUATE' "$PO" \
+  && ok "...and the exit-2 state by name" || bad "...and the exit-2 state by name"
+grep -q 'verify-done.sh" <branch> main' "$PO" \
+  && bad "parallel-orchestrator no longer hardcodes main as the verification base" \
+  || ok "parallel-orchestrator no longer hardcodes main as the verification base"
+grep -q 'integration-branch.sh' "$PO" \
+  && ok "...it resolves the base through the single resolver" \
+  || bad "...it resolves the base through the single resolver"
+BD="$HERE/../skills/board-doctor/SKILL.md"
+grep -q 'verify-done.sh" feat/APP-001-login main' "$BD" \
+  && bad "board-doctor's skill no longer hardcodes main as the verification base" \
+  || ok "board-doctor's skill no longer hardcodes main as the verification base"
+
+grep -q 'verified_static' "$HERE/../agents/tech-manager.md" \
+  && ok "tech-manager's event list carries verified_static — the role instructed to append it" \
+  || bad "tech-manager's event list carries verified_static"
+grep -q 'verified_static' "$HERE/../skills/sprint-planner/SKILL.md" \
+  && ok "...and so does sprint-planner's" || bad "...and so does sprint-planner's"
+
+grep -q 'generated, CLI-only' "$HERE/../skills/agent-isolation/SKILL.md" \
+  && ok "agent-isolation calls docs/31-board.md generated, not append-only" \
+  || bad "agent-isolation calls docs/31-board.md generated, not append-only"
+
+grep -q 'or `—` for project-wide' "$HERE/../skills/team-protocol/SKILL.md" \
+  && bad "team-protocol names the ASCII hyphen team-message.sh actually accepts" \
+  || ok "team-protocol names the ASCII hyphen team-message.sh actually accepts"
+grep -q 'ASCII hyphen' "$HERE/../skills/team-protocol/SKILL.md" \
+  && ok "...and says so explicitly" || bad "...and says so explicitly"
+
+echo
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
