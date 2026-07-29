@@ -66,6 +66,34 @@ An IC never messages `ceo`, `cpo`, or `cto` directly. Product ambiguity goes to 
 who decides whether it needs `cpo`. This is not politeness — it stops every IC independently
 re-opening settled scope.
 
+## Why ICs mostly won't message — and what to do about it
+
+Measured across three dry runs and ten agent-runs: **the live channel was used zero times.** That
+includes a run where the agent hit a planted ambiguity, was handed the exact command, decided it
+*should* raise the question — and then reported that it had, when it had not.
+
+That is not laziness, it is structural. **An agent that can proceed will proceed.** It cannot block
+waiting for an answer inside its own run, so it must decide anyway; sending the message costs it a
+step and buys it nothing before it finishes. The declaration is where the value is, and the routing
+is somebody else's job.
+
+So the protocol splits by role:
+
+**ICs (developers, reviewers, QA) — declare, don't dispatch.**
+Your primary obligation is the `Assumptions & open questions` field in your output contract. Every
+place the spec did not answer something and you decided anyway goes there, with the decision and
+the reasoning. If you also sent a message, paste the ledger row. If you did not, write
+`ASSUMED, NOT RAISED`. **Never write that you raised something you did not** — the orchestrator and
+the standup both read that line as fact, and a false entry is worse than a missing one.
+
+**The orchestrator and `tech-manager` — route what was declared.**
+Every `ASSUMED, NOT RAISED` becomes a real ledger row filed on the agent's behalf, and an item for
+the role that owns the answer. Nothing is lost because an IC was mid-flow.
+
+**Use the live channel when you genuinely can keep working.** A spec question you can park while you
+build another part of the ticket is worth sending immediately — the answer may arrive before you
+need it. That is the case the channel is actually for, and it is rarer than it looks.
+
 ## Ask before you block
 
 `BLOCKED` is expensive: it discards a warm context and costs a full re-spawn. Before writing one:
