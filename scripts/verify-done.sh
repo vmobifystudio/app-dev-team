@@ -78,21 +78,37 @@ if [ "${FILES_CHANGED:-0}" -eq 0 ]; then
 fi
 
 # --- 5. tests ------------------------------------------------------------------------------------
+# The agent-isolation skill gives every writing agent its own git worktree, so the branch under
+# test is normally ALREADY checked out somewhere else. `git checkout <branch>` then fails with
+# "already checked out at ...", which would reject every honest DONE and send the loop re-spawning
+# developers until the spawn budget trips. Run the tests where the branch actually lives.
 TESTS_STATUS="unverified"
 if [ -n "$TEST_CMD" ]; then
+  # Locate a worktree holding this branch. `git worktree list --porcelain` emits, per worktree:
+  #   worktree <path>\n ... \n branch refs/heads/<name>
+  WT=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$BRANCH" '
+    /^worktree /{ path = substr($0, 10) }
+    $0 == "branch " b { print path; exit }')
+
   CURRENT=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  RUN_DIR=""
   SWITCHED=0
-  if [ "$CURRENT" != "$BRANCH" ]; then
-    if git checkout --quiet "$BRANCH" 2>/dev/null; then
-      SWITCHED=1
-    else
-      fail "could not check out $BRANCH to run tests (uncommitted changes in the working tree?)."
-    fi
+
+  if [ -n "$WT" ]; then
+    RUN_DIR="$WT"
+    echo "verify-done: $BRANCH is checked out at $WT — running tests there (no checkout)." >&2
+  elif [ "$CURRENT" = "$BRANCH" ]; then
+    RUN_DIR="."
+  elif git checkout --quiet "$BRANCH" 2>/dev/null; then
+    RUN_DIR="."
+    SWITCHED=1
+  else
+    fail "could not reach $BRANCH to run tests: it is not in a worktree and could not be checked out (uncommitted changes?)."
   fi
 
   if [ -z "$FAILURES" ]; then
     echo "verify-done: running tests on $BRANCH: $TEST_CMD" >&2
-    if sh -c "$TEST_CMD" >/dev/null 2>&1; then
+    if ( cd "$RUN_DIR" && sh -c "$TEST_CMD" ) >/dev/null 2>&1; then
       TESTS_STATUS="green"
     else
       TESTS_STATUS="failing"

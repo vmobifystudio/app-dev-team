@@ -97,6 +97,43 @@ skill references, handoff targets, and the doc writer/reader graph. Six findings
   `tech-manager` merged to `main`. The integration branch is now an explicit per-project decision
   recorded in `docs/23-git-strategy.md`, which the merge gate reads.
 
+### Fixed — found by dry run 2 (`docs/research/2026-07-29-dry-run-2-worktree-isolation.md`)
+
+Re-ran the run-1 collision with the isolation fix applied, fresh agents, same two tickets,
+hypotheses written before the run. Isolation held: two clean sibling branches, zero
+cross-contamination, no rework, `main` untouched throughout. Two hypotheses failed.
+
+- **`verify-done.sh` was incompatible with `agent-isolation` — two fixes in this same release
+  contradicted each other.** It ran `git checkout <branch>` to execute tests; git refuses to check
+  out a branch already checked out in another worktree, which under the isolation rule is *always*.
+  The result was a **false `REJECTED` on every honest `DONE`**, so the loop would discard correct
+  work and re-spawn the developer until the 6-retry budget tripped — with the reason buried in a
+  message blaming "uncommitted changes". It now locates the branch via
+  `git worktree list --porcelain` and runs the tests where the branch lives. Verified across six
+  paths including the plain no-worktree case.
+- **The daily fragment is being skipped.** Neither agent wrote one; across both dry runs **1 of 4**
+  agent-runs did, though every IC role requires it — and it is the only input to the standup, so
+  `tech-manager` was aggregating nothing. `/app-build` now checks the fragment exists on the branch
+  before moving a row to `review`.
+- **Parallel agents duplicate shared infrastructure.** Both branches independently invented an
+  analytics abstraction (`domain/AnalyticsLogger.kt` + `data/ConsentGatedAnalyticsLogger.kt` vs
+  `analytics/TodoAnalytics.kt`) for the same schema. The file-overlap rule cannot catch this because
+  they created *different* files. `sprint-planner` now requires naming the sprint's cross-cutting
+  concerns and either giving each its own foundation ticket or naming the existing type in every
+  consuming ticket's `Spec`.
+
+Also confirmed: **worktrees are necessary but not sufficient.** The two clean branches still produced
+add/add conflicts on **7 of 10 files** — isolation removes the corruption, file-overlap serialization
+removes the unmergeable pile. Both rules are load-bearing.
+
+### Fixed — worktree location and a false claim
+
+`agent-isolation` said "`Add .agent-wt/ to .gitignore` (the `/app-init` bootstrap does this)".
+`/app-init` did not do this, and the path was `../.agent-wt/` — a **sibling of the repo**, outside
+git, where a `.gitignore` entry means nothing. A rule that describes something nobody does is the
+same failure as a guard that cannot fail: it reads as covered. Worktrees now live at `.agent-wt/`
+inside the repo, and `/app-init` actually adds the ignore entry.
+
 ### Added — `scripts/team-doctor.mjs`
 
 The rule that stops this class coming back: validates the **plugin itself**. Catches an unreachable

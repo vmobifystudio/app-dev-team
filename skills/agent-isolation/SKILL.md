@@ -30,7 +30,7 @@ commit. One `git add -A` ships a removed billing guard.
 Before spawning any agent that writes, the orchestrator creates its worktree:
 
 ```bash
-git worktree add ../.agent-wt/APP-001 -b feat/APP-001-short-slug
+git worktree add .agent-wt/APP-001 -b feat/APP-001-short-slug
 ```
 
 The agent is given that path as its **project root** and never leaves it. Its `git` commands are
@@ -40,11 +40,14 @@ share one.
 Cleanup after the merge gate:
 
 ```bash
-git worktree remove ../.agent-wt/APP-001
+git worktree remove .agent-wt/APP-001
 git worktree prune
 ```
 
-Add `.agent-wt/` to `.gitignore` (the `/app-init` bootstrap does this).
+`.agent-wt/` sits inside the repo and **must be in `.gitignore`** — `/app-init` adds it for new
+projects. On an existing project, add it yourself before the first spawn: an un-ignored worktree
+directory shows up as untracked noise in every agent's `git status` and invites exactly the blanket
+`git add` this skill bans.
 
 **Verifiers and auditors get one too.** "Read-only" describes the intent, not the guarantee.
 
@@ -126,7 +129,7 @@ Developer/fixer agents report their isolation state so the orchestrator can chec
 
 ```
 DONE: APP-NNN
-Worktree: ../.agent-wt/APP-NNN
+Worktree: .agent-wt/APP-NNN
 Branch: feat/APP-NNN-short-slug
 Staged (explicit paths): <list>
 Mutation confirmed: git diff --numstat -> <N files, +A/-B>

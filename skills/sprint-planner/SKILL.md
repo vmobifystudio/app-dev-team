@@ -96,11 +96,31 @@ from the impl spec. Then:
 - **Serialize** when A and B share any file, even if the features are unrelated. The second picks
   up the first's commit.
 - **Serialize** when A's output is B's input (shared component, API contract change).
+- **Never spawn more dev agents in parallel than there are independent tickets ready.** Idle
+  agents waste tokens; busy agents waste each other's context with merge conflicts.
 
 A first ticket that establishes a shared surface — the ViewModel, the repository, the UI state type
 — should be sequenced **alone**, with everything that touches it stacked behind it. One serialized
 foundation ticket is cheaper than three parallel tickets and a merge.
-- **Never spawn more dev agents in parallel than there are independent tickets ready.** Idle agents waste tokens; busy agents waste each other's context with merge conflicts.
+
+### Name the shared surfaces, or they get built twice
+
+File overlap does not catch duplication, because two agents solving the same cross-cutting concern
+create **different** files. Observed in a dry run: two parallel tickets each needed to emit an
+analytics event, and independently invented incompatible abstractions —
+`domain/AnalyticsLogger.kt` + `data/ConsentGatedAnalyticsLogger.kt` on one branch,
+`analytics/TodoAnalytics.kt` on the other. Both were good code. Both read the same schema. Neither
+was wrong. The sprint still produced two analytics layers.
+
+So: before sequencing, list the **cross-cutting concerns** this sprint touches — analytics logging,
+error mapping, DI wiring, the design-system component set, navigation, persistence access,
+feature-flagging. For each one that more than one ticket needs:
+
+- give it its **own foundation ticket**, owned by one role, sequenced **before** its consumers, or
+- name the existing type in every consuming ticket's `Spec` field so nobody invents a second one.
+
+A concern that two tickets need and no ticket owns will be built twice, in two shapes, and the
+merge will pick one arbitrarily.
 
 ## Output format for the tech-manager handoff
 

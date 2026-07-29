@@ -69,6 +69,10 @@ Tickets (optional, default = all ready): $ARGUMENTS
      verbatim. This counts as a **developer** retry, not a review cycle.
      `VERIFIED` → continue. If it reports `tests=unverified`, say so in the daily fragment; never
      restate the agent's "all green" as confirmed.
+   - **Check the daily fragment exists** at `docs/daily/<today>-<role>-APP-NNN.md` on the branch.
+     Across two dry runs only **1 of 4** agent-runs wrote one, though every IC role requires it —
+     and it is the sole input to the standup, so `tech-manager` was aggregating nothing. If it is
+     missing, ask that agent for it before moving the row; do not write it on their behalf.
    - Move the board row to `Status = review`, set the `Reviewer` column, and append to the review
      ledger: `<ts> | APP-NNN | requested | <owner> -> code-reviewer`.
    - **The reviewer must not be the owner.** For a ticket owned by `code-reviewer` (or any review of
@@ -84,7 +88,7 @@ Tickets (optional, default = all ready): $ARGUMENTS
      re-runs at the top of every round.
 
 4a. **Clean up worktrees.** After each merge, remove the ticket's worktree so the next round starts
-   clean: `git worktree remove ../.agent-wt/APP-NNN && git worktree prune`.
+   clean: `git worktree remove .agent-wt/APP-NNN && git worktree prune`.
 
 5. **QA pass.** Once a wave of tickets is in `qa`, spawn `qa-engineer` once to exercise the acceptance criteria. QA writes new defects to `docs/51-bugs.md`. S1/S2 bugs come back into the loop in step 1 next round.
 

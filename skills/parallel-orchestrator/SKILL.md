@@ -27,7 +27,7 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 2a. **Create one worktree per writing agent — before you spawn anything** (`agent-isolation` skill):
 
    ```bash
-   git worktree add ../.agent-wt/APP-001 -b feat/APP-001-short-slug
+   git worktree add .agent-wt/APP-001 -b feat/APP-001-short-slug
    ```
 
    This is not optional and it is not a nicety. Measured, in a real dry run of exactly this step

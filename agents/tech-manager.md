@@ -73,7 +73,7 @@ question through three summaries is how the answer drifts from the question.
 
 ## Worktrees — you create them, you clean them up
 
-Per `agent-isolation`: every writing agent gets `git worktree add ../.agent-wt/APP-NNN -b
+Per `agent-isolation`: every writing agent gets `git worktree add .agent-wt/APP-NNN -b
 feat/APP-NNN-slug` **before** it is spawned, and `git worktree remove` after its merge. Measured
 cost of skipping this: `docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
 
