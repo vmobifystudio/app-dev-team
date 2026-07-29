@@ -1,0 +1,13 @@
+name: ios
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: xcodebuild build -scheme SplitEven | xcbeautify || true
+      - name: Test
+        run: xcodebuild test -scheme SplitEven | xcbeautify || true

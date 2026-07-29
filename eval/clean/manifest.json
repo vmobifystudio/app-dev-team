@@ -1,0 +1,43 @@
+{
+  "name": "clean",
+  "defect": null,
+  "expected_detector": null,
+  "expected_signal": null,
+  "severity": null,
+  "why": "The other half of the measurement, and it matters as much. A studio that blocks everything scores 100% on detection and is useless. Every runnable project-level gate must return its passing verdict here, and any non-zero exit is a FALSE BLOCK and fails the lab.",
+  "clean": true,
+  "checks": [
+    {
+      "run": [
+        "sh",
+        "scripts/ship-gate.sh",
+        "{project}"
+      ],
+      "expect_exit": 0,
+      "expect_signal": "RESULT: CLEAR"
+    },
+    {
+      "run": [
+        "node",
+        "scripts/board-doctor.mjs",
+        "{project}/docs/31-board.md"
+      ],
+      "expect_exit": 0
+    },
+    {
+      "run": [
+        "sh",
+        "scripts/verify-done.sh",
+        "feat/APP-140-split",
+        "main",
+        "echo \"Executed 12 tests, 12 passed\""
+      ],
+      "in": "git-fixture",
+      "git_fixture": {
+        "branch": "feat/APP-140-split"
+      },
+      "expect_exit": 0,
+      "expect_signal": "VERIFIED"
+    }
+  ]
+}

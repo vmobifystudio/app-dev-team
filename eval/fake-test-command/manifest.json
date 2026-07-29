@@ -1,0 +1,22 @@
+{
+  "name": "fake-test-command",
+  "defect": "The Definition of Done in docs/30-sprint-plan.md names `true` as the ticket's test command. It exits 0 on every host, having tested nothing, and the DONE report reads \"tests: all green\".",
+  "expected_detector": "scripts/verify-done.sh",
+  "expected_signal": "carries no evidence that a test suite ran",
+  "severity": "S1",
+  "why": "The purest green-while-nothing-happened case in the corpus. verify-done used to consult its ran-evidence check only when the command FAILED, so `verify-done.sh feat/X main \"true\"` printed VERIFIED … tests=green. Ran-evidence now decides both directions and this exits 2, not 0.",
+  "detector": {
+    "run": [
+      "sh",
+      "scripts/verify-done.sh",
+      "feat/APP-090-tips",
+      "main",
+      "true"
+    ],
+    "in": "git-fixture",
+    "git_fixture": {
+      "branch": "feat/APP-090-tips"
+    },
+    "expect_exit": 2
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "privacy-disclosure-mismatch",
+  "defect": "docs/15-aso.md declares the App Store privacy label as \"Data Not Collected\". src/Analytics.swift sends the signed-in email address and the vendor identifier to a third-party endpoint on every launch.",
+  "expected_detector": null,
+  "expected_signal": null,
+  "severity": "S1",
+  "why": "security-reviewer covers this in prose and runs as an agent. No script reconciles a declared privacy label against the fields the code actually transmits, and no gate reads docs/15-aso.md at all.",
+  "gap": "A store-listing claim and the code that contradicts it are never compared by anything runnable. This is the highest-consequence gap in the corpus: it is a rejection and a regulatory exposure, and the studio is silent on it."
+}

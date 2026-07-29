@@ -1,0 +1,9 @@
+{
+  "name": "wrong-financial-constant",
+  "defect": "docs/10-prd.md §4 mandates half-up rounding to the cent. src/Fees.swift rounds with .bankers, so the exact midpoint $4.9995 becomes $4.99 instead of $5.00. Every constant in the file is correct and the code reads perfectly.",
+  "expected_detector": null,
+  "expected_signal": null,
+  "severity": "S2",
+  "why": "DR4-025 and the 33.34 Decimal case: money defects here live in a rounding MODE or an input literal, not in a value a reviewer would query. Nothing in scripts/ reads a spec and evaluates arithmetic. spec-critic and defect-hunting are agent procedures, not runnable gates, so this planted defect leaves the studio with no mechanical answer at all.",
+  "gap": "No executable detector exists. The claim \"spec-critic catches money bugs\" is unfalsifiable until an agent-invoking harness can be scored here."
+}

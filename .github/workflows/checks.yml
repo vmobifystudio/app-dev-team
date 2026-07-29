@@ -141,3 +141,38 @@ jobs:
         # gate can be broken without this repo noticing; that is a blocker, not a warning. A
         # mutation-testing step that cannot itself go red is worth less than nothing.
         run: sh scripts/mutate.sh --sample 4
+
+  # The evaluation laboratory. `mutate.sh` above asks whether one assertion can go red; this asks
+  # whether the STUDIO finds a defect planted in a whole project. Every phase after this one is
+  # measured against it, which only means something if it runs on every change rather than when
+  # someone remembers — the same argument that put the suite itself in CI.
+  #
+  # It goes red when a planted defect walks past the detector named for it, and when the CLEAN
+  # project is blocked by a gate. The second half is not decoration: a studio that refuses
+  # everything scores 100% on detection and is useless, and a false block is the failure nobody
+  # files a bug about because it looks like diligence.
+  #
+  # No `|| true`, no `continue-on-error`, and nothing is installed. DR4-023 and DR4-024 are this
+  # repo's own generated CI reproducing exactly those two anti-patterns, in a repo built around the
+  # sentence forbidding them — and `eval/ci-that-cannot-fail` is that defect planted as a fixture,
+  # so a masked exit code here would be this workflow failing the check it is running.
+  #
+  # A separate job so its verdict is separately visible in the PR status list: "the lab is red" and
+  # "the suite is red" are different facts that want different responses.
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # One fixture builds a throwaway git repository to exercise verify-done's branch and
+          # commit reasoning. A shallow clone is not the subject here, but the same trap applies.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Every planted defect must be found, and the clean project must not be blocked
+        run: node scripts/studio-eval.mjs

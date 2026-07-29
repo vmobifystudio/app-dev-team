@@ -1,0 +1,9 @@
+{
+  "name": "crash-on-launch",
+  "defect": "src/App.swift force-unwraps a bundled config.json that is not in the target. The project compiles, the app installs, and it terminates on the first frame.",
+  "expected_detector": "scripts/runtime-gate.sh",
+  "expected_signal": "launch",
+  "severity": "S1",
+  "why": "This is the runtime gate's central claim: an app that builds is not an app that runs. It is the one defect in this lab whose detector exists and is correct.",
+  "unreachable": "runtime-gate needs Xcode with a booted simulator (or adb with a device). Neither exists on this host or on ubuntu-latest in CI, so runtime-gate can only reach its CANNOT-EVALUATE branches here. Scoring this project would measure the absence of a toolchain, not the presence of a gate."
+}
