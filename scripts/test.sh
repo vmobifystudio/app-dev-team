@@ -1521,6 +1521,18 @@ bm "$V" move V-001 claimed       --by ios-developer >/dev/null 2>&1
 bm "$V" move V-001 done_reported --by ios-developer >/dev/null 2>&1
 assert_exit 1 "review_requested on a DONE with no verify-done result is refused" \
   bm "$V" move V-001 review_requested --by ios-developer
+
+# The assertion above exercises the verifyPending branch, which legalEvents answers first — so it
+# passes whether or not the precondition check below it exists. mutate.sh M09 proved that: breaking
+# the precondition left this green and was caught only by an unrelated assertion. A guard reached by
+# nothing is a guard that reads like a gate; this covers the state that actually reaches it, and
+# asserts the REASON, so a refusal for the wrong cause cannot satisfy it.
+V2=$(newboard bd-verify-unreached)
+bm "$V2" add V-002 --title "Never reported" --owner ios-developer >/dev/null 2>&1
+bm "$V2" move V-002 claimed --by ios-developer >/dev/null 2>&1
+bm "$V2" move V-002 review_requested --by tech-manager >"$TMP/v2.txt" 2>&1
+assert_has "$TMP/v2.txt" "a DONE nobody checked is not reviewable" \
+  "...and the refusal names the precondition, not just the status"
 assert_has "$TMP/err" "verified, verified_static, rejected" "...and offers only the verdicts that can come next"
 # NOTE: the refusal arrives from the status table ("review_requested is not legal on ... it is
 # in_progress"), not from validate()'s bespoke "a DONE nobody checked is not reviewable" branch —

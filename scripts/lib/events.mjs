@@ -69,8 +69,17 @@ function legalEvents(state) {
       return ['claimed', 'assigned', 'blocked'];
     case 'in_progress':
       if (state.verifyPending) return ['verified', 'verified_static', 'rejected', 'blocked', 'assigned'];
-      if (state.verified) return ['review_requested', 'done_reported', 'blocked', 'assigned'];
-      return ['done_reported', 'blocked', 'assigned'];
+      // `review_requested` is listed whether or not a verification is on record. This function
+      // answers "what does the STATUS allow"; whether the DONE was actually checked is a
+      // PRECONDITION, and it is enforced below with a reason worth reading.
+      //
+      // It used to be gated here on `state.verified`, which made the precondition check at
+      // case 'review_requested' unreachable — the generic "not legal, it is in_progress" answered
+      // first and the better message ("a DONE nobody checked is not reviewable") plus its curated
+      // legal list were dead code. Two checks for one rule, one of which could never run.
+      // mutate.sh found it: M09 was the single surviving mutation of sixteen, because breaking a
+      // guard nothing reaches breaks no assertion.
+      return ['review_requested', 'done_reported', 'blocked', 'assigned'];
     case 'review':
       return ['started', 'approved', 'changes', 'merged', 'blocked', 'assigned'];
     case 'qa':
