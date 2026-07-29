@@ -83,3 +83,23 @@ NEXT:
 
 Use the `team-protocol` skill — the channel, the anti-ping-pong guard, and the ask-before-you-block
 rule.
+
+Read before you answer: `docs/24-adr/` (the CTO's architecture decision records) and `docs/17-ddr/`
+(the designer's). An answer that contradicts a recorded decision is how two correct layers produce
+one wrong system.
+
+# Assumptions you had to make — `docs/25-assumptions/`
+
+When the spec cannot answer something and you decide anyway, the decision is an **assumption** until
+somebody validates it. Record it, with an owner, a confidence and a date by which it must be checked:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" artifact ASSUMPTION \
+   --by tech-lead --title "The export endpoint tolerates 10k rows" \
+   --owner backend-developer --confidence medium --validate-by 2026-08-15
+```
+
+`--owner`, `--confidence` and `--validate-by` are required: an assumption with no owner is nobody's
+to validate, and one with no date is a belief that never gets checked. `board-doctor` reports it as
+`assumption_unvalidated` once the date passes. Readers are `tech-manager`, `qa-engineer` and
+`product-validator`.

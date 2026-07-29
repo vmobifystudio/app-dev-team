@@ -197,8 +197,10 @@ buys it nothing before it finishes.
 
 ### 4.2 The channel
 
-`docs/team/messages.md` — one append-only Markdown ledger for the whole team. It survives an agent
-dying mid-run, is readable by a human, and gives a restarted agent its history back.
+`docs/team/messages.jsonl` — one append-only event log (schema `studio-event-schema/v1`) for the
+whole team, with `docs/team/messages.md` as its GENERATED human view. Same relationship the board
+has to its event log, for the same reason: state is validated before the append, not detected after
+it. It survives an agent dying mid-run and gives a restarted agent its history back.
 
 | Kind | Meaning |
 |---|---|
@@ -207,9 +209,18 @@ dying mid-run, is readable by a human, and gives a restarted agent its history b
 | `decision` | also closes exactly one — so never use it for a note that decides nothing |
 | `handoff` · `blocker` · `fyi` · `escalation` | routing and status |
 
-Written through `scripts/team-message.sh`, which sanitises every field and enforces the guards. A
-`decision` row that decides nothing silently consumes a real open question — observed live, on a
-ticket that had already shipped on the assumption underneath it.
+Written through `scripts/team-message.sh`, the only writer. It refuses a send that breaches the
+guard or carries **no obligation**: every material message must yield a decision, a state
+transition, an artifact update or a timed follow-up, and an `answer`/`decision` that names no
+artifact is refused outright — a closed ledger is not delivery (DR4-006). `--kind fyi` is the escape
+hatch and must be chosen. A `decision` that decides nothing silently consumes a real open question —
+observed live, on a ticket that had already shipped on the assumption underneath it.
+
+Threads and channels (`#founder-decisions`, `#product`, `#design`, per-platform, per-ticket) are
+queries over the log, never places state is authored. Formal artifacts — `ADR` · `PDR` · `DDR` ·
+`WAIVER` (expiry enforced; an expired waiver is a finding) · `INCIDENT` · `ASSUMPTION` (owner,
+confidence, validation date) — are created by `scripts/messages.mjs artifact`, which writes the file
+and registers it on the channel in one step.
 
 ### 4.3 Declare, don't dispatch
 

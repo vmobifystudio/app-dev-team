@@ -55,14 +55,12 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      rules, the picked commit convention, and canonical names (so agents never guess);
    - stubs `docs/15-aso.md`, `docs/41-monetization.md`, `docs/52-analytics.md` when those concerns
      are in scope per the architecture;
-   - **the team channel `docs/team/messages.md`, if it does not already exist**, with exactly this
-     header and nothing else (`team-protocol` defines the shape; `board-doctor` parses it):
+   - **the team channel `docs/team/messages.jsonl`, if it does not already exist** — an empty
+     append-only event log (`team-protocol` defines the schema). `docs/team/messages.md` is
+     GENERATED from it by `scripts/messages.mjs` on the first send and must never be hand-written:
 
      ```bash
-     [ -f docs/team/messages.md ] || { mkdir -p docs/team && printf '%s\n\n%s\n%s\n' \
-       '## Team messages (append-only — never edit or delete a line)' \
-       '| Timestamp | From | To | Ticket | Kind | Summary | Body |' \
-       '|---|---|---|---|---|---|---|' > docs/team/messages.md; }
+     mkdir -p docs/team && [ -f docs/team/messages.jsonl ] || : > docs/team/messages.jsonl
      ```
 
      No command created this file. Observed live: an agent reported raising a question on the
@@ -109,7 +107,8 @@ docs/
   23-git-strategy.md
   41-monetization.md         (if monetized)
   52-analytics.md
-  team/messages.md           (empty team channel, header row only)
+  team/messages.jsonl        (empty team channel — the event log, source of truth)
+  team/messages.md           (its generated view; written on the first send, never by hand)
 ```
 
 If anything is missing, name it explicitly in the summary with a reason. For anything missing

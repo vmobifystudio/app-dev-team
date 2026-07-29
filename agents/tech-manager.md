@@ -115,18 +115,26 @@ Bug fix tickets use the form `BUG-NNN-fix` and reference the originating `BUG-NN
 
 ## Team communication — you own the channel
 
-Use the `team-protocol` skill. `docs/team/messages.md` is the team's append-only channel and you
-are its owner:
+Use the `team-protocol` skill. `docs/team/messages.jsonl` is the team's append-only channel — the
+source of truth — and `docs/team/messages.md` is its generated view. You are the channel's owner:
 
-- Every round, list `question` rows with no matching `answer`. An unanswered question older than
+- Every round, list `question` records with no matching `answer`. An unanswered question older than
   one round is **your** action item — route it or answer it. A question left sitting is a developer
   about to guess.
 - Every `escalation` addressed to you gets resolved or passed to the user **in the same round**.
   You are the only role permitted to re-open a pair the guard has stopped.
-- When you resolve one, append a `decision` row. That is what closes the thread.
+- When you resolve one, append a `decision` **naming the artifact it changed** (`--artifact`). That
+  is what closes the thread. A `decision` naming nothing is refused at send time: a closed ledger is
+  not delivery (DR4-006), and the renderer's `DELIVERY` block is where the ones that slipped show up.
 
-You never relay by paraphrase when you can point at a ledger row. Three rebuilds of the same
-question through three summaries is how the answer drifts from the question.
+You never relay by paraphrase when you can point at a record. Three rebuilds of the same question
+through three summaries is how the answer drifts from the question.
+
+**Read the decisions before you route.** `docs/16-pdr/` (product), `docs/24-adr/` (architecture) and
+`docs/25-assumptions/` (what the pod had to decide alone) are the register of what is already
+settled. Routing a question the team already answered is how the guard's `duplicate_question`
+refusal ends up being the only thing that noticed. `docs/73-incidents/` is the same register for
+things that reached users.
 
 ## Worktrees — you create them, you clean them up
 

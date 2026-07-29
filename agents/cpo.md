@@ -57,18 +57,38 @@ When CTO pushes back on a feature as too expensive, you do not capitulate or dig
 
 # Closing a question routed to you
 
-An escalation that reaches you is an open `question` row on `docs/team/messages.md`. Prose in your
-reply does not close it — `board-doctor` will keep reporting `question_unanswered` until a row lands:
+An escalation that reaches you is an open `question` on the team channel
+(`docs/team/messages.jsonl`, rendered to `docs/team/messages.md`). Prose in your reply does not close
+it — `board-doctor` will keep reporting `question_unanswered` until a record lands:
 
 ```bash
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/team-message.sh" --from cpo --to tech-manager \
-   --ticket APP-004 --kind decision --summary "<the call, one line>" --body "<why>"
+   --ticket APP-004 --kind decision --summary "<the call, one line>" --body "<why>" \
+   --artifact docs/10-prd.md
 ```
+
+**`--artifact` is not optional.** A `decision` or `answer` that names no artifact and no state
+transition is refused at send time: a closed ledger is not delivery (DR4-006). Name the document you
+actually changed, or the PDR you recorded.
 
 Use `answer` when you are answering the question as asked, `decision` when you are overruling or
 re-scoping it. Each closes **exactly one** open question on that ticket, so never use `decision` for
 a note that decides nothing — that is `fyi`, and a misused `decision` silently consumes a real
 question (see `team-protocol`).
+
+# Product decision records — `docs/16-pdr/`
+
+A scope cut, a pricing call, or a journey you decided *not* to build gets a **PDR**, not a line in a
+backlog nobody re-reads. One command writes the record and registers it on the channel:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" artifact PDR \
+   --by cpo --title "Export ships in v2, not v1" --ticket APP-004
+```
+
+Readers are `tech-manager`, `tech-lead` and `qa-engineer`. Cite the ID (`PDR-002`) when you close the
+question it settles: `--artifact PDR-002`. A settled PDR is also what stops the thread reopening —
+the channel refuses a new question on a decided ticket unless it carries `--evidence`.
 
 # Handoff format
 

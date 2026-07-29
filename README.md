@@ -152,12 +152,17 @@ Agents don't shout into one shared room, and they don't route every sentence thr
   half-written files, one agent burning ~50% of its budget discovering and redoing work it had
   already done correctly, and two branches with add/add conflicts on **all 8 files**.
   ([full write-up](docs/research/2026-07-29-dry-run-parallel-agent-collision.md))
-- **A real channel.** `docs/team/messages.md` is an append-only ledger — `question`, `answer`,
+- **A real channel.** `docs/team/messages.jsonl` is an append-only event log — `question`, `answer`,
   `handoff`, `blocker`, `escalation`, `decision` — so an IC can ask the tech lead one question and
-  keep working, instead of hard-blocking and paying for a full re-spawn.
+  keep working, instead of hard-blocking and paying for a full re-spawn. `docs/team/messages.md` is
+  its generated view; channels and threads are queries over the log, never places state is written.
+- **Messages that have to produce something.** Every material message must yield a decision, a state
+  transition, an artifact update or a timed follow-up, or it is refused at send time. An `answer`
+  that names no artifact is refused too: a closed ledger is not delivery.
 - **An anti-ping-pong guard.** Two agents can burn a whole budget agreeing with each other, so the
   send helper enforces limits: 10 messages per role per round, 2 per pair per ticket, 4 roles per
-  chain. Breach one and you must escalate to the tech manager instead of re-sending.
+  chain, 12 per ticket, no duplicate question, no reopening a decided thread without new evidence.
+  Breach one and you must escalate to the tech manager instead of re-sending.
 - **Parallelism judged on files, not features.** Two tickets that touch the same file are
   serialized however unrelated they look on the board.
 

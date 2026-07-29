@@ -327,11 +327,20 @@ const DOC_WRITERS = new Map([
   ['docs/13-design-tokens.md',          ['agents/ux-designer.md']],
   ['docs/14-components.md',             ['agents/ux-designer.md']],
   ['docs/15-aso.md',                    ['agents/aso-specialist.md']],
+  // The formal-artifact series (P3a). Each is created by `scripts/messages.mjs artifact <TYPE>`,
+  // which writes the file AND registers it on the team channel in one step — the file alone is a
+  // document nobody knows exists, the message alone is a claim with no content.
+  ['docs/16-pdr/',                      ['agents/cpo.md']],
+  ['docs/17-ddr/',                      ['agents/ux-designer.md']],
   ['docs/20-architecture.md',           ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
   ['docs/21-engineering-principles.md', ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
   // One artifact per platform, so every `docs/22-impl-spec-<anything>` folds into this row.
   ['docs/22-impl-spec-*.md',            ['agents/tech-lead.md', 'commands/app-onboard.md']],
   ['docs/23-git-strategy.md',           ['agents/devops-engineer.md']],
+  ['docs/24-adr/',                      ['agents/cto.md']],
+  // The assumption register. An assumption carries an owner, a confidence and a validation date;
+  // one past its date is reported by board-doctor, because a belief with a timestamp is not a fact.
+  ['docs/25-assumptions/',              ['agents/tech-lead.md']],
   ['docs/30-sprint-plan.md',            ['skills/sprint-planner/SKILL.md']],
   ['docs/31-board.md',                  ['skills/sprint-planner/SKILL.md', 'commands/app-plan.md']],
   ['docs/31-board-events.jsonl',        ['skills/sprint-planner/SKILL.md', 'commands/app-plan.md']],
@@ -352,6 +361,10 @@ const DOC_WRITERS = new Map([
   ['docs/60-releases.md',               ['agents/release-manager.md']],
   ['docs/70-security-review.md',        ['agents/security-reviewer.md']],
   ['docs/71-verification.md',           ['agents/verification-engineer.md']],
+  // A waiver carries an expiry and an EXPIRED WAIVER IS A FINDING — the exemption was granted for a
+  // period, and a period that ended without anyone noticing is a permanent exemption by accident.
+  ['docs/72-waivers/',                  ['agents/security-reviewer.md']],
+  ['docs/73-incidents/',                ['agents/release-manager.md']],
   ['docs/80-audit.md',                  ['commands/app-audit.md']],
   ['docs/81-findings.md',               ['commands/app-audit.md']],
   ['docs/90-learnings.md',              ['commands/app-ship.md', 'commands/app-run.md']],
@@ -428,7 +441,8 @@ const CANONICAL_PATHS = [
   'docs/daily/<today>-<role>-<ticket>.md',   // the per-run fragment
   'docs/daily/<today>-<role>-spec.md',       // ...for a spec-writing exec with no ticket
   'docs/daily/<today>.md',                   // the aggregated standup
-  'docs/team/messages.md',                   // the ledger
+  'docs/team/messages.jsonl',                // the channel — the source of truth (schema v1)
+  'docs/team/messages.md',                   // ...and its generated human view
   'docs/53-reviews/APP-NNN-cycle-N.md',      // a review verdict
 ];
 // Structural references that name no artifact: the directories themselves, the glob the standup

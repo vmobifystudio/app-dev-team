@@ -84,6 +84,10 @@ const GENERATED = new Set([
   'docs/32-board-view.md',
   'docs/34-dashboard.html',
   'docs/33-messages-view.md',
+  // Both halves of the team channel: the event log is written by team-message.sh, the Markdown is
+  // rendered from it. Listing only the Markdown would report the source of truth as "work with no
+  // provenance" — the file with the MOST provenance in the project.
+  'docs/team/messages.jsonl',
   'docs/team/messages.md',
 ]);
 

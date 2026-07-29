@@ -65,7 +65,7 @@ budget. There is no portfolio-specific reading of anything.
 | awaiting | tickets parked in `review` or `qa` | not stuck today; nothing moves them without a person |
 | static | `qa (static only)` — merged or in review asserting a suite that **never ran** | the fact a sprint must not close on |
 | bugs | `docs/51-bugs.md` | open S1/S2 stop a release; open S3/S4 belong in the notes |
-| questions | `docs/team/messages.md` | an unanswered question is a developer guessing |
+| questions | `docs/team/messages.jsonl` | an unanswered question is a developer guessing |
 | budget | `docs/33-rounds.jsonl` via `round-journal.mjs check` | rounds/spawns/retries against their ceilings |
 
 ## The ranking rule
