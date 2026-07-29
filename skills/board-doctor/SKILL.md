@@ -63,7 +63,10 @@ invalid owner makes "who acts next" unanswerable.
 | `cycle_cap_breached` | `Cycles >= 2` but status isn't `blocked` | Stop the ticket, set blocked, surface to the user |
 | `ledger_action_unknown` | A ledger row uses a word outside `requested/started/changes/approved/merged` | Append a corrected line — the verdict is otherwise invisible to every check |
 
-Warnings (non-blocking): `ledger_cycle_mismatch`, `review_never_started`, `orphan_ledger_entry`,
+Warnings (non-blocking): `not_ready` (a `todo` ticket whose acceptance criteria state no observable
+outcome, or which has no spec anchor — the developer will decide alone and the decision ships),
+`question_unanswered`, `message_pair_exceeded`, `message_chain_too_deep`,
+`ledger_cycle_mismatch`, `review_never_started`, `orphan_ledger_entry`,
 `ledger_action_unknown_superseded` (a bad ledger word that a later valid line already corrected —
 kept visible because the ledger is append-only, but not blocking).
 

@@ -197,6 +197,18 @@ promotes to `main` via a release branch; a new single-app project usually integr
 not assume — merging features straight to `main` on a project whose release process expects
 `develop` is not recoverable by a later fix.
 
+## Post-launch intake (re-entry from data-analyst)
+
+After a release, `data-analyst` hands you findings in ticket shape. Route by kind, and do not let
+them queue behind feature work by default — a shipped feature nobody uses is a more expensive
+mistake than one not yet built:
+
+- **defect** → `BUG-NNN` on `docs/51-bugs.md`, then the normal bug intake below.
+- **product miss** → to `cpo` as a scope question, not to a developer as a ticket. The team must not
+  "fix" a feature users did not want by building more of it.
+- **instrumentation gap** → a ticket owned by `data-analyst`, sequenced **before** any ticket that
+  depends on reading that data. You cannot act on a number you cannot yet measure.
+
 ## Bug intake (re-entry from QA)
 Each round, read `docs/51-bugs.md`:
 - For every open `S1` or `S2` row whose underlying ticket is `done`, create a `BUG-NNN-fix` board row with the matching owner.

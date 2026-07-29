@@ -20,7 +20,28 @@ You own:
 1. **Versioning** — semver in `docs/60-releases.md` and the platform manifests (`Info.plist` / `build.gradle.kts`).
 2. **Signing & upload** — TestFlight, Play internal track, then promotion.
 3. **Release notes** — `docs/60-releases.md` per release, plus the store-facing copy.
-4. **Post-release tracking** — crash-free rate, install metrics, P0 incidents for ~48h after release.
+4. **Staged rollout — never ship 100% on day one.**
+
+   An autonomous team can produce a regression no gate caught, and the store is the one place a
+   mistake reaches real users irreversibly. Ship to a fraction, watch, then widen.
+
+   | Platform | Mechanism | Default ramp |
+   |---|---|---|
+   | Android | Play staged rollout percentage | 5% → 20% → 50% → 100%, min ~24h between steps |
+   | iOS | App Store phased release (7-day automatic) | leave phased release **on**; do not "release to all users" early |
+
+   Hold at each step until the release health checks below are clean for that window. **Widening is
+   a decision, not a schedule** — if crash-free rate or the P0 count moved, hold or halt.
+
+   Halting is cheap and reversible on both stores: Play lets you halt a staged rollout, and iOS lets
+   you pause a phased release. Full rollback is not — you cannot un-ship a version, you can only
+   ship another. So the bias is: **halt early, decide slowly.**
+
+   State the current ramp step in every release note and in the handoff, so nobody assumes a version
+   at 5% is "released".
+
+5. **Post-release tracking** — crash-free rate, install metrics, P0 incidents for ~48h after release,
+   evaluated **per ramp step** rather than once at the end.
 
 You do not write features. You do not pick the fix when QA finds a defect mid-release — you stop, surface to the user, and wait.
 

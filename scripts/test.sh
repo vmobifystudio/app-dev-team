@@ -112,6 +112,16 @@ node "$HERE/board-doctor.mjs" "$FIX/clean.md" 2>/dev/null | grep -q "shipped on 
   && ok "a question unanswered on a shipped ticket says so" \
   || bad "a question unanswered on a shipped ticket says so"
 
+# Definition of Ready: a ticket that forces the developer to guess is a planning defect.
+node "$HERE/board-doctor.mjs" "$FIX/not-ready.md" --json > "$TMP/ready.json" 2>/dev/null
+node -e '
+const j=require(process.argv[1]);
+const f=[...new Set(j.warnings.filter(w=>w.code==="not_ready").map(w=>w.ticketId))].sort();
+// APP-001 thin, APP-002 no observable outcome, APP-003 no spec anchor, APP-004 well-formed.
+process.exit(JSON.stringify(f)===JSON.stringify(["APP-001","APP-002","APP-003"])?0:1);
+' "$TMP/ready.json" && ok "flags unworkable tickets and leaves a well-formed one alone" \
+                    || bad "flags unworkable tickets and leaves a well-formed one alone"
+
 echo
 # --------------------------------------------------------------------------------------------
 echo "board-render"

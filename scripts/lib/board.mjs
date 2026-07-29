@@ -276,6 +276,35 @@ export function parseMessages(text) {
   return entries;
 }
 
+/**
+ * Definition of Ready — is this ticket workable, or will the developer have to guess?
+ *
+ * board-doctor checked that a row was structurally valid; nothing checked it was *answerable*. A
+ * ticket whose acceptance criteria do not state a verifiable outcome forces the developer to invent
+ * one — observed live: an export ticket said nothing about the empty-list case, the developer
+ * decided alone, and it shipped on an unconfirmed assumption nobody had approved.
+ *
+ * Deliberately weak signals, reported as warnings. The aim is to make a vague ticket visible at
+ * planning time, not to block on prose style.
+ */
+const VAGUE_ACCEPTANCE = /^(tbd|todo|as discussed|see prd|same as|obvious|n\/a|—|-)?$/i;
+
+export function checkReadiness(row) {
+  const problems = [];
+  const acceptance = (row.acceptance || '').trim();
+  const spec = (row.spec || '').trim();
+
+  if (VAGUE_ACCEPTANCE.test(acceptance) || acceptance.length < 15) {
+    problems.push('acceptance criteria are missing or too thin to verify');
+  } else if (!/\b(given|when|then|should|must|appears|returns|rejects|shows)\b/i.test(acceptance)) {
+    problems.push('acceptance criteria state no observable outcome — nothing to test against');
+  }
+  if (VAGUE_ACCEPTANCE.test(spec)) {
+    problems.push('no spec anchor, so the developer has nowhere to read the intent');
+  }
+  return problems;
+}
+
 /** Convenience: parse everything a consumer needs from the board file in one pass. */
 export function readBoard(text) {
   const board = parseBoard(text);

@@ -84,7 +84,25 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    - QA exercised the acceptance criteria
    - Daily report mentions the close
 
-8. **Validate before handing off.** Run the board doctor on the board you just wrote:
+8. **Definition of Ready — a ticket must be answerable before it is assigned.**
+
+   The Definition of Done says when work is finished. Nothing said when it was *startable*. A ticket
+   whose acceptance criteria state no observable outcome forces the developer to invent one, alone,
+   mid-flow — and that decision ships. Observed: an export ticket said nothing about the empty-list
+   case, the developer decided sensibly and unilaterally, and it reached `qa` on an assumption
+   nobody had approved.
+
+   Before a row leaves `todo`, it needs:
+   - **Acceptance criteria naming an observable outcome** — Given/When/Then, or at minimum something
+     a test could assert. "Make export nicer" is not a ticket.
+   - **A spec anchor** (`prd#F-001 + arch§3`) so intent can be read rather than guessed.
+   - **The empty, error and cancel cases considered** — not necessarily specified, but if the ticket
+     is silent on them, say so in `Notes` so the developer knows it is their call and declares it.
+
+   `board-doctor` warns `not_ready` on `todo` rows that fail this. It is a warning, not a block —
+   a thin ticket is a planning problem to fix at planning time, not a reason to stop a sprint.
+
+9. **Validate before handing off.** Run the board doctor on the board you just wrote:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md

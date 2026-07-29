@@ -31,6 +31,7 @@ import {
   parseBoard,
   parseLedger,
   parseMessages,
+  checkReadiness,
   isEmpty,
   parseDependencies,
   findBlockingAncestor,
@@ -271,6 +272,21 @@ function diagnose(board, ledger, capabilities, messages = []) {
           `Waiting on ${blocker.via}, which is ${blocker.reason}. The sprint loop cannot see this ticket and will report the sprint complete without it.`,
           'tech-manager: unblock the dependency, re-scope this ticket, or mark it blocked so it is reported.'
         );
+      }
+    }
+
+    // --- definition of ready ------------------------------------------------------------------
+    // Only for work not yet started: a vague ticket is a planning problem, and once it is in
+    // review the question has already been answered one way or another.
+    if (row.status === 'todo') {
+      for (const problem of checkReadiness(row)) {
+        warnings.push({
+          code: 'not_ready',
+          ticketId: row.id,
+          line: row._line,
+          detail: `${problem}. A developer given this will decide alone, and the decision ships.`,
+          action: 'tech-manager/cpo: sharpen it before the ticket is picked up, or expect an assumption in its place.',
+        });
       }
     }
 
