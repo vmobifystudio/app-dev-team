@@ -182,7 +182,7 @@ Mutation confirmed: git diff --numstat -> <N files, +A/-B>
 Files: <list>
 Tests: <count> added, <exact command run>, exit 0
 Second-path check: <the writers/readers you grepped, or "none applicable">
-Daily fragment: <path to docs/daily/<today>-<role>-APP-NNN.md that you wrote>
+Daily fragment: <path to docs/daily/<today>-<role>-<ticket>.md that you wrote>
 Assumptions & open questions: <every place the spec did not answer something and you decided
   anyway, with the decision and the reasoning. Paste the docs/team/messages.md ledger row for each
   one you raised; write "ASSUMED, NOT RAISED" for each one you did not. Never write that you
@@ -203,7 +203,7 @@ Worktree: <the path you were given, or "none — shared tree">
 Branch: docs/APP-NNN-short-slug        (created BEFORE any file was written)
 Files: <the docs you wrote or edited>
 Mutation confirmed: git diff --numstat -> <N files, +A/-B>
-Daily fragment: <path to docs/daily/<today>-<role>-APP-NNN.md that you wrote>
+Daily fragment: <path to docs/daily/<today>-<role>-<ticket>.md that you wrote>
 Assumptions & open questions: <as above — ledger row or "ASSUMED, NOT RAISED">
 Shared surfaces touched: <single-owner docs another ticket may also be writing —
   13-design-tokens.md, 52-analytics.md, 15-aso.md, 50-test-plan.md — or "none">

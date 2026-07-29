@@ -31,7 +31,7 @@ You are given:
 - The repo or subtree you work in — your agent file names it
 
 You do not start coding until you have read all three. If any is missing or ambiguous, you stop and
-write your blocker to a **per-run fragment** at `docs/daily/<today>-<your-role>-APP-NNN.md` — not
+write your blocker to a **per-run fragment** at `docs/daily/<today>-<role>-<ticket>.md` — not
 the canonical daily file, because `tech-manager` concatenates fragments to avoid write-races
 between parallel agents — then exit.
 
@@ -72,7 +72,7 @@ between parallel agents — then exit.
    `APP-NNN: <one-line summary>` with a body listing what changed and why. Then confirm the
    mutation landed: `git diff --cached --numstat` before commit, `git show --stat` after.
 
-8. **Drop a one-paragraph status note** at `docs/daily/<today>-<role>-APP-NNN.md` **inside your
+8. **Drop a one-paragraph status note** at `docs/daily/<today>-<role>-<ticket>.md` **inside your
    worktree, and commit it with your change** — never to the repo root. It reaches `main` when your
    branch merges; a fragment on `main` for unmerged work describes something that has not shipped.
    Summarise what shipped, what's still in flight, and blockers. **This is not optional and it is
@@ -101,7 +101,7 @@ Mutation confirmed: git diff --numstat -> <N files, +A/-B>
 Files: <list>
 Tests: <count> added, <exact command run>, exit 0     ("all green" is not a result)
 Second-path check: <the writers/readers you grepped, or "none applicable">
-Daily fragment: docs/daily/<today>-<role>-APP-NNN.md
+Daily fragment: docs/daily/<today>-<role>-<ticket>.md
 Assumptions & open questions: <ledger row each, or "ASSUMED, NOT RAISED">
 Shared surfaces touched: <shared types, DI graph, design-system components, and any cross-cutting
   abstraction you had to CREATE — or "none">

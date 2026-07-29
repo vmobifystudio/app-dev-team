@@ -62,7 +62,7 @@ The real test is **collision**, not location:
 | Artifact | Where | Why |
 |---|---|---|
 | all source and test code | **worktree only** | two agents on the same file is the corruption case |
-| `docs/daily/<date>-<role>-APP-NNN.md` | **worktree**, committed on the branch | reaches `main` at merge; a fragment for unmerged work should not appear in the standup |
+| `docs/daily/<today>-<role>-<ticket>.md` | **worktree**, committed on the branch | reaches `main` at merge; a fragment for unmerged work should not appear in the standup |
 | `docs/53-reviews/APP-NNN-cycle-N.md` | shared tree — **safe** | the path is unique per (ticket, cycle); no other agent can target it, and it must outlive a rejected branch |
 | `docs/31-board.md`, `docs/team/messages.md` | shared tree — **append-only** | never edit an existing line; appends from different agents merge cleanly |
 

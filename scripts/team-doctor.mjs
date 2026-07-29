@@ -298,26 +298,151 @@ for (const agent of agents) {
   }
 }
 
-// --- 5. docs written but never read -----------------------------------------------------------------
-// Terminal artifacts are deliverables for the human, not handoffs — they are allowed to be unread.
+// --- 5. the doc graph: every document has a declared writer and at least one reader -------------------
+//
+// RV-035: four documents were written by a step and read by no step at all. The handoff went into a
+// void and every producer reported success. The check that was here counted MENTIONS — "referenced
+// in exactly one file" — which is directionless (it cannot tell a producer from a consumer, so a doc
+// written twice and never read looked healthy) and it printed `.md` onto every name it reported,
+// including `docs/31-board-events.jsonl`. A tool that names a file that does not exist is a tool
+// people stop believing.
+//
+// The producer is DECLARED here, in the same style as BUILD_SPAWNABLE_OWNERS and CODE_ROLES above,
+// and everything else that mentions the doc is a reader. That makes both halves mechanical:
+//
+//   - a declared writer that has stopped mentioning its own doc   -> doc_writer_silent
+//   - a doc referenced anywhere with no row at all                -> doc_undeclared
+//   - a row for a doc nothing mentions                            -> doc_unused
+//   - a doc mentioned ONLY by its writers                         -> doc_unread   (this is RV-035)
+//
+// The key is the real filename, extension included, because that is the string a reader will paste
+// into a terminal.
+const DOC_WRITERS = new Map([
+  ['docs/00-vision.md',                 ['agents/ceo.md']],
+  ['docs/01-intake.md',                 ['skills/requirements-intake/SKILL.md']],
+  ['docs/02-team-roster.md',            ['skills/role-activation/SKILL.md']],
+  ['docs/10-prd.md',                    ['agents/cpo.md', 'skills/prd-builder/SKILL.md']],
+  ['docs/11-backlog.md',                ['agents/cpo.md', 'skills/prd-builder/SKILL.md']],
+  ['docs/12-flows.md',                  ['agents/ux-designer.md']],
+  ['docs/13-design-tokens.md',          ['agents/ux-designer.md']],
+  ['docs/14-components.md',             ['agents/ux-designer.md']],
+  ['docs/15-aso.md',                    ['agents/aso-specialist.md']],
+  ['docs/20-architecture.md',           ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
+  ['docs/21-engineering-principles.md', ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
+  // One artifact per platform, so every `docs/22-impl-spec-<anything>` folds into this row.
+  ['docs/22-impl-spec-*.md',            ['agents/tech-lead.md', 'commands/app-onboard.md']],
+  ['docs/23-git-strategy.md',           ['agents/devops-engineer.md']],
+  ['docs/30-sprint-plan.md',            ['skills/sprint-planner/SKILL.md']],
+  ['docs/31-board.md',                  ['skills/sprint-planner/SKILL.md', 'commands/app-plan.md']],
+  ['docs/31-board-events.jsonl',        ['skills/sprint-planner/SKILL.md', 'commands/app-plan.md']],
+  ['docs/32-board-view.md',             ['commands/app-build.md', 'commands/app-status.md']],
+  ['docs/40-api.md',                    ['agents/backend-developer.md']],
+  ['docs/41-monetization.md',           ['agents/monetization-engineer.md']],
+  ['docs/50-test-plan.md',              ['agents/qa-engineer.md']],
+  ['docs/51-bugs.md',                   ['agents/qa-engineer.md']],
+  ['docs/52-analytics.md',              ['agents/data-analyst.md']],
+  ['docs/53-reviews/',                  ['agents/code-reviewer.md']],
+  ['docs/60-releases.md',               ['agents/release-manager.md']],
+  ['docs/70-security-review.md',        ['agents/security-reviewer.md']],
+  ['docs/71-verification.md',           ['agents/verification-engineer.md']],
+  ['docs/80-audit.md',                  ['commands/app-audit.md']],
+  ['docs/81-findings.md',               ['commands/app-audit.md']],
+  ['docs/90-learnings.md',              ['commands/app-ship.md', 'commands/app-run.md']],
+]);
 
-const TERMINAL_DOCS = new Set(['docs/32-board-view', 'docs/60-releases', 'docs/70-security-review',
-  'docs/71-verification', 'docs/23-git-strategy', 'docs/15-aso', 'docs/50-test-plan']);
+// A generated projection of a file that already has readers. It exists to be LOOKED at by a human,
+// so "no step reads it" is its correct shape rather than a defect. Everything else earns its row.
+const TERMINAL_DOCS = new Set(['docs/32-board-view.md']);
+
+// `docs/NN-slug` with the extension it was actually written with. Every impl spec folds to one key.
+const docKey = (base, ext) =>
+  base.startsWith('docs/22-impl-spec-') ? 'docs/22-impl-spec-*.md' : `${base}${ext || ''}`;
 
 const docMentions = new Map();
 for (const file of [...agents, ...commands, ...skills]) {
-  for (const m of file.text.matchAll(/docs\/\d{2}-[a-z0-9-]+/g)) {
-    const doc = m[0];
-    if (!docMentions.has(doc)) docMentions.set(doc, new Set());
-    docMentions.get(doc).add(file.rel);
+  for (const m of file.text.matchAll(/docs\/(\d{2}-[a-z0-9-]*)(\.md|\.jsonl|\/)?/g)) {
+    const key = docKey(`docs/${m[1]}`, m[2]);
+    if (!docMentions.has(key)) docMentions.set(key, new Set());
+    docMentions.get(key).add(file.rel);
   }
 }
+
 for (const [doc, refs] of docMentions) {
+  const writers = DOC_WRITERS.get(doc);
+  if (!writers) {
+    add(findings, 'doc_undeclared', [...refs].sort()[0],
+      `${doc} is referenced by ${refs.size} file(s) but has no row in DOC_WRITERS, so nothing knows which step is supposed to produce it. An artifact with no declared producer is the shape of DR4-019: every role assumes another one owns it.`,
+      'Add a row naming its writer(s) in scripts/team-doctor.mjs.');
+    continue;
+  }
+  for (const w of writers) {
+    if (!refs.has(w)) {
+      add(findings, 'doc_writer_silent', w,
+        `${doc} is declared written by ${w}, and that file no longer mentions it. Either the producer moved and the declaration is stale, or the document is now written by nobody.`,
+        `Restore the reference in ${w}, or move the row to the step that writes it now.`);
+    }
+  }
   if (TERMINAL_DOCS.has(doc)) continue;
-  if (refs.size === 1) {
-    add(warnings, 'doc_single_reference', [...refs][0],
-      `${doc}.md is mentioned in exactly one file — it is written and never read, or read and never written.`,
-      'Either wire a consumer/producer, or mark it a terminal deliverable in team-doctor.');
+  const readers = [...refs].filter((r) => !writers.includes(r));
+  if (readers.length === 0) {
+    add(findings, 'doc_unread', writers[0],
+      `${doc} is written by ${writers.join(', ')} and read by no step at all. This is RV-035: a handoff into a void — the producer reports success and nothing downstream ever opens the file.`,
+      'Name it in the inputs of the role that needs it, or mark it a terminal deliverable in TERMINAL_DOCS.');
+  }
+}
+
+for (const doc of DOC_WRITERS.keys()) {
+  if (!docMentions.has(doc)) {
+    add(findings, 'doc_unused', 'scripts/team-doctor.mjs',
+      `DOC_WRITERS has a row for ${doc}, which no agent, command or skill mentions. The row asserts a document that no step in the pipeline touches.`,
+      'Delete the row, or wire the document into the step that needs it.');
+  }
+}
+
+// --- 6. one spelling per path ------------------------------------------------------------------------
+//
+// RV-031: the daily fragment had FIVE spellings across the corpus — `<today>` vs `<date>` vs
+// `YYYY-MM-DD`, `<role>` vs `<agent>` vs `<your-role>` — and /app-build gated on exactly one of them.
+// Every agent that used one of the other four wrote a fragment the standup never found, and the loop
+// reported a clean round. skills/team-protocol/SKILL.md publishes a canonical paths table; this is
+// that table made executable.
+//
+// Both halves. The corpus must use only the canonical spellings, AND the canonical spellings must
+// still be the ones the table publishes — a check enforcing a pattern the documentation no longer
+// states is a rule enforcing itself.
+const CANONICAL_PATHS = [
+  'docs/daily/<today>-<role>-<ticket>.md',   // the per-run fragment
+  'docs/daily/<today>-<role>-spec.md',       // ...for a spec-writing exec with no ticket
+  'docs/daily/<today>.md',                   // the aggregated standup
+  'docs/team/messages.md',                   // the ledger
+  'docs/53-reviews/APP-NNN-cycle-N.md',      // a review verdict
+];
+// Structural references that name no artifact: the directories themselves, the glob the standup
+// reads a day's fragments with, and the archive consumed fragments are moved to.
+const STRUCTURAL_PATHS = new Set([
+  'docs/daily', 'docs/daily/', 'docs/daily/<today>-*.md', 'docs/daily/.fragments/',
+  'docs/team', 'docs/team/', 'docs/53-reviews', 'docs/53-reviews/',
+]);
+const ALLOWED_PATHS = new Set([...CANONICAL_PATHS, ...STRUCTURAL_PATHS]);
+
+const protocol = skills.find((s) => s.rel.endsWith('team-protocol/SKILL.md'));
+for (const canonical of CANONICAL_PATHS) {
+  if (protocol && !protocol.text.includes(canonical)) {
+    add(findings, 'canonical_path_undocumented', 'skills/team-protocol/SKILL.md',
+      `team-doctor enforces "${canonical}" as the one legal spelling, and the canonical paths table no longer publishes it. Every agent reads the table; nothing reads this script.`,
+      'Restore the row in the paths table, or change both together.');
+  }
+}
+
+for (const file of [...agents, ...commands, ...skills]) {
+  const seen = new Set();
+  for (const m of file.text.matchAll(/docs\/(?:daily|team|53-reviews)[^\s`'")\];,]*/g)) {
+    const path = m[0].replace(/\.$/, '');
+    if (ALLOWED_PATHS.has(path) || seen.has(path)) continue;
+    seen.add(path);
+    add(findings, 'path_spelling', file.rel,
+      `"${path}" is a variant spelling. The loop matches one pattern per artifact and reads no other, so a fragment, standup or verdict written at this path is invisible to the step that consumes it — written, committed, and never found.`,
+      `Use the canonical spelling from skills/team-protocol/SKILL.md: ${CANONICAL_PATHS.join(' · ')}`);
   }
 }
 

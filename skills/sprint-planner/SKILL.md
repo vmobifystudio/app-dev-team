@@ -94,7 +94,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    board.mjs move APP-001 done_reported --by android-developer
    board.mjs move APP-001 verified --by verification-engineer --detail "verify-done.sh green"
    board.mjs move APP-001 review_requested --by android-developer --detail "-> code-reviewer"
-   board.mjs move APP-001 changes --by code-reviewer --detail "docs/53-reviews/APP-001-cycle-1.md"
+   board.mjs move APP-001 changes --by code-reviewer --detail "docs/53-reviews/APP-NNN-cycle-N.md"
    board.mjs move APP-001 approved --by code-reviewer
    board.mjs move APP-001 merged --by tech-manager
    board.mjs show [APP-001] [--json]      # derived state + self-metrics
@@ -224,5 +224,5 @@ Parallel launch:
 - ux-designer ← finalize flows for sprint 1 features
 - qa-engineer ← write test plan for sprint 1
 Reviewer queue: code-reviewer
-Daily report: docs/daily/<date>.md
+Daily report: docs/daily/<today>.md
 ```

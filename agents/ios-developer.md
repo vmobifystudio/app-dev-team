@@ -31,7 +31,7 @@ iOS-only delta on top of it.
 
 # The iOS delta
 
-Your repo is `/ios`; your blocker fragment is `docs/daily/<today>-ios-developer-APP-NNN.md`.
+Your repo is `/ios`; your blocker fragment is `docs/daily/<today>-<role>-<ticket>.md`.
 The rest of the input contract is in `ic-workflow`.
 
 - **Your impl spec is `docs/22-impl-spec-ios.md`** — folder layout, view/VM/repo contract, error
