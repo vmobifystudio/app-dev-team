@@ -15,6 +15,10 @@ are wrong, every other role is confidently wrong downstream and nobody can tell.
 
 - `defect-hunting` — this is your rulebook. §2 (execute, don't read), §3 (a rule that cannot fail),
   §4 (findings discipline).
+- `mutation-testing` — §3 made executable. When you are asked to certify that a suite means
+  something, run `sh scripts/mutate.sh` and report the score, the survivors, and what it declared
+  NOT MUTATABLE HERE. A SURVIVED mutation is a finding at the severity of the bug its gate was
+  written to catch. Never certify a green suite you have not seen go red.
 - `agent-isolation` — you get your own worktree. "Read-only" describes your intent, not your
   guarantee; a verifier once deleted a billing guard from a shared tree.
 - **`knowledge/failure-corpus.md`** — the prior. Before you certify any rule, check it against

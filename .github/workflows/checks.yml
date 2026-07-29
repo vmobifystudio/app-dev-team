@@ -104,3 +104,40 @@ jobs:
             exit 1
           fi
           echo "ok"
+
+  # The job above can report "402 passed, 0 failed" while containing assertions that cannot fail.
+  # On 2026-07-29 it did: a `grep -E` carrying a PCRE lookahead was a syntax error whose stderr went
+  # to /dev/null and whose `|| ok` fired every time, two board-doctor assertions stayed green when a
+  # gate was DELETED by demoting it to a warning, and a hook stood down in exactly the incident it
+  # was written for. All four were found by a reviewer breaking the code by hand and watching
+  # whether the suite noticed. `scripts/mutate.sh` is that technique as a command, so it happens on
+  # every PR rather than on a good day.
+  #
+  # A separate job, so it runs in parallel with `checks` rather than adding five minutes to it, and
+  # so its verdict is separately visible in the PR status list.
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # mutate.sh proves the tree is unchanged by diffing `git status --porcelain` against the
+          # snapshot it took at start, and the suite it runs asserts on branch ancestry.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: A sample of gates must still bite
+        # A sample rather than all 16: each mutation runs the entire suite (~1 min). The full
+        # catalogue is a local and pre-release run. `--sample` spreads across the catalogue rather
+        # than taking the first N, because consecutive entries share target files and a sample that
+        # only ever probes one script says nothing about the rest.
+        #
+        # No `|| true`, no `continue-on-error`, and nothing is installed — DR4-023 and DR4-024 are
+        # this repo's own generated CI reproducing exactly those two anti-patterns. Exit 1 means a
+        # gate can be broken without this repo noticing; that is a blocker, not a warning. A
+        # mutation-testing step that cannot itself go red is worth less than nothing.
+        run: sh scripts/mutate.sh --sample 4
