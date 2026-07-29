@@ -46,26 +46,62 @@ question — do not guess.** A wrong product type turns off the wrong specialist
 
 `on` = active · `?` = conditional, on its named trigger · `—` = off, for the named reason.
 
-| Role | iOS | Android | Mobile | Backend | Web | CLI | Library | Trigger for `?` / reason for `—` |
+| Role | ios-app | android-app | mobile-app | backend-service | web-app | cli | library | Trigger for `?` / reason for `—` |
 |---|---|---|---|---|---|---|---|---|
-| `ceo` | on | on | on | on | on | on | on | utility: absorbs the `cpo` charter (founder pass) |
-| `cpo` | on | on | on | on | on | on | on | utility: off, merged into `ceo` |
-| `cto` | on | on | on | on | on | on | on | utility: off, merged into `tech-lead` |
-| `tech-lead` | on | on | on | on | on | on | on | utility: absorbs the `cto` charter (one technical pass) |
-| `tech-manager` | on | on | on | on | on | on | on | someone must run the board on every product |
-| `ux-designer` | on | on | on | — | on | ? | — | `?` the CLI has an interactive/TUI surface · `—` no human-facing surface; API ergonomics belong to `tech-lead` |
+| **staffed?** | yes | yes | yes | yes | **no** | **no** | yes | `no` = recognised but unstaffed — activation refuses, see below |
+| `ceo` | on | on | on | on | — | — | on | utility: absorbs the `cpo` charter (founder pass) |
+| `cpo` | on | on | on | on | — | — | on | utility: off, merged into `ceo` |
+| `cto` | on | on | on | on | — | — | on | utility: off, merged into `tech-lead` |
+| `tech-lead` | on | on | on | on | — | — | on | utility: absorbs the `cto` charter (one technical pass) |
+| `tech-manager` | on | on | on | on | — | — | on | someone must run the board on every staffed product |
+| `ux-designer` | on | on | on | — | — | — | — | `—` no human-facing surface; API ergonomics belong to `tech-lead` |
 | `ios-developer` | on | — | on | — | — | — | ? | `?` the library ships an Apple-platform target · `—` no Apple target |
 | `android-developer` | — | on | on | — | — | — | ? | `?` the library ships an Android target · `—` no Android target |
-| `backend-developer` | ? | ? | ? | on | on | ? | ? | `?` `docs/20-architecture.md` names a server, API, or hosted component |
+| `backend-developer` | ? | ? | ? | on | — | — | ? | `?` `docs/20-architecture.md` names a server, API, or hosted component |
 | `monetization-engineer` | ? | ? | ? | — | — | — | — | `?` the product sells IAP/subscriptions or serves ads · `—` no store-billing or ad surface (this role's charter is StoreKit 2 / Play Billing / AdMob) |
 | `aso-specialist` | on | on | on | — | — | — | — | `—` no app-store listing exists to prepare |
-| `data-analyst` | on | on | on | ? | on | ? | — | `?` the product emits telemetry or the vision states KPI targets · `—` a library must not phone home; its consumers own analytics |
-| `devops-engineer` | on | on | on | on | on | on | on | every product has a branch model, CI, and a release channel |
-| `qa-engineer` | on | on | on | on | on | on | on | never tier-gated |
-| `code-reviewer` | on | on | on | on | on | on | on | never tier-gated |
-| `security-reviewer` | on | on | on | on | on | on | on | **never off, never tier-gated.** Anything handling user data or credentials gets a review; cheapness is not a reason |
-| `verification-engineer` | on | on | on | on | on | on | on | **never off.** It certifies constants and proves guard rules can fail — every product type has both |
-| `release-manager` | on | on | on | on | on | on | on | the channel differs (store · deploy · package registry), the role does not |
+| `data-analyst` | on | on | on | ? | — | — | — | `?` the product emits telemetry or the vision states KPI targets · `—` a library must not phone home; its consumers own analytics |
+| `devops-engineer` | on | on | on | on | — | — | on | every staffed product has a branch model, CI, and a release channel |
+| `qa-engineer` | on | on | on | on | — | — | on | never tier-gated |
+| `code-reviewer` | on | on | on | on | — | — | on | never tier-gated |
+| `security-reviewer` | on | on | on | on | — | — | on | **never off on a staffed type, never tier-gated.** Anything handling user data or credentials gets a review; cheapness is not a reason |
+| `verification-engineer` | on | on | on | on | — | — | on | **never off on a staffed type.** It certifies constants and proves guard rules can fail — every product has both |
+| `release-manager` | on | on | on | on | — | — | on | the channel differs (store · deploy · package registry), the role does not |
+
+The `—` down the `web-app` and `cli` columns is not a judgement about those roles. Those product
+types are unstaffed, so **nothing** activates on them and no team is assembled at all.
+
+### Every product type must name an IC — or it is unstaffed
+
+A product type is **staffed** only if at least one of `ios-developer`, `android-developer`,
+`backend-developer` is `on` or `?` for it. Those three are the roles that can own an implementation
+ticket and actually build the thing; the rest review, coordinate, design, test, or ship it.
+
+`web-app` and `cli` are **recognised but unstaffed**. Detection can identify them — a `package.json`
+with a web framework is a real answer — but **activation then refuses and writes no roster**:
+
+```
+ACTIVATION REFUSED — product type `web-app` is recognised but unstaffed.
+No IC role on this team can own a web-app implementation ticket:
+there is no web-developer in agents/, and backend-developer builds services, not UI.
+To proceed, either: (a) build this as a different product type, or
+(b) add the missing IC role — see below — and add it to the activation matrix.
+```
+
+Refusing is the correct outcome. Assembling a team that cannot build the product is not: `/app-build`
+spawns strictly by a ticket's `Owner`, and `board-doctor` rejects an owner the loop cannot spawn — so
+a web UI ticket either strands with no valid owner or goes to `backend-developer`, who builds it
+against the wrong conventions. Declared, never picked up, never reported: the exact failure this
+repo keeps finding.
+
+`team-doctor` enforces the rule mechanically, both ways: a `staffed` type with no IC is a
+configuration error, and an `unstaffed` type whose column names an IC is worse — it would activate.
+
+**Adding an IC is cheap and well-defined**, which is what makes "unstaffed" a costed decision rather
+than an accident. `ic-workflow` already holds the whole ticket lifecycle and is product-agnostic by
+design (its own description names web, CLI and library). A `web-developer` is that skill, plus a
+conventions delta for the stack, plus one matrix column flipped to `yes`. Do that deliberately, when
+a real web product is on the table — not to make this table look complete.
 
 ### Tier deltas — `utility` only
 

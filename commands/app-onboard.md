@@ -27,8 +27,11 @@ something to work against.
    neither iOS nor Android is a normal answer — read the package manifests), the **tier** from the
    app's size and shape, naming the signal that decided it. Ambiguous → ask one question.
 
-   Write `docs/02-team-roster.md` in the shape that skill defines — all 18 roles, `active` /
-   `conditional` / `off` with trigger or reason — **before spawning anyone below**, and print the
+   Write `docs/02-team-roster.md` (copy `${CLAUDE_PLUGIN_ROOT}/docs/02-team-roster.md` and fill it
+   in) — all 18 roles, `active` / `conditional` / `off` with trigger or reason — **before spawning
+   anyone below**. If detection lands on an unstaffed product type (`web-app`, `cli`), print the
+   skill's `ACTIVATION REFUSED` block and stop: onboarding a codebase no IC on this team can work on
+   produces a baseline nobody can act on. Otherwise print the
    tier, the product type, and the off-list. A brownfield backend service that spawns an
    `aso-specialist` and gets store-listing homework is the failure this closes.
 

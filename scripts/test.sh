@@ -625,6 +625,25 @@ assert_finding "$TMP/tdmx3.json" matrix_role_duplicated \
   "a role with two matrix rows blocks" "qa-engineer"
 restore_matrix
 
+# A product type nothing can build. web-app and cli were declared supported with no IC role able to
+# own their implementation tickets — the ticket strands with no spawnable owner, or lands on
+# backend-developer and gets built against the wrong conventions.
+sed 's/^| \*\*staffed?\*\* | yes | yes | yes | yes | \*\*no\*\*/| **staffed?** | yes | yes | yes | yes | yes/' \
+  "$TMP/matrix-pristine.md" > "$MATRIX"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx5.json" 2>/dev/null
+assert_finding "$TMP/tdmx5.json" product_type_unstaffed \
+  "a product type staffed by no IC blocks" "web-app"
+restore_matrix
+
+# ...and the mirror, which is worse: an "unstaffed" type activation is supposed to refuse for, whose
+# column still names an IC, quietly assembles a team anyway.
+sed 's/^| `backend-developer` | ? | ? | ? | on | —/| `backend-developer` | ? | ? | ? | on | on/' \
+  "$TMP/matrix-pristine.md" > "$MATRIX"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmx6.json" 2>/dev/null
+assert_finding "$TMP/tdmx6.json" product_type_staffing_contradiction \
+  "an unstaffed product type that would still activate an IC blocks" "web-app"
+restore_matrix
+
 # And the matrix has to exist at all — the roster is generated from it. Asserted on the finding
 # code, not on exit status: removing the file also trips skill_missing, so exit 1 proves nothing.
 mv "$MATRIX" "$TMP/matrix-away.md"

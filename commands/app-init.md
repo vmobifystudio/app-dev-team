@@ -16,8 +16,13 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 
 1a. **Activate the roster.** Invoke the `role-activation` skill: fix the **tier** (`--utility` /
    `--flagship`, else derived from the intake) and the **product type** (from the intake's
-   `## Product type` answer), then write `docs/02-team-roster.md` in the shape that skill defines —
-   all 18 roles, each `active` / `conditional` / `off` with its trigger or reason.
+   `## Product type` answer), then write `docs/02-team-roster.md` — copy
+   `${CLAUDE_PLUGIN_ROOT}/docs/02-team-roster.md` and fill it in from the matrix; all 18 roles, each
+   `active` / `conditional` / `off` with its trigger or reason.
+
+   **If the product type is unstaffed (`web-app`, `cli`), refuse and stop here** — print the skill's
+   `ACTIVATION REFUSED` block naming the missing IC role. Write no roster and spawn nobody. A team
+   that cannot build the product is not a lesser start, it is a sprint of stranded tickets.
 
    Write it **before spawning anyone**. Every fan-out below spawns only `active` roles, and this
    file is what says so; deriving activation again per step is how two steps come to disagree.

@@ -188,6 +188,40 @@ if (!existsSync(MATRIX)) {
         'Keep exactly one row per role.');
     }
   }
+  // Every product type must name at least one IC that can own an implementation ticket, or be
+  // declared unstaffed. `web-app` and `cli` were declared supported with no role able to build
+  // either: the ticket strands with no spawnable owner, or lands on backend-developer and gets
+  // built against the wrong conventions. Both are the silent-drop class. The mirror check matters
+  // more — an "unstaffed" type whose column still names an IC would quietly activate anyway.
+  const ICS = ['ios-developer', 'android-developer', 'backend-developer'];
+  // `**no**` is still no: the matrix bolds the unstaffed cells for readers, and comparing the raw
+  // cell made both branches below unreachable for exactly the two types they exist to catch.
+  const cells = (line) => line.split('|').slice(1, -1).map((c) => c.trim().replace(/\*/g, ''));
+  const rows = matrixText.split('\n').filter((l) => l.trim().startsWith('|')).map(cells);
+  const header = rows.find((r) => r[0] === 'Role');
+  const staffed = rows.find((r) => r[0] === 'staffed?');
+  if (!header || !staffed) {
+    add(findings, 'activation_matrix_unparseable', 'skills/role-activation/SKILL.md',
+      `The matrix needs a "| Role | ..." header and a "| **staffed?** | ..." row; ${header ? 'the staffed? row' : 'the header'} is missing, so nothing can check that a product type has anyone to build it.`,
+      'Restore both rows.');
+  } else {
+    for (let col = 1; col < header.length - 1; col++) {
+      const type = header[col];
+      const icCells = ICS.map((ic) => (rows.find((r) => r[0] === `\`${ic}\``) || [])[col]);
+      const active = icCells.filter((v) => v === 'on' || v === '?');
+      if (staffed[col] === 'yes' && active.length === 0) {
+        add(findings, 'product_type_unstaffed', 'skills/role-activation/SKILL.md',
+          `Product type "${type}" is marked staffed but no IC role (${ICS.join(', ')}) is on or conditional for it. Nothing on this team can own its implementation tickets — they strand with no spawnable owner, or get built by the wrong specialist.`,
+          `Activate an IC for "${type}", add the IC role the product needs, or mark the type unstaffed so activation refuses instead of assembling a team that cannot build it.`);
+      }
+      if (staffed[col] === 'no' && active.length > 0) {
+        add(findings, 'product_type_staffing_contradiction', 'skills/role-activation/SKILL.md',
+          `Product type "${type}" is marked unstaffed — activation is supposed to refuse — yet ${active.length} IC role(s) would still activate for it.`,
+          `Set every IC cell in the "${type}" column to — , or mark the type staffed.`);
+      }
+    }
+  }
+
   for (const role of roleNames) {
     if (!seen.has(role)) {
       add(findings, 'role_not_in_matrix', `agents/${role}.md`,
