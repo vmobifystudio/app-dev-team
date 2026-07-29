@@ -124,6 +124,10 @@ Mutation confirmed: git diff --numstat -> <N files, +A/-B>
 Files: <list>
 Tests: <count> added, <exact command run>, exit 0
 Second-path check: <the writers/readers you grepped, or "none applicable">
+Shared surfaces touched: <files/types that are not exclusively yours — a shared model, an error
+  type, a DI graph, a design-system component — or "none". Also name any cross-cutting abstraction
+  you had to CREATE (an analytics logger, a clock, a result wrapper): if another ticket needed one
+  too, you have both just built it, and the merge will pick one arbitrarily.>
 Next: code-reviewer
 ```
 

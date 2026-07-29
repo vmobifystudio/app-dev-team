@@ -153,6 +153,48 @@ error mapping, DI, design-system components, navigation, persistence — and for
 than one ticket needs, either giving it its own foundation ticket sequenced first, or naming the
 existing type in every consuming ticket's `Spec` field.
 
+## What the agents' own reports showed
+
+Both agents returned the **full v1.3.0 output contract** — worktree, branch, explicit staged paths,
+mutation confirmed, exact test command, second-path check. The contract was followed without being
+re-explained, which is the cheapest possible evidence that it is well-shaped.
+
+Two things stand out.
+
+**The `defect-hunting` second-path rule produced real defensive work, unprompted.** APP-001, on a
+ticket whose acceptance criterion was only *"empty text is rejected"*:
+
+> "(1) `TodoListViewModel.save()` bails early on blank input… (2) `InMemoryTodoRepository.add()`
+> re-validates and returns `TodoError.Io` for blank/whitespace text (covers any future caller —
+> quick-add, import, etc. — that calls the repository directly and could otherwise bypass the
+> ViewModel's guard). Both paths have dedicated tests."
+
+That is the "add validated, edit didn't" defect class pre-empted before the second path existed.
+APP-002 did the same on the toggle's undo branch and its `NotFound` branch — verifying that undo
+does **not** re-log `todo_completed`, and that an unknown id leaves state and analytics untouched.
+Neither was asked for; neither is in the acceptance criteria.
+
+**Both agents spotted the shared-surface hazard themselves and had nowhere to put it.** APP-002:
+
+> "Note: I touched the shared `Todo.kt` (added `createdAtEpochMillis`)… flagging in case APP-001
+> (Add a todo) touches the same file and needs a merge."
+
+The agent knew. The process gave it no field for that, so it landed in the closing paragraph of a
+free-text report that nothing parses. Fixed: `Shared surfaces touched` is now a line in the output
+contract — covering both *files you touched that aren't exclusively yours* and *cross-cutting
+abstractions you had to create* — and `/app-build` acts on it while both agents are still alive,
+rather than discovering it at the merge gate.
+
+## Still unexercised: the team message channel
+
+Neither agent used `team-message.sh`. APP-001 reported "no blockers, no questions raised to
+tech-lead", and both tickets were unambiguous enough not to need one. So the channel, its routing
+table, and the anti-ping-pong guard remain **unit-tested but not field-tested**. A future dry run
+should include a ticket with a genuine spec ambiguity to force the path.
+
+Also unexercised end-to-end: `code-reviewer`, the merge gate, and QA. Two runs have now hardened the
+developer stage only.
+
 ## Method note
 
 My own observation harness had the bug it was measuring: it ran a trial merge, then

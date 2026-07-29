@@ -69,6 +69,12 @@ Tickets (optional, default = all ready): $ARGUMENTS
      verbatim. This counts as a **developer** retry, not a review cycle.
      `VERIFIED` → continue. If it reports `tests=unverified`, say so in the daily fragment; never
      restate the agent's "all green" as confirmed.
+   - **Read the `Shared surfaces touched` line.** If two returning agents name the same file, or
+     both report *creating* a cross-cutting abstraction for the same concern, you have a duplication
+     or conflict you can act on now — before the merge gate, while both agents still exist. Route it
+     to `tech-manager` to pick one shape and re-spawn the loser with the winner named. Both dry-run
+     agents spotted this risk themselves and had nowhere to put it but the closing paragraph of a
+     report nobody parsed.
    - **Check the daily fragment exists** at `docs/daily/<today>-<role>-APP-NNN.md` on the branch.
      Across two dry runs only **1 of 4** agent-runs wrote one, though every IC role requires it —
      and it is the sole input to the standup, so `tech-manager` was aggregating nothing. If it is
