@@ -167,6 +167,24 @@ You are the only agent that runs `git merge` on `main`. The flow:
    **Never merge a ticket whose ledger has no `approved` line from a role other than its owner.**
    An `APPROVED` verdict that left no ledger entry did not happen as far as the board is concerned —
    ask the reviewer to append it, or re-review.
+
+   **Write the check so it can fail, and re-read the ledger immediately before merging.** Both
+   halves were violated live:
+
+   ```bash
+   # WRONG — sed succeeds on empty input, so the fallback never fires and the merge proceeds.
+   grep -E "$TICKET \| approved" docs/31-board.md | sed 's/^/  /' || echo "NO APPROVAL"
+
+   # RIGHT — gate on grep's own exit status.
+   if ! grep -qE "\| $TICKET \| approved \|" docs/31-board.md; then
+     echo "REFUSING TO MERGE: no approved ledger line for $TICKET"; exit 1
+   fi
+   ```
+
+   And the reviewer may still be writing. A verdict message can arrive before its ledger row lands,
+   so a check run once at the top of the round is stale by the time you merge. **Re-read the file at
+   the moment of merging** — observed: a merge went through in the window between the check and the
+   reviewer's append, and only the broken guard hid it. The approval was real; the ordering was not.
 4. On merge conflict:
    - Abort the merge (`git merge --abort`).
    - Re-spawn the original developer with `BLOCKED: merge conflict against main on <files>; rebase your branch and re-submit`.
