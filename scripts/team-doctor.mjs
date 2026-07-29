@@ -100,7 +100,11 @@ if (appBuild) {
 // daily fragment, the assumptions-vs-ledger check and the shared-surface check did nothing at all
 // for backend and billing tickets — the highest-risk code in the system.
 
-const CONTRACT_FIELDS = [
+// Two tiers, because the hazard differs. Roles that write source or repository config need branch
+// and worktree discipline; roles that produce a uniquely-named document do not, but still owe the
+// orchestrator the fields its gates read. Five of the ten spawnable owners had NO output contract
+// at all, so /app-build got free-form prose back and every gate no-opped.
+const CODE_CONTRACT = [
   'Worktree:',
   'Mutation confirmed:',
   'Daily fragment:',
@@ -108,17 +112,41 @@ const CONTRACT_FIELDS = [
   'Second-path check:',
   'Shared surfaces touched:',
 ];
-// Roles that work a ticket AND report a DONE contract. Reviewers/QA have their own verdict shapes.
-const CONTRACT_ROLES = ['ios-developer', 'android-developer', 'backend-developer', 'monetization-engineer'];
+const ARTIFACT_CONTRACT = ['Worktree:', 'Daily fragment:', 'Assumptions & open questions:'];
 
-for (const role of CONTRACT_ROLES) {
-  const agent = roles.get(role);
-  if (!agent) continue;
-  const missing = CONTRACT_FIELDS.filter((f) => !agent.text.includes(f));
-  if (missing.length > 0) {
-    add(findings, 'contract_drift', agent.rel,
-      `Output contract is missing ${missing.length} field(s) the other ticket-working roles report: ${missing.join(' ')} — every /app-build gate that reads them silently does nothing for this role's tickets.`,
-      'Bring the contract to parity with agents/android-developer.md.');
+// Anything writing source or repo config (CI, signing, build flavors) is a code role.
+const CODE_ROLES = [
+  'ios-developer',
+  'android-developer',
+  'backend-developer',
+  'monetization-engineer',
+  'devops-engineer',
+];
+const ARTIFACT_ROLES = ['ux-designer', 'qa-engineer', 'data-analyst', 'aso-specialist'];
+
+for (const [list, fields, tier] of [
+  [CODE_ROLES, CODE_CONTRACT, 'code'],
+  [ARTIFACT_ROLES, ARTIFACT_CONTRACT, 'artifact'],
+]) {
+  for (const role of list) {
+    const agent = roles.get(role);
+    if (!agent) continue;
+    const missing = fields.filter((f) => !agent.text.includes(f));
+    if (missing.length > 0) {
+      add(findings, 'contract_drift', agent.rel,
+        `Output contract is missing ${missing.length} field(s) required of a ${tier}-tier ticket owner: ${missing.join(' ')} — every /app-build gate that reads them silently does nothing for this role's tickets.`,
+        `Bring it to parity with the other ${tier}-tier roles.`);
+    }
+  }
+}
+
+// Every spawnable owner must be in exactly one tier, or a new role slips through uncovered.
+for (const owner of BUILD_SPAWNABLE_OWNERS) {
+  if (owner === 'verification-engineer') continue; // returns a VERIFICATION verdict, not a DONE
+  if (!CODE_ROLES.includes(owner) && !ARTIFACT_ROLES.includes(owner)) {
+    add(findings, 'contract_tier_missing', 'scripts/team-doctor.mjs',
+      `"${owner}" can own a ticket but belongs to neither contract tier, so nothing checks what it reports.`,
+      'Add it to CODE_ROLES (writes source or repo config) or ARTIFACT_ROLES (writes a document).');
   }
 }
 
