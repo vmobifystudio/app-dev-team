@@ -91,6 +91,43 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      serializes the whole board behind its slowest gate.
    - `docs/51-bugs.md` (if it exists) — for every open `S1` or `S2`, ensure a matching `BUG-NNN-fix` row exists on the board; if not, spawn `tech-manager` once with the instruction to create them, then re-read the board.
 
+1a. **Route the finished wave's assumptions into the ledger.** For every agent that returned last
+   round, each `ASSUMED, NOT RAISED` line in its `Assumptions & open questions` field becomes a real
+   `question` row, filed on that agent's behalf:
+
+   ```bash
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/team-message.sh" \
+      --from <the agent> --to tech-lead --ticket APP-NNN --kind question \
+      --summary "<the assumption, as a question>" --body "<what it decided and why>"
+   ```
+
+   An IC cannot block waiting for an answer inside its own run, so it declares and moves on
+   (`team-protocol` §Why ICs mostly won't message). Declaring only helps if something later files
+   and answers it — that is this step and the next.
+
+1b. **MID-SPRINT Q&A — answer last round's guesses before this round inherits them.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages-render.mjs" docs/team/messages.md --board docs/31-board.md
+   ```
+
+   The `OPEN QUESTIONS` block **is** the batch — do not re-derive it. Empty block, or exit 2 (no
+   ledger yet, normal in round 1) → skip straight to step 2.
+
+   Otherwise spawn `tech-lead` **once** with the whole batch — never once per question, never once
+   per ticket. It emits one `answer` row per question it can settle, and **one** `escalation` to
+   `tech-manager` covering everything it cannot. See `team-protocol` §Mid-sprint Q&A for the exact
+   contract.
+
+   Then re-render and confirm the count actually fell. A batch that comes back with the same number
+   of open questions means `tech-lead` wrote prose instead of ledger rows, and the next wave is
+   about to inherit the same guesses.
+
+   **Why this sits here and not later:** a question answered after the wave is spawned is answered
+   too late — the developer has already decided. Measured across three dry runs and ten agent-runs,
+   the live channel was used zero times, so every ambiguity was resolved by a guess and caught, if
+   at all, in review. This step is where a guess becomes a decision before it becomes code.
+
 2. **Spawn developers in parallel.** Use the `parallel-orchestrator` skill, which now requires a
    **git worktree per writing agent, created before the spawn** (`agent-isolation`), and serializes
    any ticket pair that shares a file. Launch IC agents concurrently in a **single assistant

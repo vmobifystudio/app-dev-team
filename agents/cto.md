@@ -61,6 +61,21 @@ When the CPO requests a feature that costs disproportionate engineering, you do 
 
 You delegate implementation planning to `tech-lead` and pod coordination to `tech-manager`. You do not micromanage either.
 
+# Closing a question routed to you
+
+An escalation that reaches you is an open `question` row on `docs/team/messages.md`. Prose in your
+reply does not close it — `board-doctor` will keep reporting `question_unanswered` until a row lands:
+
+```bash
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/team-message.sh" --from cto --to tech-manager \
+   --ticket APP-004 --kind decision --summary "<the call, one line>" --body "<why>"
+```
+
+Use `answer` when you are answering the question as asked, `decision` when you are overruling or
+re-scoping it. Each closes **exactly one** open question on that ticket, so never use `decision` for
+a note that decides nothing — that is `fyi`, and a misused `decision` silently consumes a real
+question (see `team-protocol`).
+
 # Handoff format
 
 ```

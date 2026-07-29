@@ -102,6 +102,64 @@ the role that owns the answer. Nothing is lost because an IC was mid-flow.
 build another part of the ticket is worth sending immediately — the answer may arrive before you
 need it. That is the case the channel is actually for, and it is rarer than it looks.
 
+## Mid-sprint Q&A — the mechanism that actually answers
+
+Declaring an assumption only helps if something later answers it. Until now nothing did: a
+`question` landed on the ledger and sat there until a human read it. So each round of `/app-build`
+opens with a **Q&A step** — one batched pass that closes the ledger before the next wave inherits
+the guesses.
+
+**Where it sits in the round.** After the board-doctor pre-spawn gate and after the previous wave's
+`ASSUMED, NOT RAISED` lines have been filed as `question` rows — so this round answers last round's
+guesses — and **before any developer is spawned**:
+
+```
+1. board-doctor gate
+2. route the finished wave's "ASSUMED, NOT RAISED" into question rows
+3. MID-SPRINT Q&A          ← this section
+4. spawn the developer wave
+```
+
+Round 1 has no prior wave and usually no ledger; the render exits 2 and the step is a no-op.
+
+**What counts as open.** A `question` row on a ticket with no matching `answer` or `decision` on the
+same ticket. Matching is by count, oldest first — each resolution closes the earliest still-open
+question on that ticket, exactly as `board-doctor` counts it. Read the batch, do not re-derive it:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/messages-render.mjs" docs/team/messages.md --board docs/31-board.md
+```
+
+The `OPEN QUESTIONS` block **is** the batch. Empty block, or exit 2, means skip to the wave.
+
+**How it is batched.** Group by ticket and spawn `tech-lead` **once** for the whole batch — never
+once per question, never once per ticket. One spawn, one context, every open question in it.
+
+**What `tech-lead` must emit.** One ledger row per open question, and nothing that is not a row:
+
+- It can answer → an `answer` row on that ticket, addressed to the asker. This is what closes the
+  count.
+- It cannot answer → **one** `escalation` row to `tech-manager` covering every question it could not
+  settle on that ticket, naming for each what decision is needed and who owns it (`cpo` for product
+  scope, `cto` for architecture, the user for anything irreversible). An `escalation` deliberately
+  does **not** close the question: it stays open and keeps rendering until the owner answers it.
+
+Prose in the spawn's reply is not an answer. If the row is not on the ledger, the question is open.
+
+**The guard still holds.** The pair budget already caps one asker at 2 questions per ticket, so the
+2 answers back fit inside it — the batch does not need an exemption and does not get one. If a
+ticket somehow carries more than 2 open questions from the same role, the ledger was written around
+the guard: answer the two you can and put the rest in the single `escalation`.
+
+**Questions on a ticket that already reached `qa`/`done`.** Answer them anyway — the renderer flags
+these first because the ticket shipped on the assumption. If the real answer contradicts what
+shipped, `tech-manager` files a `BUG-NNN` against it. Never close one of these with a `decision`
+that merely ratifies whatever the code happens to do.
+
+**Verifying the step ran.** Re-render after the spawn. The open count must have fallen by the number
+of `answer` rows, and every question still open must have an `escalation` naming its owner. If
+neither is true, the spawn produced prose; retry once, then it becomes a `tech-manager` action item.
+
 ## The output contract — what every ticket-working agent returns
 
 The sprint loop parses your closing block. It is not a summary for a human; it is the input to
