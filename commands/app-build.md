@@ -133,7 +133,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 1b. **MID-SPRINT Q&A — answer last round's guesses before this round inherits them.**
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages-render.mjs" docs/team/messages.md --board docs/31-board.md
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages-render.mjs" docs/team/messages.jsonl --board docs/31-board.md
    ```
 
    The `OPEN QUESTIONS` block **is** the batch — do not re-derive it. Empty block, or exit 2 (no
@@ -295,7 +295,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      `tech-manager` **now** — before the merge gate, while both agents still exist — to pick one
      shape and re-spawn the loser with the winner named.
    - **Verify the `Assumptions & open questions` line against the ledger.** Every question the agent
-     says it raised must have its row in `docs/team/messages.md`. A missing row is a defect in the
+     says it raised must have its record on `docs/team/messages.jsonl`. A missing record is a defect in the
      report, not something to quietly fix: file the question yourself, note in the standup that the
      agent reported raising it and had not, and treat that report's other unverifiable claims with
      the same suspicion. `ASSUMED, NOT RAISED` is fine and just needs routing. (Observed live —
@@ -491,7 +491,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    Print the terminal view in the standup. `docs/32-board-view.md` carries a Mermaid dependency
    graph that renders on GitHub — stranded and blocked tickets are outlined in red.
 
-   Also surface unanswered team messages: any `question` in `docs/team/messages.md` with no matching
+   Also surface unanswered team messages: any `question` in `docs/team/messages.jsonl` with no matching
    `answer` is a `tech-manager` action item, not a thing to leave sitting.
 
 6a. **Journal the round — one line, every round, before you loop.**

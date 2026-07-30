@@ -60,14 +60,13 @@ something to work against.
    stack, build/run commands, and canonical type/property names found in the code, seeded from the
    House KB. Never overwrite a substantial existing `CLAUDE.md` — propose a diff instead.
 
-5. **Create the team channel** `docs/team/messages.md` if absent, with exactly this header and
-   nothing else (`team-protocol` defines the shape; `board-doctor` parses it):
+5. **Create the team channel** `docs/team/messages.jsonl` if absent — an empty append-only event log
+   (`team-protocol` defines the schema). `docs/team/messages.md` is GENERATED from it on the first
+   send and must never be hand-written. A brownfield project that already has only the Markdown
+   ledger is migrated automatically on that first send, and the migration announces itself:
 
    ```bash
-   [ -f docs/team/messages.md ] || { mkdir -p docs/team && printf '%s\n\n%s\n%s\n' \
-     '## Team messages (append-only — never edit or delete a line)' \
-     '| Timestamp | From | To | Ticket | Kind | Summary | Body |' \
-     '|---|---|---|---|---|---|---|' > docs/team/messages.md; }
+   mkdir -p docs/team && [ -f docs/team/messages.jsonl ] || [ -f docs/team/messages.md ] || : > docs/team/messages.jsonl
    ```
 
    No command created this file. Observed live: an agent reported raising a question on the channel

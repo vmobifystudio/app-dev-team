@@ -39,6 +39,19 @@ import {
   detectCycle,
   normalizeId,
 } from './lib/board.mjs';
+import {
+  parseMessageLog,
+  migrate as migrateMessages,
+  threads as messageThreads,
+  pairQuestions,
+  auditGuards,
+  undeliveredAnswers,
+  expiredWaivers,
+  staleAssumptions,
+  MAX_PAIR,
+  MAX_CHAIN,
+  MAX_PER_TICKET,
+} from './lib/messages.mjs';
 // --------------------------------------------------------------------------------------------
 // the cascade
 // --------------------------------------------------------------------------------------------
@@ -52,50 +65,41 @@ import {
  * An unanswered question is how a developer ends up guessing, and the guess ships.
  */
 /**
- * Guard windows, kept identical to scripts/team-message.sh (which refuses the send) so the two
- * cannot disagree about what a breach is. They diverged once: the script counted pairs over the
- * trailing 40 rows and refused a chain at >=4 roles, the doctor counted the whole ledger and warned
- * at >4 — so a ledger the script had happily written was reported as a breach, and a real breach
- * the script refused was invisible to the doctor. One window, stated in both files:
+ * Team-channel checks.
  *
- *   window   the whole thread for one ticket, for all time (the ledger is append-only)
- *   pair     at most 2 messages from one role to another on one ticket without a third party
- *   chain    at most 4 distinct roles involved in one ticket's thread
+ * The guard windows are NOT restated here any more. They lived in three files — this one,
+ * team-message.sh and messages-render.mjs — and two of them disagreed about what a breach was: the
+ * script counted pairs over the trailing 40 rows and refused a chain at >=4 roles, the doctor
+ * counted the whole ledger and warned at >4. A ledger the script had happily written was reported
+ * as a breach, and a real breach the script refused was invisible to the doctor. One implementation,
+ * in lib/messages.mjs; this is its audit caller, team-message.sh is its send caller.
  *
- * `MAX_PER_ROLE` in team-message.sh has no counterpart here on purpose: it is a rate limit on one
- * agent's current turn, not a property of the ledger.
+ * `messages` here are schema-v1 events, not Markdown rows: the source of truth is
+ * docs/team/messages.jsonl and the Markdown is a rendering of it.
  */
-const MAX_PAIR = 2;
-const MAX_CHAIN = 4;
-
 function diagnoseMessages(messages, rowsById, warnings) {
-  const byTicket = new Map();
-  for (const m of messages) {
+  for (const [ticketId, thread] of messageThreads(messages)) {
     // Ticketless rows (`--ticket -`) are broadcast chatter, not a thread. Bucketing them together
     // collapsed every unrelated FYI into one pseudo-ticket that tripped the chain-depth warning on
-    // a team that had done nothing wrong — and team-message.sh already exempts them, so the doctor
-    // was flagging sends the script itself permits.
-    if (isEmpty(m.ticketId)) continue;
-    if (!byTicket.has(m.ticketId)) byTicket.set(m.ticketId, []);
-    byTicket.get(m.ticketId).push(m);
-  }
+    // a team that had done nothing wrong — and the send guard already exempts them, so the doctor
+    // was flagging sends the CLI itself permits.
+    if (ticketId === '(no ticket)') continue;
 
-  for (const [ticketId, thread] of byTicket) {
     // Pair by COUNT, not existence. "Any answer resolves any question" is a false negative the
     // moment a ticket carries two questions, or one unrelated decision: observed live, a
     // `decision` row correcting a tooling mistake made a genuinely open product question look
     // resolved. One resolution closes one question — anything else is still open.
+    const { open } = pairQuestions(thread);
     const questions = thread.filter((m) => m.kind === 'question');
-    const resolutions = thread.filter((m) => m.kind === 'answer' || m.kind === 'decision');
     const row = rowsById.get(normalizeId(ticketId));
 
-    if (questions.length > resolutions.length) {
-      const last = questions[questions.length - 1];
+    if (open.length > 0) {
+      const last = open[open.length - 1];
       warnings.push({
         code: 'question_unanswered',
         ticketId,
         line: last._line,
-        detail: `${questions.length - resolutions.length} of ${questions.length} question(s) on this ticket are unresolved — most recent: "${last.summary}" (asked of ${last.to}). ${
+        detail: `${open.length} of ${questions.length} question(s) on this ticket are unresolved — most recent: "${last.summary}" (asked of ${last.to.join(', ')}). ${
           row && (row.status === 'qa' || row.status === 'done')
             ? `The ticket has already reached "${row.status}" — it shipped on an unconfirmed assumption.`
             : 'The owner is deciding without it.'
@@ -103,37 +107,74 @@ function diagnoseMessages(messages, rowsById, warnings) {
         action: 'tech-manager: answer it, route it, or record a decision. An open question is how a guess becomes shipped behaviour.',
       });
     }
-
-    // The guard in team-message.sh refuses the send; this catches a ledger written by hand.
-    const pairs = new Map();
-    for (const m of thread) {
-      if (m.kind === 'escalation') continue;
-      const key = `${m.from}\u2192${m.to}`;
-      pairs.set(key, (pairs.get(key) || 0) + 1);
-    }
-    for (const [pair, count] of pairs) {
-      if (count > MAX_PAIR) {
-        warnings.push({
-          code: 'message_pair_exceeded',
-          ticketId,
-          line: 0,
-          detail: `${pair} exchanged ${count} messages on ${ticketId} (limit ${MAX_PAIR} without a third party). Two is a conversation; more is a stall.`,
-          action: 'tech-manager: resolve it or escalate. Do not let the pair keep going.',
-        });
-      }
-    }
-
-    const roles = new Set(thread.flatMap((m) => [m.from, m.to]));
-    if (roles.size > MAX_CHAIN) {
-      warnings.push({
-        code: 'message_chain_too_deep',
-        ticketId,
-        line: 0,
-        detail: `${ticketId} has involved ${roles.size} roles (limit ${MAX_CHAIN}). A question relayed that far is an escalation.`,
-        action: 'tech-manager: take the decision rather than relaying it further.',
-      });
-    }
   }
+
+  // The send guard refuses the message; this catches a log written by hand or migrated around it.
+  const DETAIL = {
+    message_pair_exceeded: (b) =>
+      `${b.pair} exchanged ${b.count} messages on ${b.ticket} (limit ${MAX_PAIR} without a third party). Two is a conversation; more is a stall.`,
+    message_chain_too_deep: (b) =>
+      `${b.ticket} has involved ${b.count} roles (limit ${MAX_CHAIN}). A question relayed that far is an escalation.`,
+    ticket_budget_exceeded: (b) =>
+      `${b.ticket} has spent ${b.count} messages (budget ${MAX_PER_TICKET}). A ticket that needs another message needs a decision.`,
+    duplicate_question: (b) =>
+      `${b.id} re-asks what ${b.of} already asked on ${b.ticket}: "${b.summary}". Re-asking is not escalation; it produces a second unanswered question.`,
+  };
+  for (const breach of auditGuards(messages)) {
+    warnings.push({
+      code: breach.code,
+      ticketId: breach.ticket,
+      line: 0,
+      detail: DETAIL[breach.code](breach),
+      action: 'tech-manager: resolve it or escalate. Do not let the thread keep going.',
+    });
+  }
+
+  // DR4-006: a closed ledger is not delivery. Every question answered still means nothing changed
+  // if no answer names where it was folded in.
+  for (const m of undeliveredAnswers(messages)) {
+    warnings.push({
+      code: 'answer_not_delivered',
+      ticketId: m.ticket,
+      line: m._line,
+      detail: `${m.id} (${m.kind}, ${m.from} → ${m.to.join(', ')}) closed "${m.summary}" without naming an artifact or a state transition. The ledger reads resolved; nothing downstream was changed.`,
+      action: 'Name the spec, ADR or ticket transition it was folded into. An answer that lives only in the channel is an answer nobody can act on.',
+    });
+  }
+
+  // An expiry that passed with nobody noticing is a permanent exemption granted by accident.
+  for (const m of expiredWaivers(messages)) {
+    warnings.push({
+      code: 'waiver_expired',
+      ticketId: m.ticket,
+      line: m._line,
+      detail: `${m.artifact} expired on ${m.expires} and is still on the log: "${m.summary}".`,
+      action: 'Renew it with a new expiry and a stated reason, or close the exemption and fix the thing it excused.',
+    });
+  }
+  for (const m of staleAssumptions(messages)) {
+    warnings.push({
+      code: 'assumption_unvalidated',
+      ticketId: m.ticket,
+      line: m._line,
+      detail: `${m.artifact} was due for validation on ${m.validate_by} (owner ${m.owner || 'unset'}, confidence ${m.confidence || 'unstated'}): "${m.summary}".`,
+      action: 'Validate it or restate it. An assumption past its date is a belief with a timestamp.',
+    });
+  }
+}
+
+/**
+ * Read the team channel next to the board. The JSONL is the source of truth; a project that has only
+ * the Markdown ledger is migrated IN MEMORY so it keeps working unchanged — the doctor is a
+ * read-only tool and must never be the thing that rewrites a project's files.
+ */
+function readChannel(boardPath) {
+  const dir = join(dirname(boardPath), 'team');
+  const jsonl = join(dir, 'messages.jsonl');
+  if (existsSync(jsonl)) return parseMessageLog(readFileSync(jsonl, 'utf8'));
+  const md = join(dir, 'messages.md');
+  if (!existsSync(md)) return { messages: [], errors: [] };
+  return { messages: migrateMessages(readFileSync(md, 'utf8'), { parseMessages }), errors: [] };
 }
 
 function diagnose(board, ledger, capabilities, messages = []) {
@@ -552,11 +593,21 @@ function main() {
     hasLedger: /^\s*#{1,6}\s.*review\s+ledger/im.test(text),
   };
 
-  // The message ledger is a sibling of the board: docs/31-board.md -> docs/team/messages.md
-  const messagesPath = join(dirname(boardPath), 'team', 'messages.md');
-  const messages = existsSync(messagesPath) ? parseMessages(readFileSync(messagesPath, 'utf8')) : [];
+  // The team channel is a sibling of the board: docs/31-board.md -> docs/team/messages.jsonl
+  const channel = readChannel(boardPath);
+  if (channel.errors.length) {
+    for (const e of channel.errors) {
+      process.stderr.write(`board-doctor: docs/team/messages.jsonl:${e.line}: ${e.reason}\n`);
+    }
+    // Fail closed, exit 2 — "cannot evaluate", never a pass. A damaged channel rendered as an empty
+    // one is a board reported clean because its questions were unreadable.
+    process.stderr.write(
+      `board-doctor: ${channel.errors.length} unreadable line(s) in the team channel — cannot evaluate.\n`
+    );
+    process.exit(2);
+  }
 
-  const result = diagnose(board, ledger, capabilities, messages);
+  const result = diagnose(board, ledger, capabilities, channel.messages);
   if (!options.quiet || result.anomalies.length > 0) report(result, board, capabilities, options);
   process.exit(result.anomalies.length > 0 ? 1 : 0);
 }

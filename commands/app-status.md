@@ -86,7 +86,7 @@ allowed-tools: Read, Glob, Grep, Bash
    sentence is the honest one: rounds, spawns, retries and refusals are counted because they are
    countable, and no token figure is invented to fill the gap.
 
-3c. **Open team threads.** From `docs/team/messages.md`, list any `question` with no matching
+3c. **Open team threads.** From `docs/team/messages.jsonl`, list any `question` with no matching
    `answer`, and any `escalation` not yet closed by a `decision`. These are the conversations the
    team is stuck inside.
 

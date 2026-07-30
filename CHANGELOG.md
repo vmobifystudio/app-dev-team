@@ -52,6 +52,64 @@ each one was watched refuse before it was watched pass.
 - **Seven new mutations (M17–M23)**, each proving its own assertion bites. `spawn-gate.sh`'s three
   refusal paths were routed through one `refuse()` so M01's anchor stays unique.
 
+## [Unreleased] — P3a: the team channel becomes an event log
+
+- **`docs/team/messages.jsonl` is now the team channel, and `docs/team/messages.md` is generated
+  from it.** Schema `studio-event-schema/v1`, versioned in every record, append-only — the same move
+  `docs/31-board-events.jsonl` made for the board, for the same reason: a message that breached a
+  rule used to be writable and then detectable. **Not SQLite:** `node:sqlite` is stdlib only from
+  Node 22.5 and this plugin ships to users on Node 20 (LTS into 2026). The schema is shaped so a
+  SQLite projection drops in later as an *index built from the log*, never as the primary
+  (`docs/RESUME.md` §3).
+- **Nothing is stranded.** A project that has only the Markdown ledger is migrated on its first
+  send. The migration **announces itself** and marks every reconstructed record
+  `provenance: "inferred"` with `inferred_fields` naming exactly what it invented — priority,
+  status, thread, the follow-up round. `ts` is the one field genuinely sourced. `board-doctor` and
+  `messages-render` migrate *in memory* and never rewrite a project's files.
+- **Message obligations.** Every material message must yield one of four things: a decision, a state
+  transition, an artifact update, or a timed follow-up. A message with none is **refused at send
+  time**, with the code, the reason and the remedy — and nothing is written. The sharp edge: an
+  `answer` or `decision` that names no artifact is refused outright. **A closed ledger is not
+  delivery (DR4-006)** — "every question answered" was the metric that hid it. `--kind fyi` is the
+  escape hatch and must be chosen; nothing defaults into it.
+- **Threads and channels are derived.** `#founder-decisions` · `#product` · `#design` ·
+  per-platform · per-ticket · `#artifacts` are computed from who sent what to whom about what.
+  Nothing subscribes, nothing is filed. `node scripts/messages.mjs channels` lists them. Same rule
+  as the board's Markdown: a view may only show what the log can produce.
+- **Formal artifacts with IDs, writers and readers.** `ADR` (`docs/24-adr/`) · `PDR`
+  (`docs/16-pdr/`) · `DDR` (`docs/17-ddr/`) · `WAIVER` (`docs/72-waivers/`) · `INCIDENT`
+  (`docs/73-incidents/`) · `ASSUMPTION` (`docs/25-assumptions/`). One command
+  (`messages.mjs artifact <TYPE>`) writes the file **and** registers it on the channel, because a
+  file nobody knows exists and a claim with no content fail identically. Each has a `DOC_WRITERS`
+  row and a real reader. **A `WAIVER` without `--expires` is refused, and an expired waiver is a
+  finding** (`waiver_expired`); an `ASSUMPTION` requires `--owner`, `--confidence` and
+  `--validate-by`, and goes `assumption_unvalidated` once the date passes.
+- **The anti-ping-pong guard is one implementation.** It lived in `team-message.sh` (awk),
+  `board-doctor.mjs` and `messages-render.mjs` — three files, **two different windows**: the script
+  counted pairs over the trailing 40 rows and refused a chain at `>= 4` roles, the doctor counted the
+  whole thread and warned only above 4. A ledger the script had happily written was a breach to the
+  doctor, and a chain it refused was invisible. Now `scripts/lib/messages.mjs` owns it;
+  `team-message.sh` calls it to refuse a send and `board-doctor` calls it to audit a log written by
+  hand. New limits, each proven to fire: **duplicate question** refused · **mandatory escalation**
+  after one unresolved round · **per-ticket discussion budget** of 12 (the pair and chain caps bound
+  *who* talks; nothing bounded *how much*) · **no reopening a decided thread** without
+  `--evidence`.
+- **`team-message.sh` shrank to a front door.** It keeps the one job it was always right about —
+  resolving the ledger against the git root, never the cwd — and hands the rest to
+  `scripts/messages.mjs`. Arguments reach node as an argv array and are never interpolated into a
+  shell, so the old five-field escaping dance is gone with the Markdown table that required it.
+  Every existing flag still works.
+- **`messages-render.mjs` reads the log.** New `DELIVERY` block (answers and decisions that named
+  nothing), `EXPIRY` block (waivers and assumptions past their dates), `CHANNELS` block, and a
+  per-ticket budget on every thread. Guard numbers are imported, not restated.
+- **Fail closed on an unknown schema.** A record with `v !== 1` makes `board-doctor` exit **2 —
+  cannot evaluate**, never a pass. A damaged log rendered as an empty channel is a board reported
+  clean because its questions were unreadable.
+- **Proven red-then-green.** `mutate.sh` gains M24–M31 and retargets M11/M12 at the shared guard:
+  obligation, duplicate question, reopen-without-evidence, mandatory escalation, ticket budget,
+  waiver expiry, schema-version check, and generated-view overwrite. Each was run alone and caught
+  by the assertion written for it. Suite 503 → 546 on the branch; 657 → 703 merged.
+
 ## [Unreleased] — Phase 5: isolation becomes a mechanism, and the loop gets a brake
 
 - **`scripts/spawn-gate.sh` — the orchestrator can no longer forget worktree isolation.** Given the

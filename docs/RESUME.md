@@ -42,8 +42,12 @@ closed and re-probed by execution.
 
 ### Not started
 
-- **P3a** structured comms backend · **P3b** minimum control room (5 screens) · **P2** roles on the
-  revised bar · **P3c** evidence/design/release rooms · metrics.
+- **P3b** minimum control room (5 screens) · **P2** roles on the revised bar · **P3c**
+  evidence/design/release rooms · metrics.
+
+  (**P3a** — structured comms backend — is built on its own worktree branch: `docs/team/messages.jsonl`
+  as a schema-v1 event log, Markdown generated, message obligations, derived channels, formal
+  artifacts, and the anti-ping-pong guard unified into `scripts/lib/messages.mjs`.)
 - **P0.3–P0.6**: dry run 5 (full pipeline through `/app-ship`), adversarial runs, proof that release
   cannot be self-approved, evidence bundle. **Deferred by owner decision: finish the code first,
   then validate the complete system rather than an intermediate one.**

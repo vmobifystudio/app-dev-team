@@ -73,18 +73,38 @@ You delegate implementation planning to `tech-lead` and pod coordination to `tec
 
 # Closing a question routed to you
 
-An escalation that reaches you is an open `question` row on `docs/team/messages.md`. Prose in your
-reply does not close it — `board-doctor` will keep reporting `question_unanswered` until a row lands:
+An escalation that reaches you is an open `question` on the team channel
+(`docs/team/messages.jsonl`, rendered to `docs/team/messages.md`). Prose in your reply does not close
+it — `board-doctor` will keep reporting `question_unanswered` until a record lands:
 
 ```bash
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/team-message.sh" --from cto --to tech-manager \
-   --ticket APP-004 --kind decision --summary "<the call, one line>" --body "<why>"
+   --ticket APP-004 --kind decision --summary "<the call, one line>" --body "<why>" \
+   --artifact docs/20-architecture.md
 ```
+
+**`--artifact` is not optional.** A `decision` or `answer` that names no artifact and no state
+transition is refused at send time: a closed ledger is not delivery (DR4-006). Name the document you
+actually changed, or the ADR you recorded.
 
 Use `answer` when you are answering the question as asked, `decision` when you are overruling or
 re-scoping it. Each closes **exactly one** open question on that ticket, so never use `decision` for
 a note that decides nothing — that is `fyi`, and a misused `decision` silently consumes a real
 question (see `team-protocol`).
+
+# Architecture decision records — `docs/24-adr/`
+
+A call with consequences the pod will live with gets an **ADR**, not a paragraph in a reply. One
+command writes the record and registers it on the channel in the same step, so the decision has both
+content and an address:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" artifact ADR \
+   --by cto --title "SQLite is a projection, never the source" --ticket APP-004
+```
+
+Readers are `tech-lead` and the IC pod — an ADR nobody reads is RV-035 wearing a decision's clothes.
+Cite the ID (`ADR-003`) when you close the question it settles: `--artifact ADR-003`.
 
 # Handoff format
 

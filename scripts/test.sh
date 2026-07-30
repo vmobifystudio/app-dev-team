@@ -550,9 +550,14 @@ OUTSIDE="$TMP/nogit"; mkdir -p "$OUTSIDE"
 ( cd "$OUTSIDE" && sh "$M" --from ios-developer --to tech-lead --ticket APP-1 --kind question --summary s ) >/dev/null 2>&1
 [ $? = 2 ] && ok "refuses to guess a location outside a git repo" || bad "refuses to guess a location outside a git repo"
 
-send "$R" --from ios-developer --to tech-lead --ticket APP-1 --kind question --summary s2
-( cd "$R" && sh "$M" --from ios-developer --to tech-lead --ticket APP-1 --kind question --summary s3 ) >/dev/null 2>&1
+# `fyi` rather than `question` for the second and third: since P3a a second OPEN question from the
+# same role on the same ticket is refused by the escalation guard, which would make this assertion
+# pass for a reason that is not the pair cooldown. An assertion green for the wrong reason is the
+# same class as one that cannot fail.
+send "$R" --from ios-developer --to tech-lead --ticket APP-1 --kind fyi --summary s2
+( cd "$R" && sh "$M" --from ios-developer --to tech-lead --ticket APP-1 --kind fyi --summary s3 ) >"$TMP/tmpair.txt" 2>&1
 [ $? = 1 ] && ok "pair cooldown refuses a third A->B on one ticket" || bad "pair cooldown refuses a third A->B on one ticket"
+assert_has "$TMP/tmpair.txt" "pair_exhausted" "...and says which guard refused it, not just that one did"
 ( cd "$R" && sh "$M" --from ios-developer --to tech-manager --ticket APP-1 --kind escalation --summary esc ) >/dev/null 2>&1
 [ $? = 0 ] && ok "escalation always passes the guard" || bad "escalation always passes the guard"
 ( cd "$R" && sh "$M" --from tech-lead --to tech-lead --ticket APP-1 --kind fyi --summary x ) >/dev/null 2>&1
@@ -638,6 +643,220 @@ send "$T" --from ios-developer --to tech-lead --ticket - --kind fyi --summary n2
 ( cd "$T" && sh "$M" --from ios-developer --to tech-lead --ticket - --kind fyi --summary n3 ) >/dev/null 2>&1
 [ $? = 0 ] && ok "ticketless messages do not accumulate into one pseudo-thread" \
             || bad "ticketless messages do not accumulate into one pseudo-thread"
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "team channel — event log, obligations, artifacts (P3a)"
+# --------------------------------------------------------------------------------------------
+MSGS="$HERE/messages.mjs"
+
+# --- the log is the source of truth, the Markdown is generated -----------------------------------
+#
+# The channel used to BE docs/team/messages.md: an agent appended a row and every rule was checked
+# afterwards. Same defect class as the pre-event-log board — a message that breached the guard was
+# writable, then detectable.
+G=$(newrepo tm-generated)
+send "$G" --from ios-developer --to tech-lead --ticket APP-1 --kind question --summary "which error type"
+[ -f "$G/docs/team/messages.jsonl" ] && ok "a send writes the JSONL event log" \
+                                     || bad "a send writes the JSONL event log"
+node -e '
+const fs = require("fs");
+const [rec] = fs.readFileSync(process.argv[1], "utf8").trim().split("\n").map(JSON.parse);
+// The version is the point of versioning it: a v2 record read by a v1 reader is not "mostly fine".
+process.exit(rec.v === 1 && rec.id === "MSG-0001" && rec.kind === "question" && rec.provenance === "cli" ? 0 : 1);
+' "$G/docs/team/messages.jsonl" && ok "...as schema v1, with an ID and a provenance" \
+                                || bad "...as schema v1, with an ID and a provenance"
+assert_has "$G/docs/team/messages.md" "GENERATED FILE" "the Markdown view says it is generated"
+# The half that matters: a hand edit must not survive. A generated file that quietly keeps hand
+# edits is two sources of truth wearing one filename.
+echo '| 2026-01-01T00:00Z | ceo | cto | APP-9 | decision | forged by hand | — |' >> "$G/docs/team/messages.md"
+send "$G" --from tech-lead --to ios-developer --ticket APP-1 --kind answer --summary a --artifact docs/22-impl-spec-ios.md
+grep -q "forged by hand" "$G/docs/team/messages.md" \
+  && bad "a hand edit to the generated view is overwritten by the next render" \
+  || ok "a hand edit to the generated view is overwritten by the next render"
+
+# --- message obligations -------------------------------------------------------------------------
+#
+# DR4-006: a closed ledger is not delivery. Every question answered still means nothing changed if
+# no answer names where it was folded in — and "every question answered" was the metric that hid it.
+O=$(newrepo tm-obligation)
+send "$O" --from ios-developer --to tech-lead --ticket APP-1 --kind question --summary "which error type"
+( cd "$O" && sh "$M" --from tech-lead --to ios-developer --ticket APP-1 --kind answer --summary "TodoError.Io" ) >"$TMP/tmob.txt" 2>&1
+[ $? = 1 ] && ok "an answer that names no artifact is REFUSED" || bad "an answer that names no artifact is REFUSED"
+assert_has "$TMP/tmob.txt" "obligation_missing" "...with the code, so a caller can branch on it"
+assert_has "$TMP/tmob.txt" "closed ledger is not delivery" "...and the reason names DR4-006"
+BEFORE=$(wc -l < "$O/docs/team/messages.jsonl")
+( cd "$O" && sh "$M" --from tech-lead --to ios-developer --ticket APP-1 --kind decision --summary "no cache" ) >/dev/null 2>&1
+AFTER=$(wc -l < "$O/docs/team/messages.jsonl")
+[ "$BEFORE" = "$AFTER" ] && ok "...and a refused message is never appended to the log" \
+                         || bad "...and a refused message is never appended to the log" "$BEFORE -> $AFTER"
+( cd "$O" && sh "$M" --from tech-lead --to ios-developer --ticket APP-1 --kind answer \
+    --summary "TodoError.Io" --artifact docs/22-impl-spec-ios.md ) >/dev/null 2>&1
+[ $? = 0 ] && ok "the same answer WITH an artifact is accepted" || bad "the same answer WITH an artifact is accepted"
+# fyi is the escape hatch and must be CHOSEN — it is what --kind fyi means, and nothing defaults
+# into it. A material message with no obligation is refused; an fyi carries none by definition.
+( cd "$O" && sh "$M" --from tech-lead --to qa-engineer --ticket APP-1 --kind fyi --summary "spec updated" ) >/dev/null 2>&1
+[ $? = 0 ] && ok "fyi is the escape hatch and carries no obligation" || bad "fyi is the escape hatch and carries no obligation"
+
+# --- the unified guard ----------------------------------------------------------------------------
+#
+# One implementation in lib/messages.mjs, called by team-message.sh (refuse the send) and by
+# board-doctor (audit the log). It lived in three files with two different windows.
+D=$(newrepo tm-duplicate)
+send "$D" --from ios-developer --to tech-lead --ticket APP-1 --kind question --summary "Which error type?"
+( cd "$D" && sh "$M" --from qa-engineer --to tech-lead --ticket APP-1 --kind question --summary "which error type" ) >"$TMP/tmdup.txt" 2>&1
+[ $? = 1 ] && ok "a duplicate question on one ticket is refused" || bad "a duplicate question on one ticket is refused"
+assert_has "$TMP/tmdup.txt" "duplicate_question" "...naming the guard"
+assert_has "$TMP/tmdup.txt" "MSG-0001" "...and the message that already asked it"
+
+E=$(newrepo tm-escalate)
+send "$E" --from ios-developer --to tech-lead --ticket APP-1 --kind question --summary "q1"
+( cd "$E" && sh "$M" --from ios-developer --to ux-designer --ticket APP-1 --kind question --summary "q2" ) >"$TMP/tmesc.txt" 2>&1
+[ $? = 1 ] && ok "a second open question from one role is refused — escalate the first" \
+            || bad "a second open question from one role is refused — escalate the first"
+assert_has "$TMP/tmesc.txt" "escalation_required" "...naming the guard"
+( cd "$E" && sh "$M" --from ios-developer --to tech-manager --ticket APP-1 --kind escalation --summary "two open" ) >/dev/null 2>&1
+[ $? = 0 ] && ok "...and the escalation it demands is itself allowed through" \
+            || bad "...and the escalation it demands is itself allowed through"
+
+# No reopening a resolved thread without new evidence. A ticket that reached a decision does not
+# reopen on a new opinion — that is how settled scope gets relitigated by whoever arrived last.
+V=$(newrepo tm-reopen)
+send "$V" --from tech-lead --to ios-developer --ticket APP-1 --kind decision --summary "ship without export" --artifact docs/10-prd.md
+( cd "$V" && sh "$M" --from android-developer --to tech-lead --ticket APP-1 --kind question --summary "add export back?" ) >"$TMP/tmreopen.txt" 2>&1
+[ $? = 1 ] && ok "reopening a decided thread with no evidence is refused" \
+            || bad "reopening a decided thread with no evidence is refused"
+assert_has "$TMP/tmreopen.txt" "reopen_without_evidence" "...naming the guard"
+( cd "$V" && sh "$M" --from android-developer --to tech-lead --ticket APP-1 --kind question \
+    --summary "add export back?" --evidence "user research 2026-07-30, docs/16-pdr/PDR-001" ) >/dev/null 2>&1
+[ $? = 0 ] && ok "...and the same question WITH evidence is accepted" \
+            || bad "...and the same question WITH evidence is accepted"
+
+# Per-ticket discussion budget. The pair and chain caps bound WHO talks; nothing bounded HOW MUCH,
+# so a thread could grow without limit by rotating participants.
+# Four roles (the chain cap), two messages per ordered pair (the pair cap) — twelve messages that
+# breach nothing else, which is the only way to prove this limit is doing its own work.
+B=$(newrepo tm-budget)
+i=1
+while [ "$i" -le 2 ]; do
+  for pair in "tech-manager ios-developer" "tech-manager android-developer" "tech-manager tech-lead" \
+              "tech-lead ios-developer" "tech-lead android-developer" "tech-lead tech-manager"; do
+    set -- $pair
+    send "$B" --from "$1" --to "$2" --ticket APP-1 --kind fyi --summary "note $1-$2-$i"
+  done
+  i=$((i + 1))
+done
+SPENT=$(grep -c . "$B/docs/team/messages.jsonl")
+[ "$SPENT" = "12" ] && ok "twelve messages on one ticket are accepted" \
+                    || bad "twelve messages on one ticket are accepted" "wrote $SPENT"
+# The thirteenth is between two roles ALREADY on the thread, on a pair that has spent nothing. If it
+# introduced a fifth role the chain cap would refuse it and this assertion would be green for the
+# wrong guard — which is exactly what mutate.sh reported the first time it was written.
+( cd "$B" && sh "$M" --from ios-developer --to android-developer --ticket APP-1 --kind fyi --summary "one more" ) >"$TMP/tmbudget.txt" 2>&1
+[ $? = 1 ] && ok "the thirteenth message on one ticket is refused" \
+            || bad "the thirteenth message on one ticket is refused"
+assert_has "$TMP/tmbudget.txt" "ticket_budget_spent" "...naming the guard"
+
+# --- backwards compatibility: a project with only the Markdown ledger ------------------------------
+#
+# Every project created before P3a has only docs/team/messages.md. A tool that refused those would
+# strand every one of them. Migrate once, announce it, and mark what could not be sourced.
+L=$(newrepo tm-legacy)
+mkdir -p "$L/docs/team"
+{
+  echo '## Team messages (append-only — never edit or delete a line)'
+  echo
+  echo '| Timestamp | From | To | Ticket | Kind | Summary | Body |'
+  echo '|---|---|---|---|---|---|---|'
+  echo '| 2026-07-29T09:00Z | android-developer | tech-lead | APP-001 | question | legacy question | body |'
+} > "$L/docs/team/messages.md"
+( cd "$L" && sh "$M" --from tech-lead --to android-developer --ticket APP-001 --kind answer \
+    --summary "answered" --artifact docs/22-impl-spec-android.md ) >"$TMP/tmmig.txt" 2>&1
+[ $? = 0 ] && ok "a project with only the Markdown ledger still accepts a send" \
+            || bad "a project with only the Markdown ledger still accepts a send"
+assert_has "$TMP/tmmig.txt" "MIGRATED" "...and the migration announces itself rather than happening silently"
+node -e '
+const fs = require("fs");
+const rows = fs.readFileSync(process.argv[1], "utf8").trim().split("\n").map(JSON.parse);
+// The honesty is the point: the Markdown never carried priority, status, thread or the follow-up
+// round, so a migration that presented them as recorded would make the obligation rule a lie on
+// day one. The board migration marks inferred lines the same way.
+const legacy = rows[0], sent = rows[1];
+process.exit(
+  rows.length === 2 &&
+  legacy.provenance === "inferred" &&
+  legacy.inferred_fields.includes("priority") &&
+  legacy.ts === "2026-07-29T09:00Z" &&      // ts IS sourced — it was in the Markdown
+  sent.provenance === "cli"
+    ? 0 : 1
+);' "$L/docs/team/messages.jsonl" \
+  && ok "...marking every migrated record provenance:inferred, naming the fields it invented" \
+  || bad "...marking every migrated record provenance:inferred, naming the fields it invented"
+
+# --- formal artifacts -------------------------------------------------------------------------------
+A=$(newrepo tm-artifact)
+( cd "$A" && node "$MSGS" artifact WAIVER --by security-reviewer --title "unpatched SDK" ) >"$TMP/tmwaiver.txt" 2>&1
+[ $? = 2 ] && ok "a WAIVER with no expiry is refused" || bad "a WAIVER with no expiry is refused"
+assert_has "$TMP/tmwaiver.txt" "permanent exemption" "...and says why an expiry is not paperwork"
+( cd "$A" && node "$MSGS" artifact ASSUMPTION --by tech-lead --title "endpoint tolerates 10k rows" --owner backend-developer --confidence medium ) >"$TMP/tmassume.txt" 2>&1
+[ $? = 2 ] && ok "an ASSUMPTION with no validation date is refused" \
+            || bad "an ASSUMPTION with no validation date is refused"
+( cd "$A" && node "$MSGS" artifact ADR --by cto --title "JSONL is the source" ) >/dev/null 2>&1
+[ -f "$A/docs/24-adr/ADR-001-jsonl-is-the-source.md" ] && ok "an ADR writes its record file" \
+                                                       || bad "an ADR writes its record file"
+# The file alone is a document nobody knows exists; the message alone is a claim with no content.
+grep -q '"artifact":"ADR-001"' "$A/docs/team/messages.jsonl" \
+  && ok "...and registers it on the channel in the same step" \
+  || bad "...and registers it on the channel in the same step"
+( cd "$A" && node "$MSGS" channels ) 2>/dev/null | grep -q '#founder-decisions' \
+  && ok "a cto decision lands in the derived #founder-decisions channel" \
+  || bad "a cto decision lands in the derived #founder-decisions channel"
+
+# --- board-doctor audits the same log with the same implementation -----------------------------------
+node "$HERE/board-doctor.mjs" "$FIX/channel/31-board.md" --json >"$TMP/chan.json" 2>/dev/null
+node -e '
+const [, json, code] = process.argv;
+process.exit(require(json).warnings.some((w) => w.code === code) ? 0 : 1);
+' "$TMP/chan.json" answer_not_delivered \
+  && ok "board-doctor reports an answer that named no artifact" \
+  || bad "board-doctor reports an answer that named no artifact"
+node -e '
+const [, json, code] = process.argv;
+process.exit(require(json).warnings.some((w) => w.code === code) ? 0 : 1);
+' "$TMP/chan.json" waiver_expired \
+  && ok "an expired waiver is a finding, not a formality" \
+  || bad "an expired waiver is a finding, not a formality"
+node -e '
+const [, json, code] = process.argv;
+process.exit(require(json).warnings.some((w) => w.code === code) ? 0 : 1);
+' "$TMP/chan.json" assumption_unvalidated \
+  && ok "an assumption past its validation date is reported" \
+  || bad "an assumption past its validation date is reported"
+node -e '
+const [, json, code] = process.argv;
+process.exit(require(json).warnings.some((w) => w.code === code) ? 0 : 1);
+' "$TMP/chan.json" duplicate_question \
+  && ok "a duplicate question written around the send guard is caught by the audit" \
+  || bad "a duplicate question written around the send guard is caught by the audit"
+
+# Fail closed on a record from a schema this reader does not speak. Exit 2 is "cannot evaluate" and
+# is never a pass; rendering a damaged log as an empty channel is a board reported clean because
+# its questions were unreadable.
+assert_exit 2 "a schema-v2 record makes board-doctor CANNOT EVALUATE, never a pass" \
+  node "$HERE/board-doctor.mjs" "$FIX/channel-v2/31-board.md"
+
+# --- the renderer reads the log ----------------------------------------------------------------------
+node "$HERE/messages-render.mjs" "$FIX/channel/team/messages.jsonl" --board "$FIX/channel/31-board.md" --no-color >"$TMP/chanview.txt" 2>&1
+assert_has "$TMP/chanview.txt" "CHANNELS" "the renderer shows the derived channels"
+assert_has "$TMP/chanview.txt" "DELIVERY (1 answered nowhere)" "...and counts the answers that named nothing"
+assert_has "$TMP/chanview.txt" "Does profile need offline cache" "...naming the question whose answer went nowhere"
+assert_has "$TMP/chanview.txt" "EXPIRY (2)" "...and the waiver and assumption past their dates"
+# Backwards compatibility again, from the other end: a .md-only project still renders.
+node "$HERE/messages-render.mjs" "$FIX/team/messages.md" --no-color >"$TMP/chanlegacy.txt" 2>&1
+[ $? = 0 ] && ok "a Markdown-only ledger still renders (migrated in memory, never rewritten)" \
+            || bad "a Markdown-only ledger still renders (migrated in memory, never rewritten)"
+[ -f "$FIX/team/messages.jsonl" ] && bad "...and the renderer did not write a file into the project" \
+                                  || ok "...and the renderer did not write a file into the project"
 
 echo
 # --------------------------------------------------------------------------------------------
@@ -1084,11 +1303,13 @@ plugrestore agents/tech-manager.md
 
 # The review verdict and the ledger are the other two paths the loop matches verbatim.
 plugfile agents/code-reviewer.md
-printf '\nWrite the verdict to `docs/reviews/APP-NNN.md` and the note to `docs/team/messages.jsonl`.\n' \
+# `docs/team/messages.jsonl` became CANONICAL in P3a (the event log) and can no longer serve as the
+# wrong spelling here. `message-log.md` is the wrong spelling now: plausible, and read by nothing.
+printf '\nWrite the verdict to `docs/reviews/APP-NNN.md` and the note to `docs/team/message-log.md`.\n' \
   >> "$PLUG/agents/code-reviewer.md"
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdpath2.json" 2>/dev/null
 assert_finding "$TMP/tdpath2.json" path_spelling \
-  "a variant spelling of the team ledger blocks too" "docs/team/messages.jsonl"
+  "a variant spelling of the team ledger blocks too" "docs/team/message-log.md"
 plugrestore agents/code-reviewer.md
 
 # Both halves, or this is a script enforcing a pattern its own documentation no longer states. The

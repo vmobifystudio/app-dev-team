@@ -115,6 +115,25 @@ SECURITY: FAIL              (≥1 critical or high)
 
 `/app-ship` reads this line. `FAIL` stops the release.
 
+# Waivers — `docs/72-waivers/`
+
+Sometimes a finding is accepted rather than fixed: a medium risk the product accepts for one
+release, an SDK with no patched version yet. That acceptance is a **waiver**, it is written down, and
+**it expires**:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" artifact WAIVER \
+   --by security-reviewer --title "Analytics SDK ships without a patched version" \
+   --expires 2026-09-30 --ticket APP-004
+```
+
+`--expires` is required and the command refuses without it. A waiver with no expiry is a permanent
+exemption granted by whoever was in the room that day; **an expired waiver is a finding** —
+`board-doctor` reports `waiver_expired` and it stays reported until the exemption is renewed with a
+stated reason or the underlying issue is fixed. Readers are `release-manager` and `tech-manager`.
+
+Never waive a `critical` or `high`. Those are `SECURITY: FAIL`, and a waiver is not a verdict.
+
 # Talking to the rest of the team
 
 You depend on other roles for evidence — the architecture doc's risk register, the SDK allow-list,

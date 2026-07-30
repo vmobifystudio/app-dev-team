@@ -129,8 +129,8 @@ M07@@scripts/lib/events.mjs@@if (by && by === state.owner) {@@if (false) {@@the 
 M08@@scripts/lib/events.mjs@@if (!external.length) {@@if (false) {@@a merge with no approval at all is refused
 M09@@scripts/lib/events.mjs@@if (!state.verified) {@@if (false) {@@review_requested on a DONE with no verify-done result is refused
 M10@@scripts/integration-branch.sh@@integration branch is not recoverable by a later fix. Create the branch, or fix the doc."@@integration branch is not recoverable by a later fix."; echo "$FALLBACK"; exit 0@@a declared branch that does not exist is exit 2, never a fallback
-M11@@scripts/team-message.sh@@if [ "$ROLE_COUNT" -ge "$MAX_PER_ROLE" ]; then@@if false; then@@the per-role cap refuses the eleventh message of a round
-M12@@scripts/team-message.sh@@if [ "$CHAIN" -gt "$MAX_CHAIN" ]; then@@if [ "$CHAIN" -lt "$MAX_CHAIN" ]; then@@a fifth role on one ticket's thread is refused
+M11@@scripts/lib/messages.mjs@@if (recent >= MAX_PER_ROLE) {@@if (false) {@@the per-role cap refuses the eleventh message of a round
+M12@@scripts/lib/messages.mjs@@if (roles.size > MAX_CHAIN) {@@if (roles.size > MAX_CHAIN + 1) {@@a fifth role on one ticket's thread is refused
 M13@@hooks/block-shared-tree-destructive-git.sh@@[ -n "$DIRTY" ] || exit 0@@[ -z "$DIRTY" ] || exit 0@@dirty tree: blocks git stash
 M14@@hooks/block-shared-tree-destructive-git.sh@@*"git stash"*)@@*"zzzz-no-such-command"*)@@dirty tree: blocks git stash
 M15@@scripts/verify-done.sh@@grep -Eqi 'command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|cannot be located|[Uu]nable to find a destination|GradleWrapperMain|permission denied|not recognized as an internal'@@grep -Eqi 'zzzz-this-pattern-matches-nothing'@@a missing toolchain is CANNOT EVALUATE, not REJECTED
@@ -142,6 +142,14 @@ M20@@scripts/lib/redact.mjs@@if (isPlaceholder(value)) continue;@@if (true) cont
 M21@@scripts/spawn-gate.sh@@if [ -e "$STOP_ROOT/$STOP_FILE" ]; then@@if false; then@@spawn-gate refuses while the emergency stop file exists
 M22@@scripts/injection-scan.mjs@@if (pattern.test(raw)) findings.push@@if (false) findings.push@@instruction-shaped content in repository text is reported
 M23@@scripts/ship-gate.sh@@node "$HERE/board.mjs" verify --log "$LOG" >/dev/null 2>&1@@true@@ship-gate BLOCKS a release whose event log was rewritten
+M24@@scripts/messages.mjs@@if (obligationOf(candidate) === null) {@@if (false) {@@an answer that names no artifact is REFUSED
+M25@@scripts/lib/messages.mjs@@if (prior) {@@if (false) {@@a duplicate question on one ticket is refused
+M26@@scripts/lib/messages.mjs@@if (decided.length && openQuestions(thread).length === 0 && !candidate.evidence) {@@if (false) {@@reopening a decided thread with no evidence is refused
+M27@@scripts/lib/messages.mjs@@if (mine.length) {@@if (false) {@@a second open question from one role is refused — escalate the first
+M28@@scripts/lib/messages.mjs@@if (spent >= MAX_PER_TICKET) {@@if (false) {@@the thirteenth message on one ticket is refused
+M29@@scripts/lib/messages.mjs@@m.expires && m.expires < today@@m.expires && m.expires > today@@an expired waiver is a finding, not a formality
+M30@@scripts/lib/messages.mjs@@if (record.v !== SCHEMA_VERSION) {@@if (false) {@@a schema-v2 record makes board-doctor CANNOT EVALUATE, never a pass
+M31@@scripts/messages.mjs@@writeFileSync(md, renderMessages(messages));@@if (!existsSync(md)) writeFileSync(md, renderMessages(messages));@@a hand edit to the generated view is overwritten by the next render
 CATALOGUE
 }
 

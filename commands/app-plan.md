@@ -65,7 +65,7 @@ Focus (optional): $ARGUMENTS
 
 3. **Spec-critic pass — remove the ambiguity before anyone builds on it.** Spawn `tech-lead` with
    the `spec-critic` skill. It reads the board and the impl specs, files one `question` row per
-   ambiguous ticket in `docs/team/messages.md`, and answers what it can in the same run — it wrote
+   ambiguous ticket in `docs/team/messages.jsonl`, and answers what it can in the same run — it wrote
    the specs, so most answers are one line — folding each answer back into the impl spec.
 
    Print the questions raised and the ones answered. Anything still open becomes a `tech-manager`

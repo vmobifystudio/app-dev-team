@@ -6,24 +6,6 @@
  * skill exists to catch.
  */
 
-const KNOWN_OWNERS = new Set([
-  'ios-developer',
-  'android-developer',
-  'backend-developer',
-  'monetization-engineer',
-  'ux-designer',
-  'qa-engineer',
-  'devops-engineer',
-  'data-analyst',
-  'aso-specialist',
-  'security-reviewer',
-  'release-manager',
-  'code-reviewer',
-  'verification-engineer',
-  'tech-lead',
-  'tech-manager',
-]);
-
 /**
  * Roles the /app-build loop can actually spawn to WORK a ticket.
  *
@@ -51,6 +33,28 @@ const BUILD_SPAWNABLE_OWNERS = new Set([
   'devops-engineer',
   'aso-specialist',
   'verification-engineer',
+]);
+
+/**
+ * Every role that may appear in a ticket's `Owner` column.
+ *
+ * DERIVED from BUILD_SPAWNABLE_OWNERS, never hand-listed alongside it. These were two independent
+ * literals, and they drifted the moment P2 split `ux-designer` into `ux-architect` +
+ * `product-designer`: the spawnable list was updated, this one was not, so `board-doctor` reported
+ * `owner_invalid` for `ux-architect`, `product-designer`, `web-developer`, `product-manager`,
+ * `product-researcher` and `test-automation-engineer` — every role that expansion added. A board
+ * cannot name an owner the loop can spawn. Deriving it means the next role is added in one place.
+ *
+ * The extras are the roles that own a ticket but are never spawned BY the build loop: they are
+ * assigned work by a gate or a command instead.
+ */
+const KNOWN_OWNERS = new Set([
+  ...BUILD_SPAWNABLE_OWNERS,
+  'security-reviewer',
+  'release-manager',
+  'code-reviewer',
+  'tech-lead',
+  'tech-manager',
 ]);
 
 const VALID_STATUS = new Set(['todo', 'in_progress', 'review', 'qa', 'done', 'blocked']);

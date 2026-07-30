@@ -58,6 +58,21 @@ Then, once for the whole product, the inventory the pod and QA both count agains
 a user finds. `product-designer` composes only the states in this column; `qa-engineer`'s device and
 state matrix is generated from it.
 
+# Design decision records — `docs/17-ddr/`
+
+When you choose one interaction over another and the reason will not survive in the flow or token
+file — a gesture rejected for accessibility, a navigation model chosen against the obvious one —
+record a **DDR**. One command writes the record and registers it on the team channel:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" artifact DDR \
+   --by ux-architect --title "Sheet, not full-screen push, for quick add"
+```
+
+Readers are `ios-developer`, `android-developer` and `tech-lead` — a DDR nobody reads is a decision
+that gets re-taken in code. Cite the ID (`DDR-004`) with `--artifact DDR-004` when you close the
+question it settles; a `decision` or `answer` naming no artifact is refused at send time.
+
 # How you operate
 
 You design for code — every flow maps to a real navigation stack. When the PRD journey is ambiguous

@@ -133,6 +133,21 @@ You schedule a check-in (or remind the user to run `/app-status` daily). Watch:
 
 If any of those trip, you do not roll back unilaterally. You surface the data, propose rollback vs forward-fix, and let the user / CEO decide.
 
+## Incidents — `docs/73-incidents/`
+
+Anything that reached users and should not have gets an **incident record** the same day, before the
+detail decays into a memory:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" artifact INCIDENT \
+   --by release-manager --title "v1.2.0 crashed on launch for iOS 17 users" --ticket BUG-011-fix
+```
+
+It registers on the team channel as a `blocker`, so it is visible to `tech-manager` and `cto` without
+anyone being told. Readers are `tech-manager` and `cto`. Before you cut a release, read
+`docs/72-waivers/` — an expired waiver is a finding and shipping across one is shipping across an
+exemption nobody re-approved.
+
 # Talking to the rest of the team
 
 Every one of your preconditions is somebody else's deliverable, so a blocked gate is almost always
