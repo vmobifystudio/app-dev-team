@@ -95,10 +95,31 @@ allowed-tools: Read, Glob, Grep, Bash
 5a. If `docs/81-findings.md` exists, print the findings register summary: counts per status, and
    **name every row still `OPEN` or `IN-PROGRESS`**. A register with open rows means the audit is
    not closed, however quiet the board looks.
-6. Print the founder inbox from `docs/17-founder-inbox.md` if it exists — the `## Needs you now`
-   section verbatim, plus the count of open and overdue commitments. It is written by
-   `chief-of-staff` and is the one place a decision waiting on the founder is visible; a status
-   report that omits it reports the machine and not the blockage.
+5b. **Refresh the founder inbox if `chief-of-staff` is active.** Read `docs/02-team-roster.md`. If
+   its `chief-of-staff` row says `active`, spawn `chief-of-staff` **once** to write or update
+   `docs/17-founder-inbox.md` from the board, the message log and the findings register, then
+   continue to step 6.
+
+   If the row says `conditional` or `off`, do not spawn it, and say so in one line at step 6 —
+   `founder inbox: N/A — chief-of-staff is <state> per docs/02-team-roster.md`. That is the `off`
+   reporting convention, not a `WAIVED:`.
+
+   **Why this step exists.** The activation matrix could mark `chief-of-staff` active and *nothing
+   anywhere spawned it*: step 6 below read `docs/17-founder-inbox.md` "if it exists", and no
+   command wrote it. A trigger that fires into nothing is FC-002 — the rule that cannot fail — and
+   the cost lands exactly where it hurts most, because this role's whole output is the one place a
+   decision waiting on the founder is visible. Found by codex reviewing PR #11: the role had an
+   activation trigger, a contract and a reason it cannot be a skill, and failed the fourth test —
+   a spawn site.
+6. Print the founder inbox from `docs/17-founder-inbox.md` — the `## Needs you now` section
+   verbatim, plus the count of open and overdue commitments. It is written by `chief-of-staff`
+   (step 5b) and is the one place a decision waiting on the founder is visible; a status report
+   that omits it reports the machine and not the blockage.
+
+   If the file is still absent after step 5b, say which case applies rather than printing nothing:
+   `founder inbox: N/A — chief-of-staff is <state>`, or `founder inbox: CANNOT EVALUATE —
+   chief-of-staff is active but wrote no docs/17-founder-inbox.md`. Silence here is
+   indistinguishable from "nothing needs you", which is the one thing this section must never imply.
 7. Suggest the next action: `/app-build`, `/app-plan`, or "ship".
 
 Be terse. This is a status print, not a narration.

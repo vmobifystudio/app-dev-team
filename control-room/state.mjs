@@ -649,7 +649,15 @@ function founderInbox(model) {
   if (channel.ok) {
     for (const [ticket, thread] of threadsOf(channel.messages)) {
       for (const q of pairQuestions(thread).open) {
-        if (![q.from, ...q.to].some((r) => FOUNDER_ROLES.has(r))) continue;
+        // ROUTED TO a founder, not merely INVOLVING one. This tested `[q.from, ...q.to]`, so a
+        // question a founder ASKED — `ceo → tech-manager` — landed in the Founder Inbox even though
+        // the decision is waiting on the non-founder recipient. Worse, the generated action then
+        // prefilled `from: ceo` and `to: q.from`, producing a self-addressed `ceo → ceo` answer that
+        // team-message.sh refuses: an inbox row whose only button cannot work.
+        //
+        // The inbox answers one question — what is waiting on YOU — so the recipient is the whole
+        // test. Reported by codex on PR #8.
+        if (!q.to.some((r) => FOUNDER_ROLES.has(r))) continue;
         const proposals = thread.filter((m) => m.id !== q.id && m.decision);
         items.push({
           kind: 'decision_required',

@@ -4354,6 +4354,45 @@ import(process.argv[1]).then((m) => {
   && ok "one unreadable input of two makes the decisions verdict unavailable, never clear" \
   || bad "one unreadable input of two makes the decisions verdict unavailable" "$(cat "$TMP/cr-half.txt")"
 
+# The Founder Inbox answers ONE question — what is waiting on YOU. The predicate tested
+# `[q.from, ...q.to]`, so a question a founder ASKED (ceo → tech-manager) appeared in it even though
+# the decision waits on the recipient; the generated action then prefilled `to: q.from`, producing a
+# self-addressed ceo → ceo answer that team-message.sh refuses. An inbox row whose only button
+# cannot work. Reported by codex on PR #8.
+#
+# PROVEN BY: restoring `[q.from, ...q.to]` — the founder-asked question appeared and this went red.
+rm -rf "$TMP/cr-inbox"; mkdir -p "$TMP/cr-inbox/docs/team"
+( cd "$TMP/cr-inbox" && git init -q . && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+( cd "$TMP/cr-inbox" && node "$HERE/board.mjs" add APP-060 --title Probe --owner ios-developer ) >/dev/null 2>&1
+( cd "$TMP/cr-inbox" && sh "$HERE/team-message.sh" --from ceo --to tech-manager --ticket APP-060 \
+    --kind question --summary "a founder ASKING, not being asked" ) >/dev/null 2>&1
+node -e '
+import(process.argv[1]).then((m) => {
+  const s = m.assembleState(process.argv[2]);
+  const d = s.screens.flatMap((x) => x.sections).find((x) => x.id === "decisions");
+  const rows = (d.items || []).filter((i) => i.kind === "decision_required");
+  if (rows.length) { console.error("a founder-ASKED question reached the inbox: " + rows.map((r) => r.title).join(", ")); process.exit(1); }
+  process.exit(0);
+});
+' "$CR/state.mjs" "$TMP/cr-inbox" 2>"$TMP/cr-inbox.txt" \
+  && ok "a question a founder ASKED does not enter the Founder Inbox" \
+  || bad "a question a founder ASKED does not enter the Founder Inbox" "$(cat "$TMP/cr-inbox.txt")"
+
+# The control: a question asked OF a founder must still arrive, or the fix is "show nothing".
+( cd "$TMP/cr-inbox" && sh "$HERE/team-message.sh" --from tech-lead --to ceo --ticket APP-060 \
+    --kind question --summary "cut feature B?" ) >/dev/null 2>&1
+node -e '
+import(process.argv[1]).then((m) => {
+  const s = m.assembleState(process.argv[2]);
+  const d = s.screens.flatMap((x) => x.sections).find((x) => x.id === "decisions");
+  const rows = (d.items || []).filter((i) => i.kind === "decision_required");
+  if (!rows.length) { console.error("a question asked OF a founder did NOT reach the inbox"); process.exit(1); }
+  process.exit(0);
+});
+' "$CR/state.mjs" "$TMP/cr-inbox" 2>"$TMP/cr-inbox2.txt" \
+  && ok "...but a question asked OF a founder does" \
+  || bad "...but a question asked OF a founder does" "$(cat "$TMP/cr-inbox2.txt")"
+
 # A roster that parses to ZERO roles returned ok:true, and `ok` is what the sections branch on — so
 # every Team section rolled up to clear and the roster-integrity card said every role has a valid
 # state, while its own note admitted no role table had been parsed.
