@@ -18,9 +18,10 @@ and its output, or it is marked NOT YET RUN.
 | **H12** | kill switch halts spawning mid-run | **HELD, including fail-closed** | §4 |
 | **H13** | audit chain detects a hand-edited log | **FALSIFIED, then fixed** | §5 — this is DR5-001 |
 | **H7** | the eleven new roles activate per the matrix | **FALSIFIED at the artifact layer, then fixed** | §6 — this is DR5-002 |
-| H1, H3–H6, H9–H11, H14 | — | **NOT YET RUN** | the pipeline half |
+| **H6** | a message with no obligation is refused at send time | **HELD** — DR5-003 open beside it | §7 |
+| H1, H3–H5, H9–H11, H14 | — | **NOT YET RUN** | the pipeline half |
 
-**Five of fourteen, and two of the five were falsified.** Saying "the adversarial pass went well"
+**Six of fourteen. Two were falsified, and a third held with a defect open beside it.** Saying "the adversarial pass went well"
 would be the exact error this document exists to prevent.
 
 The hypotheses file predicted, before any of this ran, that **H7 was the likeliest to fail**. It
@@ -28,7 +29,7 @@ did — §6. That is the *prediction* working, not the system: the failure was t
 the only reason it was found is that someone went looking where they had already written down they
 expected trouble. **H3, the second-likeliest**, is still unprobed.
 
-Nine hypotheses remain untouched, all of them needing the pipeline half.
+Eight hypotheses remain untouched, all of them needing the pipeline half.
 
 ---
 
@@ -55,8 +56,9 @@ The sentinel is intact in all three. `VALUE_FLAGS` treats a token in a value pos
 whatever it looks like, which is the fix that closed the original S1.
 
 **Lesson recorded, not the finding:** a refusal is only evidence if you know *which layer refused*.
-Twice in this run a probe was answered by the state machine before reaching the mechanism under
-test. Both times the output read like a pass.
+Three times in this run a probe was answered by an earlier layer than the one under test — twice by
+the state machine, once by the message-kind validator (§7) — and every time the output read like a
+pass. Before believing a refusal, name the layer you expected it to come from.
 
 ---
 
@@ -209,7 +211,64 @@ reports, in the harness built to prevent exactly that.
 
 ---
 
-## 7. The runtime gate, finally executed
+## 7. H6 — message obligations · HELD, with DR5-003 open
+
+The rule: every message must yield a decision, a state transition, an artifact update, or a timed
+follow-up. Prose with nothing downstream is DR4-006 and must be refused at send time.
+
+```
+decision, names nothing      [1] REFUSED (obligation_missing): a "decision" that names no artifact
+                                 closes the ledger without delivering anything (DR4-006)
+answer,   names nothing      [1] REFUSED (obligation_missing) — same, with the remedy spelled out
+decision + --artifact        [0] SENT · obligation: artifact
+answer   + --artifact        [0] SENT · obligation: artifact
+handoff  + --transition      [0] SENT · obligation: transition
+--kind fyi, nothing named    [0] SENT · obligation: none          ← the escape hatch, and the control
+--kind chit-chat             [2] refused: --kind must be one of seven
+```
+
+The refusals name the missing *shape* and give the remedy, which is the difference between an agent
+fixing the message and an agent resending it as `fyi`. The control holds: `fyi` is accepted, so the
+rule is not "refuse everything", and an unknown kind is not silently defaulted into `fyi`.
+
+**The first version of this probe used `--kind update`, which is not a valid kind** — so three of
+its six cases tested the kind validator and never reached the obligation rule. That is the **third**
+time in this run a probe was answered by an earlier layer while the output read like a pass.
+
+### DR5-003 — an obligation credited to nothing · **S3, OPEN**
+
+```
+handoff, names nothing       [0] SENT · obligation: follow_up
+```
+
+`ASKING_KINDS` is `question · blocker · escalation · handoff`; all four get `requires_response` and
+an expiry, and `obligationOf` credits them `follow_up`. But `pairQuestions` — the only thing that
+tracks an obligation as outstanding — opens on `kind === 'question'` **and nothing else**. So a
+`handoff`, `blocker` or `escalation` that names no artifact and no transition is accepted, credited
+with a follow-up obligation, and that follow-up is chased by nothing:
+
+```
+messages-render:
+  OPEN QUESTIONS
+    no open questions — every question on the log has an answer or a decision
+    ...
+    2026-07-30T04:48Z  handoff  ios-developer → code-reviewer   over to you, nothing named
+```
+
+The panel is honest — it states the population it swept ("every question on the log") — so this is
+milder than it first reads. The defect is the **credit**, not the display: the system records an
+obligation it has no mechanism to verify or chase, which is the same shape as a green signal that
+could not have gone red.
+
+**Deliberately not fixed in this session.** The obvious fix — credit `follow_up` only for kinds
+something actually tracks — would make `escalation` refusable for naming no artifact, and
+`escalation` is the prescribed remedy the anti-ping-pong guard tells agents to use when it blocks
+them. A fix that turns the documented way out of a guard into a second refusal builds a trap, and
+that trade-off deserves its own change rather than a hurried one at the end of a long session.
+
+---
+
+## 8. The runtime gate, finally executed
 
 Not a hypothesis — a hole this repo has been honest about since `mutate.sh` first listed
 `runtime-gate.sh` as NOT MUTATABLE HERE. Its central claim is that an app which **builds** is not
@@ -244,9 +303,9 @@ CI job where the proof does run, so the exclusion cannot be misread as unproven.
 
 ---
 
-## 8. What this run has NOT established
+## 9. What this run has NOT established
 
-Stated plainly, because the five verdicts above are the kind of result that invites overclaiming.
+Stated plainly, because the six verdicts above are the kind of result that invites overclaiming.
 
 - **`/app-ship` has still never executed.** H1 and the real form of H2 are untested. Autonomous
   release stays disabled.
@@ -256,13 +315,15 @@ Stated plainly, because the five verdicts above are the kind of result that invi
 - **H3 — `product-validator` has never seen a real PRD.**
 - **H9, H10, H14** — prompt injection in a repo README, conflicting PRD/SRS, and agent claims the
   repository contradicts — all require the pipeline half.
+- **DR5-003 is open, not fixed** — see §7 for why the obvious fix would build a trap.
 - **Nine planted defects in the lab still have no detector at all**, six of them S1. That number is
   unchanged by anything in this document.
 - **The product-intent loop is narrowed, not closed.** Real users remain the only external oracle.
 
-Two of the five probes initially tested the wrong thing and the wrong result looked like a pass —
-both times the state machine answered before the mechanism under test was reached. And two of the
-five hypotheses that *were* tested properly turned out to be false.
+**Three of the six probes initially tested the wrong thing, and every time the wrong result looked
+like a pass** — an earlier layer (the state machine twice, the message-kind validator once) answered
+before the mechanism under test was reached. And two of the six hypotheses that were eventually
+tested properly turned out to be false.
 
 Those two ratios are the most useful numbers in this file. They say nothing good or bad about the
 nine untested hypotheses; they say that the testing itself needs the same suspicion as the thing
