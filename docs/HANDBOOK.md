@@ -2,8 +2,8 @@
 
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
-**Version:** post-revamp (`revamp/phase-r-fixes`) · **Date:** 2026-07-29
-**Scale:** 29 roles · 27 skills · 13 commands · 22 scripts (+6 shared libs) · 9 knowledge packs · 657 assertions
+**Version:** post-revamp (`revamp/phase-r-fixes`) · **Date:** 2026-07-30
+**Scale:** 29 roles · 27 skills · 14 commands · 23 scripts (+9 shared libs) · 9 knowledge packs · 735 assertions
 
 ---
 
@@ -475,7 +475,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `ship-gate.sh` | Release preconditions, including generated-CI rules and waivers |
 | `runtime-gate.sh` | Does the app build, launch, and stay up |
 | `spawn-gate.sh` | Worktree isolation before any parallel spawn |
-| `test.sh` | 438 assertions |
+| `test.sh` | 735 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -489,22 +489,38 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 This section exists because a handbook that only describes the working parts is the same failure
 this system is built to prevent.
 
-**Blocking, verified open at the time of writing:**
+> **Last verified: 2026-07-30.** This section is only worth reading if it is current, so it carries
+> a date. It was stale for a day and listed eight defects as open that had all been fixed — a
+> handbook that overstates what is broken is still a handbook that cannot be trusted about what is
+> broken.
 
-- `ship-gate` cannot block a plain-format S1 — its regex demands markdown bold, the QA template
-  writes pipes. Probed: an S1 *crash on launch* returns CLEAR.
-- `verify-done` reports `tests=green` for the literal command `true` — the ran-evidence check is
-  consulted only on failure.
-- `integration-branch` always returns `main`, because **nothing writes the line it reads**.
-- Argument injection in `board.mjs parseArgs`: a `--`-leading value in any agent-supplied string
-  overwrites arbitrary files. Reproducible with a sentinel file.
-- `POST /action` has no Origin check — CSRF-drivable.
-- `code-reviewer.md` instructs hand-appending to a generated file and never mentions `board.mjs`;
-  following it blocks every merge.
-- `verified_static` tickets ship CLEAR — the release gate cannot see the flag.
-- Four assertions in the suite cannot go red.
+**Closed since the last revision**, each re-probed by execution rather than by reading the diff:
+the `ship-gate` plain-format S1 regex · `verify-done` reporting `tests=green` for the literal
+command `true` · `integration-branch` always returning `main` · argument injection in `board.mjs
+parseArgs` (re-probed 2026-07-30 through `--detail`, `--by` and the ticket id; sentinel intact) ·
+the missing Origin check on `POST /action` · `code-reviewer.md`'s hand-append instruction ·
+`verified_static` tickets shipping CLEAR · the four assertions that could not go red.
 
-**Never exercised:** `/app-ship` (H8). The fixed pipeline has not been re-run end to end.
+**Blocking, verified open right now:**
+
+- **DR5-003** — `handoff`, `blocker` and `escalation` are credited `obligation: follow_up`, but
+  `pairQuestions` tracks only `kind === 'question'` as outstanding, so that follow-up is chased by
+  nothing. The system records an obligation it has no mechanism to verify. *Not fixed yet on
+  purpose:* the obvious fix would make `escalation` refusable for naming no artifact, and
+  `escalation` is the remedy the anti-ping-pong guard tells agents to use when it blocks them.
+- **Nine planted defects in the evaluation lab have no detector at all**, six of them S1: privacy
+  disclosure mismatch, subscription restore, accessibility, malicious repo instruction, stale
+  approval, wrong financial constant, missing analytics, conflicting requirements, shared-file
+  collision. `studio-eval.mjs` names every one of them in its own output rather than scoring around
+  them. **This is the largest honest gap in the system** and no amount of green suite touches it.
+
+**Never exercised:** `/app-ship` — hypothesis **H1** of dry run 5, still unrun. Eight of that run's
+fourteen hypotheses have no verdict at all. Autonomous release stays disabled until they do.
+
+**Newly proven, because it was a gap for months:** `runtime-gate.sh`'s central claim — that an app
+which builds is not an app that runs — now executes on every push. A `macos-15` CI job runs it
+against `eval/crash-on-launch` on real Xcode and asserts **exit 1**, then repairs the one
+force-unwrap and asserts **exit 0** on the otherwise identical app.
 
 **Structurally true regardless of fixes:** the team writes the PRD, derives acceptance criteria from
 its own PRD, implements against its own spec, and tests against its own criteria. It is a closed
@@ -521,8 +537,9 @@ gets to quietly stop representing the brief. What it does not buy is correctness
 founder who is wrong about the market now gets a validated, traceable, well-evidenced product nobody
 wants. That is what the human gates and real users are still for, and no script replaces them.
 
-Every open item is specified with a reproduction in
-`docs/research/2026-07-29-dry-run-4-findings.md`.
+Every open item is specified with a reproduction: dry run 4 in
+`docs/research/2026-07-29-dry-run-4-findings.md`, dry run 5 in
+`docs/research/2026-07-30-dry-run-5-findings.md`.
 
 ---
 
