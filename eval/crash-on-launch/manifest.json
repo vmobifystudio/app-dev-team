@@ -5,5 +5,5 @@
   "expected_signal": "launch",
   "severity": "S1",
   "why": "This is the runtime gate's central claim: an app that builds is not an app that runs. It is the one defect in this lab whose detector exists and is correct.",
-  "unreachable": "runtime-gate needs Xcode with a booted simulator (or adb with a device). Neither exists on this host or on ubuntu-latest in CI, so runtime-gate can only reach its CANNOT-EVALUATE branches here. Scoring this project would measure the absence of a toolchain, not the presence of a gate."
+  "unreachable": "runtime-gate needs Xcode with a booted simulator (or adb with a device). Neither exists on this host or on ubuntu-latest, so runtime-gate can only reach its CANNOT-EVALUATE branches HERE, and scoring this project would measure the absence of a toolchain rather than the presence of a gate. It is excluded from this run's denominator, NOT unproven: the `runtime-gate` job in .github/workflows/checks.yml runs on macos-15 with a real Xcode, generates the project from project.yml, and asserts the gate returns 1 for this fixture and 0 for the same fixture with the force-unwrap repaired. That pair is the proof; this exclusion is only about where it can run."
 }

@@ -1,0 +1,26 @@
+# XcodeGen spec for the crash-on-launch fixture.
+#
+# A checked-in .xcodeproj is ~300 lines of generated pbxproj that nobody reviews and every Xcode
+# version rewrites. This is the same project in fifteen readable lines. It is generated on the
+# macOS CI runner immediately before runtime-gate.sh runs against it; xcodegen is a RUNNER tool,
+# never a plugin dependency — the studio itself still installs nothing.
+#
+# Note what is deliberately NOT here: a `resources:` entry for config.json. That omission IS the
+# planted defect. src/App.swift force-unwraps a bundle URL for a file no target contains, so the
+# app compiles, installs, and traps on the first frame.
+name: SplitEven
+options:
+  bundleIdPrefix: studio.eval
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  SplitEven:
+    type: application
+    platform: iOS
+    sources: [src]
+    info:
+      # Outside `sources:` on purpose — a generated Info.plist sitting in the source directory is
+      # the classic way to have it compiled as a resource and shadow itself.
+      path: Info.plist
+      properties:
+        UILaunchScreen: {}
