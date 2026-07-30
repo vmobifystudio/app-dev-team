@@ -18,7 +18,7 @@ and its output, or it is marked NOT YET RUN.
 | **H12** | kill switch halts spawning mid-run | **HELD, including fail-closed** | §4 |
 | **H13** | audit chain detects a hand-edited log | **FALSIFIED, then fixed** | §5 — this is DR5-001 |
 | **H7** | the eleven new roles activate per the matrix | **FALSIFIED at the artifact layer, then fixed** | §6 — this is DR5-002 |
-| **H6** | a message with no obligation is refused at send time | **HELD** — DR5-003 open beside it | §7 |
+| **H6** | a message with no obligation is refused at send time | **PARTIALLY FALSIFIED** — held for default priority, bypassable with `--priority fyi` | §7 |
 | H1, H3–H5, H9–H11, H14 | — | **NOT YET RUN** | the pipeline half |
 
 **Six of fourteen. Two were falsified, and a third held with a defect open beside it.** Saying "the adversarial pass went well"
@@ -211,7 +211,7 @@ reports, in the harness built to prevent exactly that.
 
 ---
 
-## 7. H6 — message obligations · HELD, with DR5-003 open
+## 7. H6 — message obligations · PARTIALLY FALSIFIED (corrected 2026-07-30)
 
 The rule: every message must yield a decision, a state transition, an artifact update, or a timed
 follow-up. Prose with nothing downstream is DR4-006 and must be refused at send time.
@@ -230,6 +230,25 @@ handoff  + --transition      [0] SENT · obligation: transition
 The refusals name the missing *shape* and give the remedy, which is the difference between an agent
 fixing the message and an agent resending it as `fyi`. The control holds: `fyi` is accepted, so the
 rule is not "refuse everything", and an unknown kind is not silently defaulted into `fyi`.
+
+### The correction — I recorded this verdict too strongly
+
+**`--kind answer --priority fyi` walked straight past the rule.** The `fyi` exemption ran BEFORE the
+closing-kind check, so a closing kind carrying no artifact and no transition was accepted with
+`obligation: none` — and `pairQuestions` treats `answer` and `decision` as RESOLVING, so the open
+question was marked closed with nothing delivered. That is DR4-006 itself, through the door the
+escape hatch left open.
+
+**I never probed it.** The probe above varied the KIND and never varied the PRIORITY, so "HELD" was
+a statement about the half of the input space I happened to test. Found by codex reviewing PR #13,
+not by this run.
+
+Fixed: closing kinds are now evaluated before the exemption, on the reasoning that *"this closes the
+question"* and *"this needs no action"* are contradictory claims and a message may not make both.
+Verified: `--kind answer --priority fyi` refuses; `--kind fyi --priority fyi` still sends.
+
+The honest verdict is **partially falsified**, and the lesson is the one this run kept producing:
+a probe that varies one dimension proves something about that dimension only.
 
 **The first version of this probe used `--kind update`, which is not a valid kind** — so three of
 its six cases tested the kind validator and never reached the obligation rule. That is the **third**
