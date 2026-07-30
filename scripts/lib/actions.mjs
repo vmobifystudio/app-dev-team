@@ -75,18 +75,32 @@ const ACTIONS = {
       { name: 'from', label: 'From (role)', required: true },
       { name: 'to', label: 'To (role)', required: true },
       { name: 'summary', label: 'Answer (one line)', required: true },
-      { name: 'body', label: 'Detail — name the artifact you folded it into', required: true, long: true },
+      // THE OBLIGATION IS A FIELD, NOT PROSE. This form asked for the artifact in `body` and sent
+      // it as `--body`, while `obligationOf()` in scripts/lib/messages.mjs requires the STRUCTURED
+      // `--artifact` (or `--transition`) for a closing kind. `answer` is a closing kind, so the
+      // button constructed a command the CLI refuses every single time: the Founder Inbox's answer
+      // action could never once have succeeded.
+      //
+      // The form was asking the operator for exactly the right thing and then throwing away the
+      // part that mattered — the label said "name the artifact" and the value went somewhere the
+      // rule does not read. Reported by codex on PR #8.
+      { name: 'artifact', label: 'Artifact it was folded into (e.g. docs/21-impl-spec-ios.md, ADR-012)', required: true },
+      { name: 'body', label: 'Detail', required: true, long: true },
     ],
     validate: (p) =>
       (!TICKET_RE.test(p.ticket || '') && 'ticket must look like APP-001') ||
       (!ROLE_RE.test(p.from || '') && 'from must be a role name') ||
       (!ROLE_RE.test(p.to || '') && 'to must be a role name') ||
+      (p.from === p.to && 'from and to must differ — a role does not answer its own question') ||
       (!oneLine(p.summary, 300) && 'a one-line summary is required') ||
-      (!oneLine(p.body, 2000) && 'a body is required — name the artifact the answer was folded into, or this is a closed ledger and nothing else') ||
+      (!oneLine(p.artifact, 300) &&
+        'an artifact is required — an "answer" that names nothing closes the ledger without delivering anything (DR4-006), and team-message.sh will refuse it') ||
+      (!oneLine(p.body, 2000) && 'a body is required') ||
       null,
     argv: (p) => [
       'sh',
-      [MESSAGE_CLI, '--from', p.from, '--to', p.to, '--ticket', p.ticket, '--kind', 'answer', '--summary', p.summary, '--body', p.body],
+      [MESSAGE_CLI, '--from', p.from, '--to', p.to, '--ticket', p.ticket, '--kind', 'answer',
+       '--summary', p.summary, '--artifact', p.artifact, '--body', p.body],
     ],
   },
   'assign-artifact': {
