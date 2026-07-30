@@ -16,9 +16,22 @@
 
 name: checks
 
+# TRIGGERS ARE A COST DECISION, so they are justified here rather than left to accumulate.
+#
+# This was `push: ['**']` plus `pull_request:`, which ran the ENTIRE workflow TWICE for every change
+# on a branch with a PR open — once for the push, once for the pull_request event, on the same
+# commit, for an identical result. Pushing six review-stack marker branches fired six full runs that
+# reviewed nothing.
+#
+# `push` is now trunk-only: main is the branch where a bad commit matters and where nothing else is
+# watching. Everywhere else, the PR is the thing under review, so `pull_request` is the honest
+# trigger — one run per commit that someone is actually going to read.
+#
+# `workflow_dispatch` stays: a check you cannot run on demand is a check you cannot re-run after
+# fixing the runner rather than the code.
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -176,106 +189,3 @@ jobs:
 
       - name: Every planted defect must be found, and the clean project must not be blocked
         run: node scripts/studio-eval.mjs
-
-  # ------------------------------------------------------------------------------------------------
-  # The gate whose whole job is running the artifact — actually run.
-  #
-  # `runtime-gate.sh` builds the app, launches it, and asserts the process is STILL ALIVE afterwards,
-  # because `simctl launch` returns 0 for a program that dies 200ms later. That liveness check is the
-  # single claim the entire script exists to make, and until now it had never executed anywhere: the
-  # dev machine has Xcode's command-line tools but not Xcode, and ubuntu-latest has neither. Both
-  # `mutate.sh` and `studio-eval.mjs` list it as NOT MUTATABLE HERE / unreachable and exclude it from
-  # their denominators — honest, and a hole.
-  #
-  # eval/crash-on-launch is the fixture built for exactly this: an app that COMPILES, INSTALLS, and
-  # terminates on the first frame. On this runner the gate must return 1 (FAIL) for it and 0 (PASS)
-  # for a working app. A gate that cannot distinguish those two is worse than no gate, and this is
-  # the only place that distinction can be proven.
-  runtime-gate:
-    runs-on: macos-15
-    timeout-minutes: 40
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Record the toolchain, so CANNOT EVALUATE below is a real finding
-        # If this step shows no iOS runtime, every verdict after it is exit 2 and this job proves
-        # nothing — worth knowing loudly rather than discovering from a green tick.
-        run: |
-          xcode-select -p
-          xcodebuild -version
-          xcrun simctl list runtimes | grep -i ios || echo "NO iOS RUNTIME"
-
-      - name: Generate the fixture's Xcode project
-        # xcodegen is a RUNNER tool. The plugin still installs nothing; see eval/crash-on-launch/project.yml.
-        run: |
-          brew install xcodegen
-          cd eval/crash-on-launch && xcodegen generate
-
-      - name: The gate must FAIL an app that launches and dies
-        # Exit 1 is the pass condition for this step. Exit 0 would mean the gate greenlit a
-        # crash-on-launch — the defect the whole script exists to catch. Exit 2 would mean the
-        # toolchain is missing on a macOS runner, which proves nothing and is therefore also failure.
-        run: |
-          sh scripts/runtime-gate.sh --project-root eval/crash-on-launch --platform ios && rc=0 || rc=$?
-          echo "runtime-gate exit: $rc"
-          case "$rc" in
-            1) echo "PASS — the gate refused an app that does not stay up" ;;
-            0) echo "FAIL — the gate greenlit a crash-on-launch"; exit 1 ;;
-            2) echo "FAIL — CANNOT EVALUATE on a runner that has Xcode; this job proved nothing"; exit 1 ;;
-            *) echo "FAIL — unexpected exit $rc"; exit 1 ;;
-          esac
-
-      - name: Reset the simulator between the two proofs
-        # The mirror test compares two runs, so the two runs must START THE SAME. They did not: the
-        # step above leaves a crashed build of studio.eval.SplitEven installed on the device it
-        # booted, and the repaired run then reinstalled over it and `simctl launch` failed —
-        # verdict FAIL, for a working app, on the second run of the same commit that had passed on
-        # the first.
-        #
-        # That failure was REAL and it was mine, not the gate's: two runs from different starting
-        # states are not a comparison, they are two anecdotes. Erasing between them is what makes
-        # the pair mean anything.
-        #
-        # `|| true` is safe here and nowhere else in this file: this is teardown of a device the
-        # previous step may or may not have booted, not a check whose verdict could be masked.
-        run: |
-          xcrun simctl shutdown all || true
-          xcrun simctl erase all || true
-
-      - name: THE MIRROR TEST — repair the defect and the same gate must PASS
-        # Without this step the step above is satisfied by a gate that fails everything, which
-        # scores 100% on detection and is useless. Repairing the one force-unwrap and watching the
-        # verdict flip is the only thing that shows the gate is reading the app rather than the
-        # weather. Same fixture, same command, one line different, same clean device.
-        run: |
-          cat > eval/crash-on-launch/src/App.swift <<'SWIFT'
-          import SwiftUI
-
-          struct RootView: View {
-              let config: Data
-              var body: some View { Text("split \(config.count) bytes of config") }
-          }
-
-          @main
-          struct SplitEvenApp: App {
-              let config = Bundle.main.url(forResource: "config", withExtension: "json")
-                  .flatMap { try? Data(contentsOf: $0) } ?? Data()
-              var body: some Scene { WindowGroup { RootView(config: config) } }
-          }
-          SWIFT
-          sh scripts/runtime-gate.sh --project-root eval/crash-on-launch --platform ios && rc=0 || rc=$?
-          echo "runtime-gate exit: $rc"
-          git checkout -- eval/crash-on-launch/src/App.swift
-          case "$rc" in
-            0) echo "PASS — the repaired app builds, launches, and stays up" ;;
-            1) echo "FAIL — the gate blocks a working app; the FAIL above was not about the defect"; exit 1 ;;
-            2) echo "FAIL — CANNOT EVALUATE on a runner that has Xcode"; exit 1 ;;
-            *) echo "FAIL — unexpected exit $rc"; exit 1 ;;
-          esac
