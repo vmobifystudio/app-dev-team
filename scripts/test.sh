@@ -3366,6 +3366,21 @@ rm "$TMP/fi2/docs/00-founder-intent/example-rival.md" "$TMP/fi2/docs/00-founder-
 node "$FI" --project-root "$TMP/fi2" --json > "$TMP/fi2b.json" 2>/dev/null
 assert_finding "$TMP/fi2b.json" intent_record_removed "a removed source file is a finding" "decisions.md"
 
+# ...and --write must refuse it IN THE SAME INVOCATION. The check above is the verify path, which
+# only runs later; /app-init and requirements-intake use the WRITER as the recording step, so a
+# deletion that --write accepts passes the moment that mattered. It did: the loop walked the files
+# still on disk, so a deleted one was neither `changed` nor `added`, and --write exited 0 saying
+# RECORDED while leaving the stale entry behind. Reported by codex on PR #10.
+#
+# PROVEN BY: removing the `deleted` branch — --write returned 0 RECORDED on a record missing a file.
+rm -rf "$TMP/fi4"
+cp -R "$FIX/trace-clean" "$TMP/fi4"
+node "$FI" --project-root "$TMP/fi4" --write >/dev/null 2>&1
+rm "$TMP/fi4/docs/00-founder-intent/decisions.md"
+assert_exit 1 "--write REFUSES when a recorded file was deleted" \
+  node "$FI" --project-root "$TMP/fi4" --write
+assert_has "$TMP/out" "gone from disk" "...naming the file rather than silently shrinking the record"
+
 # Deleting a manifest LINE un-records a file without any hash ever disagreeing. The body digest is
 # the only thing standing between that and a clean report.
 rm -rf "$TMP/fi3"
@@ -3388,6 +3403,27 @@ echo "trace (the intent graph, its conflicts, and the founder gates)"
 TR="$HERE/trace.mjs"
 assert_exit 0 "a fully traced project passes"        node "$TR" --project-root "$FIX/trace-clean"
 assert_exit 1 "a broken chain blocks"                node "$TR" --project-root "$FIX/trace-broken"
+
+# A node may only cite sources that EXIST. srcIds was parsed and used only in reverse — sourcedBy()
+# asks who points at a node — so nothing ever asked whether what a node points AT is real. Changing
+# `src: O-001` to `src: O-999` left --only trace exiting 0 as long as the requirement still had a
+# criterion and a test: the chain no longer reached any outcome, and the tool that exists to prove
+# the chain is unbroken called it TRACED. A dangling source is worse than a missing one, because it
+# looks sourced to every reader. Reported by codex on PR #10.
+#
+# PROVEN BY: removing the source_undeclared loop — this went green with F-001 citing O-999.
+rm -rf "$TMP/trace-src"
+cp -R "$FIX/trace-clean" "$TMP/trace-src"
+assert_exit 0 "the clean project traces before the edit" node "$TR" --project-root "$TMP/trace-src" --only trace
+node -e '
+const fs = require("fs");
+const p = process.argv[1];
+fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("src: O-001", "src: O-999"));
+' "$TMP/trace-src/docs/10-prd.md"
+assert_exit 1 "...and a src pointing at an ID nobody declares blocks" \
+  node "$TR" --project-root "$TMP/trace-src" --only trace
+node "$TR" --project-root "$TMP/trace-src" --only trace --json > "$TMP/tracesrc.json" 2>/dev/null
+assert_finding "$TMP/tracesrc.json" source_undeclared "...as source_undeclared, naming the ID" "O-999"
 assert_exit 2 "no board and no record is CANNOT EVALUATE, not clean" node "$TR" --project-root "$FIX/trace-cannot"
 assert_exit 2 "an unknown --only is refused"         node "$TR" --project-root "$FIX/trace-clean" --only nonsense
 
@@ -3418,13 +3454,56 @@ done
 
 # ...and every one must be able to go quiet, or it is a permanent red that gets switched off. Only a
 # recorded founder decision clears one — not an agent deciding the trigger was fine.
+#
+# THE DECISION MUST QUOTE WHAT IT APPROVES. This block used to append
+# `FOUNDER DECISION: <trigger> — approved by the founder.` and expect all eight to clear, which
+# encoded the defect: approval was about a TOPIC, so approving $3.99/month cleared the pricing gate
+# permanently and a later change to $99/month sailed through. Each decision now carries the subject
+# trace.mjs extracted from the triggering line, which is what makes it an approval of a change.
 rm -rf "$TMP/gates-ok"
 cp -R "$FIX/trace-gates" "$TMP/gates-ok"
-for t in pricing sensitive-data destructive-migration account-deletion legal-disclosure \
-         visual-direction paid-infrastructure waiver; do
-  echo "2026-07-29 FOUNDER DECISION: $t — approved by the founder." >> "$TMP/gates-ok/docs/00-founder-intent/decisions.md"
-done
-assert_exit 0 "...and recorded founder decisions clear all eight" node "$TR" --project-root "$TMP/gates-ok" --only gates
+node -e '
+const { execFileSync } = require("child_process");
+const fs = require("fs");
+const [, tr, root] = process.argv;
+// Ask trace.mjs itself which subject each trigger wants quoted, rather than hardcoding eight
+// strings here that would silently rot the moment a fixture line changes.
+// trace exits 1 when it has findings, which is exactly the case we are here to read, so
+// execFileSync THROWS and the payload is on the error. Reading only the happy path made this
+// whole block a no-op that appended nothing and then asserted the gates had cleared.
+let raw;
+try {
+  raw = execFileSync("node", [tr, "--project-root", root, "--only", "gates", "--json"], { encoding: "utf8" });
+} catch (e) {
+  raw = e.stdout;
+}
+const out = JSON.parse(raw);
+const lines = out.findings.map((f) => {
+  const id = /TRIGGER (\S+) /.exec(f.detail)[1];
+  const subj = /record: "<date> FOUNDER DECISION: \S+ — (.*?) — <what was decided>"/.exec(f.action);
+  return `2026-07-29 FOUNDER DECISION: ${id} — ${subj ? subj[1] : ""} — approved by the founder.`;
+});
+fs.appendFileSync(`${root}/docs/00-founder-intent/decisions.md`, "\n" + lines.join("\n") + "\n");
+' "$TR" "$TMP/gates-ok" 2>/dev/null
+assert_exit 0 "...and decisions QUOTING each detected value clear all eight" node "$TR" --project-root "$TMP/gates-ok" --only gates
+
+# The finding codex raised on PR #10, as an assertion: an approval of one value must not authorize a
+# different one. Change the approved price and the gate must come back, even though a `pricing`
+# decision is still on the record.
+#
+# PROVEN BY: restoring `approved(id)` — this went green while the PRD said $99/month and the record
+# only ever approved $3.99/month.
+rm -rf "$TMP/gates-reprice"; mkdir -p "$TMP/gates-reprice/docs/00-founder-intent"
+printf '# PRD\n\n## 4 Pricing\n\nPro is $3.99/month.\n' > "$TMP/gates-reprice/docs/10-prd.md"
+printf '2026-07-30 FOUNDER DECISION: pricing — $3.99/month — approved at launch\n' \
+  > "$TMP/gates-reprice/docs/00-founder-intent/decisions.md"
+assert_exit 0 "an approval that quotes the value clears it" \
+  node "$TR" --project-root "$TMP/gates-reprice" --only gates
+printf '# PRD\n\n## 4 Pricing\n\nPro is $99/month.\n' > "$TMP/gates-reprice/docs/10-prd.md"
+assert_exit 1 "...and does NOT clear a different value later" \
+  node "$TR" --project-root "$TMP/gates-reprice" --only gates
+assert_has "$TMP/out" "does not authorize this one" \
+  "...saying the record has a pricing decision that does not cover this change"
 
 # One parser. A second reading of the board is how the last four fail-open gates in this repo got
 # written, and a graph validator is exactly the kind of tool that grows its own board regex.

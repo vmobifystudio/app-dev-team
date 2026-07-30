@@ -107,6 +107,23 @@ if (WRITE) {
     if (!entries.has(file)) { entries.set(file, hash); added.push(file); }
     else if (entries.get(file) !== hash) changed.push(file);
   }
+  // A DELETION IS A CHANGE. This loop walked `hashes` — the files still ON DISK — so a recorded
+  // file that had been DELETED was neither in `changed` nor in `added`: `--write` exited 0 saying
+  // RECORDED, left the stale manifest entry in place, and only a separate later invocation of the
+  // verify path ever noticed. `/app-init` and `requirements-intake` use the writer AS the recording
+  // step, so the moment that mattered passed clean.
+  //
+  // Same principle as the edit case immediately below, and the reason is identical: the record is
+  // append-only, so removing the founder's words is exactly the operation it exists to prevent.
+  // Reported by codex on PR #10.
+  const onDisk = new Set([...hashes].map(([file]) => file));
+  const deleted = prior ? [...prior.entries].filter(([file]) => !onDisk.has(file)).map(([file]) => file) : [];
+  if (deleted.length > 0) {
+    add('intent_file_deleted', `${DIR}/${MANIFEST}`,
+      `${deleted.length} recorded file(s) are gone from disk: ${deleted.join(', ')}. The founder record is append-only; --write refuses rather than quietly recording a smaller record than the one it was given.`,
+      `Restore ${deleted.join(', ')} from version control. If the founder genuinely retracted something, that is a NEW dated entry in decisions.md saying so — the original stays.`);
+    report(1, `REFUSED — ${deleted.length} recorded file(s) were deleted.`);
+  }
   if (changed.length > 0) {
     // The whole point. A writer that re-records a changed file is a writer that erases the evidence
     // of the edit, and then every check downstream is green about a brief nobody can trust.

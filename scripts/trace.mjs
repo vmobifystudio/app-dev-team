@@ -139,6 +139,31 @@ for (const doc of docs) {
   });
 }
 
+// A NODE'S SOURCES MUST EXIST.
+//
+// `srcIds` was parsed and then only ever used in the reverse direction — `sourcedBy()` asks who
+// points AT a node, and nothing asked whether what a node points at is real. So changing a
+// requirement from `src: O-001` to `src: O-999` left `--only trace` exiting 0, as long as the
+// requirement still had a criterion and a test: the chain no longer reached any outcome, and the
+// tool that exists to prove the chain is unbroken reported it TRACED.
+//
+// A dangling source is worse than a missing one. A node with no `src` is visibly unsourced; a node
+// citing O-999 looks sourced to every reader and to every generated view. Reported by codex on PR #10.
+//
+// Deliberately NOT enforced here: that each source is of the correct UPSTREAM KIND (outcome ← goal,
+// requirement ← outcome, and so on). That contract is currently prose spread across the skills
+// rather than declared in one place, and inventing it inside the validator would produce confident
+// false blocks on projects that spell the chain slightly differently. Existence is unambiguous
+// today; the kind contract needs the chain declared once, first.
+for (const node of nodes.values()) {
+  for (const src of node.srcIds) {
+    if (nodes.has(src)) continue;
+    add('source_undeclared', `${node.file}:${node.line}`,
+      `${node.id} cites src: ${src}, which is not declared anywhere. The chain above ${node.id} does not reach a goal — it stops at an ID that does not exist, while looking sourced to every reader and every generated view.`,
+      `Declare ${src}, or correct ${node.id}'s src to the node it is actually derived from.`);
+  }
+}
+
 const byKind = (k) => [...nodes.values()].filter((n) => n.kind === k);
 const sourcedBy = (id) => [...nodes.values()].filter((n) => n.srcIds.includes(id));
 
@@ -373,18 +398,58 @@ if (ONLY === 'all' || ONLY === 'gates') {
   if (decisions === null) {
     cannot('the conditional founder gates', 'docs/00-founder-intent/ does not exist, so no trigger can be cleared and none can be shown to have been approved.');
   }
-  const approved = (id) => decisions !== null && new RegExp(`FOUNDER DECISION:\\s*${id}\\b`).test(decisions);
+  // AN APPROVAL IS ABOUT A VALUE, NOT ABOUT A TOPIC.
+  //
+  // This was `approved(id)` — does `FOUNDER DECISION: pricing` appear anywhere in the record? If it
+  // did, the pricing gate was cleared FOREVER. Approve $3.99/month once and the PRD could be
+  // changed to $99/month with the gate still exiting clean, because the check never looked at the
+  // value it was clearing. The same defect let one waiver authorize every subsequent waiver, which
+  // is the more dangerous half: a waiver is by definition the thing you grant narrowly.
+  //
+  // The approval must therefore QUOTE what it approves. `subject()` pulls the distinctive text out
+  // of the triggering line — the matched value for a value trigger, and for `WAIVED:` the reason
+  // that follows it, since the keyword itself carries no information. A decision clears a trigger
+  // only if it names the trigger AND contains that subject.
+  //
+  // This is FC-005's shape — "approved" as a claim about a moment rather than about a diff — and
+  // the evaluation lab has been carrying `stale-approval` as an undetectable planted defect for
+  // exactly this reason. Reported by codex on PR #10.
+  const subject = (trigger, line) => {
+    const m = trigger.pattern.exec(line);
+    if (!m) return '';
+    if (trigger.id === 'waiver') {
+      const after = line.slice(line.indexOf(m[0]) + m[0].length).trim();
+      return after.slice(0, 80);
+    }
+    return m[0].trim();
+  };
+
+  // A decision covers a subject when SOME line naming this trigger also contains it. Line-scoped on
+  // purpose: matching across the whole file would let an unrelated decision elsewhere in the record
+  // satisfy this one by coincidence.
+  const covers = (id, subj) => {
+    if (decisions === null || !subj) return false;
+    const re = new RegExp(`FOUNDER DECISION:\\s*${id}\\b`);
+    return decisions.split(/\r?\n/).some((l) => re.test(l) && l.includes(subj));
+  };
 
   for (const trigger of GATE_TRIGGERS) {
-    if (approved(trigger.id)) continue;
     for (const doc of docs) {
       if (doc.rel.startsWith('docs/00-founder-intent/')) continue; // the record states, it does not decide
       if (!trigger.where.test(doc.rel)) continue;
-      const hit = doc.text.split(/\r?\n/).findIndex((l) => trigger.pattern.test(l));
+      const lines = doc.text.split(/\r?\n/);
+      const hit = lines.findIndex((l) => trigger.pattern.test(l));
       if (hit === -1) continue;
+      const subj = subject(trigger, lines[hit]);
+      if (covers(trigger.id, subj)) continue;
+      const namedButUncovered =
+        decisions !== null && new RegExp(`FOUNDER DECISION:\\s*${trigger.id}\\b`).test(decisions);
       add('founder_gate_required', `${doc.rel}:${hit + 1}`,
-        `TRIGGER ${trigger.id} — ${trigger.why} — detected: "${doc.text.split(/\r?\n/)[hit].trim().slice(0, 120)}". No founder decision covers it, and this is not a call an agent gets to make.`,
-        `Stop the loop, put it to the founder, and record: "<date> FOUNDER DECISION: ${trigger.id} — <what was decided>" in docs/00-founder-intent/decisions.md.`);
+        `TRIGGER ${trigger.id} — ${trigger.why} — detected: "${lines[hit].trim().slice(0, 120)}". ` +
+          (namedButUncovered
+            ? `The record HAS a "${trigger.id}" decision, but none of them names "${subj}" — an approval of some earlier value does not authorize this one.`
+            : 'No founder decision covers it, and this is not a call an agent gets to make.'),
+        `Stop the loop, put it to the founder, and record: "<date> FOUNDER DECISION: ${trigger.id} — ${subj} — <what was decided>" in docs/00-founder-intent/decisions.md. The line must quote "${subj}", because that is what makes the approval about this change rather than about the topic.`);
       break; // one finding per trigger; the founder decides the trigger, not each line of it
     }
   }
