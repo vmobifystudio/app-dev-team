@@ -1153,6 +1153,22 @@ assert_finding "$TMP/tdr2.json" roster_role_not_in_matrix \
   "...and a roster row for a role the matrix does not know blocks" "ux-designer"
 cp "$TMP/roster-pristine.md" "$ROSTER"
 
+# The OTHER half of drift: same membership, different STATE. Both files list web-developer; flip its
+# mobile-app matrix cell to `on` and the roster still says `off`, and a membership-only check exits
+# 0. The two files agree on who is staffed and disagree on whether. Reported by codex on PR #5.
+#
+# PROVEN BY: keeping only the membership comparison — this went green with the cell flipped.
+node -e '
+const fs = require("fs");
+const p = process.argv[1];
+fs.writeFileSync(p, fs.readFileSync(p, "utf8")
+  .replace(/(\| `web-developer` \| — \| — \| )—( \|)/, "$1on$2"));
+' "$MATRIX"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdr3.json" 2>/dev/null
+assert_finding "$TMP/tdr3.json" roster_state_drift \
+  "a matrix cell and a roster state that disagree block" "web-developer"
+restore_matrix
+
 # Two rows for one role is not a duplicate to tidy up later: they can disagree, and whichever is
 # read second silently wins.
 { cat "$TMP/matrix-pristine.md"; grep '^| `qa-engineer` |' "$TMP/matrix-pristine.md"; } > "$MATRIX"

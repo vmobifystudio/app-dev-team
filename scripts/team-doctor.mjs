@@ -226,9 +226,45 @@ if (!existsSync(MATRIX)) {
       'Restore docs/02-team-roster.md with one row per role in skills/role-activation/SKILL.md.');
   } else {
     const rosterText = readFileSync(ROSTER, 'utf8');
-    const rosterRoles = new Set(
-      [...rosterText.matchAll(/^\|\s*([a-z][a-z0-9-]*)\s*\|/gm)].map((m) => m[1])
-    );
+    // State as well as membership. The first version of this check kept only role NAMES, so the
+    // other consequential drift was invisible: a matrix cell changing between `on`, `?` and `—`
+    // while the worked roster kept saying `active`, `conditional` or `off`. Flip the matrix's
+    // mobile-app `web-developer` cell to `on` and the template still said `off`, and this exited 0
+    // — the two files agreed on WHO is staffed and disagreed on WHETHER. Reported by codex on PR #5.
+    //
+    // The template advertises itself as flagship · mobile-app, so that is the column compared.
+    // MOBILE_APP_COL is the index of `mobile-app` in the matrix header, resolved from the header
+    // rather than hardcoded: a column inserted upstream would otherwise silently shift the
+    // comparison one role to the left and this check would confidently compare the wrong cells.
+    const rosterRows = [...rosterText.matchAll(/^\|\s*([a-z][a-z0-9-]*)\s*\|\s*([a-z]+)\s*\|/gm)];
+    const rosterRoles = new Set(rosterRows.map((m) => m[1]));
+    const rosterState = new Map(rosterRows.map((m) => [m[1], m[2]]));
+
+    // Local, because the shared `cells` helper is declared further down this file. Same rule:
+    // strip the leading/trailing empties and the bold markers the matrix uses for readers.
+    const cellsOf = (line) => line.split('|').slice(1, -1).map((c) => c.trim().replace(/\*/g, ''));
+    const headerLine = matrixText.split(/\r?\n/).find((l) => /^\|\s*Role\s*\|/.test(l));
+    const headerCells = headerLine ? cellsOf(headerLine) : [];
+    const mobileCol = headerCells.indexOf('mobile-app');
+    // `on` → active · `—` → off · `?` → conditional. Anything else is a matrix cell this check does
+    // not understand, and it says so rather than guessing.
+    const EXPECTED = { on: 'active', '—': 'off', '?': 'conditional' };
+    if (mobileCol > 0) {
+      for (const line of matrixText.split(/\r?\n/)) {
+        const m = /^\|\s*\*?\*?`([a-z][a-z0-9-]*)`/.exec(line);
+        if (!m) continue;
+        const role = m[1];
+        if (!rosterState.has(role)) continue; // membership is the check above; this one is state
+        const cell = cellsOf(line)[mobileCol];
+        const want = EXPECTED[cell];
+        if (!want) continue;
+        if (rosterState.get(role) !== want) {
+          add(findings, 'roster_state_drift', 'docs/02-team-roster.md',
+            `"${role}" is "${cell}" in the activation matrix's mobile-app column, which means "${want}" — but the roster template says "${rosterState.get(role)}". The two files agree on who is staffed and disagree on whether, which is the half of drift that survives a membership check.`,
+            `Set the roster row for "${role}" to "${want}", or change the matrix cell if the matrix is what is wrong.`);
+        }
+      }
+    }
     if (rosterRoles.size === 0) {
       add(findings, 'roster_template_empty', 'docs/02-team-roster.md',
         'The roster template exists but no role rows parsed out of it. A template that produces zero roles is indistinguishable from one that lists them all, to every check downstream of it.',
