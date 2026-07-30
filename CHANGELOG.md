@@ -3,6 +3,39 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.0] — 2026-07-30
+
+The revamp. 74 commits, **48 → 751 assertions**, and the first release whose own documentation
+leads with what is *not* finished.
+
+**What is new**
+- **Event-sourced board and message log.** `docs/31-board-events.jsonl` and `docs/team/messages.jsonl`
+  are the sources; the Markdown is a generated view. Transitions are validated BEFORE the append, so
+  an illegal state is unwritable rather than detected later. Both logs carry a chained hash.
+- **The product-intent loop, narrowed.** `docs/00-founder-intent/` is append-only and hash-checked;
+  `product-validator` compares it to the PRD from outside the cpo/cto/tech-manager chain;
+  `scripts/trace.mjs` fails when the chain from goal to release breaks. **Founder approvals now bind
+  to the value they approved** — approving $3.99/month does not authorize $99/month.
+- **The evaluation laboratory** (`eval/`, `scripts/studio-eval.mjs`). Golden projects with planted
+  defects, scored against the detector named for each. It reports the **nine defects nothing can
+  catch** in its own output rather than scoring around them, and measures the false-positive rate
+  against a clean project that must not be blocked.
+- **Mutation testing** (`scripts/mutate.sh`). 31 gates broken one at a time with the suite re-run
+  after each, because a green suite is evidence only to the extent it could have gone red.
+- **The runtime gate, executed.** A macOS CI job runs it against real Xcode: FAIL for a
+  crash-on-launch fixture, PASS for the same fixture repaired. The second half is the load-bearing
+  one.
+- **29 roles on a stated bar** — an activation trigger, a contract tier, a spawn site, and a reason
+  it cannot be a skill. Activation by tier × product type, failing closed on an unstaffed type.
+- **The control room** (`control-room/`), five screens, leading with why work is not moving. The
+  plugin stays zero-dependency and correct with the UI absent.
+- **Security**: capability enforcement at the append, argument-injection fix, CSRF guard, secret
+  redaction, worktree spawn gate, a kill switch that fails closed on an unreadable file.
+
+**What is honestly not finished** — see `docs/HANDBOOK.md` Part 12. `/app-ship` has never executed;
+eight of dry run 5's fourteen hypotheses have no verdict; nine planted lab defects have no detector,
+six of them S1. Autonomous release stays disabled.
+
 ## [Unreleased] — Security hardening (S.1–S.7)
 
 The threat this plugin actually has is not a web form. It spawns autonomous agents that run shell
