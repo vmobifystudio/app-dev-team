@@ -386,8 +386,16 @@ function readRoster(root) {
   }
 
   return {
-    ok: true,
-    note: roles.length ? '' : `${REL.roster} exists but carries no parseable role table`,
+    // A ROSTER THAT PARSED TO NOTHING IS NOT A READABLE ROSTER. This returned `ok: true` with an
+    // empty `roles` and an explanatory note — and `ok` is what the sections branch on, so every
+    // Team section rolled up to `clear` and the roster-integrity card reported that every role has
+    // a valid state, while the note underneath admitted no role table had been parsed. A verdict
+    // and its own note contradicting each other is the shape this whole file exists to prevent.
+    //
+    // Zero roles and every role valid are indistinguishable to a caller that only reads `ok`.
+    // Reported by codex on PR #8.
+    ok: roles.length > 0,
+    note: roles.length ? '' : `${REL.roster} exists but carries no parseable role table, so nothing about the roster can be verified from it`,
     tier: grab('Tier'),
     productType: grab('Product type'),
     roles,

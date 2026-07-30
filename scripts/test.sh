@@ -4314,6 +4314,47 @@ import(process.argv[1]).then((m) => {
   && ok "an empty project produces no CLEAR anywhere — every screen says what it could not read" \
   || bad "an empty project produces no CLEAR anywhere" "$(cat "$TMP/cr-empty.txt")"
 
+# HALF a population is not a population. The `decisions` section spans two inputs — blocked tickets
+# from the board, and questions routed to a founder from the channel — and it gated `unavailable` on
+# BOTH being unreadable. So a readable board with an unreadable channel could still reach `clear`,
+# asserting that no founder question and no undecided escalation exists, while its own note said
+# questions could not be listed. Reported by codex on PR #8.
+#
+# PROVEN BY: restoring `!log.ok && !channel.ok` — this went green with the channel unreadable.
+rm -rf "$TMP/cr-halfpop"; mkdir -p "$TMP/cr-halfpop/docs/team"
+cp -R "$FIX/channel-v2/team/messages.jsonl" "$TMP/cr-halfpop/docs/team/messages.jsonl" 2>/dev/null || true
+node "$HERE/board.mjs" --log "$TMP/cr-halfpop/docs/31-board-events.jsonl" \
+  --board "$TMP/cr-halfpop/docs/31-board.md" add APP-001 --title Readable --owner ios-developer >/dev/null 2>&1
+printf 'not json at all\n' > "$TMP/cr-halfpop/docs/team/messages.jsonl"
+node -e '
+import(process.argv[1]).then((m) => {
+  const s = m.assembleState(process.argv[2]);
+  const d = s.screens.flatMap((x) => x.sections).find((x) => x.id === "decisions");
+  if (!d) { console.error("no decisions section"); process.exit(1); }
+  if (d.status === "clear") { console.error("decisions read CLEAR with an unreadable channel"); process.exit(1); }
+  process.exit(0);
+});
+' "$CR/state.mjs" "$TMP/cr-halfpop" 2>"$TMP/cr-half.txt" \
+  && ok "one unreadable input of two makes the decisions verdict unavailable, never clear" \
+  || bad "one unreadable input of two makes the decisions verdict unavailable" "$(cat "$TMP/cr-half.txt")"
+
+# A roster that parses to ZERO roles returned ok:true, and `ok` is what the sections branch on — so
+# every Team section rolled up to clear and the roster-integrity card said every role has a valid
+# state, while its own note admitted no role table had been parsed.
+#
+# PROVEN BY: restoring `ok: true` — readRoster reported ok on a roster with no table.
+rm -rf "$TMP/cr-roster"; mkdir -p "$TMP/cr-roster/docs"
+printf '# Team roster\n\nnothing parseable here\n' > "$TMP/cr-roster/docs/02-team-roster.md"
+node -e '
+import(process.argv[1]).then((m) => {
+  const r = m.readRoster(process.argv[2]);
+  if (r.ok) { console.error("readRoster returned ok:true with " + r.roles.length + " roles"); process.exit(1); }
+  process.exit(0);
+});
+' "$HERE/lib/project.mjs" "$TMP/cr-roster" 2>"$TMP/cr-roster.txt" \
+  && ok "a roster with no parseable rows is NOT ok — zero roles is not every role valid" \
+  || bad "a roster with no parseable rows is NOT ok" "$(cat "$TMP/cr-roster.txt")"
+
 # Every section, on every screen, always states its population. DR4-025: a clearance claim that does
 # not say what it looked at hides its own blind spot.
 node -e '

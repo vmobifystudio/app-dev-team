@@ -693,10 +693,27 @@ function founderInbox(model) {
 
   const sections = [
     section('decisions', 'Decisions required', {
+      // EITHER input missing makes this verdict unavailable, not just both.
+      //
+      // This was `!log.ok && !channel.ok`, so an unreadable CHANNEL with a readable board still let
+      // the section reach `clear` — while its own note said "questions routed to a founder cannot
+      // be listed". A clear verdict here asserts that no founder question and no undecided
+      // escalation exists, and half of that population had not been looked at. The symmetric case
+      // hid blocked work when only the log was unreadable.
+      //
+      // This section spans two populations, so it needs both. Splitting it into two sections would
+      // also be correct and is the better long-term shape; keeping it whole and refusing to answer
+      // is the change that does not move the Founder Inbox around under someone mid-review.
+      // Reported by codex on PR #8.
       unavailable:
         model.unavailableNote ||
-        (!log.ok && !channel.ok
-          ? `neither input is readable: ${log.note}; ${channel.note}. With no board and no channel there are no decisions to find, and an empty inbox has not been earned`
+        (!log.ok || !channel.ok
+          ? `this verdict spans two populations and one is unreadable — ${[
+              log.ok ? '' : `board: ${log.note} (blocked work cannot be listed)`,
+              channel.ok ? '' : `channel: ${channel.note} (questions routed to a founder cannot be listed)`,
+            ]
+              .filter(Boolean)
+              .join('; ')}. An empty inbox has not been earned`
           : ''),
       note: [
         log.ok ? '' : `${log.note} — blocked work cannot be listed`,
