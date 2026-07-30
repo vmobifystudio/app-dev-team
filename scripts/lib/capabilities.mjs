@@ -108,7 +108,14 @@ function checkCapability(state, candidate, legal) {
     };
   }
 
-  if (NOT_ON_OWN_TICKET.has(name) && state && actor === state.owner) {
+  // Compare NORMALIZED forms. `actor` is trimmed on the way in and `state.owner` is not, so an
+  // owner carrying insignificant whitespace — from a migrated Markdown board, a hand-edited legacy
+  // log, or any path that did not go through `add --owner` — would not equal the trimmed actor, and
+  // the role could sign off its own ticket. Not reproducible through today's CLI, which trims; that
+  // is exactly why it is worth closing, because the comparison should not depend on every writer
+  // remembering. Reported by codex on PR #12.
+  const same = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+  if (NOT_ON_OWN_TICKET.has(name) && state && same(actor, state.owner)) {
     return {
       ok: false,
       reason:

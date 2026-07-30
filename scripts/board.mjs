@@ -256,10 +256,21 @@ function cmdAdd(id, flags, paths) {
   const appended = [event];
 
   if (birth === 'blocked') {
+    // REUSE THE SCRUBBED VALUE. This read `flags.notes` — the RAW input — while the `created` event
+    // above wrote `detail.notes`, the scrubbed one. So `add --status blocked --notes
+    // "password=supersecret12"` printed "board: REDACTED credential-assignment from --notes" and
+    // then wrote the password verbatim into the very next line of the committed audit log.
+    //
+    // Worse than a silent leak: the operator was TOLD the credential had been removed, so they had
+    // every reason not to rotate it. `--reason` goes through `scrub` here for the same reason —
+    // it is agent-supplied free text on the same path.
+    //
+    // FC-001 once more: the redaction was applied where the value was first written and not where
+    // it was written again. Reported by codex on PR #12.
     const blocked = {
       ...event,
       event: 'blocked',
-      detail: flags.notes || flags.reason || 'created blocked',
+      detail: detail.notes || scrub('--reason', flags.reason || '') || 'created blocked',
     };
     append(paths.log, blocked);
     appended.push(blocked);

@@ -183,7 +183,19 @@ function readProject(root) {
       return bad(`${REL.log} has ${parsed.errors.length} unreadable line(s): ${parsed.errors.map((e) => `line ${e.line}: ${e.reason}`).join('; ')}`);
     }
     events = parsed.events;
-    tickets = reduce(events).tickets;
+    // A CORRUPT HISTORY IS NOT A HEALTHY PROJECT. `reduce` returns transition violations alongside
+    // the tickets and this threw them away, so a log with `created` followed directly by an illegal
+    // `closed` ranked as readable with "all tickets done" at exit 0. The portfolio's whole job is
+    // answering where the next hour should go, and it was sending you away from the one project
+    // whose history cannot be trusted. Reported by codex on PR #14.
+    const reduced = reduce(events);
+    if (reduced.violations && reduced.violations.length) {
+      return bad(`${REL.log} contains ${reduced.violations.length} illegal transition(s): ` +
+        `${reduced.violations.slice(0, 3).map((v) => `${v.ticket}: ${v.reason || v.event}`).join('; ')}` +
+        `${reduced.violations.length > 3 ? ` (+${reduced.violations.length - 3} more)` : ''}. ` +
+        'The derived state cannot be trusted, so this project is reported unreadable rather than ranked.');
+    }
+    tickets = reduced.tickets;
   }
 
   let rows = [];

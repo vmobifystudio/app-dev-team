@@ -151,7 +151,20 @@ let raw = ""; process.stdin.on("data", (d) => (raw += d)).on("end", () => {
 echo "REPOSITORY CONTROLS: $REPO ($BRANCH)"
 say "no force-push"                 "$([ "$(jqish allow_force_pushes.enabled)" = "false" ] && echo true || echo false)"
 say "no branch deletion"            "$([ "$(jqish allow_deletions.enabled)" = "false" ] && echo true || echo false)"
-say "required status checks"        "$(jqish required_status_checks.contexts)"
+# THE NAMES, NOT THE COUNT. `jqish` reduces an array to its LENGTH, so this passed whenever branch
+# protection required ANY context at all — including one unrelated check, with `checks` and
+# `mutation` (the two `--print` actually sets) absent. It reported the test and mutation gates as
+# enforced while neither was. A control verified by counting is not verified. Reported by codex on #12.
+contexts_json=$(gh api "repos/$REPO/branches/$BRANCH/protection" 2>/dev/null || echo '{}')
+for want in checks mutation; do
+  present=$(printf '%s' "$contexts_json" | node -e '
+let raw = ""; process.stdin.on("data", (d) => (raw += d)).on("end", () => {
+  let list = [];
+  try { list = (JSON.parse(raw).required_status_checks || {}).contexts || []; } catch { list = []; }
+  process.stdout.write(list.includes(process.argv[1]) ? "true" : "false");
+});' "$want")
+  say "required status check: $want" "$present"
+done
 say "required review (non-self)"    "$(jqish required_pull_request_reviews.required_approving_review_count)"
 say "stale reviews dismissed"       "$(jqish required_pull_request_reviews.dismiss_stale_reviews)"
 say "rules apply to admins"         "$(jqish enforce_admins.enabled)"
@@ -164,6 +177,27 @@ let raw = ""; process.stdin.on("data", (d) => (raw += d)).on("end", () => {
   } catch { process.stdout.write("false"); }
 });') || ENVS=false
 say "production environment requires approval" "$ENVS"
+
+# Secret scanning and push protection were DOCUMENTED as the credential backstop and never queried,
+# so `--check` printed "every server-side control is set" with both switched off. The one control
+# that stops a leaked key reaching the remote was the one nothing verified.
+#
+# `--check` is a report, so an unreadable answer is reported as not-set rather than skipped: on a
+# plan without these features, or a token lacking the scope, "we could not confirm it" and "it is
+# on" must not look the same. Reported by codex on PR #12.
+SEC=$(gh api "repos/$REPO" 2>/dev/null | node -e '
+let raw = ""; process.stdin.on("data", (d) => (raw += d)).on("end", () => {
+  try {
+    const s = (JSON.parse(raw).security_and_analysis) || {};
+    const on = (k) => s[k] && s[k].status === "enabled";
+    process.stdout.write(JSON.stringify({
+      scanning: on("secret_scanning") ? "true" : "false",
+      push: on("secret_scanning_push_protection") ? "true" : "false",
+    }));
+  } catch { process.stdout.write(JSON.stringify({ scanning: "false", push: "false" })); }
+});') || SEC='{"scanning":"false","push":"false"}'
+say "secret scanning"                "$(printf '%s' "$SEC" | node -e 'let r="";process.stdin.on("data",d=>r+=d).on("end",()=>process.stdout.write(JSON.parse(r).scanning))')"
+say "secret push protection"         "$(printf '%s' "$SEC" | node -e 'let r="";process.stdin.on("data",d=>r+=d).on("end",()=>process.stdout.write(JSON.parse(r).push))')"
 
 if [ "$FAIL" -eq 0 ]; then
   echo

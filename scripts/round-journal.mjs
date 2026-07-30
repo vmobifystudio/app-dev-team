@@ -136,6 +136,20 @@ const totals = (rounds) =>
     { rounds: 0, spawns: 0, retries: 0, refusals: 0, wallClockSec: 0, spendUsd: 0, spendReported: false },
   );
 
+// A COUNTER CANNOT BE NEGATIVE. `num()` accepts any finite number, so `--spawns -60` after 60
+// recorded spawns summed to zero and cleared the ceiling — the economic brake on an unattended
+// /app-run, removed by one flag. Counters are monotone by nature; a negative one is malformed
+// input, not a correction. Reported by codex on PR #14.
+const count = (label, v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) {
+    process.stderr.write(`round-journal: ${label} must be a non-negative number (got ${JSON.stringify(v)}). ` +
+      'A negative counter would subtract from the running total and clear a ceiling that has already been reached.\n');
+    process.exit(2);
+  }
+  return n;
+};
+
 const ceilings = (flags) => ({
   rounds: num(flags['max-rounds'], num(process.env.APP_TEAM_MAX_ROUNDS, DEFAULTS.rounds)),
   spawns: num(flags['max-spawns'], num(process.env.APP_TEAM_MAX_SPAWNS, DEFAULTS.spawns)),
@@ -157,12 +171,12 @@ const cmdAppend = (flags, path) => {
     round,
     tickets: list(flags.tickets),
     verdicts: parsePairs(flags.verdicts),
-    retries: num(flags.retries),
-    refusals: num(flags.refusals),
-    spawns: num(flags.spawns),
+    retries: count('--retries', flags.retries ?? 0),
+    refusals: count('--refusals', flags.refusals ?? 0),
+    spawns: count('--spawns', flags.spawns ?? 0),
     // "ios-developer=2,qa-engineer=1" — same shape as --verdicts, same parser.
     agents: parsePairs(flags.agents),
-    wallClockSec: num(flags['wall-clock-sec']),
+    wallClockSec: count('--wall-clock-sec', flags['wall-clock-sec'] ?? 0),
     // null, not 0: "not measurable in this harness" and "cost nothing" are different claims.
     spendUsd: flags['spend-usd'] === undefined ? null : num(flags['spend-usd'], null),
     note: typeof flags.note === 'string' ? flags.note : '',

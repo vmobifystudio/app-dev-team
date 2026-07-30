@@ -313,16 +313,26 @@ function channelIndex(messages) {
  * Returns the obligation it satisfies, or `null` if it satisfies none.
  */
 function obligationOf(message) {
-  if (message.priority === 'fyi') return 'none';
-
-  // A CLOSING kind is held to the hard version of the rule: it must name an artifact or a state
-  // transition, and nothing else counts. "It is a decision" cannot be its own obligation — that is
-  // precisely the message that closes the question and changes nothing, which is DR4-006.
+  // CLOSING KINDS ARE CHECKED BEFORE THE FYI EXEMPTION, not after.
+  //
+  // `if (priority === 'fyi') return 'none'` used to run first, so `--kind answer --priority fyi`
+  // and `--kind decision --priority fyi` were accepted with no artifact and no transition. That is
+  // not a harmless label: `pairQuestions` treats `answer` and `decision` as RESOLVING kinds, so the
+  // open question was marked closed while nothing whatsoever was delivered. DR4-006 exactly, through
+  // a door left open by the escape hatch that exists for messages which decide nothing.
+  //
+  // "This closes the question" and "this needs no action" are contradictory claims. A message cannot
+  // make both, so the closing rule wins and `fyi` cannot be used to smuggle a closure past it.
+  // Reported by codex on PR #13, and it means the dry-run-5 H6 verdict was overstated: the
+  // obligation rule held for default priority and not for this one.
   if (CLOSING_KINDS.has(message.kind)) {
     if (message.artifact) return 'artifact';
     if (message.transition) return 'transition';
     return null;
   }
+
+  // The escape hatch, now that it can no longer be pointed at a closing kind.
+  if (message.priority === 'fyi') return 'none';
 
   if (message.artifact) return 'artifact';
   if (message.transition) return 'transition';

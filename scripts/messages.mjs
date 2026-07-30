@@ -274,6 +274,16 @@ function cmdArtifact(type, options) {
   const spec = ARTIFACT_TYPES[type];
   if (!spec) die(`unknown artifact type "${type}" — one of ${Object.keys(ARTIFACT_TYPES).join(', ')}`);
   if (!options.by) die('--by <role> is required: an artifact with no author is an artifact with no owner');
+  // AND IT MUST BE A DECLARED WRITER. `--by` was checked only for non-emptiness even though
+  // ARTIFACT_TYPES names the permitted writers for each type, so any role could author a WAIVER —
+  // the formal exemption every downstream role is instructed to treat as authoritative — and no
+  // later check flagged the mismatch. A waiver anyone can write is not an exemption, it is a
+  // bypass with paperwork. Reported by codex on PR #13.
+  if (Array.isArray(spec.writers) && spec.writers.length && !spec.writers.includes(options.by)) {
+    die(`"${options.by}" may not author a ${type} — that belongs to ${spec.writers.join(', ')}.\n` +
+      '  An artifact type declares its writers because the artifact carries their authority; an author ' +
+      'outside that list is asserting an authority they do not have.');
+  }
   if (!options.title) die('--title "<one line>" is required');
 
   for (const field of spec.requires) {
