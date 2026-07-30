@@ -215,10 +215,25 @@ if (!existsSync(MATRIX)) {
   // and an invention fail differently: an omitted role is a gate nobody knows is missing, and an
   // invented one is a promise nothing can keep.
   const ROSTER = join(ROOT, 'docs/02-team-roster.md');
-  if (existsSync(ROSTER)) {
+  if (!existsSync(ROSTER)) {
+    // FAIL CLOSED. This was `if (existsSync(ROSTER))`, so a deleted, renamed or unpackaged template
+    // silently skipped the drift check and the doctor reported coherent — the check standing down
+    // in precisely the state where `/app-init` and `/app-onboard` cannot copy the file they require.
+    // "Absent" is not "fine"; it is the check being unable to run, which is exit-2 reasoning applied
+    // to a finding. Reported by codex on PR #5.
+    add(findings, 'roster_template_missing', 'docs/02-team-roster.md',
+      'The roster template is absent. /app-init and /app-onboard copy it into every new project and fill it in from the activation matrix, so without it no project can be staffed — and the matrix-vs-roster drift check cannot run at all.',
+      'Restore docs/02-team-roster.md with one row per role in skills/role-activation/SKILL.md.');
+  } else {
+    const rosterText = readFileSync(ROSTER, 'utf8');
     const rosterRoles = new Set(
-      [...readFileSync(ROSTER, 'utf8').matchAll(/^\|\s*([a-z][a-z0-9-]*)\s*\|/gm)].map((m) => m[1])
+      [...rosterText.matchAll(/^\|\s*([a-z][a-z0-9-]*)\s*\|/gm)].map((m) => m[1])
     );
+    if (rosterRoles.size === 0) {
+      add(findings, 'roster_template_empty', 'docs/02-team-roster.md',
+        'The roster template exists but no role rows parsed out of it. A template that produces zero roles is indistinguishable from one that lists them all, to every check downstream of it.',
+        'Restore the role table, one row per role in the activation matrix.');
+    }
     for (const role of rosterRoles) {
       if (!seen.has(role)) {
         add(findings, 'roster_role_not_in_matrix', 'docs/02-team-roster.md',

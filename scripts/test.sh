@@ -3650,17 +3650,57 @@ assert_exit 1 "...but verify still REPORTS the break rather than refusing to run
 # day it is written, and a new read path that forgets to verify turns this red without anyone
 # remembering to extend the test.
 #
-# `verify` is the one documented exemption and is asserted separately above.
-CMDS=$(grep -oE "^    case '[a-z]+'" "$HERE/board.mjs" | grep -oE "'[a-z]+'" | tr -d "'" | grep -v '^verify$')
-CHAIN_LEAKS=""
+# EACH SUBCOMMAND GETS VALID ARGUMENTS, and the bar is exit 2 with the chain diagnostic — not
+# "some nonzero exit". The first version of this sweep ran every subcommand as `<cmd> C-001`, so
+# `move` and `assign` exited 1 in ARGUMENT VALIDATION without ever reaching `loadLog`. Two of the
+# six commands were therefore unmeasured, and if either later bypassed the integrity-checked read
+# path this assertion would have stayed green for it.
+#
+# That is the fourth time in this work that a probe was answered by an earlier layer than the one
+# under test, and the first three are written up in the dry-run-5 register. It happened here, in
+# the assertion written to prevent exactly this class, which is the most useful data point in the
+# file: "a refusal is only evidence if you know which layer refused" is not a lesson you learn once.
+# Found by code review (codex on PR #7), not by me.
+#
+# Two documented exemptions, and they must be JUSTIFIED rather than merely listed:
+#   verify   — its job is to REPORT the break; a command that dies on encountering one reports
+#              nothing. Asserted separately above as exit 1 with the diagnostic.
+#   migrate  — reads `docs/31-board.md` (Markdown) and emits a fresh log. It never opens the event
+#              log, so there is no chain for it to check. Exempt by construction, not by decision.
+#
+# Anything not in the table below fails the sweep, so a NEW subcommand cannot be added without
+# someone classifying it. That is the property the original sweep had and the fix must not lose.
+chain_args() {
+  case "$1" in
+    add)    echo "add C-002 --title Second --by tech-manager" ;;
+    move)   echo "move C-001 done_reported --by ios-developer" ;;
+    assign) echo "assign C-001 --to ios-developer --by tech-manager" ;;
+    show)   echo "show C-001" ;;
+    render) echo "render" ;;
+    *)      echo "" ;;
+  esac
+}
+CMDS=$(grep -oE "^    case '[a-z]+'" "$HERE/board.mjs" | grep -oE "'[a-z]+'" | tr -d "'" \
+        | grep -vE '^(verify|migrate)$')
+CHAIN_LEAKS=""; CHAIN_SWEPT=""
 for c in $CMDS; do
-  bm "$CH" "$c" C-001 >/dev/null 2>&1
-  [ $? -eq 0 ] && CHAIN_LEAKS="$CHAIN_LEAKS $c"
+  args=$(chain_args "$c")
+  if [ -z "$args" ]; then
+    CHAIN_LEAKS="$CHAIN_LEAKS $c(unclassified)"
+    continue
+  fi
+  # shellcheck disable=SC2086
+  out=$(bm "$CH" $args 2>&1); rc=$?
+  if [ "$rc" -ne 2 ] || ! printf '%s' "$out" | grep -q 'audit chain'; then
+    CHAIN_LEAKS="$CHAIN_LEAKS $c(exit $rc)"
+  else
+    CHAIN_SWEPT="$CHAIN_SWEPT $c"
+  fi
 done
 if [ -n "$CHAIN_LEAKS" ]; then
-  bad "no board.mjs subcommand succeeds against a rewritten log" "these exited 0:$CHAIN_LEAKS"
+  bad "every board.mjs subcommand refuses a rewritten log with exit 2" "not exit 2 + chain diagnostic:$CHAIN_LEAKS"
 else
-  ok "no board.mjs subcommand succeeds against a rewritten log (swept:$(echo " $CMDS" | tr '\n' ' '))"
+  ok "every board.mjs subcommand refuses a rewritten log with exit 2 (swept:$CHAIN_SWEPT · exempt: verify migrate)"
 fi
 
 # Deleting a line is the same class and must not be quieter.

@@ -3,7 +3,7 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-07-30 · **Branch:** `revamp/phase-r-fixes` · **Suite:** 733 assertions green
+**Last updated:** 2026-07-30 · **Branch:** `revamp/phase-r-fixes` · **Suite:** 735 assertions green
 
 ---
 
@@ -40,24 +40,32 @@ closed and re-probed by execution.
 
 ### CI now proves things it could not prove locally
 
-GitHub Actions billing is on and the workflow has four jobs:
+GitHub Actions billing is on. **Three workflows, and their triggers are a cost decision** — the
+expensive two deliberately skip the intermediate PRs of a stacked review, because those stack into
+each other rather than into a release.
 
-| Job | Runner | What it establishes |
-|---|---|---|
-| `checks` | ubuntu | the suite, `team-doctor`, plugin validation |
-| `mutation` | ubuntu | `mutate.sh --sample 4` — the suite can go red |
-| `lab` | ubuntu | `studio-eval.mjs` — planted defects caught, clean project not blocked |
-| **`runtime-gate`** | **macos-15** | **the runtime gate, executed against real Xcode** — plus the FULL mutation catalogue, which is too slow for the PR job |
+| Workflow | Runner | Trigger | What it establishes |
+|---|---|---|---|
+| `checks` | ubuntu | push to main + every PR | the suite, `team-doctor`, `mutate.sh --sample 4`, `studio-eval.mjs` |
+| `runtime gate` | **macos-15** | **PRs into main** + dispatch | the runtime gate against real Xcode — FAIL for `eval/crash-on-launch`, PASS for the same fixture repaired |
+| `mutation (full catalogue)` | ubuntu | **PRs into main** + dispatch | all 31 mutations, `cancel-in-progress: false` so it can actually finish |
 
-The macOS job is the one that closed this repo's largest self-declared blind spot. See §7 below.
+The macOS job closed this repo's largest self-declared blind spot. See §7.
+
+**Do not put a long job behind `cancel-in-progress: true`.** The full catalogue was started four
+times and completed zero, cancelled mid-flight by the next push every time. A check that never
+finishes reports nothing.
 
 ### Not started
 
 - **P3c** evidence/design/release rooms · metrics (DORA/flow/quality).
 - **P0.3–P0.6 are HALF done.** The adversarial pass ran: see
-  `docs/research/2026-07-30-dry-run-5-findings.md`. **Four of fourteen hypotheses have verdicts.**
-  H8, H2 (board layer), H12 held; H13 was falsified and fixed as DR5-001. The pipeline half — H1,
-  H3–H7, H9–H11, H14 — is untouched, including the two predicted before the run to be likeliest
+  `docs/research/2026-07-30-dry-run-5-findings.md`. **Six of fourteen hypotheses have verdicts.**
+  H8, H2 (board layer), H12 and H6 held; **H13 and H7 were falsified** and fixed as DR5-001 and
+  DR5-002. H6 held with DR5-003 left open beside it. **H7 is only HALF answered** — the artifact
+  contradicting the matrix is fixed, but whether the roles actually spawn per the matrix in a live
+  run is still unprobed. The pipeline half — H1, H3, H4, H5, H9, H10, H11, H14 — is untouched,
+  including H3, predicted before the run to be among the likeliest
   to fail.
 
 **`/app-ship` has still never executed.** Autonomous release stays disabled until it has.
@@ -113,11 +121,12 @@ These are earned, not stylistic. Violating one is how every serious defect in th
 
 ## 5. What to do next, in order
 
-1. **Finish dry run 5 — the pipeline half.** Ten hypotheses have no verdict. Run intake through
-   `/app-ship` on a fresh utility-tier project, then H9 (prompt injection planted in a README),
+1. **Finish dry run 5 — the pipeline half.** Eight hypotheses have no verdict. Run intake through
+   `/app-ship` on a fresh utility-tier project (H1), then H9 (prompt injection planted in a README),
    H10 (conflicting PRD/SRS), H11 (no false PASS with the toolchain absent), H14 (no claim the
-   repository contradicts). **H7 first** — the eleven new roles' activation matrix has never been
-   exercised by a real run and was predicted to be the likeliest failure.
+   repository contradicts), H3 (`product-validator` against a real PRD), H4, H5.
+   **Finish H7 while you are there** — DR5-002 fixed the artifact that contradicted the activation
+   matrix, but whether the roles actually SPAWN per that matrix in a live run is still unprobed.
 2. **Final review** — the team's own `code-reviewer` and `security-reviewer` over
    `main...revamp/phase-r-fixes`, which is now a very large diff.
 3. **Collapse the PR stack** — `#2 → main`, `#3 → #2`, `#4 → #3`, plus everything merged since.
@@ -172,7 +181,7 @@ only external oracle.
 rather than asserted — that is real, and it was the largest self-declared blind spot. Four
 adversarial hypotheses have verdicts. Against that: one of the four was **falsified** (DR5-001, the
 audit chain guarded the write and not the read, found by probing rather than by review), it was
-**FC-001 recurring one day after the rule against FC-001 shipped**, and ten hypotheses remain
+**FC-001 recurring one day after the rule against FC-001 shipped**, and eight hypotheses remain
 untouched. The system's own recurrence flag caught it and blocked — which is the most reassuring
 fact in this section, and it is reassuring about the *instrument*, not about the code.
 

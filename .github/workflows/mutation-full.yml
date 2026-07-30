@@ -33,7 +33,13 @@ concurrency:
 jobs:
   mutation-full:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 31 mutations, each re-running the whole suite, plus one baseline run: 32 suite runs.
+    # Measured 77s per run locally and ~112s in a CI checkout, so the real cost is 41–60 minutes.
+    # A 45-minute cap would have killed it just short of finishing, which is the SAME failure this
+    # workflow was extracted to fix — a check that cannot complete reports nothing, it just reports
+    # it more expensively. Ubuntu minutes are the cheap ones; headroom here costs almost nothing and
+    # a timeout costs the entire signal. Reported by codex on PR #6, whose arithmetic was right.
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
