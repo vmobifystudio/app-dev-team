@@ -3,7 +3,7 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-07-29 · **Branch:** `revamp/phase-r-fixes` · **Suite:** 503 assertions green
+**Last updated:** 2026-07-30 · **Branch:** `revamp/phase-r-fixes` · **Suite:** 733 assertions green
 
 ---
 
@@ -34,23 +34,31 @@ closed and re-probed by execution.
 
 `#2` Phase 0 → `main` · `#3` Phase 1 → #2 · `#4` Phase R → #3. All green, stacked.
 
-### Building now (each in its own git worktree)
+**All merged into `revamp/phase-r-fixes` as of 2026-07-30:** P4 (evaluation laboratory) · P1
+(product-intent loop) · S (security hardening) · P2 (team expansion on the revised bar) · P3a
+(message event log) · **P3b (the control room, five screens, `control-room/`)**.
 
-- **P4** — evaluation laboratory (`eval/`, `scripts/studio-eval.mjs`)
-- **P1** — product-intent loop (founder-intent vault, `product-validator`, `scripts/trace.mjs`)
-- **S** — security hardening (capabilities, signed events, redaction, kill switch)
+### CI now proves things it could not prove locally
+
+GitHub Actions billing is on and the workflow has four jobs:
+
+| Job | Runner | What it establishes |
+|---|---|---|
+| `checks` | ubuntu | the suite, `team-doctor`, plugin validation |
+| `mutation` | ubuntu | `mutate.sh --sample 4` — the suite can go red |
+| `lab` | ubuntu | `studio-eval.mjs` — planted defects caught, clean project not blocked |
+| **`runtime-gate`** | **macos-15** | **the runtime gate, executed against real Xcode** — plus the FULL mutation catalogue, which is too slow for the PR job |
+
+The macOS job is the one that closed this repo's largest self-declared blind spot. See §7 below.
 
 ### Not started
 
-- **P3b** minimum control room (5 screens) · **P2** roles on the revised bar · **P3c**
-  evidence/design/release rooms · metrics.
-
-  (**P3a** — structured comms backend — is built on its own worktree branch: `docs/team/messages.jsonl`
-  as a schema-v1 event log, Markdown generated, message obligations, derived channels, formal
-  artifacts, and the anti-ping-pong guard unified into `scripts/lib/messages.mjs`.)
-- **P0.3–P0.6**: dry run 5 (full pipeline through `/app-ship`), adversarial runs, proof that release
-  cannot be self-approved, evidence bundle. **Deferred by owner decision: finish the code first,
-  then validate the complete system rather than an intermediate one.**
+- **P3c** evidence/design/release rooms · metrics (DORA/flow/quality).
+- **P0.3–P0.6 are HALF done.** The adversarial pass ran: see
+  `docs/research/2026-07-30-dry-run-5-findings.md`. **Four of fourteen hypotheses have verdicts.**
+  H8, H2 (board layer), H12 held; H13 was falsified and fixed as DR5-001. The pipeline half — H1,
+  H3–H7, H9–H11, H14 — is untouched, including the two predicted before the run to be likeliest
+  to fail.
 
 **`/app-ship` has still never executed.** Autonomous release stays disabled until it has.
 
@@ -72,9 +80,15 @@ not on what happened to be installed.
 | **Local-first** | Repos, credentials and evidence stay on the machine | Remote later as a control plane receiving *selected events* — never shell or filesystem access |
 | **Shared contract** | `studio-event-schema/v1`, versioned | The plugin must be correct with the UI absent. The UI enhances visibility; it is never required for correctness |
 
-**Worth installing when needed:** Node 22+ (for the SQLite projection), the frontend toolchain (for
-`control-room/`), Xcode (the runtime gate's build/launch paths are the only thing this repo cannot
-mutation-test, and that gap is the largest remaining blind spot).
+**Worth installing when needed:** Node 22+ (for the SQLite projection) and the frontend toolchain
+(for `control-room/`).
+
+**Xcode is no longer on that list — the gap is closed.** It was described here as "the largest
+remaining blind spot", and the answer turned out not to be installing Xcode locally but renting it:
+the `runtime-gate` job on `macos-15` runs `runtime-gate.sh` against `eval/crash-on-launch` and
+asserts **exit 1**, then repairs the single force-unwrap and asserts **exit 0** on the otherwise
+identical app. Both executed on Xcode 16.4 with real simulator runtimes. The second assertion is
+the load-bearing one; without it the first is satisfied by a gate that fails everything.
 
 ---
 
@@ -99,37 +113,46 @@ These are earned, not stylistic. Violating one is how every serious defect in th
 
 ## 5. What to do next, in order
 
-1. **Merge the three in-flight worktree branches** (P4, P1, S). Expect semantic conflicts —
-   resolve by asking which layer each side fixed, not by picking a side. The `ship-gate` conflict on
-   2026-07-29 was two correct fixes on two layers; taking either alone would have lost one.
-2. **P3a** — structured comms backend: event schema v1, threads, channels, decisions, questions.
-   JSONL now, shaped so the SQLite projection drops in.
-3. **P3b** — five screens only: Mission Control · Communications · Board · Team · Founder Inbox.
-4. **P2** — roles on the revised bar: a trigger, a contract tier, a spawn site, and a reason it
-   cannot be a skill.
-5. **P0.3–P0.6** — dry run 5 through `/app-ship`, hypotheses written first; adversarial runs;
-   evidence bundle. **Only after this may autonomous release be enabled.**
-6. **P3c**, then metrics (DORA/flow/quality) — *after* there is a real pipeline to measure. Metrics
+1. **Finish dry run 5 — the pipeline half.** Ten hypotheses have no verdict. Run intake through
+   `/app-ship` on a fresh utility-tier project, then H9 (prompt injection planted in a README),
+   H10 (conflicting PRD/SRS), H11 (no false PASS with the toolchain absent), H14 (no claim the
+   repository contradicts). **H7 first** — the eleven new roles' activation matrix has never been
+   exercised by a real run and was predicted to be the likeliest failure.
+2. **Final review** — the team's own `code-reviewer` and `security-reviewer` over
+   `main...revamp/phase-r-fixes`, which is now a very large diff.
+3. **Collapse the PR stack** — `#2 → main`, `#3 → #2`, `#4 → #3`, plus everything merged since.
+4. **P3c**, then metrics (DORA/flow/quality) — *after* there is a real pipeline to measure. Metrics
    on a system that has never shipped are theatre.
+
+**Only after step 1 may autonomous release be enabled.**
 
 ---
 
 ## 6. Standing verification commands
 
 ```bash
-sh scripts/test.sh                 # the suite            (503 green)
+sh scripts/test.sh                 # the suite            (733 green)
 node scripts/team-doctor.mjs       # the team definition  (coherent)
 sh scripts/mutate.sh --sample 4    # can the suite go red
-sh scripts/mutate.sh               # full run, ~17 min
+sh scripts/mutate.sh               # full run, ~17 min — or let the macos CI job do it
+node scripts/studio-eval.mjs       # the evaluation laboratory
 node scripts/portfolio.mjs         # N projects by attention needed
 ```
 
-**The one probe that must never regress** — argument injection, from the security review:
+**The one probe that must never regress** — argument injection, from the security review.
+
+⚠️ **The transition must be LEGAL for the ticket's current state.** The version printed here until
+2026-07-30 used `todo → unblocked`, which is illegal for every role, so the state machine refused
+before `parseArgs` was ever reached — the probe passed without testing anything, for weeks. This is
+the failure mode dry run 5 hit twice. **A refusal is evidence only when you know which layer
+refused.**
 
 ```bash
 echo SENTINEL > victim.txt
-node scripts/board.mjs move APP-001 unblocked --by tech-manager --detail "--board=$PWD/victim.txt"
-head -1 victim.txt        # must still read SENTINEL
+node scripts/board.mjs add APP-001 "probe" --by tech-manager
+node scripts/board.mjs move APP-001 blocked --by tech-manager --detail "--board=$PWD/victim.txt"
+head -1 victim.txt        # must still read SENTINEL — and the move must have EXITED 0,
+                          # because a refusal here means you tested the state machine again
 ```
 
 ---
@@ -145,5 +168,16 @@ commands have been exercised once, `/app-ship` never, and the product-intent loo
 the team writes the spec it implements and tests against. P1 narrows that. Real users remain the
 only external oracle.
 
+**What 2026-07-30 changed, and what it did not.** The runtime gate's central claim is now executed
+rather than asserted — that is real, and it was the largest self-declared blind spot. Four
+adversarial hypotheses have verdicts. Against that: one of the four was **falsified** (DR5-001, the
+audit chain guarded the write and not the read, found by probing rather than by review), it was
+**FC-001 recurring one day after the rule against FC-001 shipped**, and ten hypotheses remain
+untouched. The system's own recurrence flag caught it and blocked — which is the most reassuring
+fact in this section, and it is reassuring about the *instrument*, not about the code.
+
+Nine planted defects in the evaluation lab still have **no detector at all**, six of them S1. That
+number has not moved.
+
 Do not let a green suite convince you otherwise. That is the mistake this entire document exists to
-prevent.
+prevent — and on 2026-07-30 a green suite was, once again, not enough.
