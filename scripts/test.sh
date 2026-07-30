@@ -1081,6 +1081,12 @@ process.exit(j.findings.some(f=>f.code==="contract_drift")?1:0);
 # than the run against the real tree above.
 PLUG="$TMP/plugin"; mkdir -p "$PLUG"
 cp -R "$HERE/../agents" "$HERE/../commands" "$HERE/../skills" "$HERE/../knowledge" "$PLUG/"
+# The roster template, and ONLY it, out of docs/. The roster-drift check (DR5-002) reads it, and
+# without it here that check silently no-ops against the scratch plugin — a seeded defect nothing
+# reports, which is the failure mode this whole harness exists to avoid. Copying all of docs/ would
+# drag the doc-graph checks into a tree with no project docs and make them say something false.
+mkdir -p "$PLUG/docs"
+cp "$HERE/../docs/02-team-roster.md" "$PLUG/docs/"
 
 # Regression: the skill-exists check was gated behind a hard-coded whitelist of eleven skill names,
 # all of which existed — so it could report a missing skill only for a skill that was not missing.
@@ -1126,6 +1132,26 @@ restore_matrix
 assert_finding "$TMP/tdmx2.json" matrix_role_unknown \
   "a matrix row for a role that does not exist blocks" "ux-architectt"
 restore_matrix
+
+# DR5-002. The matrix decides activation; docs/02-team-roster.md is the template every project is
+# generated from. Nothing compared them, and they drifted for as long as the split had existed: the
+# template named `ux-designer` (deleted by P2) and omitted TWELVE matrix roles including
+# `release-auditor`, whose only reason to exist is that release-manager must not evaluate its own
+# release. Both directions, because they fail differently — an omission is a gate nobody knows is
+# missing, an invention is a promise nothing can keep.
+ROSTER="$PLUG/docs/02-team-roster.md"
+cp "$ROSTER" "$TMP/roster-pristine.md"
+
+grep -v '^| release-auditor |' "$TMP/roster-pristine.md" > "$ROSTER"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdr1.json" 2>/dev/null
+assert_finding "$TMP/tdr1.json" roster_role_missing \
+  "a matrix role with no roster row blocks" "release-auditor"
+
+{ cat "$TMP/roster-pristine.md"; echo '| ux-designer | active | a role that no longer exists |'; } > "$ROSTER"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdr2.json" 2>/dev/null
+assert_finding "$TMP/tdr2.json" roster_role_not_in_matrix \
+  "...and a roster row for a role the matrix does not know blocks" "ux-designer"
+cp "$TMP/roster-pristine.md" "$ROSTER"
 
 # Two rows for one role is not a duplicate to tidy up later: they can disagree, and whichever is
 # read second silently wins.

@@ -201,6 +201,40 @@ if (!existsSync(MATRIX)) {
         'Keep exactly one row per role.');
     }
   }
+  // DR5-002. The matrix decides activation; `docs/02-team-roster.md` is the TEMPLATE that
+  // `/app-init`, `/app-onboard` and `/app-run` copy into every new project and "fill in from the
+  // matrix". Nothing compared the two, so they drifted: the template still named `ux-designer`
+  // (split into ux-architect + product-designer, agents/ux-designer.md deleted) and silently
+  // omitted TWELVE matrix roles — among them `product-validator` and `release-auditor`, the two
+  // roles whose whole justification is independent authority. An agent starting from the template
+  // would produce a roster that staffs a role nothing can spawn and never mentions the role that
+  // exists so `release-manager` cannot approve its own release.
+  //
+  // The checks above validate matrix -> agents. This validates matrix -> the artifact a human
+  // reads, which is the direction DR5-001 also went wrong in. Both directions, because an omission
+  // and an invention fail differently: an omitted role is a gate nobody knows is missing, and an
+  // invented one is a promise nothing can keep.
+  const ROSTER = join(ROOT, 'docs/02-team-roster.md');
+  if (existsSync(ROSTER)) {
+    const rosterRoles = new Set(
+      [...readFileSync(ROSTER, 'utf8').matchAll(/^\|\s*([a-z][a-z0-9-]*)\s*\|/gm)].map((m) => m[1])
+    );
+    for (const role of rosterRoles) {
+      if (!seen.has(role)) {
+        add(findings, 'roster_role_not_in_matrix', 'docs/02-team-roster.md',
+          `The roster template has a row for "${role}", which has no row in the activation matrix. Every project generated from this template starts by staffing a role activation never decides on.`,
+          `Remove the row, or give "${role}" a matrix row in skills/role-activation/SKILL.md.`);
+      }
+    }
+    for (const role of seen.keys()) {
+      if (!rosterRoles.has(role)) {
+        add(findings, 'roster_role_missing', 'docs/02-team-roster.md',
+          `"${role}" is in the activation matrix and has no row in the roster template. A role missing from the roster is not "off" — it is unaccounted for, and nothing downstream reports its gate as N/A.`,
+          `Add a "${role}" row with its state and the reason, taken from the matrix.`);
+      }
+    }
+  }
+
   // Every product type must name at least one IC that can own an implementation ticket, or be
   // declared unstaffed. `web-app` and `cli` were declared supported with no role able to build
   // either: the ticket strands with no spawnable owner, or lands on backend-developer and gets

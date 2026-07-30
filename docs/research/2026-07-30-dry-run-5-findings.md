@@ -17,12 +17,18 @@ and its output, or it is marked NOT YET RUN.
 | **H2** | `release-manager` cannot satisfy `release-auditor` — separation of duties | **HELD at the board layer** | §3 |
 | **H12** | kill switch halts spawning mid-run | **HELD, including fail-closed** | §4 |
 | **H13** | audit chain detects a hand-edited log | **FALSIFIED, then fixed** | §5 — this is DR5-001 |
-| H1, H3–H7, H9–H11, H14 | — | **NOT YET RUN** | the pipeline half |
+| **H7** | the eleven new roles activate per the matrix | **FALSIFIED at the artifact layer, then fixed** | §6 — this is DR5-002 |
+| H1, H3–H6, H9–H11, H14 | — | **NOT YET RUN** | the pipeline half |
 
-**Four of fourteen.** Saying "the adversarial pass went well" on that basis would be the exact
-error this document exists to prevent. Ten hypotheses are untouched, and among them are the two I
-predicted in advance were likeliest to fail (H7, the eleven new roles' activation matrix; H3,
-`product-validator` on a real PRD).
+**Five of fourteen, and two of the five were falsified.** Saying "the adversarial pass went well"
+would be the exact error this document exists to prevent.
+
+The hypotheses file predicted, before any of this ran, that **H7 was the likeliest to fail**. It
+did — §6. That is the *prediction* working, not the system: the failure was there to be found and
+the only reason it was found is that someone went looking where they had already written down they
+expected trouble. **H3, the second-likeliest**, is still unprobed.
+
+Nine hypotheses remain untouched, all of them needing the pipeline half.
 
 ---
 
@@ -150,7 +156,60 @@ being caught by hand.
 
 ---
 
-## 6. The runtime gate, finally executed
+## 6. DR5-002 — the roster template contradicted the matrix that governs it · **S1, FIXED**
+
+**H7 said:** the eleven new roles activate per the matrix — none spawns outside its trigger, none
+that should is absent. Testing that properly needs a pipeline run. Testing whether the *artifact
+activation produces* agrees with the matrix needs only two greps, and it does not.
+
+`docs/02-team-roster.md` is the **template** that `/app-init`, `/app-onboard` and `/app-run` copy
+into every new project and, in their own words, "fill in from `role-activation`'s matrix". Compared
+against that matrix:
+
+```
+in the TEMPLATE but not in the MATRIX:   ux-designer          ← agents/ux-designer.md does not exist;
+                                                                P2 split it into ux-architect + product-designer
+in the MATRIX but not in the TEMPLATE:   chief-of-staff · privacy-reviewer · product-designer ·
+                                         product-manager · product-researcher · product-validator ·
+                                         red-team-agent · release-auditor · reliability-engineer ·
+                                         test-automation-engineer · ux-architect · web-developer
+```
+
+**Twelve omissions and one invention.** `team-doctor` validated matrix → `agents/` and reported
+coherent, because nothing ever compared the matrix to the artifact a human reads.
+
+Two of the twelve are why this is S1 rather than S2:
+
+- **`release-auditor`** exists for one reason — separation of duties, so `release-manager` cannot
+  be the sole evaluator of an irreversible action. A project generated from this template never
+  mentions it. §3 proved the *mechanism* holds; this finding is that the mechanism could have been
+  quietly unstaffed at project creation, which is a more effective attack than defeating it.
+- **`product-validator`** is P1's entire answer to the closed epistemic loop, and it was missing
+  from the roster P1 shipped alongside.
+
+The file also asserted **"All 19 roles get a row"** while carrying 18 rows against a 29-role
+matrix, and claimed `web-app` is unstaffed when the matrix marks it staffed. Three self-contradicting
+statements in one artifact — DR4-010's class exactly.
+
+**Fix:** the template regenerated from the matrix's mobile-app column, all 29 rows with states and
+triggers. The hardcoded count is gone: a number somebody typed is one more thing that goes stale.
+
+**The rule, so it cannot drift again:** `team-doctor` now compares the two files in **both**
+directions — `roster_role_missing` and `roster_role_not_in_matrix` — because an omission and an
+invention fail differently. An omitted role is a gate nobody knows is missing; an invented one is a
+promise nothing can keep.
+
+**Proven by** seeding each defect separately in the scratch plugin: deleting the `release-auditor`
+row fires `roster_role_missing`; appending a `ux-designer` row fires `roster_role_not_in_matrix`;
+reverting both returns the tree to coherent. The scratch plugin needed the roster copied into it —
+without that the new check silently no-ops there, which would have been a seeded defect nothing
+reports, in the harness built to prevent exactly that.
+
+735 assertions green.
+
+---
+
+## 7. The runtime gate, finally executed
 
 Not a hypothesis — a hole this repo has been honest about since `mutate.sh` first listed
 `runtime-gate.sh` as NOT MUTATABLE HERE. Its central claim is that an app which **builds** is not
@@ -185,15 +244,15 @@ CI job where the proof does run, so the exclusion cannot be misread as unproven.
 
 ---
 
-## 7. What this run has NOT established
+## 8. What this run has NOT established
 
-Stated plainly, because the four verdicts above are the kind of result that invites overclaiming.
+Stated plainly, because the five verdicts above are the kind of result that invites overclaiming.
 
 - **`/app-ship` has still never executed.** H1 and the real form of H2 are untested. Autonomous
   release stays disabled.
-- **H7 — the eleven new roles' activation matrix has never been exercised by a real run**, only by
-  `team-doctor`'s static check. I predicted before the run that this is the likeliest to fail and
-  it remains unprobed.
+- **H7 is only half-answered.** DR5-002 caught the artifact contradicting the matrix. Whether the
+  roles actually *spawn* per the matrix in a live run — none outside its trigger, none absent that
+  should be there — still needs the pipeline.
 - **H3 — `product-validator` has never seen a real PRD.**
 - **H9, H10, H14** — prompt injection in a repo README, conflicting PRD/SRS, and agent claims the
   repository contradicts — all require the pipeline half.
@@ -201,6 +260,10 @@ Stated plainly, because the four verdicts above are the kind of result that invi
   unchanged by anything in this document.
 - **The product-intent loop is narrowed, not closed.** Real users remain the only external oracle.
 
-Two of four verdicts came from probes that initially tested the wrong thing and looked like passes.
-That ratio is the most useful number in this file, and it applies to the ten hypotheses below the
-line as much as to the four above it.
+Two of the five probes initially tested the wrong thing and the wrong result looked like a pass —
+both times the state machine answered before the mechanism under test was reached. And two of the
+five hypotheses that *were* tested properly turned out to be false.
+
+Those two ratios are the most useful numbers in this file. They say nothing good or bad about the
+nine untested hypotheses; they say that the testing itself needs the same suspicion as the thing
+being tested, and that a hypothesis nobody has probed carries no information at all.
