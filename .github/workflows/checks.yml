@@ -232,11 +232,28 @@ jobs:
             *) echo "FAIL — unexpected exit $rc"; exit 1 ;;
           esac
 
+      - name: Reset the simulator between the two proofs
+        # The mirror test compares two runs, so the two runs must START THE SAME. They did not: the
+        # step above leaves a crashed build of studio.eval.SplitEven installed on the device it
+        # booted, and the repaired run then reinstalled over it and `simctl launch` failed —
+        # verdict FAIL, for a working app, on the second run of the same commit that had passed on
+        # the first.
+        #
+        # That failure was REAL and it was mine, not the gate's: two runs from different starting
+        # states are not a comparison, they are two anecdotes. Erasing between them is what makes
+        # the pair mean anything.
+        #
+        # `|| true` is safe here and nowhere else in this file: this is teardown of a device the
+        # previous step may or may not have booted, not a check whose verdict could be masked.
+        run: |
+          xcrun simctl shutdown all || true
+          xcrun simctl erase all || true
+
       - name: THE MIRROR TEST — repair the defect and the same gate must PASS
         # Without this step the step above is satisfied by a gate that fails everything, which
         # scores 100% on detection and is useless. Repairing the one force-unwrap and watching the
         # verdict flip is the only thing that shows the gate is reading the app rather than the
-        # weather. Same fixture, same command, one line different.
+        # weather. Same fixture, same command, one line different, same clean device.
         run: |
           cat > eval/crash-on-launch/src/App.swift <<'SWIFT'
           import SwiftUI
