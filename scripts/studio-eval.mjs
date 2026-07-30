@@ -353,5 +353,26 @@ if (cleanResult && cleanResult.length > 0) {
   process.exit(1);
 }
 
+// A TARGETED RUN THAT MEASURED NOTHING IS NOT A PASS.
+//
+// `--only accessibility-violation` selects a fixture with no detector; `--only crash-on-launch`
+// selects one whose detector needs a toolchain absent here. Either way the loop records the
+// exclusion, scores nothing, and fell through to "The lab passes" at exit 0 — the documented
+// targeted-run interface returning green for a run that evaluated no gate at all. Automation
+// cannot tell that from a real pass, which is exactly the shape this laboratory exists to detect
+// in other people's code.
+//
+// Exit 2, the same CANNOT EVALUATE the gates use: not "the studio failed", not "the studio
+// passed", but "this run cannot answer the question". Reported by codex on PR #9.
+if (scored === 0) {
+  process.stdout.write(
+    `CANNOT EVALUATE: ${only ? `--only ${only} selected` : 'this run selected'} no scorable project.\n` +
+      `  ${unreachable.length} unreachable here, ${gaps.length} with no detector at all — both named above.\n` +
+      '  Nothing was measured, so there is no verdict to report. This is not a pass.\n' +
+      (only ? '  Run without --only for the full lab, or pick a project with an expected_detector.\n' : '')
+  );
+  process.exit(2);
+}
+
 process.stdout.write('Every scored defect was caught, and the clean project shipped. The lab passes.\n');
 process.exit(0);

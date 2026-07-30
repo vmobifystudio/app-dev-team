@@ -3975,6 +3975,20 @@ assert_has "$TMP/lablist.txt" "NO DETECTOR EXISTS" \
   "...and says which planted defects nothing can find, rather than omitting them"
 assert_exit 2 "an unknown --only project is CANNOT RUN, not an empty pass" node "$LAB" --only no-such-project
 
+# A --only that selects a project with NO DETECTOR, or one whose detector is unreachable here,
+# scores nothing — and used to fall through to "The lab passes" at exit 0. The documented targeted-run
+# interface returned green for a run that evaluated no gate at all, which automation cannot tell from
+# a real pass. Reported by codex on PR #9.
+#
+# PROVEN BY: reverting the `scored === 0` branch — both of these went green at exit 0.
+assert_exit 2 "--only a defect with no detector is CANNOT EVALUATE, not a pass" \
+  node "$LAB" --only accessibility-violation
+assert_exit 2 "--only a defect unreachable on this host is CANNOT EVALUATE, not a pass" \
+  node "$LAB" --only crash-on-launch
+# The control. Without it, "make every --only exit 2" would satisfy the two above and measure nothing.
+assert_exit 0 "...but --only a SCORABLE defect still runs and passes" \
+  node "$LAB" --only fake-test-command
+
 # The full run. Every scored defect caught, and — the half that is just as easy to lose — the clean
 # project not blocked by anything.
 assert_exit 0 "the lab passes against this tree" node "$LAB"
