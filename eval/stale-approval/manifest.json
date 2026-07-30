@@ -1,0 +1,9 @@
+{
+  "name": "stale-approval",
+  "defect": "APP-100 was approved at 09:00Z. Two commits landed on its branch at 11:20Z and 11:44Z, one of them changing the rounding mode the reviewer signed off. The ledger still shows one approval, and the row still says done.",
+  "expected_detector": null,
+  "expected_signal": null,
+  "severity": "S1",
+  "why": "board-doctor checks that an approval EXISTS and that it did not come from the owner. It does not compare the approval's timestamp against the code it approved, because the board carries no commit SHA to compare against.",
+  "gap": "No detector, and the missing input is structural: no board field records what was approved. Until an approval names a commit, \"approved\" is a claim about a moment, not about a diff. This is FC-005 in advance — a check nobody can write because nobody writes its input."
+}

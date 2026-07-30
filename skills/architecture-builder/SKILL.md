@@ -12,13 +12,19 @@ Produce `docs/20-architecture.md` and `docs/21-engineering-principles.md` from `
 1. **Platform decision** — iOS / Android / both, with order if sequential.
 2. **iOS stack** —
    - Swift version (latest stable)
-   - Minimum iOS target (set based on the PRD's user, not vanity)
+   - Minimum iOS target — resolve `knowledge/stack-defaults.md`'s relative rule (flagship =
+     latest major minus one) to a **concrete number** here, and record how you resolved it
    - UI: SwiftUI by default; UIKit only if PRD demands something SwiftUI struggles with
-   - State: ObservableObject + @State, or a documented store pattern
+   - State: `@Observable` + `@MainActor` on ViewModels only (Combine / `@Published` /
+     `ObservableObject` are forbidden — `knowledge/ios-conventions.md`)
    - Networking: URLSession + async/await, or a named lib
-   - Persistence: SwiftData / Core Data / GRDB — pick by PRD complexity
+   - Persistence: SwiftData (content apps) or GRDB+SQLite/FTS5 (camera/media) — pick by PRD complexity
    - DI: lightweight — protocol + initializer injection
-   - Testing: XCTest, snapshot lib named, UI test framework named
+   - Testing: **Swift Testing** (`@Test`/`@Suite`) for unit and domain tests, not XCTest. **UI
+     automation stays XCUITest** — it is XCTest-based, has no Swift Testing equivalent, and
+     `runtime-gate` runs it, so a blanket "never XCTest" would ban the suite the release gate
+     expects. Name the snapshot lib. State the coverage floor for the pure-Swift domain engine
+     package (`knowledge/stack-defaults.md`)
 3. **Android stack** —
    - Kotlin version
    - minSdk / targetSdk (set based on PRD users)
@@ -26,9 +32,9 @@ Produce `docs/20-architecture.md` and `docs/21-engineering-principles.md` from `
    - Architecture: MVVM or MVI, picked once
    - Networking: Retrofit + OkHttp + Kotlinx Serialization (or named alternative)
    - Persistence: Room (or named alternative)
-   - DI: Hilt or Koin
+   - DI: Hilt (flagship) or Koin (utility tier)
    - Async: Coroutines + Flow
-   - Testing: JUnit, Turbine, Compose UI test
+   - Testing: JUnit, Turbine, **MockK**, **Paparazzi** (screenshot), Compose UI test
 4. **Shared concerns** — auth, analytics, crash reporting, feature flags, remote config, push.
 5. **Backend interface** — sketch the APIs the apps need. If backend is in scope, name the service shape.
 6. **Repository layout** —

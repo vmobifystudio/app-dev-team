@@ -6,24 +6,6 @@
  * skill exists to catch.
  */
 
-const KNOWN_OWNERS = new Set([
-  'ios-developer',
-  'android-developer',
-  'backend-developer',
-  'monetization-engineer',
-  'ux-designer',
-  'qa-engineer',
-  'devops-engineer',
-  'data-analyst',
-  'aso-specialist',
-  'security-reviewer',
-  'release-manager',
-  'code-reviewer',
-  'verification-engineer',
-  'tech-lead',
-  'tech-manager',
-]);
-
 /**
  * Roles the /app-build loop can actually spawn to WORK a ticket.
  *
@@ -39,16 +21,61 @@ const BUILD_SPAWNABLE_OWNERS = new Set([
   'ios-developer',
   'android-developer',
   'backend-developer',
+  'web-developer',
   'monetization-engineer',
-  'ux-designer',
+  'ux-architect',
+  'product-designer',
+  'product-manager',
+  'product-researcher',
   'qa-engineer',
+  'test-automation-engineer',
   'data-analyst',
   'devops-engineer',
   'aso-specialist',
   'verification-engineer',
 ]);
 
+/**
+ * Every role that may appear in a ticket's `Owner` column.
+ *
+ * DERIVED from BUILD_SPAWNABLE_OWNERS, never hand-listed alongside it. These were two independent
+ * literals, and they drifted the moment P2 split `ux-designer` into `ux-architect` +
+ * `product-designer`: the spawnable list was updated, this one was not, so `board-doctor` reported
+ * `owner_invalid` for `ux-architect`, `product-designer`, `web-developer`, `product-manager`,
+ * `product-researcher` and `test-automation-engineer` — every role that expansion added. A board
+ * cannot name an owner the loop can spawn. Deriving it means the next role is added in one place.
+ *
+ * The extras are the roles that own a ticket but are never spawned BY the build loop: they are
+ * assigned work by a gate or a command instead.
+ */
+const KNOWN_OWNERS = new Set([
+  ...BUILD_SPAWNABLE_OWNERS,
+  'security-reviewer',
+  'release-manager',
+  'code-reviewer',
+  'tech-lead',
+  'tech-manager',
+]);
+
 const VALID_STATUS = new Set(['todo', 'in_progress', 'review', 'qa', 'done', 'blocked']);
+
+/**
+ * Statuses where the sprint loop can still act on the ticket.
+ *
+ * `qa`/`done` are terminal and `blocked` is already surfaced by its own checks, so a rule about
+ * "what should happen next" must not fire on them. The review-cycle cap did, and a ticket that
+ * legitimately spent its two cycles and then merged stayed flagged as a BLOCKING anomaly forever —
+ * the pre-spawn gate went permanently red on any sprint that had ever used its review budget.
+ */
+const ACTIVE_STATUS = new Set(['todo', 'in_progress', 'review']);
+
+/**
+ * Statuses that mean "this sprint is not finished". Used by the ship gate.
+ *
+ * `blocked` belongs here: a blocked ticket is unfinished work with a reason attached, not an
+ * exemption. Leaving it out let a sprint with a blocked ticket ship silently.
+ */
+const IN_FLIGHT_STATUS = new Set([...ACTIVE_STATUS, 'blocked']);
 const POST_REVIEW_STATUS = new Set(['qa', 'done']);
 const LEDGER_ACTIONS = new Set(['requested', 'started', 'changes', 'approved', 'merged']);
 const MAX_REVIEW_CYCLES = 2;
@@ -58,12 +85,20 @@ const EMPTY_CELL = new Set(['', '-', '—', '–', 'n/a', 'none', 'tbd']);
 // parsing
 // --------------------------------------------------------------------------------------------
 
+/**
+ * Split a Markdown table row into cells, honouring the `\|` escape the renderer writes.
+ *
+ * `.split('|')` did not, and the writer and the reader disagreeing about one character is a silent
+ * column shift: a ticket titled `Export CSV | TSV` pushed Owner into the Title cell, Status into
+ * Owner, and `—` into Status — so the ticket had no status and dropped out of every status-keyed
+ * consumer (the ship gate's in-flight check included) while the board still rendered a row.
+ */
 function splitRow(line) {
   return line
     .replace(/^\s*\|/, '')
-    .replace(/\|\s*$/, '')
-    .split('|')
-    .map((cell) => cell.trim());
+    .replace(/(?<!\\)\|\s*$/, '')
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.replace(/\\\|/g, '|').trim());
 }
 
 const isSeparatorRow = (line) => /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(line) && line.includes('-');
@@ -92,7 +127,18 @@ const HEADER_ALIASES = {
   notes: 'notes',
 };
 
-/** Locate the widest pipe table in the file and return its rows keyed by canonical column name. */
+/**
+ * Locate the TICKET table in the file and return its rows keyed by canonical column name.
+ *
+ * "First pipe table with an id-ish header" is not the same thing, and the difference is a live
+ * defect: `Ticket` aliases to `id`, so a board whose review ledger is written above the ticket
+ * table parsed the LEDGER as the board — every ticket vanished and the doctor reported a clean
+ * sprint. Anchor on the columns only the ticket table has (status + owner) so the ledger, the
+ * message ledger and any other id-bearing table can never be mistaken for it.
+ *
+ * A board whose Status column is absent or renamed therefore yields NO rows. That is deliberate:
+ * callers must treat "no ticket table" as "cannot evaluate", never as "nothing to report".
+ */
 function parseBoard(text) {
   const lines = text.split(/\r?\n/);
   let header = null;
@@ -103,6 +149,8 @@ function parseBoard(text) {
     if (!isSeparatorRow(lines[i + 1])) continue;
     const cells = splitRow(lines[i]);
     if (!cells.some((cell) => normalizeHeader(cell) === 'id' || /^app-?nnn$/i.test(cell))) continue;
+    const canonical = cells.map((cell) => HEADER_ALIASES[normalizeHeader(cell)] || normalizeHeader(cell));
+    if (!canonical.includes('status') || !canonical.includes('owner')) continue;
     header = cells;
     headerIndex = i;
     break;
@@ -125,6 +173,14 @@ function parseBoard(text) {
     columns.forEach((name, index) => {
       record[name] = (cells[index] ?? '').replace(/`/g, '').trim();
     });
+    // `qa (static only)` — the renderer's marker for a ticket verified without running its test
+    // suite. Split it back into a plain status plus a flag: every downstream check (status_invalid,
+    // POST_REVIEW_STATUS, the ship gate) keys on the bare word and would otherwise read a legally
+    // generated board as malformed. A hand-written board that never carries the suffix is untouched.
+    if (/\(static only\)/i.test(record.status || '')) {
+      record.status = record.status.replace(/\s*\(static only\)\s*/i, '').trim();
+      record.staticOnly = true;
+    }
     // Skip the format-example row some boards carry (APP-NNN / F-NNN placeholders).
     if (/^APP-?NNN$/i.test(record.id || '')) continue;
     if (!record.id) continue;
@@ -172,6 +228,12 @@ function parseLedger(text) {
     entries.push({
       _line: i + 1,
       timestamp: timestamp.trim(),
+      // `migrate` reconstructs events it could not date and the renderer writes `inferred` in the
+      // timestamp cell — which is the ONLY trace of provenance a ledger row carries. Nothing read
+      // it, so a reconstructed approval satisfied the approval requirement exactly like a real one,
+      // while board.mjs's own migration report calls it "not evidence". The migration was honest
+      // and the renderer laundered it. Surfaced here so every consumer can tell the two apart.
+      inferred: timestamp.trim().toLowerCase() === 'inferred',
       ticketId: ticketId.trim(),
       action,
       known,
@@ -189,6 +251,16 @@ function parseLedger(text) {
 // --------------------------------------------------------------------------------------------
 
 const isEmpty = (value) => EMPTY_CELL.has((value ?? '').trim().toLowerCase());
+
+/**
+ * Normalise the PREFIX of a ticket ID and nothing else — the one spelling rule, in the one place.
+ *
+ * scripts/board.mjs stopped upcasing whole IDs (the bug-intake convention is `BUG-001-fix`, and a
+ * grep for the documented spelling found nothing on a board that had the ticket). board-doctor and
+ * the dashboard kept their own `id.toUpperCase()` and put `BUG-001-FIX` back — and the doctor is
+ * precisely the tool a human copies an ID out of and pastes into the CLI.
+ */
+const normalizeId = (id) => String(id ?? '').replace(/^[A-Za-z]+/, (prefix) => prefix.toUpperCase());
 
 /**
  * Ticket IDs are `<PREFIX>-<NUMBER>` with an optional trailing word — the bug-intake convention in
@@ -232,6 +304,8 @@ export {
   KNOWN_OWNERS,
   BUILD_SPAWNABLE_OWNERS,
   VALID_STATUS,
+  ACTIVE_STATUS,
+  IN_FLIGHT_STATUS,
   POST_REVIEW_STATUS,
   LEDGER_ACTIONS,
   MAX_REVIEW_CYCLES,
@@ -241,6 +315,7 @@ export {
   parseBoard,
   parseLedger,
   isEmpty,
+  normalizeId,
   parseDependencies,
   findBlockingAncestor,
   detectCycle,
@@ -261,7 +336,7 @@ export function parseMessages(text) {
     if (!line.includes('|') || isSeparatorRow(line)) continue;
     const cells = splitRow(line);
     if (cells.length < 6) continue;
-    const [timestamp, from, to, ticketId, kind, summary] = cells;
+    const [timestamp, from, to, ticketId, kind, summary, body] = cells;
     if (!/^\d{4}-\d{2}-\d{2}/.test(timestamp.trim())) continue;
     entries.push({
       _line: i + 1,
@@ -271,9 +346,88 @@ export function parseMessages(text) {
       ticketId: ticketId.trim(),
       kind: kind.trim().toLowerCase(),
       summary: summary.trim(),
+      // The Body column was parsed off and thrown away, so every reader saw a one-line ledger while
+      // team-message.sh had been writing the detail all along. The dashboard needs it: the artifact
+      // an answer was folded into is named in the body, and without it every answered question read
+      // as "delivered nowhere".
+      body: (body || '').trim(),
     });
   }
   return entries;
+}
+
+const RESOLVING_KINDS = new Set(['answer', 'decision']);
+
+/**
+ * Pair a ticket's questions with the resolutions that closed them.
+ *
+ * board-doctor pairs questions and resolutions BY COUNT on a ticket, so every reader must resolve to
+ * the same number or the renderer and the validator disagree about one ledger. Counting alone cannot
+ * NAME a row, and both tech-lead (which must answer the specific question) and the dashboard (which
+ * must show question → answer → the artifact it was folded into) need the pairing itself. Oldest
+ * first: each `answer`/`decision` closes the earliest still-open question on that ticket, so
+ * `open.length` is exactly doctor's `questions.length - resolutions.length`.
+ *
+ * Lives here, not in a renderer, because it was written twice the moment a second consumer wanted
+ * it — which is how the two readings of one board this file's header warns about begin.
+ */
+export function pairQuestions(thread) {
+  const open = [];
+  const answered = [];
+  for (const m of thread) {
+    if (m.kind === 'question') open.push(m);
+    else if (RESOLVING_KINDS.has(m.kind)) {
+      const question = open.shift();
+      if (question) answered.push({ question, resolution: m });
+    }
+  }
+  return { open, answered };
+}
+
+export const openQuestions = (thread) => pairQuestions(thread).open;
+
+/**
+ * Parse `docs/51-bugs.md` — qa-engineer's bug board.
+ *
+ * Here for the reason ship-inflight is here: the open-S1/S2 count decides releases, and it was a
+ * pair of inline greps in ship-gate.sh with nothing else able to read the file. When the portfolio
+ * needed the same number across N projects, the choice was one parser or a second reader — and the
+ * grep it replaces had already fail-opened once (`[^\n]` in a POSIX bracket expression is "not
+ * backslash, not the letter n", so the gate reported 0 open S1/S2 with two open).
+ *
+ * A row is a bug when the line carries a bolded `**BUG-NNN**` and a bolded `**S1..S4**`. It is
+ * closed when the same line says FIXED, CLOSED or WONTFIX — uppercase, because "fixed" in a prose
+ * sentence is a claim, not a state.
+ */
+export function parseBugs(text) {
+  const bugs = [];
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    // Both spellings, because the gate and the agent that feeds it must agree. This matched only
+    // bolded rows (`**BUG-001** … **S1**`) while agents/qa-engineer.md's template is plain
+    // pipe-delimited (`BUG-NNN | Ticket | Severity | …`), so the only files that ever matched were
+    // the fixtures written to satisfy it — and a real board carrying an S1 "crashes on launch"
+    // produced RESULT: CLEAR. The severity must still be bolded or in its OWN CELL, so the word
+    // "S1" inside a description is not mistaken for a bug row.
+    const id = line.match(/\*\*(BUG-\d+)\*\*/) || line.match(/(?:^|\|)\s*(BUG-\d+)\b/);
+    const severity =
+      line.match(/\*\*(S[1-4])\*\*/) || line.match(/\|\s*(S[1-4])\s*(?=\|)/);
+    if (!id || !severity) continue;
+    const cells = splitRow(line);
+    bugs.push({
+      id: id[1],
+      severity: severity[1],
+      closed: /\b(FIXED|CLOSED|WONTFIX)\b/.test(line),
+      ticket: (cells[1] || '').replace(/\*\*/g, '').trim(),
+      line: line.trim(),
+    });
+  }
+  const open = bugs.filter((b) => !b.closed);
+  return {
+    bugs,
+    open,
+    blocking: open.filter((b) => b.severity === 'S1' || b.severity === 'S2'),
+    deferred: open.filter((b) => b.severity === 'S3' || b.severity === 'S4'),
+  };
 }
 
 /**

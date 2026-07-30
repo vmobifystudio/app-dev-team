@@ -3,6 +3,332 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.0.0] — 2026-07-30
+
+The revamp. 74 commits, **48 → 751 assertions**, and the first release whose own documentation
+leads with what is *not* finished.
+
+**What is new**
+- **Event-sourced board and message log.** `docs/31-board-events.jsonl` and `docs/team/messages.jsonl`
+  are the sources; the Markdown is a generated view. Transitions are validated BEFORE the append, so
+  an illegal state is unwritable rather than detected later. Both logs carry a chained hash.
+- **The product-intent loop, narrowed.** `docs/00-founder-intent/` is append-only and hash-checked;
+  `product-validator` compares it to the PRD from outside the cpo/cto/tech-manager chain;
+  `scripts/trace.mjs` fails when the chain from goal to release breaks. **Founder approvals now bind
+  to the value they approved** — approving $3.99/month does not authorize $99/month.
+- **The evaluation laboratory** (`eval/`, `scripts/studio-eval.mjs`). Golden projects with planted
+  defects, scored against the detector named for each. It reports the **nine defects nothing can
+  catch** in its own output rather than scoring around them, and measures the false-positive rate
+  against a clean project that must not be blocked.
+- **Mutation testing** (`scripts/mutate.sh`). 31 gates broken one at a time with the suite re-run
+  after each, because a green suite is evidence only to the extent it could have gone red.
+- **The runtime gate, executed.** A macOS CI job runs it against real Xcode: FAIL for a
+  crash-on-launch fixture, PASS for the same fixture repaired. The second half is the load-bearing
+  one.
+- **29 roles on a stated bar** — an activation trigger, a contract tier, a spawn site, and a reason
+  it cannot be a skill. Activation by tier × product type, failing closed on an unstaffed type.
+- **The control room** (`control-room/`), five screens, leading with why work is not moving. The
+  plugin stays zero-dependency and correct with the UI absent.
+- **Security**: capability enforcement at the append, argument-injection fix, CSRF guard, secret
+  redaction, worktree spawn gate, a kill switch that fails closed on an unreadable file.
+
+**What is honestly not finished** — see `docs/HANDBOOK.md` Part 12. `/app-ship` has never executed;
+eight of dry run 5's fourteen hypotheses have no verdict; nine planted lab defects have no detector,
+six of them S1. Autonomous release stays disabled.
+
+## [Unreleased] — Security hardening (S.1–S.7)
+
+The threat this plugin actually has is not a web form. It spawns autonomous agents that run shell
+commands, write files and drive git in someone's repository. These are the controls for that, and
+each one was watched refuse before it was watched pass.
+
+- **S.1 Capability enforcement at the append (`scripts/lib/capabilities.mjs`).** Gate events
+  (`verified`, `verified_static`, `rejected`, `approved`, `changes`, `merged`, `qa_passed`,
+  `qa_failed`, `closed`) now have a closed list of roles. A designer or doc role cannot merge; a
+  developer cannot approve or verify; `release-manager` appears in no evidence row, so the role that
+  decides a build ships cannot author the evidence that it is shippable; QA cannot write
+  `qa_passed` on a ticket it owns. A gate event with **no `--by` is refused** — an unattributed
+  approval is the thing the audit chain exists to make impossible. Work events are untouched.
+- **S.2 One argument parser (`scripts/lib/args.mjs`).** `board.mjs`'s injection fix was copied into
+  `round-journal.mjs`, `portfolio.mjs` and `studio-dashboard.mjs` — three hand-rolled loops with the
+  same hole. `--note "--journal=/tmp/x"` wrote the budget ledger to an attacker-chosen path, so the
+  ceilings that stop an unattended run were computed from an empty file. Also fixed: `team-message.sh`
+  hung forever on a value-less flag (`shift 2` with one argument left does not shift), and
+  `runtime-gate.sh` interpolated an agent-supplied path into two `sh -c` strings.
+- **S.3 Tamper-evident event log.** Every appended event carries
+  `hash = sha256(previous-hash + canonical(event))`. `board.mjs verify` locates a break to a line;
+  the CLI **refuses to append to a rewritten log**; `ship-gate.sh` blocks a release on one. A log
+  written before this existed still works — the chain anchors on the raw bytes of the unhashed
+  prefix, so editing a legacy line breaks the first chained line. This proves the log was not
+  rewritten. It does **not** prove who wrote a line; that is `by`, enforced separately.
+- **S.4 Credential redaction at the write (`scripts/lib/redact.mjs`).** `board.mjs` filters every
+  free-text ticket field, `team-message.sh` filters summary and body, the dashboard filters the state
+  it renders and exports — each says out loud that it redacted. `--scan` fails on a credential-shaped
+  string in a generated artifact and is wired into `security-reviewer`'s checklist. Documented
+  placeholders (`<your-key>`, `${VAR}`, `xxxx`, `REDACTED`) are not credentials.
+- **S.5 Repository content is DATA (`scripts/injection-scan.mjs`).** A detector for
+  instruction-shaped text — `ignore previous instructions`, `you are now`, role headers, chat and
+  tool-call markup, exfiltration phrasing — in files an agent is about to read. It **reports and
+  never strips**: editing someone's repository destroys evidence and teaches the reader that
+  survivors are safe. Guidance added to `ic-workflow` and to `code-reviewer`'s check list.
+- **S.6 Kill switch and per-agent ceilings.** `echo "reason" > .studio-stop` (or `APP_TEAM_STOP`)
+  halts every spawn at the next gate, with no code edit and no restart; `spawn-gate.sh` and
+  `round-journal.mjs check` both refuse while it is set, and an agent never clears it.
+  `round-journal.mjs --agents role=N` adds a per-role spawn ceiling, because the studio total reads
+  healthy while one role burns 59 of 60 spawns on one ticket. It halts *spawning* — agents already
+  running are not killed, and the docs say so.
+- **S.7 Repository controls (`scripts/repo-controls.sh`, `docs/24-repository-controls.md`).**
+  `--check` reports protected branch, required status checks, required non-self review, production
+  environment approval and secret push protection; `--print` emits the `gh` commands and runs
+  nothing. No `gh` is exit `2 CANNOT EVALUATE`, never a pass. These are the only controls in the
+  studio an agent cannot switch off, which is why they are written down apart from the rest.
+- **Seven new mutations (M17–M23)**, each proving its own assertion bites. `spawn-gate.sh`'s three
+  refusal paths were routed through one `refuse()` so M01's anchor stays unique.
+
+## [Unreleased] — P3a: the team channel becomes an event log
+
+- **`docs/team/messages.jsonl` is now the team channel, and `docs/team/messages.md` is generated
+  from it.** Schema `studio-event-schema/v1`, versioned in every record, append-only — the same move
+  `docs/31-board-events.jsonl` made for the board, for the same reason: a message that breached a
+  rule used to be writable and then detectable. **Not SQLite:** `node:sqlite` is stdlib only from
+  Node 22.5 and this plugin ships to users on Node 20 (LTS into 2026). The schema is shaped so a
+  SQLite projection drops in later as an *index built from the log*, never as the primary
+  (`docs/RESUME.md` §3).
+- **Nothing is stranded.** A project that has only the Markdown ledger is migrated on its first
+  send. The migration **announces itself** and marks every reconstructed record
+  `provenance: "inferred"` with `inferred_fields` naming exactly what it invented — priority,
+  status, thread, the follow-up round. `ts` is the one field genuinely sourced. `board-doctor` and
+  `messages-render` migrate *in memory* and never rewrite a project's files.
+- **Message obligations.** Every material message must yield one of four things: a decision, a state
+  transition, an artifact update, or a timed follow-up. A message with none is **refused at send
+  time**, with the code, the reason and the remedy — and nothing is written. The sharp edge: an
+  `answer` or `decision` that names no artifact is refused outright. **A closed ledger is not
+  delivery (DR4-006)** — "every question answered" was the metric that hid it. `--kind fyi` is the
+  escape hatch and must be chosen; nothing defaults into it.
+- **Threads and channels are derived.** `#founder-decisions` · `#product` · `#design` ·
+  per-platform · per-ticket · `#artifacts` are computed from who sent what to whom about what.
+  Nothing subscribes, nothing is filed. `node scripts/messages.mjs channels` lists them. Same rule
+  as the board's Markdown: a view may only show what the log can produce.
+- **Formal artifacts with IDs, writers and readers.** `ADR` (`docs/24-adr/`) · `PDR`
+  (`docs/16-pdr/`) · `DDR` (`docs/17-ddr/`) · `WAIVER` (`docs/72-waivers/`) · `INCIDENT`
+  (`docs/73-incidents/`) · `ASSUMPTION` (`docs/25-assumptions/`). One command
+  (`messages.mjs artifact <TYPE>`) writes the file **and** registers it on the channel, because a
+  file nobody knows exists and a claim with no content fail identically. Each has a `DOC_WRITERS`
+  row and a real reader. **A `WAIVER` without `--expires` is refused, and an expired waiver is a
+  finding** (`waiver_expired`); an `ASSUMPTION` requires `--owner`, `--confidence` and
+  `--validate-by`, and goes `assumption_unvalidated` once the date passes.
+- **The anti-ping-pong guard is one implementation.** It lived in `team-message.sh` (awk),
+  `board-doctor.mjs` and `messages-render.mjs` — three files, **two different windows**: the script
+  counted pairs over the trailing 40 rows and refused a chain at `>= 4` roles, the doctor counted the
+  whole thread and warned only above 4. A ledger the script had happily written was a breach to the
+  doctor, and a chain it refused was invisible. Now `scripts/lib/messages.mjs` owns it;
+  `team-message.sh` calls it to refuse a send and `board-doctor` calls it to audit a log written by
+  hand. New limits, each proven to fire: **duplicate question** refused · **mandatory escalation**
+  after one unresolved round · **per-ticket discussion budget** of 12 (the pair and chain caps bound
+  *who* talks; nothing bounded *how much*) · **no reopening a decided thread** without
+  `--evidence`.
+- **`team-message.sh` shrank to a front door.** It keeps the one job it was always right about —
+  resolving the ledger against the git root, never the cwd — and hands the rest to
+  `scripts/messages.mjs`. Arguments reach node as an argv array and are never interpolated into a
+  shell, so the old five-field escaping dance is gone with the Markdown table that required it.
+  Every existing flag still works.
+- **`messages-render.mjs` reads the log.** New `DELIVERY` block (answers and decisions that named
+  nothing), `EXPIRY` block (waivers and assumptions past their dates), `CHANNELS` block, and a
+  per-ticket budget on every thread. Guard numbers are imported, not restated.
+- **Fail closed on an unknown schema.** A record with `v !== 1` makes `board-doctor` exit **2 —
+  cannot evaluate**, never a pass. A damaged log rendered as an empty channel is a board reported
+  clean because its questions were unreadable.
+- **Proven red-then-green.** `mutate.sh` gains M24–M31 and retargets M11/M12 at the shared guard:
+  obligation, duplicate question, reopen-without-evidence, mandatory escalation, ticket budget,
+  waiver expiry, schema-version check, and generated-view overwrite. Each was run alone and caught
+  by the assertion written for it. Suite 503 → 546 on the branch; 657 → 703 merged.
+
+## [Unreleased] — Phase 5: isolation becomes a mechanism, and the loop gets a brake
+
+- **`scripts/spawn-gate.sh` — the orchestrator can no longer forget worktree isolation.** Given the
+  ticket IDs about to be spawned, it exits `1 REFUSED` when two or more writing agents exist and any
+  of them lacks a worktree, names them, and prints the `git worktree add` line for each; `0 GO` when
+  all are isolated; `0 GO … SERIALIZED` for a lone writer (the legal "or serialize" branch, stated so
+  it reaches the standup); `2 CANNOT EVALUATE` outside a git repo, which is never a pass.
+  `/app-build` step 2 and `parallel-orchestrator` step 2a run it as the last command before the
+  launch message. **Why:** DR4-027 — the operator who had spent a day hardening the isolation prose
+  then spawned two writers into one checkout; one `git stash` + `git reset` discarded 22 files of the
+  other's work, and recovery was luck. A rule broken by the person best placed to remember it is a
+  rule that needs an exit code.
+- **The destructive-command ban is now explicit.** `git reset`, `git stash`, `git checkout -- .`,
+  `git clean` join `git add -A` / `git add .` as banned for any agent sharing a tree, in
+  `agent-isolation` Rule 2, `parallel-orchestrator` and `/app-build`'s Safety list — with the
+  alternative named: copy the repo to a temp dir if you need a clean tree to test.
+- **`scripts/round-journal.mjs` — one JSONL line per round, and the loop's first economic brake.**
+  `docs/33-rounds.jsonl` records tickets waved, verdicts, retries, refusals, spawns, wall-clock and
+  spend; `check` stops the loop and reports *which* ceiling was reached (`--max-rounds`,
+  `--max-spawns`, `--max-retries`, `--max-spend-usd`, or `APP_TEAM_MAX_*`) instead of continuing
+  silently; `/app-status` prints the trend and the position every time. **Token spend is not
+  measurable in this harness and nothing pretends otherwise** — `spendUsd` stays `null` and every
+  reader says so rather than printing a number nobody measured.
+- **Model escalation on retry.** A re-spawn after `REQUEST CHANGES` runs one tier up
+  (`haiku → sonnet → opus`, capped); a `rejected` verify-done retry does not escalate, because
+  nothing was reviewed. Specified in `/app-build` step 4, `parallel-orchestrator` step 6a, and
+  CONTRIBUTING.
+- **Warm managers, documented as optional.** Where the harness has named agents + `SendMessage`,
+  `tech-manager`/`tech-lead` may persist across a sprint. All durable state stays in files, so the
+  modes are interchangeable mid-sprint; respawn-per-round remains the portable default.
+- **One canonical auditor list (RV-019).** It lives in `agents/code-reviewer.md`; `/app-audit` points
+  at it instead of keeping a second copy that drifts. Detect-else-degrade is spelled out: an absent
+  auditor produces a stated `N/A` plus a hand-covered dimension, never a silent skip. Every external
+  skill reference across `agents/`, `knowledge/` and `skills/` is marked external-and-optional
+  (DR4-011), asserted by the suite so a new one cannot be added unmarked.
+- Suite: 210 → **259 assertions**, each new one proven to fail against the old behaviour first.
+## [Unreleased] — Phase 6: the checks that had no way to fail
+
+**210 → 295 assertions.** Every check below was confirmed to FAIL against a deliberately broken
+fixture before it was trusted: 21 mutations were applied to the scripts one at a time, and each was
+caught by at least one new assertion. Nothing here was certified by reading.
+
+### The doc graph is declared, not guessed (RV-035)
+
+`team-doctor`'s old check counted *mentions* — "referenced in exactly one file" — which cannot tell
+a producer from a consumer, so four documents written and never read looked healthy. It also printed
+`.md` onto every name it reported, including `docs/31-board-events.jsonl`; a tool that names a file
+which does not exist is a tool people stop believing.
+
+Every `docs/NN-*` now has a declared producer in `DOC_WRITERS`, and four blocking findings:
+`doc_undeclared` (an artifact nobody owns — DR4-019's shape), `doc_unread` (RV-035 itself),
+`doc_writer_silent` (the producer moved and the declaration is stale) and `doc_unused`.
+
+### One spelling per path (RV-031)
+
+The daily fragment had **five** spellings across the corpus — `<today>` vs `<date>` vs `YYYY-MM-DD`,
+`<role>` vs `<agent>` vs `<your-role>` — and `/app-build` matched exactly one of them. Every agent
+using one of the other four wrote a fragment the standup never found and the loop reported a clean
+round. 13 variant spellings normalised; `path_spelling` blocks any new one. The canonical patterns
+must also still be published in `team-protocol`'s paths table, or that blocks too — a script
+enforcing a rule its own documentation no longer states is a rule enforcing itself.
+
+### Generated CI must be able to go red (DR4-023, DR4-024)
+
+In dry run 4 the devops agent wrote a workflow whose build and test steps both ended
+`| xcbeautify || true`, so a failing test exited zero — it would have shipped the run's real money
+bug green — and ran `brew install swiftlint` while the project's own principles ban SwiftLint by
+name. Both became prose rules in `devops-engineer`. Prose is what produced the defect. `ship-gate.sh`
+now reads the generated workflows and blocks on a masked exit code (`|| true`, `continue-on-error`,
+a build piped with no `pipefail`) or an undeclared install.
+
+### Assertion gaps closed (RV-039)
+
+- **`runtime-gate` FAIL(1) and PASS(0) are executed.** The largest script here had its two
+  consequential verdicts covered by nothing — `WORST=1` could have been deleted and the suite stayed
+  green. Both arms now run end to end against stubbed `gradlew`/`adb`/`aapt2`, including
+  crash-on-launch. `RUNTIME_GATE_BUILD_TIMEOUT` exists in the source specifically to make the timeout
+  branch testable and had never been set by a test; it is now.
+- **`board-render`** — exit 2 on a missing or unparseable board, and the *rendered values*: ticket
+  counts, per-column tallies, owner load, stranded chains. It had "does not crash" and nothing else.
+- **`ship-gate`** — the QA-hold and deferred S3/S4 notes, neither of which changes an exit code, so
+  deleting either left the suite green.
+- **`team-message`** — an unrecognised `--kind` and an unknown argument, plus the half that matters:
+  neither refusal writes a row.
+- **`--json` schema stability** for `board-doctor` and `board.mjs show`, asserted as exact key sets.
+
+### Fixed while writing the checks
+
+- **DR4-008 survived one layer past its fix.** `board.mjs` stopped upcasing ticket IDs so
+  `BUG-001-fix` reaches the board; `board-render.mjs` upcased it again on the way to the terminal
+  and to `docs/32-board-view.md`. A grep for the documented spelling still found nothing on the
+  surface people actually look at. Found by asserting the values, which is the whole point.
+
+## [1.5.0] — The gates now fail closed, and something finally runs the app
+
+A full-system review — all 18 agents, 11 commands, 12 skills, 9 scripts, 8 knowledge packs — found
+that the team would break on its first real run, and that **almost every defect was fail-open**: a
+gate that silently passed, a ticket that silently dropped, a flow that dead-ended. The suite ran
+green at 48 assertions throughout, because nothing tested any of it.
+
+Every fix below was verified by executing it, and every new assertion was confirmed to fail against
+the old behaviour before being trusted.
+
+### Broke a real run
+
+- **`security-reviewer` could not write its own deliverable** — it lacked `Write`/`Edit` while being
+  required to produce `docs/70-security-review.md`, which `/app-ship` gates on.
+- **The iOS audit gate was a dead instruction.** `code-reviewer` and `qa-engineer` are told to spawn
+  Axiom auditor and test-runner agents; neither had the `Task` tool. The ~25-auditor review the
+  README advertises had never once run.
+- **`/app-plan` rejected every single-platform and every brownfield project**, demanding both an iOS
+  and an Android impl spec and then suggesting `/app-init` — which brownfield is explicitly told not
+  to run. `/app-onboard` also never wrote `docs/11-backlog.md`, so the brownfield path could not
+  reach a board at all.
+- **The board went permanently red.** `cycle_cap_breached` was guarded only by `status !== 'blocked'`,
+  so any ticket that legitimately used its two review cycles and merged blocked the pre-spawn gate
+  for the life of the project.
+- **Doc-owning tickets were structurally un-passable.** `ux-designer`, `qa-engineer`,
+  `aso-specialist` and `data-analyst` returned no `Branch:` line, and `verify-done.sh` hard-rejects a
+  missing branch. `verification-engineer` was a spawnable owner with no `DONE` contract at all.
+
+### Gates that fail closed
+
+- **`ship-gate.sh` shipped silently three ways**: a renamed or absent `Status` column returned CLEAR
+  with no output, backticked status cells were invisible to its `awk`, and `blocked` was not counted
+  as in flight. Board reading now goes through `lib/board.mjs` (`scripts/ship-inflight.mjs`) — one
+  parser, as the library header always required.
+- **A three-state contract**, now shared by every gate: `0` clear · `1` blocked by a real condition ·
+  `2` **cannot evaluate**, naming the missing input. Exit 2 is never a pass. Proceeding past it takes
+  a recorded `WAIVED:` line with a human and a reason — because a skipped gate and a waived gate are
+  indistinguishable in a log unless the waiver is written down.
+- **`team-doctor`'s `skill_missing` could never fire**, gated behind a whitelist of eleven names that
+  all existed. It now validates against `skills/` and still ignores external plugin skills.
+- **`verify-done.sh` discarded test output** while instructing the loop to re-spawn the developer
+  "with these failures verbatim". There were none. Output is captured and the tail is printed.
+- **`team-message.sh` sanitised only two of five fields**, so a `|` in a ticket ID corrupted the
+  ledger table and shifted every downstream field. Its guard windows also disagreed with
+  `board-doctor`'s, and ticketless rows all collapsed into one pseudo-thread.
+
+### New: something finally runs the app
+
+Every gate in this repo verified that *the process was followed*. None verified that the artifact
+works — a sprint could go green end to end on an app that does not compile. `defect-hunting` has
+always said *execute constants, never certify by reading*; the team had simply never pointed that at
+the app.
+
+- **`scripts/runtime-gate.sh` + the `runtime-gate` skill** — build, launch, drive the P0 flow, write
+  evidence to `docs/evidence/`. Escalates to `axiom:simulator-tester` / `axiom:test-runner` /
+  XcodeBuildMCP where present. `qa-engineer` runs it; `verification-engineer` certifies it;
+  `/app-build` runs it before the QA wave and `/app-ship` blocks on it.
+- Absent toolchain is **CANNOT EVALUATE**, never a pass. A runtime gate that reports success on a
+  machine that could not run anything is worse than no gate.
+
+### New: ambiguity dies upstream
+
+- **The `spec-critic` skill** runs after the impl specs exist and before any developer is spawned,
+  filing one batch of `question` rows for `tech-lead`. The channel went unused in 10 of 10 dry-run
+  agent-runs because an agent that can proceed will proceed — "declare, don't dispatch" catches the
+  guess after it is made, at the cost of a rework cycle. This removes the ambiguity first. It is a
+  skill invoked by `tech-lead`, deliberately not a nineteenth role.
+- `docs/team/messages.md` is now **scaffolded by `/app-init` and `/app-onboard`**. It never was, and
+  an agent once reported raising a question on a ledger that had never existed.
+
+### Leaner
+
+- **The canonical output contract** now lives once in `team-protocol`, with a CODE and a DOC profile
+  plus a canonical paths table. The daily fragment previously had five spellings, one of which
+  `/app-build` gated on.
+- **~300 lines of duplicated boilerplate removed** from the agent corpus — the team-protocol block
+  alone was copy-pasted into 12 files and into the skill it pointed at. Every line was context paid
+  for on every spawn, every round.
+- `scripts/integration-branch.sh` resolves the merge base from `docs/23-git-strategy.md` instead of
+  four call sites hardcoding `main`, which contradicted the House KB's flagship `develop` model.
+- `code-reviewer` and `verification-engineer` no longer duplicate each other's work or double-spawn
+  the same security scanner: the reviewer **routes** constants and guard rules; the verifier
+  **executes and certifies** them.
+- `release-manager` and `monetization-engineer` moved to opus — the roles doing irreversible actions
+  and money paths were running the cheapest model in the roster.
+
+### Tests
+
+48 → **82 assertions**, covering every defect above. Each was confirmed to fail against the old
+behaviour first. The 1.4.0 note claiming all four `team-message` guard branches were tested firing
+was **false** — only the pair limit was; the per-role cap, chain depth and ticketless-row cases are
+covered now.
+
 ## [1.4.0] — Coordination, isolation, and gates that actually run
 
 What began as "add worktree isolation" grew, across four dry runs, into a release that found and fixed

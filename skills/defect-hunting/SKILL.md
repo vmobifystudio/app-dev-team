@@ -110,27 +110,9 @@ prose.**
 A rule scanning text finds its own documentation. It then passes forever, and — this is the damage —
 **it stops people looking.** No rule at all leaves the question open. A green rule closes it.
 
-### Shell guards fail open by default
-
-The most common unfailable rule is not a `contains()` in application code — it is a shell check
-whose exit status comes from the wrong command:
-
-```bash
-grep -E "pattern" file | sed 's/^/  /' || echo "NOT FOUND"    # sed succeeds on empty input
-cmd | head -1 || handle_error                                  # head's status, not cmd's
-[ -n "$(grep x f)" ] && ok                                     # fine, but silent when grep errors
-```
-
-A pipeline's status is the *last* command's. Gate on the test itself — `if ! grep -q ...; then` —
-and prove it by running the guard against an input you know should fail it.
-
-**And `[^\n]` is not "any character except newline".** In a POSIX bracket expression it means "not a
-backslash and not the letter n". `grep` is line-oriented, so `.` already excludes newlines — write
-`.*`. Using `[^\n]*` made a release gate report zero open blocker bugs while two were open, and the
-behaviour differed between an interactive shell and `sh`, so it passed by hand and failed in the
-script. This was violated while
-writing the rules against it: a merge-gate precondition printed nothing, returned success, and let a
-merge through.
+Shell guards are the worst offenders — a pipeline's exit status is the *last* command's, so a
+grep that finds nothing still reports success. **If you are writing one, read
+`writing-guard-rules.md` beside this file first**; you do not need it to review one.
 
 ### Three defences, ascending
 
@@ -205,9 +187,36 @@ adversarial review rounds never caught ~70 such items, because reviewers check *
 
 ---
 
+## 5. Use the prior — `knowledge/failure-corpus.md` beats this skill's own generality
+
+The four rules above are general. They are true of most codebases and were paid for in a different
+one. **`knowledge/failure-corpus.md` is specific: it is what *this* codebase has actually produced,
+one entry per defect class, each with dated instances and the rule that now claims to catch it.**
+
+A generic checklist enumerates what could go wrong, weighted by nothing. A corpus enumerates what
+*did* go wrong here, weighted by how often and how recently — which is the only prior worth having
+when you have finite attention and an unbounded space of possible defects. Run its **Tells** before
+you improvise your own; they exist because someone already paid for them.
+
+Two obligations, both cheap:
+
+1. **Cite the class ID** in any finding it produced (`FC-004`). An uncited class cannot be checked,
+   and cannot be scored for whether it is earning its place.
+2. **A class that recurs after its rule shipped is the most valuable output in the system** — it says
+   the rule does not work, which you would otherwise learn a third time. `team-doctor` fails on it;
+   `/app-learn`'s failure pass is what puts new instances there. Feed it.
+
+The corpus is downstream of this skill, not a replacement for it: §1–§4 are how you find a defect
+nobody has named yet, and that is how new classes get written.
+
+---
+
 ## Review checklist
 
 Attach to any `code-reviewer` or audit verdict:
+
+- [ ] Ran **every Tell in `knowledge/failure-corpus.md`** against this diff, and cited the class ID
+      for each finding it produced
 
 - [ ] Named the data this change touches, and enumerated **every** writer and reader of it
 - [ ] Checked the edit / cancel / failure / restore / import paths, not just the happy path

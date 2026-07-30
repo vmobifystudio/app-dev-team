@@ -1,14 +1,18 @@
 # ASO & Store Readiness
 
 How Mobify Studio prepares store listings and ships. Pair with the `aso-screenshots` skill
-(screenshot generation) and `axiom-app-store-submission` / `axiom-shipping` (iOS submission).
+(screenshot generation) and `axiom-app-store-submission` / `axiom-shipping` (iOS submission) —
+**external and optional**, separate plugins, not this one's `skills/`. Absent → this pack is the
+authority, and the gap is stated in the readiness report, never filed as a defect.
 
 ## Screenshots — automate the capture
 
 The studio captures screenshots from a seeded build, not by hand:
 
 - **Android:** a `capture_screenshots.sh` script builds the dev/debug flavor, launches a
-  `ScreenshotSeedActivity` that seeds demo data (e.g. child "Emma"), drives N screens via deep
+  `ScreenshotSeedActivity` that seeds a **fixed fictional demo profile** — same names, dates and
+  numbers on every run, so two captures of the same build are byte-comparable and no real user
+  data ever reaches the store — drives N screens via deep
   links, and `adb screencap`s each. Onboarding screens captured manually. Raw PNGs land in
   `playstore_screenshots/raw/` or `screenshots/android-dev/`.
 - **iOS:** capture from the simulator across the required device sizes; raw frames in
@@ -21,8 +25,11 @@ The studio captures screenshots from a seeded build, not by hand:
 - Positioning leads with credibility hooks the studio actually uses (e.g. WHO/CDC standards,
   point counts, AI features, language count, accessibility compliance).
 - Keep iOS description ≤ 4000 chars; Android "What's New" ≤ 500 chars.
-- Keyword research is owned by the `aso-specialist`; record the chosen keyword set in
-  `docs/15-aso.md` per project. (No app in the corpus checked in a keyword file — close that gap.)
+- Keyword research is owned by the `aso-specialist`. **The keyword set is a checked-in artifact,
+  not a value typed into App Store Connect once.** Record it in `docs/15-aso.md` per project: the
+  iOS 100-char keyword field verbatim, the Play title/short-description terms, the locales it
+  applies to, and the date it was last revised — so the next release can diff it and attribute a
+  ranking move to a change.
 
 ## Play Data Safety / iOS Privacy — tie answers to code
 

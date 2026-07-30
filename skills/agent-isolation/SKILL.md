@@ -62,9 +62,10 @@ The real test is **collision**, not location:
 | Artifact | Where | Why |
 |---|---|---|
 | all source and test code | **worktree only** | two agents on the same file is the corruption case |
-| `docs/daily/<date>-<role>-APP-NNN.md` | **worktree**, committed on the branch | reaches `main` at merge; a fragment for unmerged work should not appear in the standup |
+| `docs/daily/<today>-<role>-<ticket>.md` | **worktree**, committed on the branch | reaches `main` at merge; a fragment for unmerged work should not appear in the standup |
 | `docs/53-reviews/APP-NNN-cycle-N.md` | shared tree — **safe** | the path is unique per (ticket, cycle); no other agent can target it, and it must outlive a rejected branch |
-| `docs/31-board.md`, `docs/team/messages.md` | shared tree — **append-only** | never edit an existing line; appends from different agents merge cleanly |
+| `docs/31-board.md` | shared tree — **generated, CLI-only** | do not append to it. `board.mjs` regenerates the whole file from `docs/31-board-events.jsonl` on every event, so a hand-appended row is silently overwritten by the next writer — mutate it with `board.mjs move`, never with an editor |
+| `docs/31-board-events.jsonl`, `docs/team/messages.jsonl` | shared tree — **append-only, via their CLI** | `board.mjs` / `team-message.sh` validate then append; never edit an existing line, and appends from different agents merge cleanly. Their Markdown views (`docs/31-board.md`, `docs/team/messages.md`) are GENERATED — a hand edit is overwritten by the next render |
 
 A shared write is safe when **no other agent can write that same path**. Uniquely-named files and
 append-only logs qualify. Anything else — source, tests, a doc two roles both edit — is worktree-only.
@@ -78,13 +79,33 @@ path), then agents that write **must be serialized** — one at a time, each com
 next starts. Never run parallel writers in one tree. Say in the daily fragment that you serialized
 and why.
 
-## Rule 2 — never stage blindly
+**The orchestrator does not get to claim it remembered.** Before the launch message:
+
+```bash
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" APP-001 APP-002
+```
+
+Exit 1 = REFUSED, spawn nobody; it names which tickets lack a worktree and prints the command to
+create each. Exit 0 with one ticket = the serialized path, stated in the output so it reaches the
+standup. See `parallel-orchestrator` step 2a.
+
+## Rule 2 — never stage blindly, and never run a repo-wide destructive command
 
 Banned, without exception:
 
 ```bash
 git add -A        git add .        git add --all        git commit -a
+git reset         git stash        git checkout -- .    git clean
 ```
+
+The top row attributes someone else's work to your ticket. The bottom row **destroys** it, and none
+of those four can be undone from inside your run. DR4-027: one `git stash` + `git reset`, run by an
+agent that only wanted a clean tree for a check, discarded 22 files and 332 insertions of another
+agent's in-progress work. It survived only because it happened to land in the stash; `git checkout
+-- .` would have made all 22 unrecoverable.
+
+**If you need a clean tree to test, copy the repo to a temp dir and dirty that** — `cp -R . "$TMP"`,
+or `git worktree add` a scratch worktree. Never clean the tree you are standing in.
 
 Stage by explicit path, every time:
 
@@ -130,10 +151,25 @@ consistently more confident than the work justifies.
   `defect-hunting` skill. A rule that cannot fail reports success forever.
 - An audit finding is checked by reproducing it, not by re-reading the finding.
 
+## Rule 5 — if HEAD moved under you, stop and report
+
+You may be running without a worktree — the orchestrator failed to make one, or the project cannot
+use them. That is a supported state, and it is the state in which this rule is the only thing
+standing between you and another agent's lost work.
+
+If `HEAD` is not where you left it, or files you did not write have appeared, **stop.** Do not
+`git reset --hard`, do not `git checkout -- .`, do not `git stash drop`, do not delete an untracked
+file to "clean up". Another agent's uncommitted work may be in that tree, and none of those
+commands can be undone from inside your run.
+
+Write a `blocker` naming what moved and let `tech-manager` resolve it. A stalled ticket is cheap; a
+discarded working tree is not recoverable.
+
 ## Orchestrator checklist
 
 Before a parallel launch:
 
+- [ ] `spawn-gate.sh <the ticket IDs>` exits 0 — not "I believe each has a worktree", the gate said so
 - [ ] Each writing agent has its own worktree, created before spawn
 - [ ] Each agent's prompt names **its worktree path** as the project root, not the repo root
 - [ ] No two agents are assigned the same file (if unavoidable, serialize those tickets)

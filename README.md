@@ -10,7 +10,7 @@ It takes your idea from **scope → design → code → review → store**, buil
 and fixing its own work, and stopping for you at only the two moments that matter:
 **what we're building** and **whether to ship**.
 
-[![version](https://img.shields.io/badge/version-1.4.0-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.5.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-lightgrey)]()
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A2BE2)]()
@@ -152,12 +152,17 @@ Agents don't shout into one shared room, and they don't route every sentence thr
   half-written files, one agent burning ~50% of its budget discovering and redoing work it had
   already done correctly, and two branches with add/add conflicts on **all 8 files**.
   ([full write-up](docs/research/2026-07-29-dry-run-parallel-agent-collision.md))
-- **A real channel.** `docs/team/messages.md` is an append-only ledger — `question`, `answer`,
+- **A real channel.** `docs/team/messages.jsonl` is an append-only event log — `question`, `answer`,
   `handoff`, `blocker`, `escalation`, `decision` — so an IC can ask the tech lead one question and
-  keep working, instead of hard-blocking and paying for a full re-spawn.
+  keep working, instead of hard-blocking and paying for a full re-spawn. `docs/team/messages.md` is
+  its generated view; channels and threads are queries over the log, never places state is written.
+- **Messages that have to produce something.** Every material message must yield a decision, a state
+  transition, an artifact update or a timed follow-up, or it is refused at send time. An `answer`
+  that names no artifact is refused too: a closed ledger is not delivery.
 - **An anti-ping-pong guard.** Two agents can burn a whole budget agreeing with each other, so the
   send helper enforces limits: 10 messages per role per round, 2 per pair per ticket, 4 roles per
-  chain. Breach one and you must escalate to the tech manager instead of re-sending.
+  chain, 12 per ticket, no duplicate question, no reopening a decided thread without new evidence.
+  Breach one and you must escalate to the tech manager instead of re-sending.
 - **Parallelism judged on files, not features.** Two tickets that touch the same file are
   serialized however unrelated they look on the board.
 
@@ -351,7 +356,8 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 | | `code-reviewer` | The gate — runs **Axiom auditor agents** on iOS branches |
 | | `qa-engineer` | Test plans, bug filing, ship sign-off |
 | | `verification-engineer` | **Executes** what everyone else asserts — constants, guard rules, agent reports |
-| **Design & Growth** | `ux-designer` | Flows, design tokens, component inventory |
+| **Design & Growth** | `ux-architect` | Information architecture, navigation, flows, screen-and-state inventory |
+| | `product-designer` | Screen composition, hierarchy, interaction, tokens, components |
 | | `aso-specialist` | Store listing, keywords, screenshots, readiness gate |
 | | `data-analyst` | Analytics schema, instrumentation check, post-launch KPIs |
 | **Platform & Release** | `devops-engineer` | Git strategy, CI, signing, flavors, secrets hygiene |
@@ -375,7 +381,8 @@ Markdown files — add, remove, or retune them.
 | `/app-review <branch>` | Code review on a single branch. |
 | `/app-ship [version]` | Parallel security + ASO + analytics readiness → release-manager. Confirms before any upload. |
 | `/app-status` | Vision, sprint goal, board doctor verdict, board summary, blockers, latest standup. |
-| `/app-learn <app paths>` | Mines a shipped app's conventions into the **living** House KB; flags conflicts for your decision. |
+| `/app-portfolio` | **(Many apps)** Ranks every registered project by **attention needed** — where should the next hour go? An unreadable project is reported as unreadable, never omitted. |
+| `/app-learn <app paths>` | Mines a shipped app's conventions into the **living** House KB; flags conflicts for your decision. Its failure pass harvests findings into the failure corpus and flags any class that **recurred after its rule shipped**. |
 | `/app-team` | Lists the roster. |
 
 ## The House Knowledge Base (`knowledge/`)
@@ -393,9 +400,16 @@ Every build agent reads the relevant pack first:
 | `analytics.md` | Consent-gated events, PII rules, funnels, retention |
 | `aso.md` | Screenshot automation, Play Data Safety, store-readiness gate |
 | `git-workflow.md` | Branch model, commit conventions, versioning, CI, secrets |
+| `failure-corpus.md` | **The defect classes this codebase actually produces** — the tell a reviewer greps for, the dated instances, and the rule that now catches each one |
 
 It's **living** — `/app-learn` folds new learnings from each shipped app back in, and flags
 conflicts (it never silently overwrites a convention).
+
+Every pack but one learns from apps that **shipped**, which means the KB only ever learned from
+success. `failure-corpus.md` is the other half: `code-reviewer` and `verification-engineer` run its
+tells before improvising their own, because prior information about what goes wrong *here* beats a
+generic checklist of what could go wrong anywhere. Its most valuable output is a class that recurs
+**after its rule shipped** — `team-doctor` fails on that, because it is proof the rule does not work.
 
 ## What it leverages on your machine
 

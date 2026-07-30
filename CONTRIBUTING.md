@@ -20,10 +20,37 @@ docs/                        Design specs and plugin docs
 
 Almost everything here is Markdown, and it should stay that way. A script is justified only when
 **an agent checking its own work is the thing being fixed** — a correctness gate whose whole value
-is that it cannot be talked out of a verdict. Today that is exactly two:
+is that it cannot be talked out of a verdict. Today that is eleven entries, plus `scripts/test.sh`,
+the suite that proves them, and `scripts/mutate.sh`, which proves the suite:
 
 - `scripts/board-doctor.mjs` — validates the board before any agent is spawned (Node, no deps)
+- `scripts/board-render.mjs` — renders the board for humans, through the same parser
+- `scripts/lib/board.mjs` — the one board parser the others share; a second parser is a defect
 - `scripts/verify-done.sh` — checks a `DONE` claim against git (POSIX `sh`, no deps)
+- `scripts/ship-gate.sh` — the release preconditions, with `scripts/ship-inflight.mjs` reading the board
+- `scripts/runtime-gate.sh` — builds and launches the app; the only gate that runs the artifact
+- `scripts/integration-branch.sh` — resolves the branch feature work integrates into
+- `scripts/team-message.sh` — appends to the team ledger with the anti-ping-pong guard enforced
+- `scripts/team-doctor.mjs` — validates the plugin's own agents, commands and skills
+- `scripts/spawn-gate.sh` — refuses a parallel launch whose writing agents have no worktrees
+- `scripts/round-journal.mjs` — one JSONL line per round, and the loop's budget ceiling
+- `scripts/mutate.sh` — breaks each gate on purpose and reports which assertions failed to notice
+
+Eleven is not a licence to add a twelfth. Each one earned its place by being a rule an agent had
+already talked itself out of at least once — `spawn-gate.sh` most literally: the isolation rule was
+prose for a release, and then the person who wrote and defended that prose spawned two writers into
+one checkout and lost 22 files (DR4-027). **When a rule has been broken by the operator best placed
+to remember it, prose is the wrong medium. Make it a command with an exit code.**
+
+## Model tiers
+
+A role's default tier lives in its agent file's `model:`. Two rules move off it:
+
+- **Blast radius sets the default.** Irreversible actions and money paths (`release-manager`,
+  `monetization-engineer`) run high; an advisory pass that produces one document can run lower.
+- **A retry escalates one tier** — `haiku → sonnet → opus`, capped at opus — on a re-spawn after
+  `REQUEST CHANGES` only. A ticket that failed review is by definition harder than it looked. A
+  `rejected` verify-done retry does not escalate: nothing was reviewed, so nothing said it was hard.
 
 Rules for any script added here:
 
@@ -35,7 +62,7 @@ Rules for any script added here:
    branch fires before you ship it — and add the case to `scripts/test.sh`:
 
    ```bash
-   sh scripts/test.sh        # 41 assertions over committed fixtures
+   sh scripts/test.sh        # 410 assertions over committed fixtures, ~1 min, no network
    sh scripts/test.sh -v     # list every passing assertion
    ```
 
@@ -43,8 +70,34 @@ Rules for any script added here:
    was really shipped and then found by running the thing; the comments name them, so a change that
    breaks one can see what it is undoing.
 
-   **Prove your new assertion can fail.** Mutate the code it guards, watch it go red, revert. A test
-   that has never failed is indistinguishable from one that cannot.
+5. **Prove your new assertion can fail — with the runnable thing, not by hand.** A test that has
+   never failed is indistinguishable from one that cannot, and doing it by hand meant it happened
+   when someone remembered. On 2026-07-29 the suite read `385 passed, 0 failed` and a reviewer
+   found four assertions that could not go red — including a `grep -E` whose pattern was a *syntax
+   error*, so a live CDN URL sat in the page while the check reported green.
+
+   ```bash
+   sh scripts/mutate.sh --list        # the catalogue, and what it cannot test, and why
+   sh scripts/mutate.sh --only M04    # break one gate, run the whole suite, see if it notices
+   sh scripts/mutate.sh               # all 16, ~1 min each
+   ```
+
+   `CAUGHT (n assertions)` — the gate bites. `SURVIVED` — the gate can be broken and the suite stays
+   green, which is a hole at the same severity as the bug the gate was meant to catch.
+   `CAUGHT, but NOT by the assertion written for it` — something unrelated noticed; yours is
+   decorative and the next refactor takes the coverage with it.
+
+   **A new gate ships with a mutation proving its assertion bites.** Adding one is a line in the
+   catalogue at the top of `scripts/mutate.sh`; `skills/mutation-testing/SKILL.md` has the format and
+   the rule for what to do when a gate genuinely cannot be mutation-tested here (declare it in
+   `excluded()` — never fake the coverage). CI runs a four-mutation sample on every PR.
+
+6. **Watch what your assertion is actually reading.** One here grepped a rejection report for a marker
+   string — and passed with the report empty, because the script echoes the command it is about to
+   run and the marker was in the command. It survived the mutation that deleted the behaviour it
+   guarded. If a needle can reach the haystack by any route other than the behaviour under test,
+   it is not an assertion. This is what `mutate.sh` reports as *CAUGHT, but NOT by the assertion
+   written for it*.
 
 ## How to add or change a role
 

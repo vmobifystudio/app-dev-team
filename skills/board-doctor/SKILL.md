@@ -21,6 +21,36 @@ an ID that doesn't exist. The work is on the board, scheduled to nobody, reporte
 
 **Rule: nothing spawns while an anomaly is open.**
 
+## Two kinds of board, and what this skill is for on each
+
+**Generated board** (`docs/31-board-events.jsonl` exists). `docs/31-board.md` is a rendering of the
+event log, and `scripts/board.mjs` refuses the illegal transition *before* it is written — a
+self-approval, a merge with no non-owner approval, a review requested on an unverified DONE, a claim
+on an unmerged dependency. Those states are unrepresentable, not merely detectable, so on this board
+the doctor is mostly a **drift detector**.
+
+Mostly, and the exception matters. Anomalies on a generated board come in two kinds, and treating
+them alike sends you hunting something that never happened:
+
+- **Drift** — `malformed_row`, `status_invalid`, `duplicate_id`, `cycles_invalid`, `self_review`,
+  `done_without_review`. The CLI cannot produce these, so something wrote the Markdown directly or
+  appended to the log by hand. Find what did it *before* you re-render over the evidence, because
+  the next `board.mjs` call erases the edit and the trail with it.
+- **Emergent** — `stranded`, `dependency_cycle`, `cycle_cap_breached`, `owner_not_spawnable`.
+  These are properties of the ticket *graph*, not of the file. `board.mjs` produces them legally:
+  blocking a ticket strands every `todo` that depends on it, and no single append was illegal.
+  **There is no hand-edit to find.** Fix the graph — unblock the dependency, re-scope the ticket,
+  or file it blocked in the first place (`board.mjs add <ID> --depends X --status blocked`), which
+  is the honest shape when a bug is filed against a ticket that is itself stuck.
+
+**Hand-written board** (no event log). Nothing changes: the doctor is the primary gate, exactly as
+described below, and every check still blocks. Do not refuse to run such a project — it is the
+normal state of anything planned before the log existed. `/app-plan` and `/app-build` offer it one
+migration (`board.mjs migrate`), and a board too old to parse legitimately stays on this path.
+
+Either way, `docs/31-board.md` is what you read. It is deliberately still human-readable and
+diffable; that is what lets this check work without running the CLI at all.
+
 ## Run it
 
 ```bash
@@ -55,7 +85,7 @@ invalid owner makes "who acts next" unanswerable.
 | `dependency_self` | Ticket depends on itself | Remove the edge |
 | `dependency_missing` | Depends on an ID with no row | Restore or drop it |
 | `dependency_cycle` | A → B → A | Break the cycle |
-| **`stranded`** | `todo` behind a `blocked` dependency (transitively) | **Unblock, re-scope, or mark blocked so it is reported** |
+| **`stranded`** | `todo` behind a `blocked` dependency (transitively) | **Unblock, re-scope, or mark blocked so it is reported.** Emergent, not drift — no hand-edit to hunt. A ticket that *belongs* blocked should be created that way: `board.mjs add <ID> --depends X --status blocked` |
 | `reviewer_missing` | In `review` with no reviewer recorded | Record the reviewer |
 | `self_review` | Reviewer role == owner role, or the owner approved in the ledger | Assign a different reviewer; void the approval |
 | `done_without_review` | `qa`/`done` with no approval in the ledger | Move back to review, or append the missing line |
@@ -85,18 +115,70 @@ A developer agent's `DONE: APP-NNN / Branch / Files / Tests: N added, all green`
 Before moving the row to `review`, prove it:
 
 ```bash
-sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" feat/APP-001-login main "<project test command>"
+BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") || { echo "$BASE"; exit 1; }
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" feat/APP-001-login "$BASE" "<project test command>"
 ```
 
-Checks that the branch exists, that it carries commits not already on the base, that those commits
-change files, and — if a test command is given — that it exits zero. Pure `git` + POSIX `sh`.
+`main` is not the base — the integration branch is whatever `docs/23-git-strategy.md` declares, and
+`integration-branch.sh` is the single resolver. Verifying against the wrong base compares a branch
+to a tree it never forked from.
 
-- `VERIFIED` → move the row to `review`, spawn `code-reviewer`.
-- `REJECTED` → **do not move the row.** Re-spawn the developer with the blocking lines verbatim.
+Checks that the branch exists, that it carries commits not already on the base, that those commits
+change files, and — if a test command is given — whether it ran and what it said. Pure `git` +
+POSIX `sh`. **Three outcomes, and the headline word on line 1 always matches the exit code:**
+
+| Line 1 | Exit | Means | Do |
+|---|---|---|---|
+| `VERIFIED` | 0 | Claim holds and the tests are settled — ran green, or `--docs-only` exempted them | `board.mjs move <ID> verified`, then `review_requested`; spawn `code-reviewer` |
+| `REJECTED` | 1 | The claim is false, **or** a suite ran and reported failures | **Do not move the row.** Re-spawn the developer with the blocking lines verbatim |
+| `CANNOT EVALUATE` | 2 | The branch half checks out, but the suite **could not be executed** — missing toolchain, missing SDK, no gradle wrapper, or no test command given | `board.mjs move <ID> verified_static`, then review as normal. **Do not re-spawn the developer** — there is no failure to fix |
+
+The 1/2 split exists because it once did not: on a host with no Xcode the script exited `1
+REJECTED`, whose instruction is "re-spawn the developer with these failures verbatim", and a
+developer was sent to fix a bug that did not exist. When the output does not prove a suite actually
+ran, the script reports 2, not 1 — a false REJECTED costs a phantom hunt and looks legitimate the
+whole way, a false CANNOT EVALUATE costs one question.
 
 The project's test command comes from `docs/20-architecture.md` or the House KB. If you genuinely
-don't have one, run without it and note `tests=unverified` in the daily fragment — never restate the
-agent's "all green" as if it were confirmed.
+don't have one, run without it — you will get `CANNOT EVALUATE`, which is the correct answer. Never
+restate the agent's "all green" as if it were confirmed.
+
+## Inspectable but not runnable
+
+A ticket whose *environment* is broken must not also lose its *code review*. The Definition of Done
+has four checks that need only `git diff` and `grep`; in dry run 4 the board had no state for
+"reviewable but not runnable", so a toolchain-blocked ticket could not reach `review` at all and
+**`code-reviewer` never ran once in the whole sprint.**
+
+`verified_static` is that state:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 verified_static \
+  --by tech-manager --detail "the executable test suite (no Xcode on this host)"
+```
+
+- It unlocks `review_requested`, `approved` and `merged` — real progress keeps happening.
+- It **refuses `closed`**. `done` is the word that asserts the suite ran green, and nothing has seen
+  it do that. A sprint closes as *"merged, verification deferred"*, which is the truth.
+- The fact rides on the row for the rest of its life: the board renders `qa (static only)` and
+  `board.mjs show` prints `NOT RUN: <what>`.
+- To clear it, run the suite and append the real verdict: `move APP-001 verified`. Then `closed` is
+  accepted.
+
+**A static-only ticket must never be reported as complete, and that is now a check, not a request.**
+`scripts/ship-gate.sh` **BLOCKS** on any ticket carrying the flag and names it, with the two routes
+out printed: run the suite and append `move <ID> verified`, or waive it deliberately with
+`WAIVED: <ID> — <who> — <why>` in `docs/60-releases.md`.
+
+This paragraph used to be prose asking the reader to remember — in the one place `ship-gate.sh`
+exists to replace. It was reproduced end to end: `APP-001 → verified_static → merged → qa_passed`
+gave `ship-inflight` no output, `board-doctor` "Board is coherent", and `ship-gate` `RESULT: CLEAR`,
+all exit 0. **A sprint shipped asserting a suite that never executed.** The state was in the state
+machine and the consumer that decides whether to release could not reach it.
+
+Still name it in the standup and the ship-readiness report — the gate stops the release, it does not
+tell the team. Cross-check with `board.mjs show --json`, where each ticket carries `verifiedStatic`
+and `unrun`.
 
 ## Manual fallback (no Node)
 
@@ -104,10 +186,13 @@ Read `docs/31-board.md` and check, in this order:
 
 1. Every row has the same cell count as the header.
 2. No ticket ID appears twice.
-3. Every `Status` is one of the six valid values.
+3. Every `Status` is one of the six valid values — optionally suffixed `(static only)`, which is a
+   generated marker meaning the ticket's test suite never ran. Read it as the bare status for every
+   check below, and as an OPEN item everywhere else: it may reach `qa`, it may not reach `done`.
 4. Every `Owner` is non-empty, is a real role, **and is a role `/app-build` actually spawns to work
    a ticket** — `ios-developer`, `android-developer`, `backend-developer`, `monetization-engineer`,
-   `ux-designer`, `qa-engineer`, `data-analyst`, `devops-engineer`, `aso-specialist`,
+   `ux-architect`, `product-designer`, `product-manager`, `product-researcher`, `qa-engineer`,
+   `data-analyst`, `devops-engineer`, `aso-specialist`, `web-developer`, `test-automation-engineer`,
    `verification-engineer`. Never `security-reviewer`, `code-reviewer`, `release-manager`,
    `tech-lead` or `tech-manager`: those gate and coordinate, they do not work tickets, so a ticket
    owned by one is never picked up and never reported.

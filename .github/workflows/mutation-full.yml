@@ -1,0 +1,58 @@
+# The full mutation catalogue — every gate in the repo broken one at a time, suite re-run after each.
+#
+# Its own workflow, for two reasons learned the hard way on 2026-07-30.
+#
+# 1. IT MUST BE ALLOWED TO FINISH. `checks.yml` sets `cancel-in-progress: true`, which is right for a
+#    two-minute suite and fatal for a twenty-minute one: four consecutive runs of this catalogue were
+#    cancelled mid-flight by the next push, so it has never once completed. A check that never
+#    finishes reports nothing, which is this repo's own FC-002 wearing a scheduling costume.
+#    Here `cancel-in-progress` is FALSE and the trigger is narrow, so pushing again does not kill it.
+#
+# 2. IT DOES NOT NEED macOS. It briefly lived inside the `runtime-gate` job because that job was
+#    already long — which meant a 17-minute ubuntu-shaped workload burning macOS minutes at 10x.
+#    Nothing in the catalogue touches Xcode.
+#
+# `checks.yml` still runs `--sample 4` on every push: that is the fast signal. This is the complete
+# one, and it runs where completeness is worth the wall clock — on PRs into main, and on demand.
+name: mutation (full catalogue)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-full-${{ github.ref }}
+  # Deliberately NOT cancel-in-progress. See (1) above. Two queued runs cost ubuntu minutes; a
+  # catalogue that is always cancelled costs the only evidence that the gates can still bite.
+  cancel-in-progress: false
+
+jobs:
+  mutation-full:
+    runs-on: ubuntu-latest
+    # 31 mutations, each re-running the whole suite, plus one baseline run: 32 suite runs.
+    # Measured 77s per run locally and ~112s in a CI checkout, so the real cost is 41–60 minutes.
+    # A 45-minute cap would have killed it just short of finishing, which is the SAME failure this
+    # workflow was extracted to fix — a check that cannot complete reports nothing, it just reports
+    # it more expensively. Ubuntu minutes are the cheap ones; headroom here costs almost nothing and
+    # a timeout costs the entire signal. Reported by codex on PR #6, whose arithmetic was right.
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # mutate.sh diffs `git status --porcelain` against the snapshot it took at start, and the
+          # suite it runs asserts on branch ancestry.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Every gate in the catalogue must still bite
+        # No `|| true`, no `continue-on-error`. A surviving mutation means a gate can be broken
+        # without this repo noticing, which is a blocker rather than a warning.
+        run: sh scripts/mutate.sh

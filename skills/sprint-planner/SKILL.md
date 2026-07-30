@@ -13,7 +13,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
 2. **Sprint goal** — one sentence at the top of `docs/30-sprint-plan.md`.
 
-3. **Capacity** — default 3 developer agents (iOS, Android, optional Backend), 1 code-reviewer, 1 qa-engineer, 1 ux-designer. Tune to project scope.
+3. **Capacity** — default 3 developer agents (iOS, Android, optional Backend), 1 code-reviewer, 1 qa-engineer, 1 ux-architect, 1 product-designer. Tune to project scope.
 
 4. **Assign for parallelism** — group tickets so each developer has independent work to start with. Stack dependent work behind it.
 
@@ -21,49 +21,103 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    Track A (ios-developer)  : APP-001 → APP-004 → APP-007
    Track B (android-dev)    : APP-002 → APP-005 → APP-008
    Track C (backend-dev)    : APP-003 → APP-006
-   Continuous: code-reviewer, qa-engineer, ux-designer (early)
+   Continuous: code-reviewer, qa-engineer, ux-architect + product-designer (early)
    ```
 
-5. **Board** — `docs/31-board.md`. Columns must match the ticket shape in `agents/tech-manager.md`:
+5. **Board — create tickets through the CLI. Never hand-write the table.**
 
-   ```
-   ID | Feature | Title | Owner | Reviewer | Status | Cycles | Depends on | Estimate | Spec | Acceptance | Notes
-   ```
+   `docs/31-board.md` is a **generated view**. The source of truth is the append-only event log
+   `docs/31-board-events.jsonl`, and `scripts/board.mjs` is its only writer. A ticket is created by:
 
-   - `F-NNN` is the PRD feature ID this implements (so reviewers and QA can trace acceptance back to the PRD).
-   - `Reviewer` is the role that gates this ticket. Starts `—`; set when the row enters `review`.
-     **It must never equal `Owner`** — a role does not gate its own work.
-   - `Cycles` is the review-cycle counter as its own integer column, starting `0`. It is a safety
-     counter enforcing the 2-cycle cap, so it does not live inside prose where an edit can lose it.
-   - `Spec` is a short anchor like `prd#F-001 + arch§3` so devs don't need to grep.
-   - `Acceptance` is the Given/When/Then copied from the PRD (or a one-line summary plus pointer if long).
-   - `Notes` carries free text only — `BUG-NNN-fix` linkage, caveats. Never status or counters.
-
-   Status starts `todo`. Update through `in_progress → review → qa → done` (or `blocked`).
-
-6. **Review ledger** — append a section at the bottom of `docs/31-board.md`:
-
-   ```markdown
-   ## Review ledger (append-only — never edit or delete a line)
-   Action must be exactly one of: `requested` `started` `changes` `approved` `merged`
-
-   | Timestamp | Ticket | Action | Actor |
-   |---|---|---|---|
-   | 2026-07-29T09:00Z | APP-001 | requested | android-developer -> code-reviewer |
-   | 2026-07-29T09:20Z | APP-001 | started | code-reviewer |
-   | 2026-07-29T09:30Z | APP-001 | changes | code-reviewer |
-   | 2026-07-29T10:10Z | APP-001 | approved | code-reviewer |
-   | 2026-07-29T10:15Z | APP-001 | merged | tech-manager |
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add APP-001 \
+     --title "Core todo store" --feature F-001 --owner android-developer \
+     --depends APP-000 --estimate M --spec "prd#F-001 + arch§3" \
+     --acceptance "Given the list, When I submit non-empty text, Then it appears at the top" \
+     --notes "touches: data/TodoRepository.kt"
    ```
 
-   Actions: `requested` · `started` · `approved` · `changes` · `merged`.
+   Each `add` appends a `created` event and re-renders the Markdown board with the same columns as
+   before — `ID | Feature | Title | Owner | Reviewer | Status | Cycles | Depends on | Estimate |
+   Spec | Acceptance | Notes`. Editing a cell by hand does nothing: the next render overwrites it,
+   and no rule reads it back. `Reviewer` and `Cycles` are **derived**, not typed — the drift between
+   a hand-edited `Cycles` cell and the ledger was a live defect, and derived-on-read cannot disagree
+   with itself.
 
-   The table cells are the summary; **the ledger is the record.** It is what makes "this was
-   reviewed" checkable rather than asserted — the `Cycles` column is recomputable from it, an
-   approval by the owner is detectable in it, and a `qa`/`done` row with no `approved` line is a
-   ticket that skipped the gate. `board-doctor` checks all three.
+   Field meanings are unchanged: `--feature` traces acceptance back to the PRD, `--spec` is a short
+   anchor (`prd#F-001 + arch§3`) so devs don't grep, `--acceptance` is the Given/When/Then,
+   `--notes` is free text only.
 
-   Lines are appended, never rewritten. A wrong line is corrected by appending a later one.
+6. **The event log — `docs/31-board-events.jsonl`, one JSON object per line, append-only.**
+
+   ```json
+   {"ts":"2026-07-29T10:06:00Z","ticket":"APP-001","event":"review_requested",
+    "by":"android-developer","detail":"-> code-reviewer","provenance":"cli"}
+   ```
+
+   | Field | Meaning |
+   |---|---|
+   | `ts` | ISO timestamp, or `null` when a `migrate` could not reconstruct one |
+   | `ticket` | the ticket ID; an event on a ticket with no `created` is refused |
+   | `event` | one of the vocabulary below |
+   | `by` | the role that did it — this is what makes self-review detectable |
+   | `detail` | free text; an object on `created` (the ticket fields) and on `assigned` (`{to}`) |
+   | `provenance` | `cli` for anything the tool appended, `inferred` for anything `migrate` reconstructed |
+
+   **Events:** `created · claimed · assigned · done_reported · verified · verified_static ·
+   rejected · review_requested · started · approved · changes · merged · qa_passed · qa_failed ·
+   blocked · unblocked · closed`
+
+   `verified_static` is the lane for work that is inspectable but not runnable (verify-done exit 2).
+   Omitting it from this list is how DR4-002 stayed the documented rule: it unlocks review on a
+   ticket whose toolchain is broken, refuses `closed`, and holds the release gate.
+
+   The state machine, enforced **before** the append — an illegal transition exits 1 and names what
+   is legal from here, so these states are unrepresentable rather than detectable afterwards:
+
+   ```
+   todo --claimed--> in_progress --done_reported--> (verify) --review_requested--> review
+                                                                                    |
+                       done <--closed-- qa <--merged-- (merge gate) <--approved-----+
+   ```
+
+   | Rule | The anomaly it makes impossible |
+   |---|---|
+   | `review_requested` needs a preceding `verified` | a `DONE` nobody checked reaching review |
+   | `approved` must be `by` ≠ the owner | `self_review` |
+   | `merged` needs an `approved` by a non-owner | `done_without_review` |
+   | the 3rd `changes` is refused and forces `blocked` | `cycle_cap_breached`, and the column/ledger drift |
+   | `claimed` is refused while a dependency has no `merged` | `stranded` — the silent one |
+   | `blocked` recomputes readiness for dependents | dependents stranded by a mid-round block |
+   | any event on an unknown ticket is refused | `malformed_row` |
+
+   Mutations during the sprint:
+
+   ```bash
+   board.mjs move APP-001 claimed --by android-developer
+   board.mjs move APP-001 done_reported --by android-developer
+   board.mjs move APP-001 verified --by verification-engineer --detail "verify-done.sh green"
+   board.mjs move APP-001 review_requested --by android-developer --detail "-> code-reviewer"
+   board.mjs move APP-001 changes --by code-reviewer --detail "docs/53-reviews/APP-NNN-cycle-N.md"
+   board.mjs move APP-001 approved --by code-reviewer
+   board.mjs move APP-001 merged --by tech-manager
+   board.mjs show [APP-001] [--json]      # derived state + self-metrics
+   board.mjs render                       # regenerate docs/31-board.md
+   board.mjs migrate [board.md] --out docs/31-board-events.jsonl
+   ```
+
+   Exit codes: `0` appended · `1` refused (illegal transition, or a rule said no) · `2` cannot
+   evaluate (log missing or unreadable). **A log that does not parse is exit 2, never an empty
+   board** — a gate that cannot read its input must say so, not report CLEAR.
+
+   Lines are appended, never rewritten. A wrong line is corrected by appending a later one: a strict
+   reader over an append-only log with no repair path turns one typo into a permanently stuck board.
+
+   **Existing hand-written boards.** `board.mjs migrate` reads the board plus its review ledger and
+   emits a best-effort log. Ledger lines keep their real timestamp and actor; everything the board
+   never recorded — that a ticket was created, claimed, verified, QA'd — is emitted with `ts: null`
+   and `provenance: "inferred"`. An inferred log is honest; a fabricated one is the same class of
+   lie as a false `DONE`. `board-doctor` stays as the backstop for hand edits and legacy boards.
 
 7. **Definition of done** — list it at the top of the board so everyone uses the same one.
    **Every gate named here must be runnable by someone reading the board**, with the command
@@ -102,7 +156,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    `board-doctor` warns `not_ready` on `todo` rows that fail this. It is a warning, not a block —
    a thin ticket is a planning problem to fix at planning time, not a reason to stop a sprint.
 
-9. **Validate before handing off.** Run the board doctor on the board you just wrote:
+9. **Validate before handing off.** Run the board doctor on the board the CLI just rendered:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md
@@ -110,6 +164,16 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
    A plan that doesn't pass its own doctor is not a plan. Fix it before the handoff — a dependency
    typo here becomes a silently stranded ticket three rounds into the sprint.
+
+   The doctor's job has shifted from primary gate to **drift detector**: the CLI now refuses the
+   states it used to report, so anything the doctor still finds arrived by a hand edit, a legacy
+   board, or a bug. Both still run, on purpose.
+
+10. **Self-metrics.** `deriveMetrics(events)` in `scripts/lib/events.mjs` takes the parsed log (not a
+    path — one read path only) and returns cycle time per ticket, review pass rate, rework rate,
+    gate-fire counts (`rejected`/`changes`/`qa_failed`/`blocked`), tickets per round, and median
+    cycle time. `board.mjs show` prints the summary; `show --json` emits the whole object. This is
+    what makes a judgement about how the team is doing evidence rather than a belief.
 
 ## Parallelism rules
 
@@ -161,8 +225,9 @@ Parallel launch:
 - ios-developer ← APP-001, APP-004
 - android-developer ← APP-002, APP-005
 - backend-developer ← APP-003 (or skip if out of scope)
-- ux-designer ← finalize flows for sprint 1 features
+- ux-architect ← finalize flows and the screen-and-state inventory for sprint 1 features
+- product-designer ← compose the screens in that inventory
 - qa-engineer ← write test plan for sprint 1
 Reviewer queue: code-reviewer
-Daily report: docs/daily/<date>.md
+Daily report: docs/daily/<today>.md
 ```

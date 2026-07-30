@@ -2,7 +2,8 @@
 
 Mined from our internal iOS apps. These are house law for new iOS apps.
 Pair with the Axiom iOS skills (`axiom-ios-ui`, `axiom-ios-concurrency`, `axiom-ios-data`,
-`axiom-swiftui-26-ref`, etc.) for the up-to-date API details.
+`axiom-swiftui-26-ref`, etc.) for the up-to-date API details — **external and optional**, a separate
+plugin, not this one's `skills/`. Absent → this pack is the authority; never file their absence.
 
 ## Layering (non-negotiable)
 
@@ -90,9 +91,11 @@ central `LocaleFormatters`; never `String(format:"%.2f", …)` or `Double(userIn
 ## Testing
 
 - Swift Testing (`@Suite`/`@Test`/`#expect`), per-module test targets.
-- Pure-Swift domain engine package tested independently (`swift test --package-path <Engine>`),
-  95%+ coverage. Migration-fixture tests for schema changes. Green build + green tests are a
-  hard merge gate.
+- Pure-Swift domain engine package tested independently (`swift test --package-path <Engine>`).
+  **Coverage floor: 90%+ line coverage of that package only** — the app target and UI are not in
+  the number. This is the one place the coverage bar is stated as a gate; anywhere else quoting a
+  different figure is stale. Migration-fixture tests for schema changes. Green build + green tests
+  are a hard merge gate.
 
 ## Canonical-reference discipline
 

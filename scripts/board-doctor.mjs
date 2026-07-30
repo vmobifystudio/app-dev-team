@@ -25,6 +25,7 @@ import {
   KNOWN_OWNERS,
   BUILD_SPAWNABLE_OWNERS,
   VALID_STATUS,
+  ACTIVE_STATUS,
   POST_REVIEW_STATUS,
   MAX_REVIEW_CYCLES,
   LEDGER_ACTIONS,
@@ -36,7 +37,21 @@ import {
   parseDependencies,
   findBlockingAncestor,
   detectCycle,
+  normalizeId,
 } from './lib/board.mjs';
+import {
+  parseMessageLog,
+  migrate as migrateMessages,
+  threads as messageThreads,
+  pairQuestions,
+  auditGuards,
+  undeliveredAnswers,
+  expiredWaivers,
+  staleAssumptions,
+  MAX_PAIR,
+  MAX_CHAIN,
+  MAX_PER_TICKET,
+} from './lib/messages.mjs';
 // --------------------------------------------------------------------------------------------
 // the cascade
 // --------------------------------------------------------------------------------------------
@@ -49,29 +64,42 @@ import {
  * Team-message checks. `team-protocol` promises these; until now nothing performed them.
  * An unanswered question is how a developer ends up guessing, and the guess ships.
  */
+/**
+ * Team-channel checks.
+ *
+ * The guard windows are NOT restated here any more. They lived in three files — this one,
+ * team-message.sh and messages-render.mjs — and two of them disagreed about what a breach was: the
+ * script counted pairs over the trailing 40 rows and refused a chain at >=4 roles, the doctor
+ * counted the whole ledger and warned at >4. A ledger the script had happily written was reported
+ * as a breach, and a real breach the script refused was invisible to the doctor. One implementation,
+ * in lib/messages.mjs; this is its audit caller, team-message.sh is its send caller.
+ *
+ * `messages` here are schema-v1 events, not Markdown rows: the source of truth is
+ * docs/team/messages.jsonl and the Markdown is a rendering of it.
+ */
 function diagnoseMessages(messages, rowsById, warnings) {
-  const byTicket = new Map();
-  for (const m of messages) {
-    if (!byTicket.has(m.ticketId)) byTicket.set(m.ticketId, []);
-    byTicket.get(m.ticketId).push(m);
-  }
+  for (const [ticketId, thread] of messageThreads(messages)) {
+    // Ticketless rows (`--ticket -`) are broadcast chatter, not a thread. Bucketing them together
+    // collapsed every unrelated FYI into one pseudo-ticket that tripped the chain-depth warning on
+    // a team that had done nothing wrong — and the send guard already exempts them, so the doctor
+    // was flagging sends the CLI itself permits.
+    if (ticketId === '(no ticket)') continue;
 
-  for (const [ticketId, thread] of byTicket) {
     // Pair by COUNT, not existence. "Any answer resolves any question" is a false negative the
     // moment a ticket carries two questions, or one unrelated decision: observed live, a
     // `decision` row correcting a tooling mistake made a genuinely open product question look
     // resolved. One resolution closes one question — anything else is still open.
+    const { open } = pairQuestions(thread);
     const questions = thread.filter((m) => m.kind === 'question');
-    const resolutions = thread.filter((m) => m.kind === 'answer' || m.kind === 'decision');
-    const row = rowsById.get(ticketId.toUpperCase());
+    const row = rowsById.get(normalizeId(ticketId));
 
-    if (questions.length > resolutions.length) {
-      const last = questions[questions.length - 1];
+    if (open.length > 0) {
+      const last = open[open.length - 1];
       warnings.push({
         code: 'question_unanswered',
         ticketId,
         line: last._line,
-        detail: `${questions.length - resolutions.length} of ${questions.length} question(s) on this ticket are unresolved — most recent: "${last.summary}" (asked of ${last.to}). ${
+        detail: `${open.length} of ${questions.length} question(s) on this ticket are unresolved — most recent: "${last.summary}" (asked of ${last.to.join(', ')}). ${
           row && (row.status === 'qa' || row.status === 'done')
             ? `The ticket has already reached "${row.status}" — it shipped on an unconfirmed assumption.`
             : 'The owner is deciding without it.'
@@ -79,37 +107,74 @@ function diagnoseMessages(messages, rowsById, warnings) {
         action: 'tech-manager: answer it, route it, or record a decision. An open question is how a guess becomes shipped behaviour.',
       });
     }
-
-    // The guard in team-message.sh refuses the send; this catches a ledger written by hand.
-    const pairs = new Map();
-    for (const m of thread) {
-      if (m.kind === 'escalation') continue;
-      const key = `${m.from}\u2192${m.to}`;
-      pairs.set(key, (pairs.get(key) || 0) + 1);
-    }
-    for (const [pair, count] of pairs) {
-      if (count > 2) {
-        warnings.push({
-          code: 'message_pair_exceeded',
-          ticketId,
-          line: 0,
-          detail: `${pair} exchanged ${count} messages on ${ticketId} (limit 2 without a third party). Two is a conversation; more is a stall.`,
-          action: 'tech-manager: resolve it or escalate. Do not let the pair keep going.',
-        });
-      }
-    }
-
-    const roles = new Set(thread.flatMap((m) => [m.from, m.to]));
-    if (roles.size > 4) {
-      warnings.push({
-        code: 'message_chain_too_deep',
-        ticketId,
-        line: 0,
-        detail: `${ticketId} has involved ${roles.size} roles (limit 4). A question relayed that far is an escalation.`,
-        action: 'tech-manager: take the decision rather than relaying it further.',
-      });
-    }
   }
+
+  // The send guard refuses the message; this catches a log written by hand or migrated around it.
+  const DETAIL = {
+    message_pair_exceeded: (b) =>
+      `${b.pair} exchanged ${b.count} messages on ${b.ticket} (limit ${MAX_PAIR} without a third party). Two is a conversation; more is a stall.`,
+    message_chain_too_deep: (b) =>
+      `${b.ticket} has involved ${b.count} roles (limit ${MAX_CHAIN}). A question relayed that far is an escalation.`,
+    ticket_budget_exceeded: (b) =>
+      `${b.ticket} has spent ${b.count} messages (budget ${MAX_PER_TICKET}). A ticket that needs another message needs a decision.`,
+    duplicate_question: (b) =>
+      `${b.id} re-asks what ${b.of} already asked on ${b.ticket}: "${b.summary}". Re-asking is not escalation; it produces a second unanswered question.`,
+  };
+  for (const breach of auditGuards(messages)) {
+    warnings.push({
+      code: breach.code,
+      ticketId: breach.ticket,
+      line: 0,
+      detail: DETAIL[breach.code](breach),
+      action: 'tech-manager: resolve it or escalate. Do not let the thread keep going.',
+    });
+  }
+
+  // DR4-006: a closed ledger is not delivery. Every question answered still means nothing changed
+  // if no answer names where it was folded in.
+  for (const m of undeliveredAnswers(messages)) {
+    warnings.push({
+      code: 'answer_not_delivered',
+      ticketId: m.ticket,
+      line: m._line,
+      detail: `${m.id} (${m.kind}, ${m.from} → ${m.to.join(', ')}) closed "${m.summary}" without naming an artifact or a state transition. The ledger reads resolved; nothing downstream was changed.`,
+      action: 'Name the spec, ADR or ticket transition it was folded into. An answer that lives only in the channel is an answer nobody can act on.',
+    });
+  }
+
+  // An expiry that passed with nobody noticing is a permanent exemption granted by accident.
+  for (const m of expiredWaivers(messages)) {
+    warnings.push({
+      code: 'waiver_expired',
+      ticketId: m.ticket,
+      line: m._line,
+      detail: `${m.artifact} expired on ${m.expires} and is still on the log: "${m.summary}".`,
+      action: 'Renew it with a new expiry and a stated reason, or close the exemption and fix the thing it excused.',
+    });
+  }
+  for (const m of staleAssumptions(messages)) {
+    warnings.push({
+      code: 'assumption_unvalidated',
+      ticketId: m.ticket,
+      line: m._line,
+      detail: `${m.artifact} was due for validation on ${m.validate_by} (owner ${m.owner || 'unset'}, confidence ${m.confidence || 'unstated'}): "${m.summary}".`,
+      action: 'Validate it or restate it. An assumption past its date is a belief with a timestamp.',
+    });
+  }
+}
+
+/**
+ * Read the team channel next to the board. The JSONL is the source of truth; a project that has only
+ * the Markdown ledger is migrated IN MEMORY so it keeps working unchanged — the doctor is a
+ * read-only tool and must never be the thing that rewrites a project's files.
+ */
+function readChannel(boardPath) {
+  const dir = join(dirname(boardPath), 'team');
+  const jsonl = join(dir, 'messages.jsonl');
+  if (existsSync(jsonl)) return parseMessageLog(readFileSync(jsonl, 'utf8'));
+  const md = join(dir, 'messages.md');
+  if (!existsSync(md)) return { messages: [], errors: [] };
+  return { messages: migrateMessages(readFileSync(md, 'utf8'), { parseMessages }), errors: [] };
 }
 
 function diagnose(board, ledger, capabilities, messages = []) {
@@ -127,7 +192,7 @@ function diagnose(board, ledger, capabilities, messages = []) {
   const expectedCells = board.columns.length;
 
   for (const row of board.rows) {
-    const id = row.id.toUpperCase();
+    const id = normalizeId(row.id);
     if (seenIds.has(id)) {
       anomalies.push({
         code: 'duplicate_id',
@@ -144,7 +209,7 @@ function diagnose(board, ledger, capabilities, messages = []) {
 
   const ledgerByTicket = new Map();
   for (const [index, entry] of ledger.entries()) {
-    const id = entry.ticketId.toUpperCase();
+    const id = normalizeId(entry.ticketId);
 
     if (!entry.known) {
       // The ledger is append-only, so a bad line can never be removed. A strict parser plus an
@@ -153,7 +218,7 @@ function diagnose(board, ledger, capabilities, messages = []) {
       // so the bad row drops to a warning that keeps the mistake visible without gating on it.
       const superseded = ledger
         .slice(index + 1)
-        .some((later) => later.known && later.ticketId.toUpperCase() === id);
+        .some((later) => later.known && normalizeId(later.ticketId) === id);
 
       (superseded ? warnings : anomalies).push({
         code: superseded ? 'ledger_action_unknown_superseded' : 'ledger_action_unknown',
@@ -320,16 +385,48 @@ function diagnose(board, ledger, capabilities, messages = []) {
       );
     }
 
-    for (const entry of approvals) {
-      if (entry.from && entry.from.toLowerCase() === row.owner.toLowerCase()) {
-        anomalies.push({
-          code: 'self_review',
-          ticketId: row.id,
-          line: entry._line,
-          detail: `Review ledger records an approval by the owner (${entry.from}).`,
-          action: 'tech-manager: void the approval and re-review with a different role.',
-        });
-      }
+    // Evaluate the EFFECTIVE approval state, not every line in isolation. The ledger is append-only
+    // and LEDGER_ACTIONS has no void/supersede verb, so the prescribed remediation ("void the
+    // approval") was literally impossible to carry out — a mistaken owner-approval, later corrected
+    // by a genuine reviewer approval, flagged as a blocking anomaly forever with no legal way to
+    // clear it. Same shape as the unknown-action case above, and the same fix: a later valid entry
+    // IS the correction. An owner-approval with no legitimate approval after it is still blocking.
+    for (const [i, entry] of approvals.entries()) {
+      if (!entry.from || entry.from.toLowerCase() !== row.owner.toLowerCase()) continue;
+      const superseded = approvals
+        .slice(i + 1)
+        .some((later) => later.from && later.from.toLowerCase() !== row.owner.toLowerCase());
+
+      (superseded ? warnings : anomalies).push({
+        code: superseded ? 'self_review_superseded' : 'self_review',
+        ticketId: row.id,
+        line: entry._line,
+        detail: superseded
+          ? `Review ledger records an approval by the owner (${entry.from}), but a later approval by a different role supersedes it. Left visible because the ledger is append-only; no action needed.`
+          : `Review ledger records an approval by the owner (${entry.from}), and no later approval by a different role supersedes it.`,
+        action: superseded
+          ? 'None — the record was repaired by a later, legitimate approval.'
+          : 'Append a fresh approval from a different role (never edit the wrong line — the ledger is append-only). Until then this ticket has not been reviewed.',
+      });
+    }
+
+    // An INFERRED approval is not evidence of a review. `board.mjs migrate` reconstructs one for
+    // any row it finds already sitting in qa/done, stamps it `provenance: inferred`, and prints
+    // "this is not evidence that a review happened" in its own report — then the renderer wrote it
+    // into the ledger looking exactly like a real approval, and this check counted it. A migration
+    // could therefore manufacture the approval that lets a ticket merge.
+    const evidencedApprovals = approvals.filter((entry) => !entry.inferred);
+    if (POST_REVIEW_STATUS.has(row.status) && approvals.length > 0 && evidencedApprovals.length === 0) {
+      pushReview({
+        code: 'approval_inferred_only',
+        ticketId: row.id,
+        line: approvals[0]._line,
+        detail:
+          `Every approval for this ticket was RECONSTRUCTED by \`board.mjs migrate\` (timestamp "inferred"), not recorded by a reviewer. ` +
+          'The migration says so about itself; the ledger row does not, and it reads like a real approval.',
+        action:
+          'code-reviewer: review the ticket and record it (`board.mjs move <ID> approved --by code-reviewer`). Until then this ticket has not been reviewed.',
+      });
     }
 
     if (POST_REVIEW_STATUS.has(row.status) && approvals.length === 0) {
@@ -359,10 +456,20 @@ function diagnose(board, ledger, capabilities, messages = []) {
     } else {
       const effectiveCycles = Number.isNaN(cycles) ? 0 : cycles;
 
-      if (effectiveCycles >= MAX_REVIEW_CYCLES && row.status !== 'blocked') {
+      // SEMANTICS, stated so this cannot drift again: `Cycles` counts REQUEST CHANGES verdicts
+      // already recorded. /app-build allows 2 review cycles and stops the loop on the THIRD
+      // REQUEST CHANGES — so Cycles = 2 is a ticket that has used its whole budget legitimately
+      // and may still be worked, and only Cycles > 2 is a breach. `>=` fired at 2 and blocked the
+      // second rework the command explicitly permits: the doctor and the command disagreed about
+      // the same number, and the doctor won because it is the one with an exit code.
+      //
+      // Only while the ticket is still being worked. `status !== 'blocked'` meant a ticket that
+      // legitimately used its two review cycles and then merged stayed a BLOCKING anomaly for the
+      // life of the board, so the pre-spawn gate went permanently red on any real sprint.
+      if (effectiveCycles > MAX_REVIEW_CYCLES && ACTIVE_STATUS.has(row.status)) {
         push(
           'cycle_cap_breached',
-          `Cycles = ${effectiveCycles} (cap is ${MAX_REVIEW_CYCLES}) but status is "${row.status}", not blocked.`,
+          `Cycles = ${effectiveCycles} (cap is ${MAX_REVIEW_CYCLES}, breached above it) but status is "${row.status}", not blocked.`,
           'Stop the loop for this ticket, set it blocked, and surface the full reviewer + developer history.'
         );
       }
@@ -486,11 +593,21 @@ function main() {
     hasLedger: /^\s*#{1,6}\s.*review\s+ledger/im.test(text),
   };
 
-  // The message ledger is a sibling of the board: docs/31-board.md -> docs/team/messages.md
-  const messagesPath = join(dirname(boardPath), 'team', 'messages.md');
-  const messages = existsSync(messagesPath) ? parseMessages(readFileSync(messagesPath, 'utf8')) : [];
+  // The team channel is a sibling of the board: docs/31-board.md -> docs/team/messages.jsonl
+  const channel = readChannel(boardPath);
+  if (channel.errors.length) {
+    for (const e of channel.errors) {
+      process.stderr.write(`board-doctor: docs/team/messages.jsonl:${e.line}: ${e.reason}\n`);
+    }
+    // Fail closed, exit 2 — "cannot evaluate", never a pass. A damaged channel rendered as an empty
+    // one is a board reported clean because its questions were unreadable.
+    process.stderr.write(
+      `board-doctor: ${channel.errors.length} unreadable line(s) in the team channel — cannot evaluate.\n`
+    );
+    process.exit(2);
+  }
 
-  const result = diagnose(board, ledger, capabilities, messages);
+  const result = diagnose(board, ledger, capabilities, channel.messages);
   if (!options.quiet || result.anomalies.length > 0) report(result, board, capabilities, options);
   process.exit(result.anomalies.length > 0 ? 1 : 0);
 }

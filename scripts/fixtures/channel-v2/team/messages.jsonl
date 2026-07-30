@@ -1,0 +1,2 @@
+{"v":1,"project":"fixture","priority":"material","blocking":false,"requires_response":true,"requirements":[],"status":"open","provenance":"cli","id":"MSG-0001","ts":"2026-07-29T09:00Z","ticket":"APP-001","kind":"question","from":"android-developer","to":["tech-lead"],"expires_after_round":1,"summary":"Which error type for a failed toggle?"}
+{"id":"MSG-0002","v":2,"ts":"2026-07-29T09:05Z","ticket":"APP-001","kind":"answer","from":"tech-lead","to":["android-developer"],"summary":"a record from a schema this reader does not speak"}

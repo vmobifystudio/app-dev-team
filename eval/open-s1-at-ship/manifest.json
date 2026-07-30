@@ -1,0 +1,16 @@
+{
+  "name": "open-s1-at-ship",
+  "defect": "BUG-201 is an open S1 — the app terminates on launch on a cold start — and the sprint is being taken to release with it open.",
+  "expected_detector": "scripts/ship-gate.sh",
+  "expected_signal": "open S1/S2 bug(s)",
+  "severity": "S1",
+  "why": "The reachable half of crash-on-launch. The runtime gate that would FIND the crash cannot run here; the release gate that must REFUSE TO SHIP a known crash can, and this project scores it. It also guards the fail-open that shipped once: the blocker demanded markdown bold, the template QA is told to write is plain pipe-delimited, and a board carrying an S1 crash returned RESULT: CLEAR.",
+  "detector": {
+    "run": [
+      "sh",
+      "scripts/ship-gate.sh",
+      "{project}"
+    ],
+    "expect_exit": 1
+  }
+}

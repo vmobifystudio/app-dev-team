@@ -9,16 +9,33 @@ with a written reason, but these are the starting point — they reflect what's 
 |---|---|---|
 | Language | Swift 6.0, strict concurrency `complete` | Every `@unchecked Sendable` needs an inline justification |
 | UI | SwiftUI only | UIKit only via a wrapper for a specific gap (e.g. haptics) |
-| Min target | iOS 18.0 (utility) / latest-1 for flagship | e.g. utility apps = 18.0; flagship = 26.0 |
+| Min target | Flagship: **the immediately preceding released major**. Utility: the oldest major the app's APIs and ad SDKs still support | Relative, never pinned here. **Not arithmetic** — Apple went from iOS 18 straight to iOS 26, so "latest minus one" yields a version that never shipped. **Resolve it; never recall it** — see below |
 | Project gen | **XcodeGen** (`project.yml` is source of truth) | `.xcodeproj` is git-ignored, never hand-edited |
 | Architecture | MVVM + Service + Repository | `View → ViewModel → Service → Repository → Persistence` |
 | State | `@Observable` + `@MainActor` on ViewModels only | **No Combine / @Published / ObservableObject** |
 | Persistence | SwiftData (content apps) or GRDB+SQLite/FTS5 (camera/media) | Local-first; migrations from day 1; never destructive |
 | DI | Hand-rolled composition root (`AppContainer`/`AppDIContainer`) | `make<Name>ViewModel()` factory per VM; protocol+impl+mock parity |
 | Networking | URLSession per-service client behind a protocol | Firebase for backend; no heavy HTTP framework |
-| Testing | **Swift Testing** (`@Test`/`@Suite`), not XCTest | Pure-Swift domain engine package, 90%+ coverage |
+| Testing | **Swift Testing** (`@Test`/`@Suite`) for unit and domain tests, not XCTest. **UI automation stays XCUITest** — it is XCTest-based and has no Swift Testing equivalent, and `runtime-gate` runs it | Coverage floor is **90%+ line coverage of the pure-Swift domain engine package only** — not the app target, not UI. See `ios-conventions.md` §Testing |
 | Dependencies | Minimal — Apple-native + Firebase + SwiftLint | No RevenueCat; add a dep only with a written reason |
 | Monetization | StoreKit 2 native | See `monetization.md` |
+
+### Resolving the iOS min target
+
+The rule above is correct and, resolved from memory, unverifiable — which moves the failure out of
+the rule, where a reviewer caught it, into agent knowledge, where nothing does.
+
+So: route the question to whatever iOS reference this install actually has — an `axiom-*` skill
+(`axiom-apple-docs`, `axiom-ios-build`) if one is present, otherwise Apple's published list of
+released iOS majors. Those are **external and optional** — other plugins; if none is installed, say so
+and resolve against Apple's published list directly. Never answer it from recollection.
+
+Record in `docs/20-architecture.md`, on one line: **the number, the source you resolved it against,
+the then-current release, and the date**. A number with no source is not resolved, it is remembered.
+
+**This is a constant, and constants are `verification-engineer`'s** — route it like any other, so it
+is executed rather than trusted. If you cannot reach a source, record `MIN TARGET: UNRESOLVED` and
+raise it. An unresolved number is a blocker; a confidently wrong one ships.
 
 ## Android (flagship default)
 

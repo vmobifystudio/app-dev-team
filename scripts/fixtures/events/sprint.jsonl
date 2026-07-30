@@ -1,0 +1,47 @@
+{"ts":"2026-07-28T08:30:00Z","ticket":"APP-001","event":"created","by":"tech-manager","detail":{"title":"Persist the item store","feature":"F-001","owner":"ios-developer","dependsOn":[],"estimate":"M","spec":"prd#F-001","acceptance":"Given the app, When persist the item store, Then it works","notes":""},"provenance":"cli"}
+{"ts":"2026-07-28T08:30:00Z","ticket":"APP-002","event":"created","by":"tech-manager","detail":{"title":"Add-item flow","feature":"F-002","owner":"android-developer","dependsOn":[],"estimate":"M","spec":"prd#F-002","acceptance":"Given the app, When add-item flow, Then it works","notes":""},"provenance":"cli"}
+{"ts":"2026-07-28T08:30:00Z","ticket":"APP-003","event":"created","by":"tech-manager","detail":{"title":"Sync endpoint","feature":"F-003","owner":"backend-developer","dependsOn":[],"estimate":"M","spec":"prd#F-003","acceptance":"Given the app, When sync endpoint, Then it works","notes":""},"provenance":"cli"}
+{"ts":"2026-07-28T08:31:00Z","ticket":"APP-004","event":"created","by":"tech-manager","detail":{"title":"Paywall gateway","feature":"F-004","owner":"ios-developer","dependsOn":[],"estimate":"M","spec":"prd#F-004","acceptance":"Given the app, When paywall gateway, Then it works","notes":""},"provenance":"cli"}
+{"ts":"2026-07-28T08:31:00Z","ticket":"APP-005","event":"created","by":"tech-manager","detail":{"title":"Subscription products","feature":"F-005","owner":"monetization-engineer","dependsOn":["APP-001"],"estimate":"M","spec":"prd#F-005","acceptance":"Given the app, When subscription products, Then it works","notes":""},"provenance":"cli"}
+{"ts":"2026-07-28T09:00:00Z","ticket":"APP-001","event":"claimed","by":"ios-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T11:00:00Z","ticket":"APP-001","event":"done_reported","by":"ios-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T11:05:00Z","ticket":"APP-001","event":"verified","by":"tech-manager","detail":"verify-done.sh green","provenance":"cli"}
+{"ts":"2026-07-28T11:06:00Z","ticket":"APP-001","event":"review_requested","by":"ios-developer","detail":"-> code-reviewer","provenance":"cli"}
+{"ts":"2026-07-28T11:10:00Z","ticket":"APP-001","event":"started","by":"code-reviewer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T11:40:00Z","ticket":"APP-001","event":"approved","by":"code-reviewer","detail":"docs/53-reviews/APP-001-cycle-1.md","provenance":"cli"}
+{"ts":"2026-07-28T11:45:00Z","ticket":"APP-001","event":"merged","by":"tech-manager","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T13:00:00Z","ticket":"APP-001","event":"qa_passed","by":"qa-engineer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T13:05:00Z","ticket":"APP-001","event":"closed","by":"tech-manager","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T09:00:00Z","ticket":"APP-002","event":"claimed","by":"android-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T12:00:00Z","ticket":"APP-002","event":"done_reported","by":"android-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T12:05:00Z","ticket":"APP-002","event":"verified","by":"tech-manager","detail":"verify-done.sh green","provenance":"cli"}
+{"ts":"2026-07-28T12:06:00Z","ticket":"APP-002","event":"review_requested","by":"android-developer","detail":"-> code-reviewer","provenance":"cli"}
+{"ts":"2026-07-28T12:10:00Z","ticket":"APP-002","event":"started","by":"code-reviewer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T12:40:00Z","ticket":"APP-002","event":"changes","by":"code-reviewer","detail":"docs/53-reviews/APP-002-cycle-1.md","provenance":"cli"}
+{"ts":"2026-07-28T15:00:00Z","ticket":"APP-002","event":"done_reported","by":"android-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T15:05:00Z","ticket":"APP-002","event":"verified","by":"tech-manager","detail":"verify-done.sh green","provenance":"cli"}
+{"ts":"2026-07-28T15:06:00Z","ticket":"APP-002","event":"review_requested","by":"android-developer","detail":"-> code-reviewer","provenance":"cli"}
+{"ts":"2026-07-28T15:40:00Z","ticket":"APP-002","event":"approved","by":"code-reviewer","detail":"docs/53-reviews/APP-002-cycle-2.md","provenance":"cli"}
+{"ts":"2026-07-28T15:45:00Z","ticket":"APP-002","event":"merged","by":"tech-manager","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T16:30:00Z","ticket":"APP-002","event":"qa_passed","by":"qa-engineer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T16:35:00Z","ticket":"APP-002","event":"closed","by":"tech-manager","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T09:05:00Z","ticket":"APP-003","event":"claimed","by":"backend-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T10:00:00Z","ticket":"APP-003","event":"done_reported","by":"backend-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T10:05:00Z","ticket":"APP-003","event":"rejected","by":"tech-manager","detail":"branch carries no commits not already on develop","provenance":"cli"}
+{"ts":"2026-07-28T14:00:00Z","ticket":"APP-003","event":"done_reported","by":"backend-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T14:05:00Z","ticket":"APP-003","event":"verified","by":"tech-manager","detail":"verify-done.sh green","provenance":"cli"}
+{"ts":"2026-07-28T14:06:00Z","ticket":"APP-003","event":"review_requested","by":"backend-developer","detail":"-> code-reviewer","provenance":"cli"}
+{"ts":"2026-07-28T14:30:00Z","ticket":"APP-003","event":"approved","by":"code-reviewer","detail":"docs/53-reviews/APP-003-cycle-1.md","provenance":"cli"}
+{"ts":"2026-07-28T14:35:00Z","ticket":"APP-003","event":"merged","by":"tech-manager","detail":"","provenance":"cli"}
+{"ts":"2026-07-28T16:00:00Z","ticket":"APP-003","event":"qa_failed","by":"qa-engineer","detail":"BUG-007 — sync drops the last edit","provenance":"cli"}
+{"ts":"2026-07-29T09:00:00Z","ticket":"APP-004","event":"claimed","by":"ios-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-29T10:00:00Z","ticket":"APP-004","event":"done_reported","by":"ios-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-29T10:05:00Z","ticket":"APP-004","event":"verified","by":"tech-manager","detail":"verify-done.sh green","provenance":"cli"}
+{"ts":"2026-07-29T10:06:00Z","ticket":"APP-004","event":"review_requested","by":"ios-developer","detail":"-> code-reviewer","provenance":"cli"}
+{"ts":"2026-07-29T10:30:00Z","ticket":"APP-004","event":"changes","by":"code-reviewer","detail":"docs/53-reviews/APP-004-cycle-1.md","provenance":"cli"}
+{"ts":"2026-07-29T11:00:00Z","ticket":"APP-004","event":"done_reported","by":"ios-developer","detail":"","provenance":"cli"}
+{"ts":"2026-07-29T11:05:00Z","ticket":"APP-004","event":"verified","by":"tech-manager","detail":"verify-done.sh green","provenance":"cli"}
+{"ts":"2026-07-29T11:06:00Z","ticket":"APP-004","event":"review_requested","by":"ios-developer","detail":"-> code-reviewer","provenance":"cli"}
+{"ts":"2026-07-29T11:30:00Z","ticket":"APP-004","event":"changes","by":"code-reviewer","detail":"docs/53-reviews/APP-004-cycle-2.md","provenance":"cli"}
+{"ts":"2026-07-29T12:00:00Z","ticket":"APP-004","event":"blocked","by":"code-reviewer","detail":"review cycle cap (2) reached","provenance":"cli"}
+{"ts":"2026-07-29T09:00:00Z","ticket":"APP-005","event":"claimed","by":"monetization-engineer","detail":"","provenance":"cli"}

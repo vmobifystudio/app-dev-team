@@ -1,0 +1,191 @@
+# The studio tests itself.
+#
+# This repo's governing claim is that a rule nobody executes is not a rule — it is the sentence the
+# `defect-hunting` skill is built on and the reason `board-doctor`, `ship-gate` and `runtime-gate`
+# exist at all. Until now its own 113-assertion suite ran only when a human remembered, which made
+# the suite exactly the thing it warns about.
+#
+# Three checks, all zero-dependency, all already runnable locally by the same commands:
+#   scripts/test.sh          the assertion suite
+#   scripts/team-doctor.mjs  the team definition (roles, skills, commands, handoffs, contracts)
+#   plugin manifest parse    the two files that decide whether the plugin loads at all
+#
+# Runs on ubuntu-latest deliberately: the scripts are POSIX sh and Node stdlib, and macOS-only
+# behaviour hiding in them (a gawk-ism, a BSD `sed -i` flag, a `plutil` call outside the iOS
+# branch) is a portability defect we want to hear about from CI rather than from a user on Linux.
+
+name: checks
+
+# TRIGGERS ARE A COST DECISION, so they are justified here rather than left to accumulate.
+#
+# This was `push: ['**']` plus `pull_request:`, which ran the ENTIRE workflow TWICE for every change
+# on a branch with a PR open — once for the push, once for the pull_request event, on the same
+# commit, for an identical result. Pushing six review-stack marker branches fired six full runs that
+# reviewed nothing.
+#
+# `push` is now trunk-only: main is the branch where a bad commit matters and where nothing else is
+# watching. Everywhere else, the PR is the thing under review, so `pull_request` is the honest
+# trigger — one run per commit that someone is actually going to read.
+#
+# `workflow_dispatch` stays: a check you cannot run on demand is a check you cannot re-run after
+# fixing the runner rather than the code.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # verify-done.sh and integration-branch.sh reason about branches and commit ancestry.
+          # A shallow clone makes `git rev-list --count base..branch` wrong rather than failing
+          # loudly, which is the worst shape for a check.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Assertion suite
+        run: sh scripts/test.sh
+
+      - name: Team definition
+        run: node scripts/team-doctor.mjs
+
+      - name: Plugin manifests parse
+        run: |
+          node -e "
+            const fs = require('fs');
+            for (const f of ['.claude-plugin/plugin.json', '.claude-plugin/marketplace.json']) {
+              JSON.parse(fs.readFileSync(f, 'utf8'));
+              console.log('ok', f);
+            }
+          "
+
+      - name: Every skill has valid frontmatter
+        run: |
+          # A skill whose frontmatter is malformed does not fail loudly — it silently never
+          # triggers, which is indistinguishable from a skill that exists and is simply never
+          # the right one. Checked mechanically so it cannot rot.
+          # BOUNDED TO THE FRONTMATTER BLOCK. These greps scanned the whole file, so a body line
+          # reading `name: x` — an example, a table cell, a quoted snippet — satisfied a check about
+          # YAML that is only meaningful in the first block. A frontmatter check that a paragraph
+          # can pass is the "rule that cannot fail" class, in the file that enforces the rules.
+          fm() { awk 'NR==1 && $0!="---" { exit } NR>1 && $0=="---" { exit } NR>1' "$1"; }
+          fail=0
+          for f in skills/*/SKILL.md; do
+            head -n 1 "$f" | grep -qx -- '---' || { echo "MISSING frontmatter opener: $f"; fail=1; continue; }
+            fm "$f" | grep -qE '^name: *[a-z0-9-]+ *$' || { echo "MISSING or malformed name: $f"; fail=1; }
+            fm "$f" | grep -qE '^description: *\S' || { echo "MISSING description: $f"; fail=1; }
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "ok — $(ls -d skills/*/ | wc -l | tr -d ' ') skills"
+
+      - name: Every agent has valid frontmatter
+        run: |
+          fm() { awk 'NR==1 && $0!="---" { exit } NR>1 && $0=="---" { exit } NR>1' "$1"; }
+          fail=0
+          for f in agents/*.md; do
+            head -n 1 "$f" | grep -qx -- '---' || { echo "MISSING frontmatter opener: $f"; fail=1; continue; }
+            fm "$f" | grep -qE '^name: *[a-z0-9-]+ *$' || { echo "MISSING or malformed name: $f"; fail=1; }
+            fm "$f" | grep -qE '^description: *\S' || { echo "MISSING description: $f"; fail=1; }
+            fm "$f" | grep -qE '^tools: *\S' || { echo "MISSING tools: $f"; fail=1; }
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "ok — $(ls agents/*.md | wc -l | tr -d ' ') agents"
+
+      - name: No hardcoded integration branch
+        run: |
+          # scripts/integration-branch.sh is the single resolver. A reintroduced `git push origin
+          # main` in an agent or command is the one mistake that is not recoverable by a later fix
+          # on a project whose release process integrates on develop.
+          if grep -rnE 'git (checkout|push origin|merge) main\b' agents/ commands/ 2>/dev/null; then
+            echo "Hardcoded integration branch above. Use scripts/integration-branch.sh."
+            exit 1
+          fi
+          echo "ok"
+
+  # The job above can report "402 passed, 0 failed" while containing assertions that cannot fail.
+  # On 2026-07-29 it did: a `grep -E` carrying a PCRE lookahead was a syntax error whose stderr went
+  # to /dev/null and whose `|| ok` fired every time, two board-doctor assertions stayed green when a
+  # gate was DELETED by demoting it to a warning, and a hook stood down in exactly the incident it
+  # was written for. All four were found by a reviewer breaking the code by hand and watching
+  # whether the suite noticed. `scripts/mutate.sh` is that technique as a command, so it happens on
+  # every PR rather than on a good day.
+  #
+  # A separate job, so it runs in parallel with `checks` rather than adding five minutes to it, and
+  # so its verdict is separately visible in the PR status list.
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # mutate.sh proves the tree is unchanged by diffing `git status --porcelain` against the
+          # snapshot it took at start, and the suite it runs asserts on branch ancestry.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: A sample of gates must still bite
+        # A sample rather than all 16: each mutation runs the entire suite (~1 min). The full
+        # catalogue is a local and pre-release run. `--sample` spreads across the catalogue rather
+        # than taking the first N, because consecutive entries share target files and a sample that
+        # only ever probes one script says nothing about the rest.
+        #
+        # No `|| true`, no `continue-on-error`, and nothing is installed — DR4-023 and DR4-024 are
+        # this repo's own generated CI reproducing exactly those two anti-patterns. Exit 1 means a
+        # gate can be broken without this repo noticing; that is a blocker, not a warning. A
+        # mutation-testing step that cannot itself go red is worth less than nothing.
+        run: sh scripts/mutate.sh --sample 4
+
+  # The evaluation laboratory. `mutate.sh` above asks whether one assertion can go red; this asks
+  # whether the STUDIO finds a defect planted in a whole project. Every phase after this one is
+  # measured against it, which only means something if it runs on every change rather than when
+  # someone remembers — the same argument that put the suite itself in CI.
+  #
+  # It goes red when a planted defect walks past the detector named for it, and when the CLEAN
+  # project is blocked by a gate. The second half is not decoration: a studio that refuses
+  # everything scores 100% on detection and is useless, and a false block is the failure nobody
+  # files a bug about because it looks like diligence.
+  #
+  # No `|| true`, no `continue-on-error`, and nothing is installed. DR4-023 and DR4-024 are this
+  # repo's own generated CI reproducing exactly those two anti-patterns, in a repo built around the
+  # sentence forbidding them — and `eval/ci-that-cannot-fail` is that defect planted as a fixture,
+  # so a masked exit code here would be this workflow failing the check it is running.
+  #
+  # A separate job so its verdict is separately visible in the PR status list: "the lab is red" and
+  # "the suite is red" are different facts that want different responses.
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # One fixture builds a throwaway git repository to exercise verify-done's branch and
+          # commit reasoning. A shallow clone is not the subject here, but the same trap applies.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Every planted defect must be found, and the clean project must not be blocked
+        run: node scripts/studio-eval.mjs
