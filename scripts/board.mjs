@@ -105,6 +105,23 @@ function scrub(label, value) {
 /**
  * Read the log. A log that exists but does not parse is exit 2, never an empty board — an
  * unreadable gate that returns "nothing to report" is how a broken check reports CLEAR.
+ *
+ * It also refuses to read a log whose audit chain is broken, and that half was missing until
+ * dry run 5 went looking for it. `append` verified the chain, so a tampered log could not be
+ * written to — but `show` printed the rewritten state with exit 0, and `render` regenerated
+ * `docs/31-board.md` from it, laundering the rewrite into the very artifact humans and agents
+ * read as the state of the sprint. The guard was on the path an attacker does not need and
+ * absent from the path they do.
+ *
+ * That is FC-001 once more: the fix stopped one layer short of the human. The rule this repo
+ * keeps re-learning is to ask who ELSE touches this value between the check and the reader.
+ * Here the answer was "every read command", so the check belongs in the one function they all
+ * call rather than in each of them.
+ *
+ * Exit 2, matching the unreadable-line branch below it and `append` above: a rewritten record is
+ * not a board whose state is bad, it is a board whose state is UNKNOWABLE. `board.mjs verify` is
+ * deliberately exempt — it reads the file itself, because a command whose job is reporting the
+ * break cannot die on encountering one.
  */
 function loadLog(logPath, { required = true } = {}) {
   if (!existsSync(logPath)) {
@@ -123,6 +140,18 @@ function loadLog(logPath, { required = true } = {}) {
       2,
       `${logPath} has ${errors.length} unreadable line(s) — refusing to guess:\n` +
         errors.map((e) => `  line ${e.line}: ${e.reason}`).join('\n')
+    );
+  }
+  const chain = verifyChain(text);
+  if (!chain.ok) {
+    die(
+      2,
+      `the audit chain of ${logPath} is broken at line ${chain.line}.\n` +
+        `  ${chain.reason}\n` +
+        `  ${chain.chained} line(s) verified before the break.\n` +
+        '  Refusing to report a state derived from a rewritten history. Whatever this board would\n' +
+        '  have said is a claim about the edited file, not about what the team did.\n' +
+        `  Recover the log from version control (git checkout -- ${logPath}), then re-run.`
     );
   }
   return { events };

@@ -3601,6 +3601,42 @@ assert_has "$TMP/out" "AUDIT CHAIN: BROKEN" "...and calls it a rewritten history
 assert_exit 2 "...and the CLI refuses to append on top of a rewritten log" \
   bm "$CH" move C-001 done_reported --by ios-developer
 
+# DR5-001. The write path refused, and for a while that was the whole control — `show` printed the
+# rewritten state with exit 0, and `render` regenerated docs/31-board.md from it, which laundered
+# the edit into the artifact humans and agents actually read. The guard sat on the path an attacker
+# does not need and was missing from the path they do. FC-001, again: ask who else touches this
+# value between the check and the reader.
+#
+# PROVEN BY: reverting the verifyChain call in board.mjs's loadLog — `show` reported
+# owner=someone-else at exit 0 and `render` rewrote the board file, and both of these went red.
+assert_exit 2 "...and REFUSES TO READ it — show does not report a rewritten state" \
+  bm "$CH" show C-001
+assert_exit 2 "...nor render the Markdown board humans read from a rewritten log" \
+  bm "$CH" render
+# `verify` is exempt on purpose: a command whose job is reporting the break cannot die on one.
+# Without this the fix above could be "make every command exit 2", which reports nothing.
+assert_exit 1 "...but verify still REPORTS the break rather than refusing to run" bm "$CH" verify
+
+# The class-level rule, not the two instances above. DR5-001 existed because a subcommand was added
+# without anyone asking whether the integrity guard covered it, and the two assertions above would
+# not catch the NEXT one. So: enumerate the subcommands out of board.mjs itself and require that
+# none of them completes successfully against a rewritten log. A new `case '...'` is covered the
+# day it is written, and a new read path that forgets to verify turns this red without anyone
+# remembering to extend the test.
+#
+# `verify` is the one documented exemption and is asserted separately above.
+CMDS=$(grep -oE "^    case '[a-z]+'" "$HERE/board.mjs" | grep -oE "'[a-z]+'" | tr -d "'" | grep -v '^verify$')
+CHAIN_LEAKS=""
+for c in $CMDS; do
+  bm "$CH" "$c" C-001 >/dev/null 2>&1
+  [ $? -eq 0 ] && CHAIN_LEAKS="$CHAIN_LEAKS $c"
+done
+if [ -n "$CHAIN_LEAKS" ]; then
+  bad "no board.mjs subcommand succeeds against a rewritten log" "these exited 0:$CHAIN_LEAKS"
+else
+  ok "no board.mjs subcommand succeeds against a rewritten log (swept:$(echo " $CMDS" | tr '\n' ' '))"
+fi
+
 # Deleting a line is the same class and must not be quieter.
 cp "$TMP/chain-orig.jsonl" "$CH/docs/31-board-events.jsonl"
 node -e '

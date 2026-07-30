@@ -62,13 +62,34 @@ one parser, proven by agreement rather than by an import grep. `scripts/team-doc
 (`doc_writer_silent`, `doc_unread`) catches the documentation-side form. `agents/code-reviewer.md`
 requires a producer-side fix to name its consumers in the verdict.
 
-**Rule shipped:** 2026-07-29
+**Strengthened after DR5-001 (2026-07-30).** The three rules above all watch the *producer* side:
+they ask whether a value's readers were updated when the value changed. DR5-001 was the other
+axis — an integrity **guard** placed on the write path and absent from the read path — and none of
+them could see it, because nothing about the value changed at all. Two additions:
+
+- **Sweep the surface, do not enumerate the instances.** `scripts/test.sh` now extracts
+  `board.mjs`'s subcommand list *from `board.mjs` itself* and requires that none of them exits 0
+  against a rewritten log. A subcommand added next month is covered the day it is written. An
+  assertion naming `show` and `render` would have closed DR5-001 and stayed blind to DR5-00N. The
+  general form: when a guard protects a *class* of entry point, derive the class from the source
+  and assert over all of it.
+- **Ask the reader-side question too.** The producer-side question is *who reads this value?* The
+  reader-side question is *if this guard protects an invariant, which paths observe the protected
+  thing without passing through the guard?* For an append-only log the answer is every read; for a
+  permission check it is every listing; for redaction it is every export.
+
+Re-stamped because the 2026-07-29 rule failed to prevent DR5-001. The original date is not erased:
+it is the first row of the instance table below, and the gap between the two dates is the measure of
+how long this class went on being caught by hand.
+
+**Rule shipped:** 2026-07-30
 
 | Date | Instance |
 |---|---|
 | 2026-07-29 | DR4-008 — the board CLI stopped upcasing ticket IDs; `parseDependencies`, the doctor and the renderer kept upcasing, so `BUG-001-fix` still rendered `BUG-001-FIX` and the documented spelling still grepped to nothing |
 | 2026-07-29 | `verified_static` was added to the event vocabulary, and was unreachable from the `/app-build` loop and invisible to `ship-gate.sh` — the state existed and nothing could enter or observe it |
 | 2026-07-29 | `integration-branch.sh` was hardened against a malformed input that no step in the pipeline ever produced |
+| 2026-07-30 | **DR5-001, a recurrence after the rule shipped.** The audit chain was verified before every *append*, so a tampered log could not be written to — and `board.mjs show` printed the rewritten state at exit 0 while `board.mjs render` regenerated `docs/31-board.md` from it. The guard sat on the path an attacker does not need and was absent from the one they do: the read. Found by an adversarial probe in dry run 5, not by a reviewer, and not by this rule — which is the finding within the finding. The producer-side question was asked about the writer and never about the reader |
 
 ---
 
