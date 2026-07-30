@@ -1,0 +1,30 @@
+{
+  "name": "app-dev-team-control-room",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "The control room for app-dev-team. Lives here, with its own dependencies, so the plugin stays zero-dependency.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --noEmit",
+    "serve": "node server.mjs",
+    "smoke": "vite build --ssr src/smoke.tsx --outDir .smoke --logLevel warn && node .smoke/smoke.js",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0"
+  }
+}

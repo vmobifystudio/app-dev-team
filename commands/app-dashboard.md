@@ -1,12 +1,28 @@
 ---
-description: Open the control room — a live page showing why work is stuck, what was never executed, and what belongs to nobody
+description: Open the emergency/diagnostic dashboard — zero-dependency, single file, works when the build stack is broken
 allowed-tools: Read, Glob, Grep, Bash
 ---
 
-# /app-dashboard — The control room
+# /app-dashboard — The diagnostic dashboard
 
 A **projection** of `docs/`, served on `localhost:4173`. It never writes state: where it acts, it
 invokes the same validated CLI the agents use and shows you the command and its exit code.
+
+## Which of the two this is
+
+There are two dashboards, permanently, and neither replaces the other.
+
+| | This one — `/app-dashboard` | `/app-control-room` |
+|---|---|---|
+| What it is | the **emergency / diagnostic** interface | the **product** |
+| Dependencies | **zero** — one file, Node stdlib, no build step | React + TypeScript + Vite in `control-room/`, with its own `package.json` |
+| Shape | eight ranked panels, cause first | five screens: Mission Control · Communications · Board · Team · Founder Inbox |
+| Reach for it when | the build stack is broken, `npm install` fails, or you need one shareable file | day to day — following threads, reading the roster, working the founder inbox |
+
+**Never make the only diagnostic tool depend on the stack it may need to diagnose.** That is why
+this one has no dependencies and why it is not going away. Both use the *same* action whitelist
+(`scripts/lib/actions.mjs`) and the *same* read layer (`scripts/lib/project.mjs`), so they cannot
+disagree about one board.
 
 ## Steps
 

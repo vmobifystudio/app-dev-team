@@ -3998,6 +3998,214 @@ grep -nE 'studio-eval\.mjs.*(\|\|[[:space:]]*(true|:))' "$HERE/../.github/workfl
   || ok "...and its exit code is not masked"
 
 
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "control-room (the product UI, and the plugin's zero-dep guarantee)"
+# --------------------------------------------------------------------------------------------
+# `control-room/` is the ONLY place in this repository where dependencies are allowed to live. The
+# whole arrangement rests on three claims, and each is asserted here WITHOUT installing anything —
+# a check that needs `npm install` first is a check that does not run on the machine that matters.
+#
+#   1. the plugin has no root package.json
+#   2. this suite, and every plugin script, works with control-room/node_modules absent
+#   3. the action whitelist refuses a name that is not on it
+CR="$HERE/../control-room"
+
+# 1. The zero-dependency property is a SECURITY property; it passed a security review outright. A
+# package.json at the root is how it stops being true, and it would arrive in a PR that looks like
+# housekeeping. Proven red by touching one at the root and watching this go FAIL.
+[ ! -f "$HERE/../package.json" ] \
+  && ok "the plugin has no package.json at its root" \
+  || bad "the plugin has no package.json at its root" "$HERE/../package.json exists — the plugin is no longer zero-dependency"
+[ ! -d "$HERE/../node_modules" ] \
+  && ok "...and no node_modules at its root" \
+  || bad "...and no node_modules at its root"
+
+# 2a. Statically: nothing the plugin ships may import from control-room/ or from a package. A bare
+# specifier in scripts/ is a runtime dependency however small it looks.
+BADIMPORT=$(grep -rnE "^[[:space:]]*import.*from[[:space:]]+['\"][^.]" "$HERE" --include=*.mjs 2>/dev/null \
+  | grep -vE "from[[:space:]]+['\"]node:" || true)
+[ -z "$BADIMPORT" ] \
+  && ok "no script under scripts/ imports a package — every import is node: or relative" \
+  || bad "no script under scripts/ imports a package" "$BADIMPORT"
+# A MENTION of control-room in a comment is fine and useful; a code path INTO it is not. Match the
+# forms that actually reach the directory — an import, a require, or a path handed to a spawn.
+CRDEP=$( { grep -rnE "(import|require|from|execFile|spawn|exec)[^#]*['\"][^'\"]*control-room/" "$HERE" 2>/dev/null; \
+           grep -rnE "control-room/" "$HERE/../hooks" 2>/dev/null; } | tr '\n' ' ')
+[ -z "$(printf '%s' "$CRDEP" | tr -d ' ')" ] \
+  && ok "...and no script under scripts/ or hooks/ has a code path into control-room/" \
+  || bad "...and no script under scripts/ or hooks/ has a code path into control-room/" "$CRDEP"
+
+# 2b. Behaviourally, and this is the assertion that matters: copy scripts/ and the control room's
+# two stdlib files into a tree that HAS NO node_modules AT ALL, and serve a real project from it.
+# Renaming the installed one would be reversible-until-the-suite-is-interrupted; a copy cannot lie
+# about what it does not contain. Proven red by adding `import "react"` to state.mjs.
+BARE="$TMP/bare"
+mkdir -p "$BARE/control-room"
+( cd "$HERE/.." && tar cf - scripts ) | ( cd "$BARE" && tar xf - )
+cp "$CR/state.mjs" "$CR/server.mjs" "$BARE/control-room/"
+[ ! -e "$BARE/control-room/node_modules" ] \
+  && ok "the bare copy genuinely has no control-room/node_modules" \
+  || bad "the bare copy genuinely has no control-room/node_modules"
+
+CPORT=$(( 44000 + $$ % 3000 ))
+node "$BARE/control-room/server.mjs" --project "$DFX" --port "$CPORT" >"$TMP/cr.log" 2>&1 &
+CRPID=$!
+i=0
+while [ "$i" -lt 20 ]; do
+  [ "$(dfetch "http://127.0.0.1:$CPORT/state")" = "200" ] && break
+  sleep 1; i=$((i + 1))
+done
+if [ "$i" -ge 20 ]; then
+  bad "the control room serves /state with node_modules absent" "no response on $CPORT: $(head -3 "$TMP/cr.log")"
+else
+  ok "the control room serves /state with node_modules absent"
+fi
+cp "$RESP" "$TMP/cr-state.json"
+
+# ...and with dist/ absent it says so instead of serving a blank page. A UI that fails to load and
+# shows nothing is indistinguishable from a project with nothing wrong — which is this repo's
+# defining failure mode, committed in the one place nobody would think to check for it.
+dfetch "http://127.0.0.1:$CPORT/" >/dev/null
+assert_has "$RESP" "npm run build" "with dist/ absent the page names the commands that build it"
+assert_has "$RESP" "studio-dashboard.mjs" "...and points at the zero-dep dashboard, which needs nothing installed"
+
+# 3. The whitelist. `ACTIONS[name]` was a bare lookup once, so an INHERITED property passed the
+# guard and the resulting TypeError killed the process; `Object.hasOwn` is why both surfaces refuse
+# it now. Proven red by swapping `Object.hasOwn(ACTIONS, name)` back for `ACTIONS[name]`.
+[ "$(dfetch "http://127.0.0.1:$CPORT/action" '{"action":"render","params":{}}')" = "400" ] \
+  && ok "control-room POST /action refuses an action that is not on the whitelist" \
+  || bad "control-room POST /action refuses an action that is not on the whitelist" "$(head -c 200 "$RESP")"
+assert_has "$RESP" "not on the action whitelist" "...and says so, naming the whitelist"
+for EVIL in constructor toString hasOwnProperty __proto__ valueOf; do
+  CODE=$(dfetch "http://127.0.0.1:$CPORT/action" "{\"action\":\"$EVIL\",\"params\":{}}")
+  [ "$CODE" = "400" ] || bad "control-room refuses the inherited property \"$EVIL\"" "status $CODE"
+done
+ok "...including every inherited Object.prototype key"
+
+# The same trust boundary as the dashboard, because it is the same module. A text/plain POST is a
+# CORS-simple request with no preflight, so any page the operator has open could drive these.
+[ "$(dfetch_hdr "http://127.0.0.1:$CPORT/action" text/plain - '{"action":"unblock","params":{"ticket":"APP-002","by":"tech-manager","reason":"drive-by"}}')" = "415" ] \
+  && ok "control-room refuses a CORS-simple text/plain body" \
+  || bad "control-room refuses a CORS-simple text/plain body" "$(head -c 200 "$RESP")"
+[ "$(dfetch_hdr "http://127.0.0.1:$CPORT/action" application/json https://evil.example '{"action":"unblock","params":{"ticket":"APP-002","by":"tech-manager","reason":"drive-by"}}')" = "403" ] \
+  && ok "...and a cross-origin POST" \
+  || bad "...and a cross-origin POST" "$(head -c 200 "$RESP")"
+
+# NO DIRECT WRITE, asserted both ways. Behaviourally: a refused action leaves the log byte-identical
+# and the CLI's own words come back verbatim, exit code included.
+cp "$DFX/docs/31-board-events.jsonl" "$TMP/cr-log-before.jsonl"
+dfetch "http://127.0.0.1:$CPORT/action" \
+  '{"action":"unblock","params":{"ticket":"APP-003","by":"tech-manager","reason":"it is not blocked, so this must be refused"}}' >/dev/null
+assert_has "$RESP" "is not legal on APP-003" "a CLI refusal comes back VERBATIM from the control room too"
+assert_has "$RESP" '"exitCode":1' "...with the exit code the CLI actually returned"
+cmp -s "$TMP/cr-log-before.jsonl" "$DFX/docs/31-board-events.jsonl" \
+  && ok "...and the event log is byte-identical — the refusal was not advisory" \
+  || bad "...and the event log is byte-identical"
+
+# And statically, the way the dashboard's is: there is NO file write in this directory at all. Not
+# one that is currently unreachable, not one behind a flag. A second writer of state is a second
+# writer whatever it is called.
+CRWRITES=$(cat "$CR"/*.mjs | grep -c "writeFileSync(\|appendFileSync(\|createWriteStream(" || true)
+[ "$CRWRITES" = "0" ] \
+  && ok "control-room's server contains no file write of any kind" \
+  || bad "control-room's server contains no file write of any kind" "found $CRWRITES"
+
+# The whitelist is ONE module. Two copies is two sets of rules about what a human may do to one
+# board, and the drift is invisible because both pages still work.
+grep -q "lib/actions.mjs" "$CR/server.mjs" && grep -q "lib/actions.mjs" "$DASH" \
+  && ok "both dashboards import the SAME action whitelist" \
+  || bad "both dashboards import the SAME action whitelist"
+
+# --- degrade honestly ---------------------------------------------------------------------------
+# The rule with the highest stakes on any UI: with the log unreadable, no log-derived section may
+# read `clear`. An empty panel that looks like all-clear is the failure this codebase exists to
+# prevent. Proven red by making loadLog return an empty board instead of an unavailable one.
+CRBROKE="$TMP/cr-broken"
+cp -R "$DFX" "$CRBROKE"
+printf 'this line is not json\n' >> "$CRBROKE/docs/31-board-events.jsonl"
+node -e '
+import(process.argv[1]).then((m) => {
+  const s = m.assembleState(process.argv[2]);
+  const sections = s.screens.flatMap((x) => x.sections);
+  const logDerived = ["stuck", "build", "unaccounted"];
+  const wrong = sections.filter((x) => logDerived.includes(x.id) && x.status !== "unavailable");
+  if (wrong.length) {
+    console.error("not unavailable: " + wrong.map((x) => x.id + "=" + x.status).join(", "));
+    process.exit(1);
+  }
+  process.exit(0);
+});
+' "$CR/state.mjs" "$CRBROKE" 2>"$TMP/cr-degrade.txt" \
+  && ok "an unparseable log makes every log-derived section CANNOT EVALUATE, never clear" \
+  || bad "an unparseable log makes every log-derived section CANNOT EVALUATE" "$(cat "$TMP/cr-degrade.txt")"
+
+# A project with nothing in it must produce NOT ONE `clear`. "Swept nothing, found nothing" is the
+# shape of every false all-clear this repo has shipped.
+mkdir -p "$TMP/cr-empty"
+node -e '
+import(process.argv[1]).then((m) => {
+  const s = m.assembleState(process.argv[2]);
+  const clear = s.screens.flatMap((x) => x.sections).filter((x) => x.status === "clear");
+  if (clear.length) { console.error("clear on an empty project: " + clear.map((x) => x.id).join(", ")); process.exit(1); }
+  process.exit(0);
+});
+' "$CR/state.mjs" "$TMP/cr-empty" 2>"$TMP/cr-empty.txt" \
+  && ok "an empty project produces no CLEAR anywhere — every screen says what it could not read" \
+  || bad "an empty project produces no CLEAR anywhere" "$(cat "$TMP/cr-empty.txt")"
+
+# Every section, on every screen, always states its population. DR4-025: a clearance claim that does
+# not say what it looked at hides its own blind spot.
+node -e '
+const s = require(process.argv[1]);
+const bare = s.screens.flatMap((x) => x.sections).filter((x) => !x.swept || !String(x.swept).trim());
+if (bare.length) { console.error("no swept: " + bare.map((x) => x.id).join(", ")); process.exit(1); }
+process.exit(0);
+' "$TMP/cr-state.json" 2>"$TMP/cr-swept.txt" \
+  && ok "every section on every screen states the population it swept" \
+  || bad "every section on every screen states the population it swept" "$(cat "$TMP/cr-swept.txt")"
+
+# Five screens, in this order. Mission Control leads with cause, not a burn-down: on a blocked
+# sprint a burn-down is a flat line that explains nothing, and its first section is the reason.
+node -e '
+const s = require(process.argv[1]);
+const ids = s.screens.map((x) => x.id).join(",");
+const first = s.screens[0].sections[0].id;
+process.exit(ids === "mission,comms,board,team,inbox" && first === "stuck" ? 0 : 1);
+' "$TMP/cr-state.json" && ok "five screens in order, and Mission Control leads with why work is not moving" \
+                       || bad "five screens in order, and Mission Control leads with why work is not moving" \
+                              "$(node -e 'const s=require(process.argv[1]);console.log(s.screens.map(x=>x.id).join(",")+" / first="+s.screens[0].sections[0].id)' "$TMP/cr-state.json")"
+
+# The Team screen's whole point: an `off` role is RECORDED with its reason, never silently absent.
+node -e '
+const s = require(process.argv[1]);
+const team = s.screens.find((x) => x.id === "team");
+if (team.status === "unavailable" && !team.roles.length) process.exit(0); // no roster: reported, not faked
+const missing = team.roles.filter((r) => !r.reason);
+process.exit(missing.length ? 1 : 0);
+' "$TMP/cr-state.json" && ok "no role appears on the Team screen without a recorded reason or trigger" \
+                       || bad "no role appears on the Team screen without a recorded reason or trigger"
+
+kill "$CRPID" 2>/dev/null || true
+wait "$CRPID" 2>/dev/null || true
+
+# /app-control-room has to invoke the thing, and /app-dashboard has to say which is which. A pair of
+# commands that do not distinguish themselves is how the diagnostic tool quietly acquires a build
+# step — which is the one thing it may never have.
+CRCMD="$HERE/../commands/app-control-room.md"
+[ -f "$CRCMD" ] && ok "/app-control-room exists" || bad "/app-control-room exists"
+grep -q "control-room/server.mjs" "$CRCMD" && ok "...and invokes control-room/server.mjs" \
+                                            || bad "...and invokes control-room/server.mjs"
+grep -q "app-dashboard" "$CRCMD" && ok "...and names the diagnostic dashboard as the fallback" \
+                                 || bad "...and names the diagnostic dashboard as the fallback"
+grep -q "app-control-room" "$HERE/../commands/app-dashboard.md" \
+  && ok "/app-dashboard says which of the two dashboards it is" \
+  || bad "/app-dashboard says which of the two dashboards it is"
+grep -q "zero" "$HERE/../commands/app-dashboard.md" \
+  && ok "...and that it is the zero-dependency one" \
+  || bad "...and that it is the zero-dependency one"
+[ -f "$CR/README.md" ] && ok "control-room/README.md exists" || bad "control-room/README.md exists"
 echo
 # --------------------------------------------------------------------------------------------
 echo "no conflict markers"

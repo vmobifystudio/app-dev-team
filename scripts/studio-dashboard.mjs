@@ -50,34 +50,18 @@
  */
 
 import { createServer } from 'node:http';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, watch, readdirSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { parseArgs } from './lib/args.mjs';
 import { redact } from './lib/redact.mjs';
-import {
-  readBoard,
-  parseMessages,
-  parseDependencies,
-  findBlockingAncestor,
-  pairQuestions,
-  isEmpty,
-  normalizeId,
-} from './lib/board.mjs';
-import { parseEventLog, reduce, deriveMetrics, key } from './lib/events.mjs';
-
-const SCRIPTS = dirname(fileURLToPath(import.meta.url));
-const BOARD_CLI = join(SCRIPTS, 'board.mjs');
-const MESSAGE_CLI = join(SCRIPTS, 'team-message.sh');
-
-const REL = {
-  board: 'docs/31-board.md',
-  log: 'docs/31-board-events.jsonl',
-  messages: 'docs/team/messages.md',
-  docs: 'docs',
-};
+import { parseMessages, pairQuestions, isEmpty, normalizeId } from './lib/board.mjs';
+import { deriveMetrics } from './lib/events.mjs';
+// The whitelist and the read layer are SHARED with control-room/ — see the header of each. Two
+// copies of either is two sets of rules about one board, and the copies drift silently.
+import { ACTIONS, actionForms, runAction, refuseRequest } from './lib/actions.mjs';
+import { REL, readSource, loadLog, buildRows, stuckItems, detailText } from './lib/project.mjs';
 
 /** Files with a writer of their own and a provenance story. Not "work with no provenance". */
 const GENERATED = new Set([
@@ -96,179 +80,18 @@ const GENERATED = new Set([
 const STATUS_ORDER = ['todo', 'in_progress', 'review', 'qa', 'done', 'blocked'];
 
 // ---------------------------------------------------------------------------------------------
-// sources — read once, per request, and say plainly when one is not there
+// sources — `lib/project.mjs` reads them; nothing in this file opens a state file itself
 // ---------------------------------------------------------------------------------------------
-
-function readSource(root, rel) {
-  const path = join(root, rel);
-  if (!existsSync(path)) return { path: rel, ok: false, note: `no ${rel} in this project` };
-  try {
-    return { path: rel, ok: true, text: readFileSync(path, 'utf8'), note: '' };
-  } catch (error) {
-    return { path: rel, ok: false, note: `cannot read ${rel}: ${error.message}` };
-  }
-}
-
-/**
- * Fold the log. A log that exists but does not parse is UNAVAILABLE, never an empty board — the
- * same fail-closed rule board.mjs applies, for the same reason: an unreadable input that reports
- * "nothing to report" is how a broken check reports CLEAR.
- */
-function loadLog(source) {
-  if (!source.ok) return { ok: false, note: source.note, events: [], tickets: new Map(), violations: [] };
-  const { events, errors } = parseEventLog(source.text);
-  if (errors.length) {
-    return {
-      ok: false,
-      note: `${REL.log} has ${errors.length} unreadable line(s) — refusing to guess: ${errors
-        .map((e) => `line ${e.line}: ${e.reason}`)
-        .join('; ')}`,
-      events: [],
-      tickets: new Map(),
-      violations: [],
-    };
-  }
-  const { tickets, violations } = reduce(events);
-  return { ok: true, note: '', events, tickets, violations };
-}
-
-/**
- * One row set, two possible inputs.
- *
- * Preferred: the generated Markdown board, parsed exactly as board-render parses it, so the kanban
- * and the owner load on this page ARE board-render's — same parser, same `stranded` derivation.
- * If the board file is missing but the log is not, the rows are folded from the log instead, which
- * is the same data one step earlier. Never both, never a merge of two readings.
- */
-function buildRows(boardSource, log) {
-  let rows = [];
-  let from = null;
-  let capabilities = { hasReviewColumns: false, hasLedger: false };
-  let ledger = [];
-
-  if (boardSource.ok) {
-    const parsed = readBoard(boardSource.text);
-    if (parsed.board.rows.length) {
-      from = REL.board;
-      ledger = parsed.ledger;
-      capabilities = parsed.capabilities;
-      rows = parsed.board.rows.map((row) => ({
-        id: normalizeId(row.id),
-        title: row.title || '',
-        feature: row.feature || '',
-        owner: isEmpty(row.owner) ? '' : row.owner,
-        reviewer: isEmpty(row.reviewer) ? '' : row.reviewer,
-        status: (row.status || '').toLowerCase().trim(),
-        staticOnly: Boolean(row.staticOnly),
-        dependsOn: row.dependsOn || '',
-        notes: row.notes || '',
-        acceptance: row.acceptance || '',
-        spec: row.spec || '',
-      }));
-    }
-  }
-
-  if (!rows.length && log.ok && log.tickets.size) {
-    from = REL.log;
-    rows = [...log.tickets.values()].map((t) => ({
-      id: normalizeId(t.id),
-      title: t.meta.title || '',
-      feature: t.meta.feature || '',
-      owner: t.owner || '',
-      reviewer: t.reviewer || '',
-      status: t.status,
-      staticOnly: t.verifiedStatic,
-      dependsOn: t.dependsOn.join(', '),
-      notes: t.meta.notes || '',
-      acceptance: t.meta.acceptance || '',
-      spec: t.meta.spec || '',
-    }));
-  }
-
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  for (const row of byId.values()) {
-    // Derived, never stored — board-render's rule. A todo behind a blocked dependency is invisible
-    // to the sprint loop, so it has to be visible here.
-    row.stranded = row.status === 'todo' ? findBlockingAncestor(row.id, byId) : null;
-    row.deps = parseDependencies(row.dependsOn);
-    const state = log.ok ? log.tickets.get(key(row.id)) : null;
-    row.events = state ? state.events : [];
-    row.staticOnly = row.staticOnly || Boolean(state?.verifiedStatic);
-    row.unrun = state?.staticUnrun || '';
-  }
-
-  return { rows: [...byId.values()], byId, from, ledger, capabilities };
-}
 
 // ---------------------------------------------------------------------------------------------
 // panel 1 — WHY IS NOTHING MOVING
 // ---------------------------------------------------------------------------------------------
 
-/** The literal headline every gate in this repo prints when it could not decide. */
-const CANNOT_EVALUATE = /CANNOT EVALUATE/;
-
-const detailText = (detail) => (typeof detail === 'string' ? detail : JSON.stringify(detail ?? ''));
-
+// The derivation is `lib/project.mjs` stuckItems — shared with control-room/, so both surfaces
+// give the same answer to the question this page exists to answer first.
 function panelStuck(model) {
   const { rows, log } = model;
-  const items = [];
-
-  for (const row of rows.filter((r) => r.status === 'blocked')) {
-    const last = [...row.events].reverse().find((e) => e.event === 'blocked');
-    const reason = detailText(last?.detail).trim() || row.notes.trim();
-    items.push({
-      kind: 'blocked',
-      id: row.id,
-      owner: row.owner,
-      since: last?.ts || '',
-      // A blocked ticket with no recorded reason is itself the finding. Saying "blocked" and
-      // stopping is the shape of report this whole dashboard exists to refuse.
-      reason: reason || 'NO REASON RECORDED — the block was written without one, so nobody can act on it',
-      hasReason: Boolean(reason),
-      actionable: true,
-    });
-  }
-
-  for (const row of rows.filter((r) => r.stranded)) {
-    items.push({
-      kind: 'stranded',
-      id: row.id,
-      owner: row.owner,
-      reason: `waiting on ${row.stranded.via} (${row.stranded.reason}) — the sprint loop cannot see this ticket at all`,
-      actionable: false,
-    });
-  }
-
-  // Gates do not report to this page; they report into the log, and the log is what survives. A
-  // `verified_static` says a gate declined to certify something, and names it. Any event detail
-  // carrying a gate's own CANNOT EVALUATE headline is the operator having pasted the verdict.
-  // ponytail: this reads recorded verdicts, it never runs a gate — a projection that shells out to
-  // ship-gate on every refresh is a second orchestrator. Run the gate, record it, and it shows up.
-  for (const row of rows) {
-    if (row.staticOnly) {
-      items.push({
-        kind: 'cannot_evaluate',
-        id: row.id,
-        gate: 'verify-done',
-        reason: `${row.unrun || 'the executable test suite'} has never run — this ticket may be reviewed and merged, never closed`,
-        actionable: false,
-      });
-    }
-    for (const event of row.events) {
-      // ...but not twice. A `blocked` whose reason already quotes the gate is one fact, and the
-      // panel's job is the reason, not a tally of how many ways it can be phrased.
-      if (event.event === 'blocked') continue;
-      if (CANNOT_EVALUATE.test(detailText(event.detail))) {
-        items.push({
-          kind: 'cannot_evaluate',
-          id: row.id,
-          gate: event.event,
-          reason: detailText(event.detail).trim(),
-          actionable: false,
-        });
-      }
-    }
-  }
+  const items = stuckItems(rows);
 
   return {
     id: 'stuck',
@@ -835,150 +658,10 @@ function assembleStateRaw(root, { actions = true } = {}) {
 // ---------------------------------------------------------------------------------------------
 // the action surface — a whitelist, and nothing but
 // ---------------------------------------------------------------------------------------------
-
-const TICKET_RE = /^[A-Za-z]+-\d+(?:-[A-Za-z]+)?$/;
-const ROLE_RE = /^[a-z][a-z0-9-]{1,40}$/;
-/**
- * A free-text field: non-empty, one line, bounded — and NOT shaped like a flag.
- *
- * The `--` rule is defence in depth. The real hole was scripts/board.mjs `parseArgs` reading any
- * `--`-prefixed token as a new flag even in a value position, so `reason: "--board=/tmp/x"` made
- * the CLI render a board over an arbitrary file and recorded `"detail": true` in its place. That is
- * fixed at the CLI, where every caller routes; this refuses it at the trust boundary too, because a
- * form field that looks like a flag is never a legitimate reason, summary or artifact path.
- */
-const oneLine = (value, max) =>
-  typeof value === 'string' &&
-  value.trim().length > 0 &&
-  value.length <= max &&
-  !/[\n\r]/.test(value) &&
-  !/^\s*--/.test(value);
-
-/**
- * Three actions. Each one BUILDS AN ARGV FOR THE REAL CLI and runs it with execFile — no shell, so
- * there is no interpolation anywhere in this file, and no path from a form field to a state file.
- *
- * "Re-prioritise" is deliberately absent: nobody wanted it once in the whole run, and every action
- * that exists here is one more thing that has to stay in step with the CLI's rules.
- */
-const ACTIONS = {
-  unblock: {
-    label: 'Unblock a ticket',
-    fields: [
-      { name: 'ticket', label: 'Ticket', required: true },
-      { name: 'by', label: 'By (role)', required: true, value: 'tech-manager' },
-      { name: 'reason', label: 'Recorded reason', required: true, long: true },
-    ],
-    validate: (p) =>
-      (!TICKET_RE.test(p.ticket || '') && 'ticket must look like APP-001 or BUG-001-fix') ||
-      (!ROLE_RE.test(p.by || '') && 'by must be a role name') ||
-      (!oneLine(p.reason, 500) && 'a reason is required, one line, max 500 chars — an unblock with no reason is how a block becomes a mystery') ||
-      null,
-    argv: (p) => ['node', [BOARD_CLI, 'move', p.ticket, 'unblocked', '--by', p.by, '--detail', p.reason]],
-  },
-  answer: {
-    label: 'Answer an open question',
-    fields: [
-      { name: 'ticket', label: 'Ticket', required: true },
-      { name: 'from', label: 'From (role)', required: true },
-      { name: 'to', label: 'To (role)', required: true },
-      { name: 'summary', label: 'Answer (one line)', required: true },
-      { name: 'body', label: 'Detail — name the artifact you folded it into', required: true, long: true },
-    ],
-    validate: (p) =>
-      (!TICKET_RE.test(p.ticket || '') && 'ticket must look like APP-001') ||
-      (!ROLE_RE.test(p.from || '') && 'from must be a role name') ||
-      (!ROLE_RE.test(p.to || '') && 'to must be a role name') ||
-      (!oneLine(p.summary, 300) && 'a one-line summary is required') ||
-      (!oneLine(p.body, 2000) && 'a body is required — name the artifact the answer was folded into, or this is a closed ledger and nothing else') ||
-      null,
-    argv: (p) => [
-      'sh',
-      [MESSAGE_CLI, '--from', p.from, '--to', p.to, '--ticket', p.ticket, '--kind', 'answer', '--summary', p.summary, '--body', p.body],
-    ],
-  },
-  'assign-artifact': {
-    label: 'Assign an unowned artifact',
-    fields: [
-      { name: 'ticket', label: 'Ticket that will own it', required: true },
-      { name: 'artifact', label: 'Artifact path', required: true },
-      { name: 'from', label: 'By (role)', required: true, value: 'tech-manager' },
-      { name: 'body', label: 'Why this ticket', required: true, long: true },
-    ],
-    validate: (p) =>
-      (!TICKET_RE.test(p.ticket || '') && 'ticket must look like APP-001') ||
-      (!oneLine(p.artifact, 200) && 'an artifact path is required') ||
-      (!ROLE_RE.test(p.from || '') && 'by must be a role name') ||
-      (!oneLine(p.body, 2000) && 'say why this ticket owns it') ||
-      null,
-    // There is no board field for "this ticket owns this file", and inventing a writer for one
-    // would make this page a second writer of state. A `decision` on the team ledger is the
-    // existing, validated, append-only place where an ownership call is recorded — and panel 3
-    // reads decisions back, so the artifact stops being unowned the moment this succeeds.
-    argv: (p) => [
-      'sh',
-      [
-        MESSAGE_CLI,
-        '--from',
-        p.from,
-        '--to',
-        'tech-manager',
-        '--ticket',
-        p.ticket,
-        '--kind',
-        'decision',
-        '--summary',
-        `${p.ticket} owns ${p.artifact}`,
-        '--body',
-        p.body,
-      ],
-    ],
-  },
-};
-
-function runAction(root, name, params) {
-  // `Object.hasOwn`, not `ACTIONS[name]`: a bare lookup inherits from Object.prototype, so
-  // {"action":"constructor"} passed the whitelist guard, `action.validate` was undefined, and the
-  // TypeError escaped the async handler and KILLED THE PROCESS. The existing negative test used
-  // "render" — not an inherited property — so it stayed green over the hole.
-  const action = Object.hasOwn(ACTIONS, name) ? ACTIONS[name] : null;
-  if (!action) {
-    return {
-      status: 400,
-      body: {
-        ok: false,
-        refused: `"${name}" is not on the action whitelist`,
-        whitelist: Object.keys(ACTIONS),
-        detail:
-          'This page can unblock a ticket with a recorded reason, answer an open question, and assign an unowned artifact. Nothing else is actionable from here, by construction.',
-      },
-    };
-  }
-  const problem = action.validate(params);
-  if (problem) return { status: 400, body: { ok: false, refused: problem, action: name } };
-
-  const [command, args] = action.argv(params);
-  const display = `${command} ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')}`;
-
-  return new Promise((done) => {
-    execFile(command, args, { cwd: root, timeout: 20000, maxBuffer: 4 << 20 }, (error, stdout, stderr) => {
-      const exitCode = error ? (typeof error.code === 'number' ? error.code : 1) : 0;
-      done({
-        status: 200,
-        body: {
-          // A refusal is a FINDING, not an error to swallow. The CLI's own words, verbatim, exit
-          // code included — that is the whole reason it is safe for this page to have buttons.
-          ok: exitCode === 0,
-          action: name,
-          command: display,
-          exitCode,
-          stdout: String(stdout || ''),
-          stderr: String(stderr || ''),
-        },
-      });
-    });
-  });
-}
+//
+// It lives in `lib/actions.mjs` because control-room/ serves the same three actions. Two copies of
+// a whitelist is two sets of rules about what a human may do to the board, and the drift between
+// them is invisible because both pages still "work". See that file for the two invariants.
 
 // ---------------------------------------------------------------------------------------------
 // the page — one file, no CDN, no fonts, no images, theme-aware
@@ -1074,9 +757,7 @@ const CAN_ACT = ${actions ? 'true' : 'false'};
 const $ = (t, a, k) => { const e = document.createElement(t); if (a) Object.assign(e, a); (k||[]).forEach(c => e.append(c)); return e; };
 const txt = (s) => document.createTextNode(s == null ? '' : String(s));
 
-const FIELDS = ${escapeJson(
-    Object.fromEntries(Object.entries(ACTIONS).map(([name, a]) => [name, { label: a.label, fields: a.fields }]))
-  )};
+const FIELDS = ${escapeJson(actionForms())};
 const PANEL_ACTION = { stuck: 'unblock', questions: 'answer', artifacts: 'assign-artifact' };
 
 function pct(v) { return v === null || v === undefined ? 'n/a' : Math.round(v * 100) + '%'; }
@@ -1284,28 +965,11 @@ function serve(root, { port, actions }) {
     if (req.method === 'POST' && url.pathname === '/action') {
       if (!actions) return send(403, 'application/json', JSON.stringify({ ok: false, refused: 'this dashboard was started with --no-actions' }));
 
-      // Binding to 127.0.0.1 keeps the network out; it does not keep the OPERATOR'S BROWSER out.
-      // `JSON.parse(body)` ignored Content-Type, and a `text/plain` POST is a CORS-simple request —
-      // no preflight — so any page open in another tab could drive all three actions. Requiring
-      // application/json reinstates the preflight; rejecting a foreign Origin closes the rest.
-      const ctype = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-      if (ctype !== 'application/json') {
-        return send(415, 'application/json', JSON.stringify({
-          ok: false,
-          refused: 'POST /action requires content-type: application/json — a simple-CORS body is a drive-by from any page the operator has open',
-        }));
-      }
-      const origin = req.headers.origin;
-      const site = String(req.headers['sec-fetch-site'] || '').toLowerCase();
-      const sameOrigin =
-        origin === undefined ||
-        (() => { try { return new URL(origin).hostname === '127.0.0.1' || new URL(origin).hostname === 'localhost'; } catch { return false; } })();
-      if (!sameOrigin || (site && site !== 'same-origin' && site !== 'none')) {
-        return send(403, 'application/json', JSON.stringify({
-          ok: false,
-          refused: `cross-origin POST /action refused (origin: ${origin ?? 'none'}, sec-fetch-site: ${site || 'none'})`,
-        }));
-      }
+      // The trust boundary — content-type and Origin — is `lib/actions.mjs` refuseRequest, shared
+      // with control-room/. Binding to 127.0.0.1 keeps the network out; it does not keep the
+      // OPERATOR'S BROWSER out, and a second copy of that reasoning is a second thing to forget.
+      const refusal = refuseRequest(req);
+      if (refusal) return send(refusal.status, 'application/json', JSON.stringify(refusal.body));
 
       let body = '';
       req.on('data', (chunk) => {
