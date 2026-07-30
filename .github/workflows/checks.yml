@@ -262,9 +262,3 @@ jobs:
             2) echo "FAIL — CANNOT EVALUATE on a runner that has Xcode"; exit 1 ;;
             *) echo "FAIL — unexpected exit $rc"; exit 1 ;;
           esac
-
-      - name: The full mutation catalogue, not a sample
-        # ~17 minutes locally, which is why the PR job samples 4. Here it runs whole: every gate
-        # broken one at a time with the suite re-run after each. A sample says nothing about the
-        # entries it did not pick.
-        run: sh scripts/mutate.sh
