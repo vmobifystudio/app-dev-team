@@ -377,6 +377,8 @@ names what is missing, rather than silently assembling a team that cannot build 
 | `/app-context` | Create or verify a deterministic context snapshot before review or irreversible work |
 | `/app-run-status` | Audit durable run leases, checkpoints, and orphaned attempts |
 | `/app-recover` | Recover an interrupted run without silently creating a competing attempt |
+| `/app-memory` | Propose and review governed memory with provenance and contradiction history |
+| `/app-eval` | Execute deterministic role, policy, and workflow evaluation fixtures |
 | `/app-status` | Board, blockers, metrics, open questions, budget position |
 | `/app-dashboard` | The control room (§9) |
 | `/app-portfolio` | N projects ranked by attention needed |
@@ -489,6 +491,9 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `context-manifest.mjs` | Source hashes, git revision, omissions, and context freshness |
 | `approval-check.mjs` | Optional strict binding of approvals to commit, diff, context, and evidence |
 | `audit-anchor.mjs` | Release-time digest and tip anchor for the board event log |
+| `memory-curator.mjs` | Append-only memory proposals and explicit reviewer decisions |
+| `prompt-registry.mjs` | Semantic versions, owners, evaluation suites, and rollback metadata |
+| `eval-lab.mjs` | Deterministic executable evaluation cases with expected evidence |
 | `test.sh` | 779 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |

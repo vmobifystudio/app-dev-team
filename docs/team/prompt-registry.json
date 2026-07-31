@@ -1,0 +1,5 @@
+{
+  "schema": "prompt-registry/v1",
+  "precedence": ["constitutional", "project", "ticket", "role", "retrieved"],
+  "entries": []
+}

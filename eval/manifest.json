@@ -1,0 +1,11 @@
+{
+  "schema": "eval-manifest/v1",
+  "cases": [
+    {
+      "id": "team-definition-is-coherent",
+      "command": ["node", "scripts/team-doctor.mjs", "."],
+      "expect_exit": 0,
+      "must_contain": ["Team definition is coherent"]
+    }
+  ]
+}

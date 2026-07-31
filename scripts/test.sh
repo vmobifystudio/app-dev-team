@@ -4631,6 +4631,16 @@ APPROVAL="$TMP/revamp-approval"; mkdir -p "$APPROVAL"; printf '{"requireApproval
 printf '{"ticket":"APP-001","event":"approved","detail":{"commit":"abc"}}\n' > "$APPROVAL/events.jsonl"
 assert_exit 1 "approval-check rejects an approval missing bound evidence" node "$HERE/approval-check.mjs" --policy "$APPROVAL/.studio-policy.json" --log "$APPROVAL/events.jsonl"
 
+MEMORY="$TMP/revamp-memory"; mkdir -p "$MEMORY"
+node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
+  --content "Keep acceptance criteria explicit" --source docs/2026-07-29-revamp-master-plan.md --confidence 0.9 > "$MEMORY/proposal.json"
+MEMORY_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/proposal.json")
+assert_exit 0 "memory-curator verifies chained proposals" node "$HERE/memory-curator.mjs" verify --ledger "$MEMORY/memory.jsonl"
+assert_exit 1 "memory-curator refuses review of an unknown candidate" node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id MEM-NOT-FOUND --reason promote --content rationale --by reviewer
+node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$MEMORY_ID" --reason promote --content rationale --by reviewer >/dev/null
+assert_exit 0 "prompt-registry accepts the versioned empty registry" node "$HERE/prompt-registry.mjs" --registry "$HERE/../docs/team/prompt-registry.json"
+assert_exit 0 "evaluation lab runs the checked-in baseline suite" node "$HERE/eval-lab.mjs" --manifest "$HERE/../eval/manifest.json"
+
 echo "no conflict markers"
 # --------------------------------------------------------------------------------------------
 # Public metadata is a release input, not decoration. The marketplace entry and README used to

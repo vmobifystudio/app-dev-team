@@ -383,6 +383,8 @@ Markdown files — add, remove, or retune them.
 | `/app-context` | Create or verify the explicit context manifest used by an execution attempt. |
 | `/app-run-status` | Check durable run leases, checkpoints, and orphaned attempts. |
 | `/app-recover` | Recover interrupted work through an explicit terminal ledger record. |
+| `/app-memory` | Govern durable memory proposals, provenance, promotion, rejection, and contradictions. |
+| `/app-eval` | Run deterministic role, policy, and workflow evaluation fixtures. |
 | `/app-ship [version]` | Parallel security + ASO + analytics readiness → release-manager. Confirms before any upload. |
 | `/app-status` | Vision, sprint goal, board doctor verdict, board summary, blockers, latest standup. |
 | `/app-portfolio` | **(Many apps)** Ranks every registered project by **attention needed** — where should the next hour go? An unreadable project is reported as unreadable, never omitted. |

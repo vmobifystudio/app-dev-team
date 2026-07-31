@@ -1,0 +1,49 @@
+#!/usr/bin/env node
+/**
+ * Governed memory inbox. Proposals are append-only; only an explicit review event can promote,
+ * reject, supersede, or contradict one. Memory is never silently learned from arbitrary output.
+ */
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { dirname, resolve } from 'node:path';
+import { parseArgs } from './lib/args.mjs';
+const die = (code, message) => { process.stderr.write(`memory-curator: ${message}\n`); process.exit(code); };
+const { flags, positional } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['ledger', 'id', 'class', 'content', 'source', 'scope', 'confidence', 'expires', 'supersedes', 'contradicts', 'by', 'reason']), die });
+const command = positional[0];
+const path = resolve(String(flags.ledger || 'docs/team/memory.jsonl'));
+const classes = new Set(['run', 'ticket', 'project', 'platform', 'studio', 'founder']);
+function records() {
+  if (!existsSync(path)) return [];
+  const lines = readFileSync(path, 'utf8').split('\n').filter(Boolean); let previous = '';
+  return lines.map((line, index) => {
+    let record; try { record = JSON.parse(line); } catch { die(2, `malformed record at line ${index + 1}`); }
+    const expected = createHash('sha256').update(`${previous}\n${JSON.stringify({ ...record, hash: undefined })}`).digest('hex');
+    if (record.prev_hash !== previous || record.hash !== expected) die(2, `memory chain broken at line ${index + 1}`);
+    previous = record.hash; return record;
+  });
+}
+function required(name) { if (!flags[name] || flags[name] === true) die(2, `--${name} needs a value`); return String(flags[name]); }
+function append(event, fields) {
+  const all = records(); const previous = all.at(-1)?.hash || '';
+  const record = { schema: 'memory-ledger/v1', ts: new Date().toISOString(), event, ...fields, prev_hash: previous };
+  record.hash = createHash('sha256').update(`${previous}\n${JSON.stringify({ ...record, hash: undefined })}`).digest('hex');
+  mkdirSync(dirname(path), { recursive: true }); appendFileSync(path, `${JSON.stringify(record)}\n`); console.log(JSON.stringify(record));
+}
+if (!command) die(2, 'usage: propose|review|list|verify');
+const all = records();
+if (command === 'propose') {
+  const memoryClass = required('class'); if (!classes.has(memoryClass)) die(2, `invalid memory class: ${memoryClass}`);
+  const content = required('content'); const source = required('source'); const confidence = Number(flags.confidence || 0.5);
+  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) die(2, '--confidence must be between 0 and 1');
+  append('proposed', { memory_id: String(flags.id || `MEM-${randomUUID()}`), class: memoryClass, content, source, scope: flags.scope || 'project', confidence, expires: flags.expires || null, supersedes: flags.supersedes || null, contradicts: flags.contradicts || null, by: flags.by || null });
+} else if (command === 'review') {
+  const id = required('id'); const candidate = all.find((r) => r.memory_id === id && r.event === 'proposed');
+  if (!candidate) die(1, `no proposed memory candidate ${id}`);
+  const decision = required('reason'); if (!['promote', 'reject', 'supersede', 'contradict'].includes(decision)) die(2, '--reason must be promote, reject, supersede, or contradict');
+  append('reviewed', { memory_id: id, decision, by: required('by'), rationale: required('content'), source: candidate.source });
+} else if (command === 'list') {
+  const latest = new Map(); for (const record of all) if (record.memory_id) latest.set(record.memory_id, record);
+  for (const record of latest.values()) if (record.event === 'proposed' || (record.event === 'reviewed' && record.decision === 'promote')) console.log(JSON.stringify(record));
+} else if (command === 'verify') {
+  console.log(`MEMORY CURATOR: CLEAR — ${all.length} chained record(s)`);
+} else die(2, `unknown command ${command}`);

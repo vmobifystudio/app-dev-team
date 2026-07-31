@@ -163,6 +163,10 @@ if [ -f "$ROOT/.studio-policy.json" ]; then
     run_detector "approval-check" node "$HERE/approval-check.mjs" --log "$ROOT/docs/31-board-events.jsonl" --policy "$ROOT/.studio-policy.json"
   grep -q '"requireAuditAnchor"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
     run_detector "audit-anchor" node "$HERE/audit-anchor.mjs" verify --log "$ROOT/docs/31-board-events.jsonl" --out "$ROOT/docs/team/audit-anchor.json"
+  grep -q '"requirePromptRegistry"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
+    run_detector "prompt-registry" node "$HERE/prompt-registry.mjs" --registry "$ROOT/docs/team/prompt-registry.json"
+  grep -q '"requireEvaluation"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
+    run_detector "eval-lab" node "$HERE/eval-lab.mjs" --manifest "$ROOT/eval/manifest.json"
 fi
 
 # --- 1b. the audit chain must be intact -----------------------------------------------------------
