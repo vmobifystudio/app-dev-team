@@ -2,8 +2,8 @@
 
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
-**Version:** post-revamp (`revamp/phase-r-fixes`) · **Date:** 2026-07-30
-**Scale:** 29 roles · 27 skills · 14 commands · 23 scripts (+9 shared libs) · 9 knowledge packs · 735 assertions
+**Version:** 2.0.0 (`main`) · **Date:** 2026-07-30
+**Scale:** 29 roles · 31 skills · 15 commands · 30 scripts (+9 shared libs) · 9 knowledge packs · 779 assertions
 
 ---
 
@@ -475,7 +475,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `ship-gate.sh` | Release preconditions, including generated-CI rules and waivers |
 | `runtime-gate.sh` | Does the app build, launch, and stay up |
 | `spawn-gate.sh` | Worktree isolation before any parallel spawn |
-| `test.sh` | 735 assertions |
+| `test.sh` | 779 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -489,33 +489,68 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 This section exists because a handbook that only describes the working parts is the same failure
 this system is built to prevent.
 
-> **Last verified: 2026-07-30.** This section is only worth reading if it is current, so it carries
-> a date. It was stale for a day and listed eight defects as open that had all been fixed — a
-> handbook that overstates what is broken is still a handbook that cannot be trusted about what is
-> broken.
+> **Last verified: 2026-07-31 (post governance capability phase).** This section is only worth
+> reading if it is current, so it carries a date. It was stale for a day once already and listed
+> eight defects as open that had all been fixed, then stale a second time — merged to `main` as
+> v2.0.0 without this section mentioning either DR5-001, DR5-002, or the second codex review round
+> that ran against the review-stack PRs. A handbook that overstates what is broken cannot be
+> trusted about what is broken, and neither can one that stops updating the moment the branch does.
 
-**Closed since the last revision**, each re-probed by execution rather than by reading the diff:
+**Closed since the previous revision**, each re-probed by execution rather than by reading the diff:
 the `ship-gate` plain-format S1 regex · `verify-done` reporting `tests=green` for the literal
 command `true` · `integration-branch` always returning `main` · argument injection in `board.mjs
-parseArgs` (re-probed 2026-07-30 through `--detail`, `--by` and the ticket id; sentinel intact) ·
-the missing Origin check on `POST /action` · `code-reviewer.md`'s hand-append instruction ·
-`verified_static` tickets shipping CLEAR · the four assertions that could not go red.
+parseArgs` · the missing Origin check on `POST /action` · `code-reviewer.md`'s hand-append
+instruction · `verified_static` tickets shipping CLEAR · the four assertions that could not go red ·
+**DR5-001** (the audit chain guarded `board.mjs`'s write path and not its read path — `show` and
+`render` could report a rewritten log at exit 0) · **DR5-002** (the roster template drifted from the
+activation matrix it claims to be generated from).
 
-**Blocking, verified open right now:**
+**Two review rounds by codex against the stacked PRs produced 42 findings. 40 are closed**, each
+proven by reverting the fix and watching the assertion that names it go red. Closed in the second
+round, beyond DR5-001/DR5-002 above: `cmdArtifact` (formal artifact registration — ADR/PDR/WAIVER/…)
+never called the same anti-ping-pong `guard()` a normal `send` does, so an artifact could push a
+ticket's thread past the chain-depth limit and be accepted — the same limit `board-doctor`'s
+`auditGuards()` enforces retroactively, so it could be written clean and reported as a breach the
+moment anything re-audited the log · `board.mjs`'s and `messages.mjs`'s append functions both
+concatenated raw bytes onto a log without checking for a trailing newline, so a hand-edited or
+externally-written log missing one got the next JSON object glued onto the last line as `}{`,
+silently corrupting every line after it · a credential was written verbatim into the `blocked` event
+of a ticket created `--status blocked`, after the CLI printed that it had been redacted — the
+`created` event scrubbed `--notes`, the `blocked` event built from the raw flag · `--kind answer
+--priority fyi` and `--kind decision --priority fyi` closed an open question with nothing delivered,
+because the `fyi` exemption was checked before the closing-kind rule rather than after · founder
+gate approvals were keyed on the trigger's TOPIC rather than the VALUE it covers, so approving
+`$3.99/month` once cleared the pricing gate forever — a later change to `$99/month` sailed through
+with the same stale approval, and the same defect let one waiver authorize every later one ·
+`trace.mjs` never checked that a node's declared `src:` actually resolved to a real node, so a
+requirement citing a deleted or renamed outcome still traced clean · `founder-intent.mjs --write`
+accepted a DELETION of a previously recorded file as a no-op rather than a refusal, so the append-only
+guarantee only held for edits, not removals · `repo-controls.sh` counted required status-check
+*names* by array length instead of checking which names were present, and never queried secret
+scanning or push protection at all while still reporting "every server-side control is set."
 
-- **DR5-003** — `handoff`, `blocker` and `escalation` are credited `obligation: follow_up`, but
-  `pairQuestions` tracks only `kind === 'question'` as outstanding, so that follow-up is chased by
-  nothing. The system records an obligation it has no mechanism to verify. *Not fixed yet on
-  purpose:* the obvious fix would make `escalation` refusable for naming no artifact, and
-  `escalation` is the remedy the anti-ping-pong guard tells agents to use when it blocks them.
-- **Nine planted defects in the evaluation lab have no detector at all**, six of them S1: privacy
-  disclosure mismatch, subscription restore, accessibility, malicious repo instruction, stale
-  approval, wrong financial constant, missing analytics, conflicting requirements, shared-file
-  collision. `studio-eval.mjs` names every one of them in its own output rather than scoring around
-  them. **This is the largest honest gap in the system** and no amount of green suite touches it.
+**Blocking, verified open right now — 2 findings:**
 
-**Never exercised:** `/app-ship` — hypothesis **H1** of dry run 5, still unrun. Eight of that run's
-fourteen hypotheses have no verdict at all. Autonomous release stays disabled until they do.
+- **Audit-chain truncation is undetectable.** `verifyChain()` proves forward consistency of the
+  lines *present* in a log; nothing anchors how many lines *should* be present, so deleting the
+  trailing N lines of `docs/31-board-events.jsonl` — say, the line recording an S1 rejection —
+  leaves the remaining chain fully "intact." Lower-urgency than it first reads: an attacker who can
+  edit the log and needs `verify` to stay green already has repo write access, and at that point can
+  `git commit --amend` the evidence away by other means too. Still a real gap in a claim this repo
+  makes explicitly. Not fixed because the honest options — a sidecar tip file (same trust problem,
+  relocated), verifying against the log's last committed `git` state (adds a git dependency to a
+  currently git-agnostic checker), or documenting the limitation and moving on — are a product
+  decision, not an engineering one.
+- **Stale approval remains structurally undetectable.** An approval still does not bind to a commit or
+  immutable evidence snapshot. This requires a repository-trust decision, not another heuristic.
+
+The previously open message-ID race and follow-up-obligation gap are closed: writes use a lock,
+non-question obligations require delivery evidence, and the suite covers both behaviors. The
+evaluation lab now detects 12/12 scored planted defects; stale approval is the one intentionally
+unmeasured detector class.
+
+**Never exercised:** `/app-ship` end to end — hypothesis **H1** of dry run 5, still unrun. Several
+of that run's hypotheses have no verdict at all. Autonomous release stays disabled until they do.
 
 **Newly proven, because it was a gap for months:** `runtime-gate.sh`'s central claim — that an app
 which builds is not an app that runs — now executes on every push. A `macos-15` CI job runs it

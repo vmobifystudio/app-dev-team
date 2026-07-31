@@ -49,6 +49,7 @@ import {
   channelIndex,
   channelsOf,
   openQuestions,
+  openFollowUps,
   auditGuards,
   undeliveredAnswers,
   expiredWaivers,
@@ -119,11 +120,15 @@ function buildModel(messages, boardText) {
 
   const threads = messageThreads(messages);
   const open = [];
+  const followUps = [];
   for (const [ticketId, thread] of threads) {
     if (ticketId === '(no ticket)') continue;
     const status = rowsById.get(ticketId.toUpperCase()) ?? null;
     for (const q of openQuestions(thread)) {
       open.push({ ...q, status, shipped: status !== null && SHIPPED_STATUS.has(status) });
+    }
+    for (const message of openFollowUps(thread).filter((m) => m.kind !== 'question')) {
+      followUps.push({ ...message, status, ticketId });
     }
   }
 
@@ -137,6 +142,7 @@ function buildModel(messages, boardText) {
     messages,
     threads,
     open,
+    followUps,
     channels: channelIndex(messages),
     undelivered: undeliveredAnswers(messages),
     expired: [...expiredWaivers(messages), ...staleAssumptions(messages)],
@@ -154,15 +160,19 @@ function buildModel(messages, boardText) {
 // ---------------------------------------------------------------------------------------------
 
 function renderOpen(model) {
-  if (model.open.length === 0) {
+  if (model.open.length === 0 && model.followUps.length === 0) {
     return [dim('  no open questions — every question on the log has an answer or a decision')];
   }
-  return model.open.map((q) => {
+  const questions = model.open.map((q) => {
     const flag = q.shipped ? red(`SHIPPED ON IT (${q.status})`) : yellow('open');
     return `  ${red('?')} ${q.ticket.padEnd(12)} ${flag}  ${q.from} → ${q.to.join(', ')}\n      ${bold(
       truncate(q.summary, 90)
     )}  ${dim(`asked ${q.ts ?? 'inferred'} · ${q.id}`)}`;
   });
+  const followUps = model.followUps.map((m) =>
+    `  ${red('!')} ${m.ticketId.padEnd(12)} ${yellow(m.kind)}  ${m.from} → ${m.to.join(', ')}\n      ${bold(truncate(m.summary, 90))}  ${dim(`follow-up due · ${m.id}`)}`
+  );
+  return [...questions, ...followUps];
 }
 
 /**

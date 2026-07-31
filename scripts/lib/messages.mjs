@@ -414,6 +414,23 @@ function pairQuestions(thread) {
   return { open, answered };
 }
 
+/** Every asking message creates a follow-up obligation, not only `question`. */
+function openFollowUps(thread) {
+  const open = [];
+  for (const message of thread) {
+    if (ASKING_KINDS.has(message.kind)) open.push(message);
+    else if (CLOSING_KINDS.has(message.kind) && open.length) {
+      // A question may be answered directly, but a handoff/blocker/escalation is a delivery
+      // obligation. A bare answer cannot close it: it must name the artifact or state transition
+      // that carries the work forward. This prevents an unrelated-looking resolution from making a
+      // material follow-up disappear merely because it was next in the thread.
+      const target = open[0];
+      if (target.kind === 'question' || message.artifact || message.transition) open.shift();
+    }
+  }
+  return open;
+}
+
 const openQuestions = (thread) => pairQuestions(thread).open;
 
 /**
@@ -760,6 +777,7 @@ export {
   nextId,
   threads,
   pairQuestions,
+  openFollowUps,
   openQuestions,
   obligationOf,
   obligationRefusal,

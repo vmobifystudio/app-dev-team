@@ -1,9 +1,12 @@
 {
   "name": "conflicting-requirements",
   "defect": "docs/10-prd.md sets the free tier at 3 exports per month. docs/20-architecture.md specifies a server-enforced quota of 5. Both are current, neither cites the other, and no conflict report exists.",
-  "expected_detector": null,
-  "expected_signal": null,
+  "expected_detector": "scripts/requirements-conflict-scan.mjs",
+  "expected_signal": "REQUIREMENTS CONFLICT",
   "severity": "S2",
   "why": "P1.5 is exactly this item — \"a planted contradiction produces a report, not a guess\" — and it is unbuilt. Today a developer reading both picks one silently and the choice ships.",
-  "gap": "No detector, and worse, no precedence order is recorded anywhere, so even a human comparing the two documents has no rule for which wins."
+  "detector": {
+    "run": ["node", "scripts/requirements-conflict-scan.mjs", "{project}"],
+    "expect_exit": 1
+  }
 }

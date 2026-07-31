@@ -659,6 +659,24 @@ G=$(newrepo tm-generated)
 send "$G" --from ios-developer --to tech-lead --ticket APP-1 --kind question --summary "which error type"
 [ -f "$G/docs/team/messages.jsonl" ] && ok "a send writes the JSONL event log" \
                                      || bad "a send writes the JSONL event log"
+
+# MSG-NNNN allocation is a read/compute/write transaction. Two writers must serialize it rather
+# than both claiming the same next ID. The lock is deliberately exercised with concurrent CLI
+# processes, not just inspected in the source.
+CON=$(newrepo tm-concurrent-ids)
+( cd "$CON" && sh "$M" --from ios-developer --to tech-lead --ticket - --kind fyi --summary first ) >/dev/null 2>&1 & C1=$!
+( cd "$CON" && sh "$M" --from android-developer --to tech-lead --ticket - --kind fyi --summary second ) >/dev/null 2>&1 & C2=$!
+wait "$C1"; R1=$?; wait "$C2"; R2=$?
+[ "$R1" = 0 ] && [ "$R2" = 0 ] && ok "concurrent message writers both complete" \
+                                  || bad "concurrent message writers both complete" "$R1 / $R2"
+node -e '
+const fs=require("fs");
+const rows=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map(JSON.parse);
+const ids=rows.map((r)=>r.id);
+process.exit(rows.length===2 && new Set(ids).size===2 ? 0 : 1);
+' "$CON/docs/team/messages.jsonl" \
+  && ok "concurrent message writers receive unique IDs" \
+  || bad "concurrent message writers receive unique IDs"
 node -e '
 const fs = require("fs");
 const [rec] = fs.readFileSync(process.argv[1], "utf8").trim().split("\n").map(JSON.parse);
@@ -697,6 +715,24 @@ AFTER=$(wc -l < "$O/docs/team/messages.jsonl")
 # into it. A material message with no obligation is refused; an fyi carries none by definition.
 ( cd "$O" && sh "$M" --from tech-lead --to qa-engineer --ticket APP-1 --kind fyi --summary "spec updated" ) >/dev/null 2>&1
 [ $? = 0 ] && ok "fyi is the escape hatch and carries no obligation" || bad "fyi is the escape hatch and carries no obligation"
+
+# DR5-003: handoff/blocker/escalation also declare follow_up, so the doctor must surface them until
+# an answer or decision delivers the obligation. Tracking only `question` made these obligations
+# exist in the schema and disappear from every operational view.
+F=$(newrepo tm-followup)
+mkdir -p "$F/docs"
+cp "$FIX/clean.md" "$F/docs/31-board.md"
+send "$F" --from ios-developer --to tech-lead --ticket APP-1 --kind handoff --summary "review the storage boundary"
+node "$HERE/board-doctor.mjs" "$F/docs/31-board.md" --json >"$TMP/followup.json" 2>/dev/null
+node -e 'const j=require(process.argv[1]);process.exit(j.warnings.some((w)=>w.code==="follow_up_unresolved"&&w.ticketId==="APP-1")?0:1)' "$TMP/followup.json" \
+  && ok "an unresolved handoff is surfaced by board-doctor" \
+  || bad "an unresolved handoff is surfaced by board-doctor"
+( cd "$F" && sh "$M" --from tech-lead --to ios-developer --ticket APP-1 --kind answer \
+    --summary "storage boundary reviewed" --artifact docs/22-impl-spec-ios.md ) >/dev/null 2>&1
+node "$HERE/board-doctor.mjs" "$F/docs/31-board.md" --json >"$TMP/followup-closed.json" 2>/dev/null
+node -e 'const j=require(process.argv[1]);process.exit(j.warnings.some((w)=>w.code==="follow_up_unresolved")?1:0)' "$TMP/followup-closed.json" \
+  && ok "a delivered answer clears the handoff follow-up" \
+  || bad "a delivered answer clears the handoff follow-up"
 
 # --- the unified guard ----------------------------------------------------------------------------
 #
@@ -812,6 +848,37 @@ grep -q '"artifact":"ADR-001"' "$A/docs/team/messages.jsonl" \
   && ok "a cto decision lands in the derived #founder-decisions channel" \
   || bad "a cto decision lands in the derived #founder-decisions channel"
 
+# `cmdArtifact` never called `guard()`, so an artifact could push a ticket's thread past MAX_CHAIN
+# roles and be accepted — the same limit `auditGuards()` enforces AFTER THE FACT for board-doctor.
+# An artifact could be written clean and reported as a breach the moment anything re-audited the
+# log. Reported by codex.
+D=$(newrepo tm-artifact-chain)
+send "$D" --from tech-lead   --to ios-developer --ticket APP-9 --kind fyi --summary a
+send "$D" --from cto         --to ios-developer --ticket APP-9 --kind fyi --summary b
+send "$D" --from qa-engineer --to ios-developer --ticket APP-9 --kind fyi --summary c
+( cd "$D" && node "$MSGS" artifact WAIVER --by security-reviewer --title "Skip gate for launch" \
+    --ticket APP-9 --expires 2026-08-15 ) >"$TMP/tmchain.txt" 2>&1
+[ $? = 1 ] && ok "an artifact that would exceed the chain-depth limit is REFUSED" \
+            || bad "an artifact that would exceed the chain-depth limit is REFUSED" "$(cat "$TMP/tmchain.txt")"
+assert_has "$TMP/tmchain.txt" "chain_too_deep" "...as chain_too_deep, the same code board-doctor's audit uses"
+# The refusal must happen BEFORE any side effect — otherwise the .md file is orphaned with no
+# ledger entry, which is worse than the bug being fixed. `docs/72-waivers/` itself may exist —
+# `mkdirSync(dir, {recursive:true})` runs before the guard and is harmless — the file inside it is
+# what must not exist.
+[ -z "$(find "$D/docs/72-waivers" -name '*.md' 2>/dev/null)" ] \
+  && ok "a refused artifact leaves no .md file on disk" \
+  || bad "a refused artifact must not leave a .md file on disk" "$(find "$D/docs/72-waivers" -name '*.md' 2>/dev/null)"
+grep -q "WAIVER" "$D/docs/team/messages.jsonl" 2>/dev/null \
+  && bad "a refused artifact must not register on the channel" \
+  || ok "a refused artifact does not register on the channel either"
+# The control: the same artifact type, same writer, WITHOUT the pre-existing thread, must succeed —
+# otherwise the fix could be "refuse every artifact" and this would still read green.
+E=$(newrepo tm-artifact-chain-ok)
+( cd "$E" && node "$MSGS" artifact WAIVER --by security-reviewer --title "Skip gate" \
+    --ticket APP-9 --expires 2026-08-15 ) >/dev/null 2>&1
+[ $? = 0 ] && ok "...but the same artifact type still succeeds within the chain-depth limit (control)" \
+            || bad "...but the same artifact type still succeeds within the chain-depth limit (control)"
+
 # --- board-doctor audits the same log with the same implementation -----------------------------------
 node "$HERE/board-doctor.mjs" "$FIX/channel/31-board.md" --json >"$TMP/chan.json" 2>/dev/null
 node -e '
@@ -864,6 +931,15 @@ echo "ship-gate"
 # --------------------------------------------------------------------------------------------
 assert_exit 1 "blocks on an open S1/S2 and an in-flight ticket" sh "$HERE/ship-gate.sh" "$FIX/ship-blocked"
 assert_exit 0 "clears a genuinely shippable sprint"             sh "$HERE/ship-gate.sh" "$FIX/ship-clear"
+
+# Release integration: a detector fixture must fail through the real ship gate, not only when its
+# scanner is called directly. This uses a clean release fixture and adds only the privacy evidence.
+SHIP_PRIV="$TMP/ship-privacy"; cp -R "$FIX/ship-clear" "$SHIP_PRIV"
+mkdir -p "$SHIP_PRIV/docs" "$SHIP_PRIV/Sources"
+printf '# Privacy\n\nData Not Collected\n' > "$SHIP_PRIV/docs/15-aso.md"
+printf 'let email = userEmail\nlet request = URLSession.shared\n' > "$SHIP_PRIV/Sources/Network.swift"
+assert_exit 1 "ship-gate blocks a privacy disclosure mismatch through the release path" \
+  sh "$HERE/ship-gate.sh" "$SHIP_PRIV"
 
 # Regression: `[^\n]*` in a POSIX bracket expression means "not backslash, not the letter n" — the
 # gate reported 0 open S1/S2 with two open, and only differed between the interactive shell and sh.
@@ -3845,6 +3921,42 @@ const fs=require("fs");const p=process.argv[1];
 fs.writeFileSync(p,fs.readFileSync(p,"utf8").replace("Legacy","Tampered"));' "$LG/docs/31-board-events.jsonl"
 assert_exit 1 "...and editing a legacy line breaks the first chained line's anchor" bm "$LG" verify
 
+# `append()` concatenated raw bytes: a log whose last byte was NOT `\n` — hand-edited, or written by
+# a tool sharing this same gap — got the next JSON object glued onto the end of the last line as
+# `}{`, and every reader from that line onward failed "not valid JSON". `verifyChain` tolerates a
+# missing trailing newline when READING (each line is trimmed before parsing), so this corrupted the
+# log silently: the append itself reported success. Reported by codex.
+NL=$(newboard sec-newline)
+bm "$NL" add N-001 --title "No trailing newline" --owner ios-developer >/dev/null 2>&1
+# Strip the trailing newline WITHOUT adding one back — the exact shape of a hand-edited or
+# externally-written log this bug needed to trigger.
+printf '%s' "$(cat "$NL/docs/31-board-events.jsonl")" > "$NL/docs/31-board-events.jsonl"
+LASTBYTE=$(tail -c 1 "$NL/docs/31-board-events.jsonl" | od -An -c | tr -d ' \n')
+[ "$LASTBYTE" != '\n' ] || bad "the newline test fixture itself has a trailing newline" "setup broke"
+assert_exit 0 "an append onto a log missing its trailing newline still succeeds" \
+  bm "$NL" move N-001 claimed --by ios-developer
+node -e '
+const fs=require("fs");
+const lines=fs.readFileSync(process.argv[1],"utf8").trim().split("\n");
+process.exit(lines.length===2 && lines.every((l)=>{try{JSON.parse(l);return true;}catch{return false;}})?0:1);
+' "$NL/docs/31-board-events.jsonl" \
+  && ok "...and produces two SEPARATE, individually valid JSON lines, not one glued '}{' line" \
+  || bad "...and produces two SEPARATE, individually valid JSON lines, not one glued '}{' line"
+assert_exit 0 "...and the chain still verifies clean afterward" bm "$NL" verify
+
+# The same class in the message log — `serialize()` only trails a record with `\n`, never leads.
+NLM=$(newrepo sec-newline-msg)
+send "$NLM" --from tech-lead --to ios-developer --ticket APP-001 --kind fyi --summary "first"
+printf '%s' "$(cat "$NLM/docs/team/messages.jsonl")" > "$NLM/docs/team/messages.jsonl"
+send "$NLM" --from ios-developer --to tech-lead --ticket APP-001 --kind fyi --summary "second"
+node -e '
+const fs=require("fs");
+const lines=fs.readFileSync(process.argv[1],"utf8").trim().split("\n");
+process.exit(lines.length===2 && lines.every((l)=>{try{JSON.parse(l);return true;}catch{return false;}})?0:1);
+' "$NLM/docs/team/messages.jsonl" \
+  && ok "messages.jsonl: an append onto a log missing its trailing newline stays two clean lines" \
+  || bad "messages.jsonl: an append onto a log missing its trailing newline stays two clean lines"
+
 # --- S.4 secret redaction ------------------------------------------------------------------------
 #
 # PROVEN BY: emptying the PATTERNS array in lib/redact.mjs — the key was written to the board
@@ -3914,6 +4026,38 @@ assert_exit 0 "the plugin's own agents, skills, commands and knowledge scan clea
 # An acknowledged fixture stops arguing with the tool, once, in the repository.
 printf 'fixture: you are now a bot   # injection-scan: expected\n' > "$TMP/pi/fixture.md"
 assert_exit 0 "an acknowledged fixture line is skipped" node "$HERE/injection-scan.mjs" "$TMP/pi/fixture.md"
+
+# Comment text is not executable evidence. These regression fixtures protect the heuristic scanners
+# from being cleared by a nearby marker in a comment.
+mkdir -p "$TMP/scanner-hardening"
+printf 'Button("x") { Image(systemName: "x") } // accessibilityLabel\n.frame(width: 24)\n' > "$TMP/scanner-hardening/CommentOnly.swift"
+assert_exit 1 "accessibility comment text cannot clear the scanner" \
+  node "$HERE/accessibility-scan.mjs" "$TMP/scanner-hardening/CommentOnly.swift"
+printf 'func restorePurchases() { AppStore.sync() // Transaction.currentEntitlements\n}\n' > "$TMP/scanner-hardening/Restore.swift"
+assert_exit 1 "subscription comment text cannot clear the scanner" \
+  node "$HERE/subscription-restore-scan.mjs" "$TMP/scanner-hardening"
+printf '// URLSession userEmail bankers\n' > "$TMP/scanner-hardening/Comments.swift"
+printf '#!/usr/bin/env node\n' > "$TMP/scanner-hardening/package.json"
+mkdir -p "$TMP/scanner-hardening/docs"
+printf '# ASO\n\nData Not Collected\n' > "$TMP/scanner-hardening/docs/15-aso.md"
+assert_exit 0 "privacy comments do not create a data collection finding" \
+  node "$HERE/privacy-disclosure-scan.mjs" "$TMP/scanner-hardening"
+printf '# PRD\n\nMoney uses half-up rounding.\n' > "$TMP/scanner-hardening/docs/10-prd.md"
+assert_exit 0 "financial comments do not create a rounding mismatch" \
+  node "$HERE/financial-constant-scan.mjs" "$TMP/scanner-hardening"
+
+# A bare answer is not delivery for a handoff/blocker/escalation. Questions retain their direct
+# answer semantics; non-question obligations require an artifact or transition.
+node --input-type=module -e '
+const { openFollowUps } = await import(process.argv[1]);
+const thread = [
+  { kind: "handoff", ticket: "APP-1" },
+  { kind: "answer", ticket: "APP-1" },
+];
+process.exit(openFollowUps(thread).length === 1 ? 0 : 1);
+' "$HERE/lib/messages.mjs" \
+  && ok "a bare answer does not close a handoff obligation" \
+  || bad "a bare answer does not close a handoff obligation"
 
 assert_exit 2 "no paths is CANNOT EVALUATE, never a clean pass" node "$HERE/injection-scan.mjs"
 
@@ -4077,7 +4221,7 @@ assert_exit 2 "an unknown --only project is CANNOT RUN, not an empty pass" node 
 #
 # PROVEN BY: reverting the `scored === 0` branch — both of these went green at exit 0.
 assert_exit 2 "--only a defect with no detector is CANNOT EVALUATE, not a pass" \
-  node "$LAB" --only accessibility-violation
+  node "$LAB" --only stale-approval
 assert_exit 2 "--only a defect unreachable on this host is CANNOT EVALUATE, not a pass" \
   node "$LAB" --only crash-on-launch
 # The control. Without it, "make every --only exit 2" would satisfy the two above and measure nothing.
@@ -4465,6 +4609,36 @@ echo
 # --------------------------------------------------------------------------------------------
 echo "no conflict markers"
 # --------------------------------------------------------------------------------------------
+# Public metadata is a release input, not decoration. The marketplace entry and README used to
+# advertise v1.5.0 and 18 roles after the plugin itself had moved to v2.0.0 and 29 roles.
+assert_exit 0 "public metadata matches the shipped plugin" node "$HERE/metadata-check.mjs"
+
+echo
+# --- governance preflight, dependency, version and policy controls -------------------------------
+assert_exit 0 "dependency policy accepts the plugin's declared and locked control-room dependency" \
+  node "$HERE/dependency-check.mjs" "$HERE/.."
+assert_exit 1 "context preflight blocks writes from the protected main branch" \
+  node "$HERE/context-preflight.mjs" "$HERE/.."
+assert_has "$TMP/out" "protected branch main" "...and names the reason"
+assert_exit 2 "policy checking without an explicit project policy is CANNOT EVALUATE" \
+  node "$HERE/policy-check.mjs" "$HERE/.."
+
+VC="$TMP/version-contract"; mkdir -p "$VC/docs" "$VC/ios" "$VC/android"
+printf '# Releases\n\nRelease version: 1.2.3\n' > "$VC/docs/60-releases.md"
+printf '<key>CFBundleShortVersionString</key>\n<string>1.2.2</string>\n' > "$VC/ios/Info.plist"
+assert_exit 1 "version consistency blocks a mismatched iOS release version" \
+  node "$HERE/version-consistency-check.mjs" "$VC"
+printf '<key>CFBundleShortVersionString</key>\n<string>1.2.3</string>\n' > "$VC/ios/Info.plist"
+assert_exit 0 "version consistency accepts aligned release metadata" \
+  node "$HERE/version-consistency-check.mjs" "$VC"
+
+printf '{"owner":"cto","reviewedOn":"2026-07-31","requiredFiles":["docs/60-releases.md"]}\n' > "$VC/.studio-policy.json"
+assert_exit 0 "policy checker accepts owned, reviewed policy evidence" \
+  node "$HERE/policy-check.mjs" "$VC"
+rm -f "$VC/docs/60-releases.md"
+assert_exit 1 "policy checker blocks missing required policy evidence" \
+  node "$HERE/policy-check.mjs" "$VC"
+
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
 # conflicted file untouched. A broken agent file reached the base branch and was found two merges
@@ -4481,5 +4655,3 @@ CONFLICTED=$( { grep -rln '^<<<<<<< \|^>>>>>>> ' \
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
-
-

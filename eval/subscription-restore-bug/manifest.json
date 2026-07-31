@@ -1,9 +1,12 @@
 {
   "name": "subscription-restore-bug",
   "defect": "src/Store.swift restorePurchases() calls AppStore.sync() and returns without re-reading Transaction.currentEntitlements, so a paying user who reinstalls stays on the free tier. The function succeeds, logs success, and drops the entitlement.",
-  "expected_detector": null,
-  "expected_signal": null,
+  "expected_detector": "scripts/subscription-restore-scan.mjs",
+  "expected_signal": "sync-only restore",
   "severity": "S1",
   "why": "Restore is an App Review requirement and a refund driver. The axiom iap-auditor covers it, but it is an agent in another plugin — not a script this lab can execute — and nothing in scripts/ inspects billing code.",
-  "gap": "No runnable detector. The failure is silent, user-invisible until a support ticket, and the happy path returns success."
+  "detector": {
+    "run": ["node", "scripts/subscription-restore-scan.mjs", "{project}"],
+    "expect_exit": 1
+  }
 }

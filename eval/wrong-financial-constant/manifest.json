@@ -1,10 +1,13 @@
 {
   "name": "wrong-financial-constant",
   "defect": "docs/10-prd.md \u00a74 mandates half-up rounding to the cent. src/Fees.swift rounds with .bankers, so the exact midpoint $4.985 becomes $4.98 instead of $4.99. Every constant in the file is correct and the code reads perfectly.",
-  "expected_detector": null,
-  "expected_signal": null,
+  "expected_detector": "scripts/financial-constant-scan.mjs",
+  "expected_signal": "rounding mode mismatch",
   "severity": "S2",
   "why": "DR4-025 and the 33.34 Decimal case: money defects here live in a rounding MODE or an input literal, not in a value a reviewer would query. Nothing in scripts/ reads a spec and evaluates arithmetic. spec-critic and defect-hunting are agent procedures, not runnable gates, so this planted defect leaves the studio with no mechanical answer at all.",
-  "gap": "No executable detector exists. The claim \"spec-critic catches money bugs\" is unfalsifiable until an agent-invoking harness can be scored here.",
+  "detector": {
+    "run": ["node", "scripts/financial-constant-scan.mjs", "{project}"],
+    "expect_exit": 1
+  },
   "worked_example": "$4.985 is a TRUE tie at two decimal places, so the two modes disagree: bankers rounds half to even and yields 4.98; half-up yields 4.99. The manifest previously claimed $4.9995, which is NOT a tie \u2014 its third decimal is 9, so both modes round it to 5.00 and the documented input never reproduced the defect. A detector built to the old example would have looked correct and found nothing, which is this repo's own 'rule that cannot fail' class living inside the laboratory that measures it. Caught in review by codex on PR #9, not by any check here."
 }

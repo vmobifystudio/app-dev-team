@@ -35,6 +35,7 @@ import {
   channelIndex,
   channelsOf,
   pairQuestions,
+  openFollowUps,
   threads as threadsOf,
   obligationOf,
   undeliveredAnswers,
@@ -280,6 +281,21 @@ function communications(model) {
           status && SHIPPED.has(status)
             ? `STILL OPEN while ${ticket} is ${status} — it shipped on an unconfirmed assumption`
             : 'open — a question nobody answered is how a guess becomes shipped behaviour',
+        actionable: true,
+      });
+    }
+    for (const m of openFollowUps(thread).filter((item) => item.kind !== 'question')) {
+      openItems.push({
+        kind: 'open_follow_up',
+        id: ticket,
+        messageId: m.id,
+        from: m.from,
+        to: m.to.join(', '),
+        question: m.summary,
+        asked: m.ts || 'inferred',
+        shipped: Boolean(status && SHIPPED.has(status)),
+        ticketStatus: status || 'not on the board',
+        reason: `${m.kind} follow-up remains undelivered — the message declared an obligation but no later answer or decision closed it`,
         actionable: true,
       });
     }

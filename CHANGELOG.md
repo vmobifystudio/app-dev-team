@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [2.0.0] — 2026-07-30
 
-The revamp. 74 commits, **48 → 751 assertions**, and the first release whose own documentation
+The revamp. 74 commits, **48 → 779 assertions**, and the first release whose own documentation
 leads with what is *not* finished.
 
 **What is new**
@@ -32,9 +32,9 @@ leads with what is *not* finished.
 - **Security**: capability enforcement at the append, argument-injection fix, CSRF guard, secret
   redaction, worktree spawn gate, a kill switch that fails closed on an unreadable file.
 
-**What is honestly not finished** — see `docs/HANDBOOK.md` Part 12. `/app-ship` has never executed;
-eight of dry run 5's fourteen hypotheses have no verdict; nine planted lab defects have no detector,
-six of them S1. Autonomous release stays disabled.
+**What is honestly not finished** — see `docs/HANDBOOK.md` Part 12. `/app-ship` has not executed end
+to end; several dry-run hypotheses have no verdict; audit-chain truncation and stale approvals still
+need a trust-boundary decision. Autonomous release stays disabled.
 
 ## [Unreleased] — Security hardening (S.1–S.7)
 

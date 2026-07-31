@@ -44,6 +44,7 @@ import {
   migrate as migrateMessages,
   threads as messageThreads,
   pairQuestions,
+  openFollowUps,
   auditGuards,
   undeliveredAnswers,
   expiredWaivers,
@@ -90,6 +91,7 @@ function diagnoseMessages(messages, rowsById, warnings) {
     // `decision` row correcting a tooling mistake made a genuinely open product question look
     // resolved. One resolution closes one question — anything else is still open.
     const { open } = pairQuestions(thread);
+    const followUps = openFollowUps(thread);
     const questions = thread.filter((m) => m.kind === 'question');
     const row = rowsById.get(normalizeId(ticketId));
 
@@ -105,6 +107,15 @@ function diagnoseMessages(messages, rowsById, warnings) {
             : 'The owner is deciding without it.'
         }`,
         action: 'tech-manager: answer it, route it, or record a decision. An open question is how a guess becomes shipped behaviour.',
+      });
+    }
+    for (const followUp of followUps.filter((m) => m.kind !== 'question')) {
+      warnings.push({
+        code: 'follow_up_unresolved',
+        ticketId,
+        line: followUp._line,
+        detail: `${followUp.id} is an unresolved ${followUp.kind} from ${followUp.from} to ${followUp.to.join(', ')}: "${followUp.summary}". It declared a follow-up obligation, but no later answer or decision delivered it.`,
+        action: 'tech-manager: deliver the handoff/blocker/escalation, record the resulting artifact or transition, or escalate it explicitly.',
       });
     }
   }
@@ -205,6 +216,33 @@ function diagnose(board, ledger, capabilities, messages = []) {
     }
     seenIds.add(id);
     rowsById.set(id, { ...row, id, status: (row.status || '').toLowerCase().trim() });
+  }
+
+  // Parallel worktrees isolate branches, not merge conflicts. If two in-progress tickets name the
+  // same primary file, the work must be serialized even though spawn-gate correctly allows both
+  // worktrees. The file scope is conventionally recorded in the spec or notes column; absence of a
+  // scope is not guessed into a collision, it remains the tech-manager's planning responsibility.
+  const fileOwners = new Map();
+  for (const row of rowsById.values()) {
+    if (row.status !== 'in_progress') continue;
+    const text = Object.values(row).filter((value) => typeof value === 'string').join(' ');
+    const match = /primary file:\s*(\S+)/i.exec(text);
+    if (!match) continue;
+    const file = match[1].trim();
+    if (!fileOwners.has(file)) fileOwners.set(file, []);
+    fileOwners.get(file).push(row);
+  }
+  for (const [file, owners] of fileOwners) {
+    if (owners.length < 2) continue;
+    for (const row of owners) {
+      anomalies.push({
+        code: 'shared_file_collision',
+        ticketId: row.id,
+        line: row._line,
+        detail: `${owners.map((other) => other.id).join(' and ')} are both in progress and name ${file} as their primary file. Parallel worktrees do not prevent a merge collision.`,
+        action: 'tech-manager: serialize these tickets or split the file scope before spawning both writers.',
+      });
+    }
   }
 
   const ledgerByTicket = new Map();

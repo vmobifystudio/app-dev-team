@@ -75,6 +75,12 @@ jobs:
             }
           "
 
+      - name: Public metadata matches the shipped plugin
+        run: node scripts/metadata-check.mjs
+
+      - name: Dependency declarations and lockfiles
+        run: node scripts/dependency-check.mjs .
+
       - name: Every skill has valid frontmatter
         run: |
           # A skill whose frontmatter is malformed does not fail loudly — it silently never

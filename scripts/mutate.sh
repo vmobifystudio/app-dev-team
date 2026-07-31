@@ -150,6 +150,12 @@ M28@@scripts/lib/messages.mjs@@if (spent >= MAX_PER_TICKET) {@@if (false) {@@the
 M29@@scripts/lib/messages.mjs@@m.expires && m.expires < today@@m.expires && m.expires > today@@an expired waiver is a finding, not a formality
 M30@@scripts/lib/messages.mjs@@if (record.v !== SCHEMA_VERSION) {@@if (false) {@@a schema-v2 record makes board-doctor CANNOT EVALUATE, never a pass
 M31@@scripts/messages.mjs@@writeFileSync(md, renderMessages(messages));@@if (!existsSync(md)) writeFileSync(md, renderMessages(messages));@@a hand edit to the generated view is overwritten by the next render
+M32@@scripts/accessibility-scan.mjs@@&& !/accessibilityLabel/.test(block)@@&& false@@comment-only and unlabelled SwiftUI controls remain detectable
+M33@@scripts/privacy-disclosure-scan.mjs@@if (!findings.length)@@if (true)@@a blanket privacy claim with outbound identity data blocks release
+M34@@scripts/subscription-restore-scan.mjs@@&& !/Transaction\.currentEntitlements/.test(match[1])@@&& false@@a sync-only restore path blocks release
+M35@@scripts/financial-constant-scan.mjs@@if (!findings.length)@@if (true)@@a bankers rounding implementation under a half-up rule blocks release
+M36@@scripts/requirements-conflict-scan.mjs@@if (prdQuota && archQuota && prdQuota !== archQuota)@@if (false)@@a quota conflict blocks release
+M37@@scripts/analytics-coverage-scan.mjs@@if (!missing.length)@@if (true)@@a missing P0 analytics event blocks release
 CATALOGUE
 }
 

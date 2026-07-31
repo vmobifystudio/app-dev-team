@@ -1,9 +1,12 @@
 {
   "name": "accessibility-violation",
   "defect": "src/PaywallView.swift dismisses the paywall with a 28×28 icon-only button carrying no accessibilityLabel. VoiceOver announces \"button\" and the target is below the 44×44 minimum, so the only exit from a modal paywall is unreachable for the users who most need it.",
-  "expected_detector": null,
-  "expected_signal": null,
+  "expected_detector": "scripts/accessibility-scan.mjs",
+  "expected_signal": "icon-button-too-small-and-unlabelled",
   "severity": "S1",
   "why": "The plan already resolves accessibility-specialist to \"SKILL + existing auditor\", noting the gap is a GATE and not a person. That gate is still unbuilt: the axiom accessibility-auditor is an agent in another plugin, and no script in this repo inspects UI code.",
-  "gap": "No runnable detector, and this is the class the plan explicitly said needed a gate. The lab records that the gate named in the plan does not yet exist."
+  "detector": {
+    "run": ["node", "scripts/accessibility-scan.mjs", "{project}/src"],
+    "expect_exit": 1
+  }
 }

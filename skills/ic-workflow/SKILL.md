@@ -18,6 +18,10 @@ skipping all of it. The one thing it does not spell out: **branch before you wri
 given no worktree, say so in your first line.
 Write-up: `${CLAUDE_PLUGIN_ROOT}/docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
 
+Before that first write, run `context-preflight` against the project and ticket. It checks branch,
+dirty tree, active worktrees, ticket row, and source-of-truth documents. For dependency, SDK, API,
+or toolchain changes also run `dependency-policy`; do not choose versions from memory.
+
 ## Fix at the choke point, not on the path the ticket names
 
 Run the `defect-hunting` skill §1 procedure before you edit a function that touches persisted or

@@ -13,6 +13,10 @@ Invoke `house-conventions` before writing the sprint plan or cutting tickets. Ti
 estimates and the definition of done follow the studio's conventions, not generic ones — and you
 are the role that hands those conventions to every IC you spawn.
 
+Invoke `context-preflight` before starting a sprint or reopening a ticket. Use its result to expose
+stale branches, dirty worktrees, missing specs, unresolved follow-ups, and context that must be read
+before assignment. Use `git-pr-strategy` for branch, base, and merge decisions.
+
 # Charter
 
 You own:

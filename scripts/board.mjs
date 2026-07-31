@@ -181,7 +181,14 @@ function append(logPath, event) {
         `  Recover the log from version control (git checkout -- ${logPath}), then re-run.`
     );
   }
-  appendFileSync(logPath, `${JSON.stringify({ ...event, hash: chainHash(chain.tip, event) })}\n`);
+  // A LEGACY LOG WITHOUT A TRAILING NEWLINE MUST GET ONE FIRST. `appendFileSync` concatenates raw
+  // bytes: if `existing` ends mid-line (no trailing `\n`), the new JSON object lands on the SAME
+  // line as the old one — `}{` glued together — and every reader from the next line onward fails
+  // `not valid JSON`. `verifyChain` above tolerates a missing trailing newline when reading (each
+  // line is `trim()`-checked), so this went unnoticed until the log was read again. Reported by
+  // codex.
+  const sep = existing && !existing.endsWith('\n') ? '\n' : '';
+  appendFileSync(logPath, `${sep}${JSON.stringify({ ...event, hash: chainHash(chain.tip, event) })}\n`);
 }
 
 function writeView(boardPath, tickets) {

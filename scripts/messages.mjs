@@ -25,7 +25,7 @@
  * Exit codes:  0 done · 1 refused (guard or obligation; nothing was written) · 2 usage / cannot read
  */
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
 
 import { parseMessages } from './lib/board.mjs';
@@ -55,6 +55,61 @@ const die = (message, code = 2) => {
   process.stderr.write(`messages: ${message}\n`);
   process.exit(code);
 };
+
+// `nextId()` is necessarily read/compute/write. Without a lock, two parallel agent processes can
+// read the same maximum and append duplicate MSG-NNNN records. A lock directory is used because
+// mkdir is atomic on the filesystems this plugin supports and the core runtime has no dependency on
+// flock. The process-exit hook releases locks even when a validation refusal calls process.exit().
+let activeLock = '';
+function releaseLogLock() {
+  if (!activeLock) return;
+  try { rmSync(activeLock, { recursive: true, force: true }); } catch { /* best effort on exit */ }
+  activeLock = '';
+}
+process.on('exit', releaseLogLock);
+
+function acquireLogLock(jsonlPath) {
+  mkdirSync(dirname(jsonlPath), { recursive: true });
+  const lock = `${jsonlPath}.lock`;
+  for (let attempt = 0; attempt < 250; attempt += 1) {
+    try {
+      mkdirSync(lock);
+      writeFileSync(join(lock, 'owner'), `${process.pid}\n`);
+      activeLock = lock;
+      return;
+    } catch (error) {
+      if (error.code !== 'EEXIST') die(`cannot lock ${jsonlPath}: ${error.message}`);
+      let owner = 0;
+      try { owner = Number.parseInt(readFileSync(join(lock, 'owner'), 'utf8'), 10); } catch { /* partial lock */ }
+      if (owner && owner !== process.pid) {
+        try {
+          process.kill(owner, 0);
+        } catch (probe) {
+          if (probe.code === 'ESRCH') {
+            rmSync(lock, { recursive: true, force: true });
+            continue;
+          }
+        }
+      }
+      // Atomics.wait is a synchronous, dependency-free sleep; it avoids a busy loop while the
+      // other writer completes its read/validate/append/render transaction.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40);
+    }
+  }
+  die(`could not acquire ${jsonlPath} within 10 seconds — another writer may be stuck`);
+}
+
+// A LEGACY LOG WITHOUT A TRAILING NEWLINE MUST GET ONE FIRST. `serialize()` only trails a record
+// with `\n`; it never LEADS with one. `appendFileSync` concatenates raw bytes, so a log whose last
+// byte is not `\n` — hand-edited, or written by a tool with this same bug — glues the new object
+// onto the end of the old line as `}{`, and every reader from that line onward fails with "not
+// valid JSON". board.mjs's `append()` had the identical gap; fixed there the same way. Reported
+// by codex.
+function appendMessage(jsonlPath, candidate) {
+  const existing = existsSync(jsonlPath) ? readFileSync(jsonlPath, 'utf8') : '';
+  const sep = existing && !existing.endsWith('\n') ? '\n' : '';
+  appendFileSync(jsonlPath, `${sep}${serialize(candidate)}`);
+}
 
 // --------------------------------------------------------------------------------------------
 // arguments — typed, never interpolated into a shell
@@ -190,6 +245,7 @@ function cmdSend(options) {
   if (!PRIORITIES.has(priority)) die('--priority must be material|fyi');
 
   const paths = ledgerPaths(options);
+  acquireLogLock(paths.jsonl);
   const { messages } = readLog(paths);
 
   const candidate = normalize(
@@ -243,7 +299,7 @@ function cmdSend(options) {
   }
 
   mkdirSync(dirname(paths.jsonl), { recursive: true });
-  appendFileSync(paths.jsonl, serialize(candidate));
+  appendMessage(paths.jsonl, candidate);
   const { messages: after } = readLog(paths, { quiet: true });
   writeView(paths, after);
 
@@ -302,6 +358,7 @@ function cmdArtifact(type, options) {
   }
 
   const paths = ledgerPaths(options);
+  acquireLogLock(paths.jsonl);
   const root = dirname(dirname(dirname(paths.md))); // …/docs/team/messages.md -> project root
   const dir = join(root, spec.dir);
   mkdirSync(dir, { recursive: true });
@@ -333,13 +390,17 @@ function cmdArtifact(type, options) {
     `- **Readers:** ${spec.readers.join(', ')}`,
   ].filter(Boolean);
 
-  writeFileSync(
-    file,
-    `# ${id} — ${options.title}\n\n${meta.join('\n')}\n\n## Context\n\n${
-      options.body || '_TODO: what forced this decision._'
-    }\n\n## Decision\n\n_TODO_\n\n## Consequences\n\n_TODO_\n`
-  );
-
+  // GUARD BEFORE THE FILE IS WRITTEN, NOT AFTER. `cmdArtifact` never called `guard()` at all, so a
+  // WAIVER (or any artifact) could push a ticket's thread past MAX_CHAIN roles and be accepted —
+  // the exact same limit `board-doctor`'s `auditGuards()` enforces retroactively, which meant an
+  // artifact could be written clean and then reported as a breach the moment anything re-audited
+  // the log. The write-time and audit-time checks are the SAME limit; only one of them was wired
+  // to the write path. Reported by codex on PR #13.
+  //
+  // The candidate is built first — deterministically, from `file`'s path — so `guard()` can run
+  // BEFORE any side effect. Writing the .md file first and refusing after would leave an artifact
+  // on disk with no ledger entry, which is worse than the bug being fixed: an artifact nothing can
+  // find is the same failure as a message nothing delivered.
   const { messages } = readLog(paths);
   const candidate = normalize(
     {
@@ -364,8 +425,21 @@ function cmdArtifact(type, options) {
     messages.length + 1
   );
 
+  const verdict = guard(messages, candidate);
+  if (!verdict.ok) {
+    process.stderr.write(`REFUSED (${verdict.code}): ${verdict.reason}.\n${verdict.remedy}\n`);
+    process.exit(1);
+  }
+
+  writeFileSync(
+    file,
+    `# ${id} — ${options.title}\n\n${meta.join('\n')}\n\n## Context\n\n${
+      options.body || '_TODO: what forced this decision._'
+    }\n\n## Decision\n\n_TODO_\n\n## Consequences\n\n_TODO_\n`
+  );
+
   mkdirSync(dirname(paths.jsonl), { recursive: true });
-  appendFileSync(paths.jsonl, serialize(candidate));
+  appendMessage(paths.jsonl, candidate);
   const { messages: after } = readLog(paths, { quiet: true });
   writeView(paths, after);
 

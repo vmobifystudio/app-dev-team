@@ -110,6 +110,50 @@ case $? in
   *) unknown "board-doctor could not read $BOARD (exit 2) — board coherence was NOT checked." ;;
 esac
 
+# High-confidence SwiftUI accessibility tripwire. This complements, rather than replaces, the
+# human/platform accessibility review: an icon-only button below 44pt with no label is sufficiently
+# concrete to block a release, while projects with no Swift sources are not forced through a
+# platform-specific check.
+SWIFT_FILES=$(find "$ROOT" -type f -name '*.swift' -not -path '*/.git/*' -not -path '*/Pods/*' 2>/dev/null || true)
+if [ -n "$SWIFT_FILES" ]; then
+  node "$HERE/accessibility-scan.mjs" "$ROOT" >/dev/null 2>&1
+  case $? in
+    0) ;;
+    1) block "accessibility-scan found a high-confidence unlabelled, undersized SwiftUI control." ;;
+    *) unknown "accessibility-scan could not evaluate the Swift sources." ;;
+  esac
+fi
+
+# Release-connected defect tripwires. Each detector is intentionally narrow and remains advisory
+# about semantics, but a positive high-confidence finding is a release blocker. Missing optional
+# product artifacts are reported as notes here because the dedicated human reviewers still own the
+# full privacy, monetization, product, and analytics reviews; a present artifact must never silently
+# bypass its detector.
+run_detector() {
+  DETECTOR_NAME=$1
+  shift
+  "$@" >/dev/null 2>&1
+  DETECTOR_RC=$?
+  case "$DETECTOR_RC" in
+    0) ;;
+    1) block "$DETECTOR_NAME found a release defect. Run it directly for the file-level finding." ;;
+    *) unknown "$DETECTOR_NAME could not evaluate the project." ;;
+  esac
+}
+
+run_detector "injection-scan" node "$HERE/injection-scan.mjs" "$ROOT"
+run_detector "dependency-check" node "$HERE/dependency-check.mjs" "$ROOT"
+[ -f "$ROOT/docs/15-aso.md" ] && run_detector "privacy-disclosure-scan" node "$HERE/privacy-disclosure-scan.mjs" "$ROOT"
+[ -f "$ROOT/docs/10-prd.md" ] && run_detector "financial-constant-scan" node "$HERE/financial-constant-scan.mjs" "$ROOT"
+[ -f "$ROOT/docs/10-prd.md" ] && [ -f "$ROOT/docs/20-architecture.md" ] && \
+  run_detector "requirements-conflict-scan" node "$HERE/requirements-conflict-scan.mjs" "$ROOT"
+[ -f "$ROOT/docs/10-prd.md" ] && [ -f "$ROOT/docs/52-analytics.md" ] && \
+  run_detector "analytics-coverage-scan" node "$HERE/analytics-coverage-scan.mjs" "$ROOT"
+[ -n "$SWIFT_FILES" ] && run_detector "subscription-restore-scan" node "$HERE/subscription-restore-scan.mjs" "$ROOT"
+[ -f "$ROOT/docs/60-releases.md" ] && grep -qiE '(^|[[:space:]])(release[[:space:]]+)?version[[:space:]]*[:=]' "$ROOT/docs/60-releases.md" 2>/dev/null && \
+  run_detector "version-consistency-check" node "$HERE/version-consistency-check.mjs" "$ROOT"
+[ -f "$ROOT/.studio-policy.json" ] && run_detector "policy-check" node "$HERE/policy-check.mjs" "$ROOT"
+
 # --- 1b. the audit chain must be intact -----------------------------------------------------------
 #
 # Release is where rewriting the event log pays off: every gate below reads state derived from it, so

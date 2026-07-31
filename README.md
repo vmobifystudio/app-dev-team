@@ -4,13 +4,13 @@
 
 **Describe your app idea in one line. Get a shipped iOS & Android app.**
 
-AI App Studio is a *team* of 18 AI specialists — a CEO, product manager, designers, iOS/Android
+AI App Studio is a *team* of 29 AI specialists — a CEO, product manager, designers, iOS/Android
 engineers, a code reviewer, QA, and a release manager — that works like a real software studio.
 It takes your idea from **scope → design → code → review → store**, building in parallel, reviewing
 and fixing its own work, and stopping for you at only the two moments that matter:
 **what we're building** and **whether to ship**.
 
-[![version](https://img.shields.io/badge/version-1.5.0-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-2.0.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-lightgrey)]()
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A2BE2)]()
