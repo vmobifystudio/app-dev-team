@@ -544,20 +544,18 @@ the executable action plan for closing that gap.
 
 | Workstream | Deliverable | Status / exit criterion |
 |---|---|---|
-| Durable execution | Append-only run ledger with run ID, attempt ID, phase checkpoints, lease/heartbeat, terminal status, and orphan detector | In progress; `run-doctor` must fail on expired active leases, duplicate active attempts, malformed records, or missing terminal evidence |
-| Context integrity | Deterministic context manifest containing source paths, hashes, git revision, omissions, reasons, and token estimate; freshness verifier | In progress; a changed source or revision must produce a non-zero stale result |
-| Approval integrity | Approval evidence binding to commit, diff hash, context snapshot, and evidence hash; optional strict policy gate | Planned in this phase; strict mode must reject incomplete or stale approval evidence |
-| Audit anchoring | Release-time anchor for the board event-chain tip and log digest | Planned in this phase; verification must distinguish intact, changed, and unavailable |
-| Regression protection | Positive and negative tests for every new fail-closed branch; mutation entries for new gates | Required before phase completion |
+| Durable execution | Append-only run ledger with run ID, attempt ID, phase checkpoints, lease/heartbeat, terminal status, and orphan detector | ✅ Implemented and smoke-tested; `run-doctor` detects expired leases, duplicate active attempts, malformed records, and broken chains |
+| Context integrity | Deterministic layered context manifest containing source paths, hashes, git revision, omissions, reasons, precedence, and token estimate; freshness verifier | ✅ Implemented and smoke-tested; changed sources or revisions return stale |
+| Approval integrity | Approval evidence binding to commit, diff hash, context snapshot, and evidence hash; optional strict policy gate | ✅ Implemented; strict mode rejects incomplete or mismatched evidence |
+| Audit anchoring | Release-time anchor for the board event-chain tip and log digest | ✅ Implemented; verification distinguishes intact, changed, and unavailable |
+| Regression protection | Positive and negative tests for every new fail-closed branch; mutation entries for new gates | ✅ New paths have positive/negative regression cases; broader mutation expansion remains ongoing |
 
 ### P1 — design and scaffold after P0
 
-Governed memory
-provenance, prompt registry, deterministic scheduler, evaluation laboratory, capability manifests,
-impact propagation, risk routing, and incident/release-health records now have executable scaffolds
-and regression checks. Layered context compilation and manager failover are now also implemented;
-all of these controls still require integration into every runtime dispatch path before they are
-considered fully operational.
+Governed memory provenance, prompt registry, deterministic scheduler, evaluation laboratory,
+capability manifests, impact propagation, risk routing, incident/release-health records, layered
+context compilation, and manager failover now have executable scaffolds and regression checks.
+Runtime integration into every dispatch path remains open.
 
 ### P2 — live validation after CICD/device access
 
@@ -578,6 +576,8 @@ having added scripts.
 - `60979b6` — governed memory, prompt registry, evaluation laboratory.
 - `eebe698` — deterministic scheduler, capabilities, impact propagation.
 - `30b5a64` — risk routing and incident lifecycle records.
+- `084c6ac` — layered context compilation and manager failover.
+- `4202555` — end-to-end handbook current-state documentation.
 
 1. **Markdown/JSONL on disk is the only durable state.** Dashboards, warm agents, and CLIs are
    projections and conveniences; kill any of them and the team still runs.
