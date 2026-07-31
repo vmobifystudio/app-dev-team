@@ -6,6 +6,12 @@
       "command": ["node", "scripts/team-doctor.mjs", "."],
       "expect_exit": 0,
       "must_contain": ["Team definition is coherent"]
+    },
+    {
+      "id": "warm-cold-manager-state-is-interchangeable",
+      "command": ["node", "scripts/manager-harness.mjs", "--scenario", "eval/manager-scenario.json", "--mode", "compare"],
+      "expect_exit": 0,
+      "must_contain": ["\"status\": \"PASS\""]
     }
   ]
 }

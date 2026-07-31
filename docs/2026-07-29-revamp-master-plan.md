@@ -487,7 +487,7 @@ answer an open question, assign an unowned artifact. Not "re-prioritise" — nob
 | 5.1 ✅ | **Cost ceiling / economics.** `round-journal.mjs` tracks rounds, spawns, retries, refusals, optional spend, and enforces ceilings plus emergency stop | seeded ceiling and stop tests in `scripts/test.sh` |
 | 5.2 ✅ | **Model escalation on retry** — review changes escalate `haiku → sonnet → opus`, capped at opus; verification rejection does not escalate | model-tier and retry behavior asserted in `scripts/test.sh` |
 | 5.3 ✅ | Round journal JSONL feeds `/app-status`, `/app-portfolio`, standups, and budget reporting | journal append/show/check paths are exercised |
-| 5.4 ◐ | Warm managers where the harness supports named agents + SendMessage; durable state and manager failover are implemented, but harness-specific warm-agent interchangeability is not exercised here | requires a named-agent harness replay |
+| 5.4 ◐ | Portable warm/cold manager contract is implemented and passes `eval/manager-scenario.json`; durable state and manager failover are covered. A named-agent + SendMessage replay remains environment-dependent | replay the same scenario through the real harness when available |
 | 5.5 ✅ | Auditor soft-routing: canonical list, detect-else-degrade, never a silent skip | absent-Axiom degrade is asserted in `scripts/test.sh` |
 
 ### Phase 6 — The studio tests itself ✅ SHIPPED (210 → 295 assertions)
@@ -580,6 +580,8 @@ having added scripts.
 - `30b5a64` — risk routing and incident lifecycle records.
 - `084c6ac` — layered context compilation and manager failover.
 - `4202555` — end-to-end handbook current-state documentation.
+- `ce32a3a` — unified dispatch preflight composition.
+- `63676f6` — orchestration status reconciliation.
 
 1. **Markdown/JSONL on disk is the only durable state.** Dashboards, warm agents, and CLIs are
    projections and conveniences; kill any of them and the team still runs.

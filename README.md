@@ -391,6 +391,7 @@ Markdown files — add, remove, or retune them.
 | `/app-risk` | Route work by blast radius, model tier, approvals, and required evidence. |
 | `/app-incident` | Record operational incidents and release-health response. |
 | `/app-manager-failover` | Inspect manager leases and decide HOLD, FAILOVER, or BLOCK. |
+| `/app-manager-harness` | Compare warm and cold manager state contracts against the same scenario. |
 | `/app-ship [version]` | Parallel security + ASO + analytics readiness → release-manager. Confirms before any upload. |
 | `/app-status` | Vision, sprint goal, board doctor verdict, board summary, blockers, latest standup. |
 | `/app-portfolio` | **(Many apps)** Ranks every registered project by **attention needed** — where should the next hour go? An unreadable project is reported as unreadable, never omitted. |

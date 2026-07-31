@@ -1,0 +1,9 @@
+{
+  "schema": "manager-scenario/v1",
+  "run": "RUN-MANAGER-HARNESS",
+  "rounds": [
+    { "number": 1, "events": [{ "type": "ticket", "id": "APP-001", "status": "in_progress" }, { "type": "question", "id": "Q-001", "answer": "open" }] },
+    { "number": 2, "events": [{ "type": "question", "id": "Q-001", "answer": "answered" }, { "type": "decision", "id": "D-001", "value": "merge-after-review" }] },
+    { "number": 3, "events": [{ "type": "ticket", "id": "APP-001", "status": "qa" }, { "type": "decision", "id": "D-002", "value": "runtime-required" }] }
+  ]
+}

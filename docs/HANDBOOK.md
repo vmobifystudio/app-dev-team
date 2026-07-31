@@ -88,6 +88,7 @@ truth and the command documentation must be corrected.
 | Incidents | `incident-ledger.mjs`, `docs/team/incidents.jsonl` | Operational failures disappearing into ordinary ticket history |
 | Failover | `manager-failover.mjs` | Two managers acting concurrently or a dead manager blocking recovery |
 | Dispatch composition | `dispatch-preflight.mjs` | One spawn gate composing context, scheduler, capability, and risk checks |
+| Warm/cold contract | `manager-harness.mjs`, `eval/manager-scenario.json` | Persistent and respawned managers produce identical state |
 
 ### Command groups
 
@@ -95,7 +96,7 @@ truth and the command documentation must be corrected.
 |---|---|---|
 | Intake and planning | `/app-init`, `/app-onboard`, `/app-audit`, `/app-plan` | Establish intent, inspect an existing app, create specifications, and build the board |
 | Execution | `/app-run`, `/app-build`, `/app-review` | Drive waves of isolated implementation, verification, review, and merge |
-| Evidence controls | `/app-preflight`, `/app-context`, `/app-run-status`, `/app-recover`, `/app-manager-failover` | Establish context, inspect durable state, and recover safely |
+| Evidence controls | `/app-preflight`, `/app-context`, `/app-run-status`, `/app-recover`, `/app-manager-failover`, `/app-manager-harness` | Establish context, inspect durable state, recover safely, and verify manager modes |
 | Coordination controls | `/app-schedule`, `/app-capabilities`, `/app-impact`, `/app-risk` | Decide what may run, who may do it, what it affects, and what assurance it needs |
 | Quality and release | `/app-ship`, `/app-eval`, `/app-incident` | Gate release, execute evaluations, and record operational failures |
 | Visibility and learning | `/app-status`, `/app-dashboard`, `/app-control-room`, `/app-portfolio`, `/app-memory`, `/app-learn`, `/app-team` | Observe work, curate memory, learn from shipped work, and inspect the roster |
@@ -515,6 +516,7 @@ names what is missing, rather than silently assembling a team that cannot build 
 | `/app-risk` | Route work by blast radius, model tier, approvals, and evidence |
 | `/app-incident` | Record operational incidents, mitigation, resolution, and evidence |
 | `/app-manager-failover` | Decide whether a manager lease permits continuation or requires failover |
+| `/app-manager-harness` | Compare warm and cold manager state contracts against the same scenario |
 | `/app-status` | Board, blockers, metrics, open questions, budget position |
 | `/app-dashboard` | The control room (§9) |
 | `/app-portfolio` | N projects ranked by attention needed |
