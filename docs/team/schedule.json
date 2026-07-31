@@ -1,0 +1,5 @@
+{
+  "schema": "scheduler-plan/v1",
+  "max_parallel": 2,
+  "tasks": []
+}

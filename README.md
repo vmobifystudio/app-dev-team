@@ -385,6 +385,9 @@ Markdown files — add, remove, or retune them.
 | `/app-recover` | Recover interrupted work through an explicit terminal ledger record. |
 | `/app-memory` | Govern durable memory proposals, provenance, promotion, rejection, and contradictions. |
 | `/app-eval` | Run deterministic role, policy, and workflow evaluation fixtures. |
+| `/app-schedule` | Compute dependency-ready work with bounded parallelism and backpressure. |
+| `/app-capabilities` | Enforce role operation and path capabilities from an allowlist. |
+| `/app-impact` | Propagate changed-file review to declared downstream consumers. |
 | `/app-ship [version]` | Parallel security + ASO + analytics readiness → release-manager. Confirms before any upload. |
 | `/app-status` | Vision, sprint goal, board doctor verdict, board summary, blockers, latest standup. |
 | `/app-portfolio` | **(Many apps)** Ranks every registered project by **attention needed** — where should the next hour go? An unreadable project is reported as unreadable, never omitted. |

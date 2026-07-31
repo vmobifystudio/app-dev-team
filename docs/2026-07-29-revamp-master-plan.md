@@ -552,10 +552,11 @@ the executable action plan for closing that gap.
 
 ### P1 — design and scaffold after P0
 
-Context compiler with role/project/ticket layers; governed memory curator and provenance; prompt
-registry; deterministic scheduler and manager failover; evaluation laboratory; risk-based model
-routing; capability manifests; impact propagation; production incident/release health controls.
-These remain explicitly out of the “complete” claim until their executable checks exist.
+Context compiler with role/project/ticket layers; manager failover; risk-based model routing;
+production incident/release health controls remain. Governed memory provenance, prompt registry,
+deterministic scheduler, evaluation laboratory, capability manifests, and impact propagation now
+have executable scaffolds and regression checks, but still require integration into every runtime
+dispatch path before they are considered fully operational.
 
 ### P2 — live validation after CICD/device access
 

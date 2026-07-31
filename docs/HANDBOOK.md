@@ -379,6 +379,9 @@ names what is missing, rather than silently assembling a team that cannot build 
 | `/app-recover` | Recover an interrupted run without silently creating a competing attempt |
 | `/app-memory` | Propose and review governed memory with provenance and contradiction history |
 | `/app-eval` | Execute deterministic role, policy, and workflow evaluation fixtures |
+| `/app-schedule` | Compute dependency-ready work with fairness and bounded parallelism |
+| `/app-capabilities` | Check role operation and path permissions against an allowlist |
+| `/app-impact` | Require changed surfaces to declare downstream consumers |
 | `/app-status` | Board, blockers, metrics, open questions, budget position |
 | `/app-dashboard` | The control room (§9) |
 | `/app-portfolio` | N projects ranked by attention needed |
@@ -494,6 +497,9 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `memory-curator.mjs` | Append-only memory proposals and explicit reviewer decisions |
 | `prompt-registry.mjs` | Semantic versions, owners, evaluation suites, and rollback metadata |
 | `eval-lab.mjs` | Deterministic executable evaluation cases with expected evidence |
+| `scheduler.mjs` | Ready queue, dependency, fairness, and backpressure decisions |
+| `capability-check.mjs` | Role operation/path allowlist enforcement |
+| `impact-map.mjs` | Changed-surface consumer propagation |
 | `test.sh` | 779 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |

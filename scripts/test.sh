@@ -4641,6 +4641,22 @@ node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$ME
 assert_exit 0 "prompt-registry accepts the versioned empty registry" node "$HERE/prompt-registry.mjs" --registry "$HERE/../docs/team/prompt-registry.json"
 assert_exit 0 "evaluation lab runs the checked-in baseline suite" node "$HERE/eval-lab.mjs" --manifest "$HERE/../eval/manifest.json"
 
+SCHED="$TMP/revamp-scheduler"; mkdir -p "$SCHED"
+cat > "$SCHED/plan.json" <<'EOF'
+{"schema":"scheduler-plan/v1","max_parallel":1,"tasks":[{"id":"A","owner":"dev","status":"complete"},{"id":"B","owner":"dev","status":"pending","depends":["A"],"priority":2},{"id":"C","owner":"dev","status":"pending","depends":["B"],"priority":1}]}
+EOF
+assert_exit 0 "scheduler computes a dependency-ready queue" node "$HERE/scheduler.mjs" --plan "$SCHED/plan.json"
+cat > "$SCHED/capabilities.json" <<'EOF'
+{"schema":"capability-manifest/v1","root":".","roles":[{"role":"reviewer","operations":["read"],"allowed_paths":["docs"],"denied_paths":["docs/secrets"]}]}
+EOF
+assert_exit 0 "capability-check allows a declared role operation" node "$HERE/capability-check.mjs" --manifest "$SCHED/capabilities.json" --role reviewer --operation read --path docs
+assert_exit 1 "capability-check rejects an undeclared operation" node "$HERE/capability-check.mjs" --manifest "$SCHED/capabilities.json" --role reviewer --operation write --path docs
+cat > "$SCHED/impact.json" <<'EOF'
+{"schema":"impact-map/v1","rules":[{"pattern":"^docs/","consumers":["reviewer","qa"]}]}
+EOF
+assert_exit 0 "impact-map accepts a declared changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file docs/10-prd.md
+assert_exit 1 "impact-map rejects an unmapped changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file Sources/App.swift
+
 echo "no conflict markers"
 # --------------------------------------------------------------------------------------------
 # Public metadata is a release input, not decoration. The marketplace entry and README used to
