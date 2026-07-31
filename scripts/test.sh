@@ -4657,6 +4657,14 @@ EOF
 assert_exit 0 "impact-map accepts a declared changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file docs/10-prd.md
 assert_exit 1 "impact-map rejects an unmapped changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file Sources/App.swift
 
+assert_exit 0 "risk-router selects the critical route for payment changes" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json" --file Sources/Payment.swift --change billing
+assert_exit 1 "risk-router refuses missing route input" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json"
+INCIDENT="$TMP/revamp-incidents"; mkdir -p "$INCIDENT"
+node "$HERE/incident-ledger.mjs" open --ledger "$INCIDENT/incidents.jsonl" --severity sev2 --title outage --owner incident-commander --by tech-manager > "$INCIDENT/open.json"
+INCIDENT_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).incident_id)' "$INCIDENT/open.json")
+assert_exit 0 "incident-ledger verifies the operational record chain" node "$HERE/incident-ledger.mjs" verify --ledger "$INCIDENT/incidents.jsonl"
+node "$HERE/incident-ledger.mjs" resolve --ledger "$INCIDENT/incidents.jsonl" --id "$INCIDENT_ID" --detail "service restored" --evidence docs/evidence --by incident-commander >/dev/null
+
 echo "no conflict markers"
 # --------------------------------------------------------------------------------------------
 # Public metadata is a release input, not decoration. The marketplace entry and README used to

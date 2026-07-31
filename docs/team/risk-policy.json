@@ -1,0 +1,8 @@
+{
+  "schema": "risk-policy/v1",
+  "default": { "risk": "medium", "model": "strong", "approvals": ["tech-manager"], "required_evidence": ["review"] },
+  "rules": [
+    { "pattern": "billing|subscription|payment|store|release|rollout", "risk": "critical", "model": "frontier", "approvals": ["tech-manager", "release-manager"], "required_evidence": ["security-review", "runtime-evidence"] },
+    { "pattern": "auth|privacy|credential|secret|migration", "risk": "high", "model": "frontier", "approvals": ["security-reviewer"], "required_evidence": ["security-review", "migration-plan"] }
+  ]
+}
