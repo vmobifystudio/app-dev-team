@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-07-31
-**Scale:** 29 roles · 31 skills · 15 commands · 30 scripts (+9 shared libs) · 9 knowledge packs · 779 assertions
+**Scale:** 29 roles · 31 skills · 26 commands · 48 top-level scripts (+9 shared libs) · 9 knowledge packs · 779 baseline assertions + Revamp P0/P1 cases
 
 ---
 
@@ -17,6 +17,135 @@ is that **it does not trust its own agents, including about whether they did the
 
 Most of this document is about that distrust — where it is enforced, how, and what happened every
 time it was absent.
+
+## Current state — 2026-07-31
+
+This is the authoritative snapshot after the Revamp implementation checkpoints. The repository is
+on `main`, synchronized with `origin/main`, and the working tree is clean. The recent Revamp work
+was committed and pushed in small, reviewable slices:
+
+| Commit | Delivered |
+|---|---|
+| `42975c4` | Durable runs, context freshness, approval binding, audit anchoring |
+| `60979b6` | Governed memory, prompt registry, evaluation laboratory |
+| `eebe698` | Deterministic scheduler, capabilities, impact propagation |
+| `30b5a64` | Risk routing and incident lifecycle |
+| `0012489` | Revamp checkpoint documentation |
+| `084c6ac` | Layered context compilation and manager failover |
+
+### What exists end to end
+
+The system now has four cooperating planes:
+
+1. **Intent and planning.** Founder intent, PRD, architecture, platform specifications, backlog,
+   acceptance criteria, and the event-backed board define what should be built.
+2. **Execution and coordination.** Roles work in isolated branches/worktrees; the scheduler computes
+   dependency-ready work; the run ledger records attempts, checkpoints, leases, and terminal state;
+   manager failover prevents a dead manager from being silently duplicated.
+3. **Evidence and governance.** Context manifests record exactly which layered sources were used;
+   approval checks bind approvals to commit/diff/context/evidence; capability checks constrain role
+   operations and paths; impact maps identify downstream consumers; risk routing selects model tier,
+   approvers, and evidence requirements.
+4. **Release and learning.** Ship gates, runtime gates, dependency/version/policy scanners, audit
+   anchors, governed memory, prompt registry, evaluation fixtures, and incident records provide
+   release evidence and preserve failures for later review.
+
+### The normal lifecycle
+
+```text
+idea / existing app
+  → intake or onboard
+  → founder intent + PRD + architecture + platform specs
+  → context preflight + layered context manifest
+  → board plan + dependency/scheduler decision
+  → isolated implementation attempts with run checkpoints
+  → DONE verification + review + capability/impact/risk checks
+  → approval bound to immutable evidence
+  → merge + runtime/QA/release gates
+  → incident or release-health record if needed
+  → governed learning proposal → explicit curator review → durable memory
+```
+
+Every arrow is an intended control boundary. The command files describe the operator flow; the
+scripts are the enforceable part. If a command and a script disagree, the script's exit code is the
+truth and the command documentation must be corrected.
+
+### Revamp control inventory
+
+| Area | Current implementation | What it prevents |
+|---|---|---|
+| Durable execution | `run-ledger.mjs`, `run-doctor.mjs` | Silent restart, duplicate attempts, expired leases, lost checkpoints |
+| Layered context | `context-manifest.mjs` | Hidden context, stale sources, precedence ambiguity |
+| Approval evidence | `approval-check.mjs` | Approval of a different commit, diff, context, or evidence set |
+| Audit integrity | Board chain plus `audit-anchor.mjs` | Unnoticed release-time event-log changes |
+| Memory governance | `memory-curator.mjs` | Unreviewed, unscoped, unprovenanced agent memory |
+| Prompt governance | `prompt-registry.mjs` | Unversioned prompts, missing owners, no rollback metadata |
+| Evaluation | `eval-lab.mjs`, `eval/manifest.json` | Claims that a role/workflow works without an executable case |
+| Scheduling | `scheduler.mjs` | Dependency violations, starvation, uncontrolled parallelism |
+| Capabilities | `capability-check.mjs`, `docs/team/capabilities.json` | Role access beyond declared operations or paths |
+| Impact | `impact-map.mjs`, `docs/team/impact-map.json` | Changed files whose downstream consumers were never reviewed |
+| Risk routing | `risk-router.mjs`, `docs/team/risk-policy.json` | Low-assurance routing for money, security, migration, or release work |
+| Incidents | `incident-ledger.mjs`, `docs/team/incidents.jsonl` | Operational failures disappearing into ordinary ticket history |
+| Failover | `manager-failover.mjs` | Two managers acting concurrently or a dead manager blocking recovery |
+
+### Command groups
+
+| Group | Commands | Purpose |
+|---|---|---|
+| Intake and planning | `/app-init`, `/app-onboard`, `/app-audit`, `/app-plan` | Establish intent, inspect an existing app, create specifications, and build the board |
+| Execution | `/app-run`, `/app-build`, `/app-review` | Drive waves of isolated implementation, verification, review, and merge |
+| Evidence controls | `/app-preflight`, `/app-context`, `/app-run-status`, `/app-recover`, `/app-manager-failover` | Establish context, inspect durable state, and recover safely |
+| Coordination controls | `/app-schedule`, `/app-capabilities`, `/app-impact`, `/app-risk` | Decide what may run, who may do it, what it affects, and what assurance it needs |
+| Quality and release | `/app-ship`, `/app-eval`, `/app-incident` | Gate release, execute evaluations, and record operational failures |
+| Visibility and learning | `/app-status`, `/app-dashboard`, `/app-control-room`, `/app-portfolio`, `/app-memory`, `/app-learn`, `/app-team` | Observe work, curate memory, learn from shipped work, and inspect the roster |
+
+### Artifact map
+
+| Artifact | Authority / purpose |
+|---|---|
+| `docs/31-board-events.jsonl` | Append-only ticket event source; `docs/31-board.md` is a generated view |
+| `docs/team/runs.jsonl` | Durable execution attempts, checkpoints, leases, and terminal outcomes |
+| `docs/team/context-manifest.json` | Layered context snapshot and freshness boundary |
+| `docs/team/memory.jsonl` | Proposed and reviewed memory records |
+| `docs/team/prompt-registry.json` | Versioned prompt/policy metadata |
+| `docs/team/schedule.json` | Scheduler input plan |
+| `docs/team/capabilities.json` | Role operation/path allowlist |
+| `docs/team/impact-map.json` | Changed-surface consumer rules |
+| `docs/team/risk-policy.json` | Blast-radius routing rules |
+| `docs/team/incidents.jsonl` | Operational incident lifecycle |
+| `docs/team/audit-anchor.json` | Release-time board-log anchor when enabled |
+| `eval/manifest.json` | Executable evaluation cases |
+| `docs/50-test-plan.md`, `docs/60-releases.md` | Human-readable test/release evidence and waiver records |
+
+The JSONL artifacts are append-only by contract. A broken chain is an evidence-integrity failure;
+the recovery action is version-control/operator review, not manual editing or re-anchoring.
+
+### Opt-in strict project policy
+
+Existing projects remain compatible until their `.studio-policy.json` enables the newer controls.
+The following switches are supported by `ship-gate.sh`:
+
+```json
+{
+  "requireDurableRuns": true,
+  "requireApprovalBinding": true,
+  "requireAuditAnchor": true,
+  "requirePromptRegistry": true,
+  "requireEvaluation": true
+}
+```
+
+An enabled control with a missing or unreadable artifact returns `CANNOT EVALUATE`; it does not
+silently pass. This staged opt-in is deliberate: adding a checker is code-complete before every
+existing project has populated the corresponding evidence artifacts.
+
+### What “complete” means here
+
+The code-only Revamp phase is complete when the controls exist, have positive and negative tests,
+are documented, and are wired into the release gate. That milestone has been reached for the
+listed P0/P1 controls. Full operational completion requires every dispatch path to invoke them, plus
+CI, device, runtime, production replay, and human approval evidence. This handbook therefore
+describes a strong control plane, not a claim that a real app has shipped autonomously.
 
 ---
 
@@ -516,6 +645,29 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 ---
 
 ## Part 12 — What is honestly not finished
+
+> **Current correction — 2026-07-31.** The historical review text below predates the Revamp
+> checkpoints and must not be read as the current implementation state. Approval binding,
+> context freshness, audit anchoring, evaluation scaffolding, risk routing, and the other controls
+> listed in the Current state section are now implemented. The old findings are retained only as
+> provenance for why each control exists.
+
+### Current open work
+
+- **Runtime integration:** the new scripts are executable and release-gate-aware, but every agent
+  dispatch path still needs to invoke the relevant scheduler, capability, context, risk, impact,
+  and run-ledger checks consistently.
+- **Live evidence:** full CI/device/runtime/production replay, `/app-ship` end-to-end execution,
+  mobile state matrices, performance/accessibility validation, and release rehearsals require the
+  target project and toolchains.
+- **Operational depth:** memory curation, prompt evaluation, incident response, and manager
+  failover need repeated real-run evidence before they can be called mature operating practices.
+- **Product truth:** the team can validate traceability and implementation evidence; it cannot
+  determine market desirability or replace founder/user judgment.
+
+Everything below this marker is **historical review evidence**. It explains earlier gaps and the
+reasoning behind the controls; when it conflicts with the current-state inventory above, the
+current-state inventory wins.
 
 This section exists because a handbook that only describes the working parts is the same failure
 this system is built to prevent.
