@@ -571,6 +571,13 @@ pass and fail paths, the action plan records all remaining P1/P2 work, and the w
 reviewable. “10/10” is reserved for the later evidence-backed operating phase, not merely for
 having added scripts.
 
+### Revamp commits
+
+- `42975c4` — durable runs, context freshness, approval binding, audit anchoring.
+- `60979b6` — governed memory, prompt registry, evaluation laboratory.
+- `eebe698` — deterministic scheduler, capabilities, impact propagation.
+- `30b5a64` — risk routing and incident lifecycle records.
+
 1. **Markdown/JSONL on disk is the only durable state.** Dashboards, warm agents, and CLIs are
    projections and conveniences; kill any of them and the team still runs.
 2. **One parser.** Every reader of the board/ledger/messages goes through `lib/board.mjs`.
