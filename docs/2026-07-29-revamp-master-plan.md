@@ -552,11 +552,12 @@ the executable action plan for closing that gap.
 
 ### P1 — design and scaffold after P0
 
-Context compiler with role/project/ticket layers and manager failover remain. Governed memory
+Governed memory
 provenance, prompt registry, deterministic scheduler, evaluation laboratory, capability manifests,
 impact propagation, risk routing, and incident/release-health records now have executable scaffolds
-and regression checks, but still require integration into every runtime dispatch path before they
-are considered fully operational.
+and regression checks. Layered context compilation and manager failover are now also implemented;
+all of these controls still require integration into every runtime dispatch path before they are
+considered fully operational.
 
 ### P2 — live validation after CICD/device access
 

@@ -384,6 +384,7 @@ names what is missing, rather than silently assembling a team that cannot build 
 | `/app-impact` | Require changed surfaces to declare downstream consumers |
 | `/app-risk` | Route work by blast radius, model tier, approvals, and evidence |
 | `/app-incident` | Record operational incidents, mitigation, resolution, and evidence |
+| `/app-manager-failover` | Decide whether a manager lease permits continuation or requires failover |
 | `/app-status` | Board, blockers, metrics, open questions, budget position |
 | `/app-dashboard` | The control room (§9) |
 | `/app-portfolio` | N projects ranked by attention needed |
@@ -504,6 +505,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `impact-map.mjs` | Changed-surface consumer propagation |
 | `risk-router.mjs` | Blast-radius routing and required approval/evidence decisions |
 | `incident-ledger.mjs` | Append-only operational incident and release-health records |
+| `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `test.sh` | 779 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |

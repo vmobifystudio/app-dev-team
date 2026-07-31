@@ -4626,6 +4626,10 @@ node "$HERE/context-manifest.mjs" create --root "$CTX" --out "$CTX/manifest.json
 assert_exit 0 "context-manifest accepts unchanged sources" node "$HERE/context-manifest.mjs" verify --root "$CTX" --manifest "$CTX/manifest.json"
 printf 'changed context\n' > "$CTX/prd.md"
 assert_exit 1 "context-manifest rejects stale source evidence" node "$HERE/context-manifest.mjs" verify --root "$CTX" --manifest "$CTX/manifest.json"
+printf 'constitutional\n' > "$CTX/rules.md"
+node "$HERE/context-manifest.mjs" create --root "$CTX" --out "$CTX/layered.json" --source constitutional:rules.md --source project:prd.md >/dev/null
+node -e 'const m=require(process.argv[1]); if(m.schema!=="context-manifest/v2" || m.sources[0].layer!=="constitutional" || m.sources[1].layer!=="project") process.exit(1)' "$CTX/layered.json" \
+  && ok "context-manifest compiles explicit precedence layers" || bad "context-manifest compiles explicit precedence layers"
 
 APPROVAL="$TMP/revamp-approval"; mkdir -p "$APPROVAL"; printf '{"requireApprovalBinding":true}\n' > "$APPROVAL/.studio-policy.json"
 printf '{"ticket":"APP-001","event":"approved","detail":{"commit":"abc"}}\n' > "$APPROVAL/events.jsonl"
@@ -4656,6 +4660,10 @@ cat > "$SCHED/impact.json" <<'EOF'
 EOF
 assert_exit 0 "impact-map accepts a declared changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file docs/10-prd.md
 assert_exit 1 "impact-map rejects an unmapped changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file Sources/App.swift
+
+node "$HERE/run-ledger.mjs" start --ledger "$RUNX/runs.jsonl" --run RUN-002 --ticket APP-002 --role ios-developer --now 2026-07-31T00:00:00Z --lease-seconds 60 >/dev/null
+assert_exit 0 "manager-failover holds while the primary lease is live" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:00:30Z
+assert_exit 0 "manager-failover recommends replacement after lease expiry" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:02:00Z
 
 assert_exit 0 "risk-router selects the critical route for payment changes" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json" --file Sources/Payment.swift --change billing
 assert_exit 1 "risk-router refuses missing route input" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json"
