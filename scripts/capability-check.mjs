@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Validate a requested operation against an explicit role capability manifest. */
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve, relative } from 'node:path';
+import { dirname, resolve, relative } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
 const die = (code, message) => { process.stderr.write(`capability-check: ${message}\n`); process.exit(code); };
 const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['manifest', 'role', 'operation', 'path']), die });
@@ -12,7 +12,8 @@ if (manifest.schema !== 'capability-manifest/v1' || !Array.isArray(manifest.role
 const role = manifest.roles.find((entry) => entry.role === flags.role); if (!role) die(1, `role is not declared: ${flags.role || '(missing)'}`);
 if (!flags.operation || !role.operations?.includes(flags.operation)) die(1, `${flags.role} is not allowed operation ${flags.operation || '(missing)'}`);
 if (flags.path) {
-  const target = relative(resolve(String(manifest.root || '.')), resolve(String(flags.path)));
+  const base = resolve(dirname(manifestPath), String(manifest.root || '.'));
+  const target = relative(base, resolve(String(flags.path)));
   if (role.denied_paths?.some((prefix) => target === prefix || target.startsWith(`${prefix}/`))) die(1, `${flags.role} is denied path ${target}`);
   if (role.allowed_paths?.length && !role.allowed_paths.some((prefix) => target === prefix || target.startsWith(`${prefix}/`))) die(1, `${flags.role} is outside allowed paths: ${target}`);
 }

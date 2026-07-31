@@ -87,6 +87,7 @@ truth and the command documentation must be corrected.
 | Risk routing | `risk-router.mjs`, `docs/team/risk-policy.json` | Low-assurance routing for money, security, migration, or release work |
 | Incidents | `incident-ledger.mjs`, `docs/team/incidents.jsonl` | Operational failures disappearing into ordinary ticket history |
 | Failover | `manager-failover.mjs` | Two managers acting concurrently or a dead manager blocking recovery |
+| Dispatch composition | `dispatch-preflight.mjs` | One spawn gate composing context, scheduler, capability, and risk checks |
 
 ### Command groups
 

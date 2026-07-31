@@ -8,6 +8,18 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
 
 Tickets (optional, default = all ready): $ARGUMENTS
 
+Before spawning any ticket owner, run the unified dispatch gate:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-preflight.mjs" \
+  --root <project> --context "$CONTEXT_MANIFEST" --schedule "$SCHEDULE_PLAN" \
+  --capability "$CAPABILITY_MANIFEST" --risk "$RISK_POLICY" \
+  --role <role> --operation write --path <changed-path> --file <changed-file> --change <summary>
+```
+
+This composes context freshness, scheduler admission, capability allowlisting, and blast-radius
+routing. A failed or unavailable check stops the spawn and is reported to the manager.
+
 ## How this loop writes the board
 
 Every status change below is an append to `docs/31-board-events.jsonl` through one command:

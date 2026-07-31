@@ -4661,6 +4661,14 @@ EOF
 assert_exit 0 "impact-map accepts a declared changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file docs/10-prd.md
 assert_exit 1 "impact-map rejects an unmapped changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file Sources/App.swift
 
+DISPATCH="$TMP/revamp-dispatch"; mkdir -p "$DISPATCH/docs"
+printf 'context\n' > "$DISPATCH/docs/context.md"
+node "$HERE/context-manifest.mjs" create --root "$DISPATCH" --out "$DISPATCH/context.json" --source project:docs/context.md >/dev/null
+printf '%s\n' '{"schema":"scheduler-plan/v1","max_parallel":1,"tasks":[{"id":"T","owner":"reviewer","status":"pending"}]}' > "$DISPATCH/schedule.json"
+printf '%s\n' '{"schema":"capability-manifest/v1","root":".","roles":[{"role":"reviewer","operations":["write"],"allowed_paths":["docs"]}]}' > "$DISPATCH/capabilities.json"
+cp "$HERE/../docs/team/risk-policy.json" "$DISPATCH/risk.json"
+assert_exit 0 "dispatch-preflight composes all spawn controls" node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+
 node "$HERE/run-ledger.mjs" start --ledger "$RUNX/runs.jsonl" --run RUN-002 --ticket APP-002 --role ios-developer --now 2026-07-31T00:00:00Z --lease-seconds 60 >/dev/null
 assert_exit 0 "manager-failover holds while the primary lease is live" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:00:30Z
 assert_exit 0 "manager-failover recommends replacement after lease expiry" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:02:00Z

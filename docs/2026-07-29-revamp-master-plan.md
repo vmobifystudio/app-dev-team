@@ -555,7 +555,9 @@ the executable action plan for closing that gap.
 Governed memory provenance, prompt registry, deterministic scheduler, evaluation laboratory,
 capability manifests, impact propagation, risk routing, incident/release-health records, layered
 context compilation, and manager failover now have executable scaffolds and regression checks.
-Runtime integration into every dispatch path remains open.
+`dispatch-preflight.mjs` composes context, scheduling, capability, and risk checks and is now
+documented as the required spawn boundary in `/app-run` and `/app-build`. Remaining integration
+work is adoption by every alternate dispatch path and real-project evidence.
 
 ### P2 — live validation after CICD/device access
 

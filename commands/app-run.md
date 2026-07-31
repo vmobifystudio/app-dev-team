@@ -88,6 +88,8 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      up) → verified `DONE` → streaming `code-reviewer` (Axiom audit gate on iOS) → `tech-manager`
      merge gate → `qa-engineer` → bug loop.
    - After each round, spawn `tech-manager` to write the standup at `docs/daily/<today>.md`
+   - Before each implementation spawn, run `scripts/dispatch-preflight.mjs`; no role launches until
+     context, scheduling, capabilities, and risk routing all clear.
      (`team-protocol`'s canonical path — not `standup-<today>.md`, which nothing else reads) and
      print a 3-line summary: counts per status, what merged, blockers.
    - **The budget ceiling stops this loop and says why** (`/app-build` step 0a). An unattended run
