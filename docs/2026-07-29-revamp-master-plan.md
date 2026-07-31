@@ -484,11 +484,11 @@ answer an open question, assign an unowned artifact. Not "re-prioritise" — nob
 
 | # | Item | Proof |
 |---|---|---|
-| 5.1 | **Cost ceiling / economics.** No budget awareness exists today; an unattended `/app-run` has no economic brake. Track spend per round, enforce a ceiling, surface it in the standup | seeded ceiling stops a run and reports why |
-| 5.2 | **Model escalation on retry** — first attempt sonnet, re-spawn after `REQUEST CHANGES` goes opus. A ticket that failed review is by definition harder than it looked | assert the second spawn's tier differs |
-| 5.3 | Round journal (JSONL, one line per round) feeding burn-down and `/app-status` trend | a 3-round seeded sprint produces 3 lines |
-| 5.4 | Warm managers where the harness supports named agents + SendMessage; respawn model stays the portable baseline, all durable state stays in files | both modes interchangeable mid-sprint |
-| 5.5 | Auditor soft-routing made real (RV-019): one canonical list, detect-else-degrade, never a silent skip | run with the Axiom plugin absent; assert a stated degrade |
+| 5.1 ✅ | **Cost ceiling / economics.** `round-journal.mjs` tracks rounds, spawns, retries, refusals, optional spend, and enforces ceilings plus emergency stop | seeded ceiling and stop tests in `scripts/test.sh` |
+| 5.2 ✅ | **Model escalation on retry** — review changes escalate `haiku → sonnet → opus`, capped at opus; verification rejection does not escalate | model-tier and retry behavior asserted in `scripts/test.sh` |
+| 5.3 ✅ | Round journal JSONL feeds `/app-status`, `/app-portfolio`, standups, and budget reporting | journal append/show/check paths are exercised |
+| 5.4 ◐ | Warm managers where the harness supports named agents + SendMessage; durable state and manager failover are implemented, but harness-specific warm-agent interchangeability is not exercised here | requires a named-agent harness replay |
+| 5.5 ✅ | Auditor soft-routing: canonical list, detect-else-degrade, never a silent skip | absent-Axiom degrade is asserted in `scripts/test.sh` |
 
 ### Phase 6 — The studio tests itself ✅ SHIPPED (210 → 295 assertions)
 
