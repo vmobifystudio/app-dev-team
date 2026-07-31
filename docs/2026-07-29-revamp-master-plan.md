@@ -533,6 +533,43 @@ aircraft that has not flown.
 
 ## 5. Principles that must survive the revamp
 
+## 6. Revamp execution status — 2026-07-31
+
+The external adversarial review confirmed that the foundation is strong but identified a trust
+closure gap: the team can record board activity, yet cannot durably resume an interrupted run,
+prove exactly which context was used, or bind an approval to immutable evidence. This section is
+the executable action plan for closing that gap.
+
+### P0 — implement in the code-only phase
+
+| Workstream | Deliverable | Status / exit criterion |
+|---|---|---|
+| Durable execution | Append-only run ledger with run ID, attempt ID, phase checkpoints, lease/heartbeat, terminal status, and orphan detector | In progress; `run-doctor` must fail on expired active leases, duplicate active attempts, malformed records, or missing terminal evidence |
+| Context integrity | Deterministic context manifest containing source paths, hashes, git revision, omissions, reasons, and token estimate; freshness verifier | In progress; a changed source or revision must produce a non-zero stale result |
+| Approval integrity | Approval evidence binding to commit, diff hash, context snapshot, and evidence hash; optional strict policy gate | Planned in this phase; strict mode must reject incomplete or stale approval evidence |
+| Audit anchoring | Release-time anchor for the board event-chain tip and log digest | Planned in this phase; verification must distinguish intact, changed, and unavailable |
+| Regression protection | Positive and negative tests for every new fail-closed branch; mutation entries for new gates | Required before phase completion |
+
+### P1 — design and scaffold after P0
+
+Context compiler with role/project/ticket layers; governed memory curator and provenance; prompt
+registry; deterministic scheduler and manager failover; evaluation laboratory; risk-based model
+routing; capability manifests; impact propagation; production incident/release health controls.
+These remain explicitly out of the “complete” claim until their executable checks exist.
+
+### P2 — live validation after CICD/device access
+
+Runtime/mobile state matrices, device accessibility and performance validation, CI execution,
+replay drills, production-release rehearsals, and product/market validation. Code-only completion
+does not certify these outcomes; each requires recorded evidence from the target environment.
+
+### Definition of Revamp Complete for this coding phase
+
+The repository has deterministic tools and documentation for the P0 workstreams, tests prove both
+pass and fail paths, the action plan records all remaining P1/P2 work, and the working tree is
+reviewable. “10/10” is reserved for the later evidence-backed operating phase, not merely for
+having added scripts.
+
 1. **Markdown/JSONL on disk is the only durable state.** Dashboards, warm agents, and CLIs are
    projections and conveniences; kill any of them and the team still runs.
 2. **One parser.** Every reader of the board/ledger/messages goes through `lib/board.mjs`.

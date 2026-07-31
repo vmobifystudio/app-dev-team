@@ -154,6 +154,17 @@ run_detector "dependency-check" node "$HERE/dependency-check.mjs" "$ROOT"
   run_detector "version-consistency-check" node "$HERE/version-consistency-check.mjs" "$ROOT"
 [ -f "$ROOT/.studio-policy.json" ] && run_detector "policy-check" node "$HERE/policy-check.mjs" "$ROOT"
 
+# Revamp P0 trust controls are opt-in per project policy until existing app repositories have
+# adopted the artifacts. Once enabled, absence is CANNOT EVALUATE, never an implicit pass.
+if [ -f "$ROOT/.studio-policy.json" ]; then
+  grep -q '"requireDurableRuns"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
+    run_detector "run-doctor" node "$HERE/run-doctor.mjs" --ledger "$ROOT/docs/team/runs.jsonl"
+  grep -q '"requireApprovalBinding"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
+    run_detector "approval-check" node "$HERE/approval-check.mjs" --log "$ROOT/docs/31-board-events.jsonl" --policy "$ROOT/.studio-policy.json"
+  grep -q '"requireAuditAnchor"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
+    run_detector "audit-anchor" node "$HERE/audit-anchor.mjs" verify --log "$ROOT/docs/31-board-events.jsonl" --out "$ROOT/docs/team/audit-anchor.json"
+fi
+
 # --- 1b. the audit chain must be intact -----------------------------------------------------------
 #
 # Release is where rewriting the event log pays off: every gate below reads state derived from it, so

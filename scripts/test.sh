@@ -4607,6 +4607,30 @@ grep -q "zero" "$HERE/../commands/app-dashboard.md" \
 [ -f "$CR/README.md" ] && ok "control-room/README.md exists" || bad "control-room/README.md exists"
 echo
 # --------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+echo "revamp P0 trust primitives"
+RUNX="$TMP/revamp-runs"; mkdir -p "$RUNX"
+node "$HERE/run-ledger.mjs" start --ledger "$RUNX/runs.jsonl" --run RUN-001 --ticket APP-001 --role ios-developer \
+  --now 2026-07-31T00:00:00Z --lease-seconds 60 > "$RUNX/start.json" \
+  && ok "run-ledger records a durable start" || bad "run-ledger records a durable start"
+ATTEMPT=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).attempt_id)' "$RUNX/start.json")
+assert_exit 1 "run-ledger refuses a duplicate active attempt" node "$HERE/run-ledger.mjs" start --ledger "$RUNX/runs.jsonl" \
+  --run RUN-001 --ticket APP-001 --role ios-developer --now 2026-07-31T00:00:01Z
+assert_exit 0 "run-doctor accepts a live leased attempt" node "$HERE/run-doctor.mjs" --ledger "$RUNX/runs.jsonl" --now 2026-07-31T00:00:30Z
+assert_exit 1 "run-doctor detects an expired orphan lease" node "$HERE/run-doctor.mjs" --ledger "$RUNX/runs.jsonl" --now 2026-07-31T00:02:00Z
+node "$HERE/run-ledger.mjs" interrupt --ledger "$RUNX/runs.jsonl" --run RUN-001 --attempt "$ATTEMPT" --detail "operator recovery" >/dev/null
+
+CTX="$TMP/revamp-context"; mkdir -p "$CTX"; printf 'stable context\n' > "$CTX/prd.md"
+node "$HERE/context-manifest.mjs" create --root "$CTX" --out "$CTX/manifest.json" --source prd.md >/dev/null \
+  && ok "context-manifest records explicit source provenance" || bad "context-manifest records explicit source provenance"
+assert_exit 0 "context-manifest accepts unchanged sources" node "$HERE/context-manifest.mjs" verify --root "$CTX" --manifest "$CTX/manifest.json"
+printf 'changed context\n' > "$CTX/prd.md"
+assert_exit 1 "context-manifest rejects stale source evidence" node "$HERE/context-manifest.mjs" verify --root "$CTX" --manifest "$CTX/manifest.json"
+
+APPROVAL="$TMP/revamp-approval"; mkdir -p "$APPROVAL"; printf '{"requireApprovalBinding":true}\n' > "$APPROVAL/.studio-policy.json"
+printf '{"ticket":"APP-001","event":"approved","detail":{"commit":"abc"}}\n' > "$APPROVAL/events.jsonl"
+assert_exit 1 "approval-check rejects an approval missing bound evidence" node "$HERE/approval-check.mjs" --policy "$APPROVAL/.studio-policy.json" --log "$APPROVAL/events.jsonl"
+
 echo "no conflict markers"
 # --------------------------------------------------------------------------------------------
 # Public metadata is a release input, not decoration. The marketplace entry and README used to

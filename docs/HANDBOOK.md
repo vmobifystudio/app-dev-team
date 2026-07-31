@@ -374,6 +374,9 @@ names what is missing, rather than silently assembling a team that cannot build 
 | `/app-review` | Review a single branch |
 | `/app-ship` | Readiness gates → release manager → confirm before upload |
 | `/app-preflight` | Verify branch, ticket, dependency, policy, version, and source-of-truth context before work |
+| `/app-context` | Create or verify a deterministic context snapshot before review or irreversible work |
+| `/app-run-status` | Audit durable run leases, checkpoints, and orphaned attempts |
+| `/app-recover` | Recover an interrupted run without silently creating a competing attempt |
 | `/app-status` | Board, blockers, metrics, open questions, budget position |
 | `/app-dashboard` | The control room (§9) |
 | `/app-portfolio` | N projects ranked by attention needed |
@@ -482,6 +485,10 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `dependency-check.mjs` | Dependency declarations, lockfiles, and reproducible version constraints |
 | `version-consistency-check.mjs` | Release version versus iOS/Android manifests |
 | `policy-check.mjs` | Explicit project policy ownership and required evidence |
+| `run-ledger.mjs` / `run-doctor.mjs` | Append-only execution attempts, checkpoints, leases, and orphan detection |
+| `context-manifest.mjs` | Source hashes, git revision, omissions, and context freshness |
+| `approval-check.mjs` | Optional strict binding of approvals to commit, diff, context, and evidence |
+| `audit-anchor.mjs` | Release-time digest and tip anchor for the board event log |
 | `test.sh` | 779 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
