@@ -379,6 +379,7 @@ Markdown files — add, remove, or retune them.
 | `/app-plan [focus]` | Tech-manager turns backlog + specs into a parallel-friendly board. |
 | `/app-build [tickets]` | Board-doctor gate → spawns devs/reviewers/QA in parallel → verifies each `DONE` against git → streams reviews → gates merges → loops the bug fixes. 2-cycle review cap. |
 | `/app-review <branch>` | Code review on a single branch. |
+| `/app-preflight [path] [--ticket APP-NNN]` | Verify repository context, dependencies, versions, policy evidence, and source-of-truth documents before work. |
 | `/app-ship [version]` | Parallel security + ASO + analytics readiness → release-manager. Confirms before any upload. |
 | `/app-status` | Vision, sprint goal, board doctor verdict, board summary, blockers, latest standup. |
 | `/app-portfolio` | **(Many apps)** Ranks every registered project by **attention needed** — where should the next hour go? An unreadable project is reported as unreadable, never omitted. |
@@ -401,6 +402,11 @@ Every build agent reads the relevant pack first:
 | `aso.md` | Screenshot automation, Play Data Safety, store-readiness gate |
 | `git-workflow.md` | Branch model, commit conventions, versioning, CI, secrets |
 | `failure-corpus.md` | **The defect classes this codebase actually produces** — the tell a reviewer greps for, the dated instances, and the rule that now catches each one |
+
+The operating skills also include `context-preflight`, `dependency-policy`, `policy-checker`, and
+`git-pr-strategy`. These are invoked before implementation, dependency/toolchain changes, sensitive
+reviews, and Git/PR lifecycle actions; they complement rather than duplicate `agent-isolation`,
+`team-protocol`, `house-conventions`, `defect-hunting`, and `mutation-testing`.
 
 It's **living** — `/app-learn` folds new learnings from each shipped app back in, and flags
 conflicts (it never silently overwrites a convention).

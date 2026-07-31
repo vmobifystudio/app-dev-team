@@ -2,7 +2,7 @@
 
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
-**Version:** 2.0.0 (`main`) · **Date:** 2026-07-30
+**Version:** 2.0.0 (`main`) · **Date:** 2026-07-31
 **Scale:** 29 roles · 31 skills · 15 commands · 30 scripts (+9 shared libs) · 9 knowledge packs · 779 assertions
 
 ---
@@ -373,6 +373,7 @@ names what is missing, rather than silently assembling a team that cannot build 
 | `/app-build` | The sprint loop (§8) |
 | `/app-review` | Review a single branch |
 | `/app-ship` | Readiness gates → release manager → confirm before upload |
+| `/app-preflight` | Verify branch, ticket, dependency, policy, version, and source-of-truth context before work |
 | `/app-status` | Board, blockers, metrics, open questions, budget position |
 | `/app-dashboard` | The control room (§9) |
 | `/app-portfolio` | N projects ranked by attention needed |
@@ -387,6 +388,7 @@ upload). Everything between streams as standups.
 ## Part 8 — The sprint loop, step by step
 
 ```
+0.. preflight        — verifies branch, dirty tree, ticket, worktrees, and source-of-truth context
 0.  spawn-gate       — refuses to launch a second writer without worktrees
 0.  board-doctor     — refuses to spawn anything against an incoherent board
 0a. budget gate      — stops the loop when a ceiling is reached, naming which
@@ -394,6 +396,7 @@ upload). Everything between streams as standups.
 1a. route assumptions— last wave's ASSUMED, NOT RAISED become question rows
 1b. mid-sprint Q&A   — tech-lead answers them BEFORE this wave inherits them
 2.  spawn developers — one worktree each, serialised on file overlap
+2a. dependency gate — declarations, lockfiles, toolchain versions, and policy are checked when applicable
 3.  streaming review — verify each DONE, then review immediately; don't wait for the batch
 4.  verdicts         — approve → merge gate; changes → re-spawn one tier up
 4a. runtime gate     — build, launch, drive the P0 flow, capture evidence
@@ -472,9 +475,13 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `board-doctor.mjs` | A project's board: stranded, self-review, broken deps, cycle caps |
 | `team-doctor.mjs` | The **team definition**: unreachable roles, missing skills, contract drift, doc-graph, path spellings, corpus recurrence |
 | `verify-done.sh` | A DONE claim against git and the test command |
-| `ship-gate.sh` | Release preconditions, including generated-CI rules and waivers |
+| `ship-gate.sh` | Release preconditions, dependency/version/policy tripwires, generated-CI rules and waivers |
 | `runtime-gate.sh` | Does the app build, launch, and stay up |
 | `spawn-gate.sh` | Worktree isolation before any parallel spawn |
+| `context-preflight.mjs` | Branch, dirty-tree, ticket, worktree, and source-document context |
+| `dependency-check.mjs` | Dependency declarations, lockfiles, and reproducible version constraints |
+| `version-consistency-check.mjs` | Release version versus iOS/Android manifests |
+| `policy-check.mjs` | Explicit project policy ownership and required evidence |
 | `test.sh` | 779 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
