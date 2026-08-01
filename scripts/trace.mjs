@@ -385,7 +385,14 @@ const GATE_TRIGGERS = [
   { id: 'paid-infrastructure', where: /^docs\/(20-architecture|23-git-strategy)\.md$/,
     pattern: /\b(blaze plan|paid tier|billing account|reserved instance|[$£€]\s?\d+\s*\/\s*month)\b/i,
     why: 'paid infrastructure commitment' },
-  { id: 'waiver', where: /^docs\//,
+  // Dry run 5 (both the Android and Daily Reading Log fixtures, 2026-08-01): this used to scan
+  // ANY file under docs/ for the bare string `WAIVED:`, so a roster template's own explanatory
+  // prose about waiver syntax — instructional text, not a real waiver — tripped a founder gate the
+  // project never actually needed approval for. `WAIVED:` has exactly one legitimate home:
+  // `docs/60-releases.md` is the only file `ship-gate.sh`'s `waiver_for()` ever reads, and every
+  // doc describing how to write a waiver says to append it there. Scoping the trigger to that one
+  // file is not a narrower heuristic, it is the actual shape of a real waiver record.
+  { id: 'waiver', where: /^docs\/60-releases\.md$/,
     pattern: /\bWAIVED:/,
     why: 'a waiver of a failed or unavailable gate' },
 ];

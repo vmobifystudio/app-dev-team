@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 896 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 902 assertions
 
 ---
 
@@ -693,7 +693,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
-| `test.sh` | 896 assertions |
+| `test.sh` | 902 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -808,6 +808,23 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   `high`/`critical`, a broken policy let a billing/security ticket reach review with no invariant
   recorded. A malformed policy is now a hard failure at ticket creation; a missing one stays a quiet
   unknown.
+- **Two findings from independent dry-run pilots closed, 2026-08-01** (`docs/dry-runs/2026-08-01-android-small-app.md`
+  and its follow-up `2026-08-01-daily-reading-log-workflow-review.md`, both single-session Codex
+  pilots exercising the local workflow end to end, not a claim of true multi-agent execution — that
+  gap is still open and both reports say so). (1) Mission Control's release-readiness panel could
+  show `clear` while `ship-gate.sh` had just returned BLOCKED, because the panel swept only
+  ticket/bug state — a narrower population than the gate actually checks. `ship-gate.sh` now takes
+  an opt-in `--record` flag (used by `/app-ship` and `release-manager`) that writes its verdict to
+  `docs/team/ship-gate-verdict.json`; when the last recorded run was not CLEAR, the control room
+  surfaces it as an item, so the panel can no longer disagree with the gate's own last word. Opt-in,
+  not automatic, because `ship-gate.sh` is documented as read-only by default and several of this
+  repo's own test fixtures run it directly against tracked directories. (2) `trace.mjs`'s `waiver`
+  founder-gate trigger scanned every file under `docs/` for the bare string `WAIVED:`, so a roster
+  template's own explanatory prose about the waiver format tripped a founder-approval gate the
+  project never needed — reproduced in both pilots independently. `WAIVED:` has exactly one
+  legitimate home, `docs/60-releases.md` (the only file `ship-gate.sh`'s `waiver_for()` ever reads);
+  scoping the trigger there was not a narrower heuristic, it was the actual shape of a real waiver
+  record.
 - **Support triage and experiment feedback are explicitly deferred, not silently dropped.** No app
   built by this studio has shipped yet, so there is no real user-report or experiment-result signal
   for a support-triage or experiment-feedback loop to act on — building either now would be process

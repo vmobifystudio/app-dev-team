@@ -306,6 +306,7 @@ Canonical paths, used verbatim by the loop — no other spelling is recognised:
 | The team channel (source of truth) | `docs/team/messages.jsonl` |
 | ...and its generated view | `docs/team/messages.md` |
 | A review verdict | `docs/53-reviews/APP-NNN-cycle-N.md` |
+| ship-gate.sh's last recorded verdict | `docs/team/ship-gate-verdict.json` |
 
 If you hit a blocker, end with this instead — and name **who** must answer **what**, never just
 "unclear":

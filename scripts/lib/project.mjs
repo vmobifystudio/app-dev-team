@@ -46,6 +46,7 @@ const REL = {
   bugs: 'docs/51-bugs.md',
   rounds: 'docs/33-rounds.jsonl',
   releases: 'docs/60-releases.md',
+  shipGateVerdict: 'docs/team/ship-gate-verdict.json',
   docs: 'docs',
 };
 
@@ -493,6 +494,37 @@ function readReleaseChecklist(root) {
   };
 }
 
+/**
+ * `scripts/ship-gate.sh`'s last recorded verdict — the ONE way anything outside that process
+ * finds out what it said. Dry run 5 (Android fixture) found Mission Control's release-readiness
+ * panel could read `clear` while `ship-gate.sh` itself returned BLOCKED, because the panel only
+ * ever swept ticket/bug state — a different, narrower population than the gate checks (version
+ * consistency, QA verdict, injection/dependency/policy scans, and more). This reads the durable
+ * record `ship-gate.sh` now writes after every run, so the control room can defer to it without
+ * re-running a shell script on every page load (a second orchestrator).
+ *
+ * A verdict stays authoritative until a NEWER run overwrites it — this file being absent means the
+ * gate has never run, not that it passed; that distinction is `ok`, not `result`.
+ */
+function readShipGateVerdict(root) {
+  const source = readSource(root, REL.shipGateVerdict);
+  if (!source.ok) return { ok: false, note: `${source.note} — ship-gate.sh has never recorded a verdict for this project`, result: '', evaluatedAt: '', blockers: [], unknowns: [] };
+  let parsed;
+  try { parsed = JSON.parse(source.text); }
+  catch (e) { return { ok: false, note: `${REL.shipGateVerdict} is not valid JSON: ${e.message}`, result: '', evaluatedAt: '', blockers: [], unknowns: [] }; }
+  if (parsed.schema !== 'ship-gate-verdict/v1' || !['CLEAR', 'BLOCKED', 'CANNOT_EVALUATE'].includes(parsed.result)) {
+    return { ok: false, note: `${REL.shipGateVerdict} does not match schema ship-gate-verdict/v1`, result: '', evaluatedAt: '', blockers: [], unknowns: [] };
+  }
+  return {
+    ok: true,
+    note: '',
+    result: parsed.result,
+    evaluatedAt: parsed.evaluated_at || '',
+    blockers: Array.isArray(parsed.blockers) ? parsed.blockers : [],
+    unknowns: Array.isArray(parsed.unknowns) ? parsed.unknowns : [],
+  };
+}
+
 export {
   REL,
   readSource,
@@ -505,4 +537,5 @@ export {
   readBugsFile,
   readRounds,
   readReleaseChecklist,
+  readShipGateVerdict,
 };

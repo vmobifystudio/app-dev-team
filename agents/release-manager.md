@@ -68,8 +68,11 @@ You do not write features. You do not pick the fix when QA finds a defect mid-re
 # Inputs you require — run the gate, do not restate it
 
 ```bash
-sh "${CLAUDE_PLUGIN_ROOT}/scripts/ship-gate.sh"
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/ship-gate.sh" . --record
 ```
+
+`--record` writes this verdict to `docs/team/ship-gate-verdict.json` — the durable record the
+control room reads so it never shows release readiness as clear when this gate just said otherwise.
 
 Exit `0` is clear to ship, `1` is BLOCKED, `2` is CANNOT EVALUATE — and `2` is not a softer `1`.
 "I could not look" is not "I looked and it was fine"; you do not ship on a `2` any more than on a

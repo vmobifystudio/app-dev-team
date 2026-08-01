@@ -26,8 +26,13 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    `defect-hunting`):
 
    ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/ship-gate.sh" .
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/ship-gate.sh" . --record
    ```
+
+   `--record` writes this verdict to `docs/team/ship-gate-verdict.json` so the control room's
+   Mission Control panel can defer to it instead of only sweeping ticket/bug state — dry run 5
+   (Android fixture) found that narrower sweep could say `clear` while this gate had just returned
+   BLOCKED.
 
    - Exit `0` → **CLEAR.** Continue.
    - Exit `1` → **BLOCKED by a real condition** — an open S1/S2, a ticket still in flight
