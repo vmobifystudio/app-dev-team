@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
 const die = (code, message) => { process.stderr.write(`memory-curator: ${message}\n`); process.exit(code); };
-const { flags, positional } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['ledger', 'id', 'class', 'content', 'source', 'scope', 'confidence', 'expires', 'supersedes', 'contradicts', 'by', 'reason']), die });
+const { flags, positional } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['ledger', 'id', 'class', 'content', 'source', 'scope', 'confidence', 'expires', 'supersedes', 'contradicts', 'by', 'reason', 'now']), die });
 const command = positional[0];
 const path = resolve(String(flags.ledger || 'docs/team/memory.jsonl'));
 const classes = new Set(['run', 'ticket', 'project', 'platform', 'studio', 'founder']);
@@ -29,7 +29,7 @@ function append(event, fields) {
   record.hash = createHash('sha256').update(`${previous}\n${JSON.stringify({ ...record, hash: undefined })}`).digest('hex');
   mkdirSync(dirname(path), { recursive: true }); appendFileSync(path, `${JSON.stringify(record)}\n`); console.log(JSON.stringify(record));
 }
-if (!command) die(2, 'usage: propose|review|list|verify');
+if (!command) die(2, 'usage: propose|review|list|retrieve|verify');
 const all = records();
 if (command === 'propose') {
   const memoryClass = required('class'); if (!classes.has(memoryClass)) die(2, `invalid memory class: ${memoryClass}`);
@@ -44,6 +44,37 @@ if (command === 'propose') {
 } else if (command === 'list') {
   const latest = new Map(); for (const record of all) if (record.memory_id) latest.set(record.memory_id, record);
   for (const record of latest.values()) if (record.event === 'proposed' || (record.event === 'reviewed' && record.decision === 'promote')) console.log(JSON.stringify(record));
+} else if (command === 'retrieve') {
+  // The missing read path: `propose`/`review` write, but nothing ever read the six scopes back —
+  // a memory-scope vocabulary with no retrieval that respects it is not governance, it is a write-
+  // only log. Live means: promoted (not merely proposed), not expired as of --now, and not the
+  // target of another PROMOTED memory's `supersedes`/`contradicts` — a stale or reversed memory
+  // must not keep surfacing just because nobody deleted the line that proposed it.
+  const now = new Date(String(flags.now || new Date().toISOString()));
+  if (Number.isNaN(now.getTime())) die(2, '--now must be an ISO timestamp');
+  const proposals = new Map();
+  const decisions = new Map();
+  for (const record of all) {
+    if (record.event === 'proposed') proposals.set(record.memory_id, record);
+    if (record.event === 'reviewed') decisions.set(record.memory_id, record);
+  }
+  const invalidated = new Set();
+  for (const [id, decision] of decisions) {
+    if (decision.decision !== 'promote') continue;
+    const proposal = proposals.get(id);
+    if (proposal?.supersedes) invalidated.add(proposal.supersedes);
+    if (proposal?.contradicts) invalidated.add(proposal.contradicts);
+  }
+  const live = [];
+  for (const [id, proposal] of proposals) {
+    if (decisions.get(id)?.decision !== 'promote') continue;
+    if (invalidated.has(id)) continue;
+    if (proposal.expires && new Date(proposal.expires) <= now) continue;
+    if (flags.class && proposal.class !== String(flags.class)) continue;
+    live.push(proposal);
+  }
+  live.forEach((record) => console.log(JSON.stringify(record)));
+  console.log(`MEMORY RETRIEVE: ${live.length} live record(s)${flags.class ? ` in class ${flags.class}` : ''}`);
 } else if (command === 'verify') {
   console.log(`MEMORY CURATOR: CLEAR — ${all.length} chained record(s)`);
 } else die(2, `unknown command ${command}`);

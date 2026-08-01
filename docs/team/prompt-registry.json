@@ -1,5 +1,312 @@
 {
   "schema": "prompt-registry/v1",
-  "precedence": ["constitutional", "project", "ticket", "role", "retrieved"],
-  "entries": []
+  "precedence": [
+    "constitutional",
+    "project",
+    "ticket",
+    "role",
+    "retrieved"
+  ],
+  "entries": [
+    {
+      "id": "android-developer",
+      "version": "1.0.2",
+      "owner": "android-developer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.1",
+      "content_hash": "f1c27470b79c12d96f559067b6896350a4ac594d652b632179b28c242784e130"
+    },
+    {
+      "id": "aso-specialist",
+      "version": "1.0.0",
+      "owner": "aso-specialist",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "a740c9c8eff4e3fbd522b6b7b1ea662df7ce0c2708ae6c37f2466e94b3725241"
+    },
+    {
+      "id": "backend-developer",
+      "version": "1.0.0",
+      "owner": "backend-developer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "2e55aebac6525aa378b04eb70e4633565cc1da4e52821ce152435bc84b0cbbe5"
+    },
+    {
+      "id": "ceo",
+      "version": "1.0.0",
+      "owner": "ceo",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "cb4895802535500439e7007221ca7209f16fd6c14f2b865b9a78b552d3561fa8"
+    },
+    {
+      "id": "chief-of-staff",
+      "version": "1.0.0",
+      "owner": "chief-of-staff",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "0d6f879611fef4da39b37e643bbb6e70c154eb1e27731dbe08b85600d266d4e4"
+    },
+    {
+      "id": "code-reviewer",
+      "version": "1.0.0",
+      "owner": "code-reviewer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "9b9a5f7ba0842006dbb3f0681a0705dc2ff81206bc7c9c90cd434539136518b9"
+    },
+    {
+      "id": "cpo",
+      "version": "1.0.0",
+      "owner": "cpo",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "7ae479dde87d2a837604781bbbb5560dbf7d07c522490fd42b1404cbfec361e3"
+    },
+    {
+      "id": "cto",
+      "version": "1.0.0",
+      "owner": "cto",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "3375e4dbd48f3baab587f17cb7f9decc151a025164879de9219876912815cebe"
+    },
+    {
+      "id": "data-analyst",
+      "version": "1.0.0",
+      "owner": "data-analyst",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "b9e718a246c363fa62b35bcc7f95624dee173353434a57b88a30bb27004a275c"
+    },
+    {
+      "id": "devops-engineer",
+      "version": "1.0.0",
+      "owner": "devops-engineer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "a384850f76114550072df03fb9bdff00a4317595325bfbd89178db814625043e"
+    },
+    {
+      "id": "ios-developer",
+      "version": "1.0.0",
+      "owner": "ios-developer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "c2c1d47e7d8ed5d9ff8bba8d6b2352ddc4be9df8a14b396e8537cc2dc91f68d0"
+    },
+    {
+      "id": "monetization-engineer",
+      "version": "1.0.0",
+      "owner": "monetization-engineer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "d1776e5f9bfc27606bd70525ada803e22f6f8b935b449b2cbaf38e53d1a7ef60"
+    },
+    {
+      "id": "privacy-reviewer",
+      "version": "1.0.0",
+      "owner": "privacy-reviewer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "78cb1bba4741f9a463dc9fe9b8638d1f152b2d82d4a7925cde911083fb0a6cd9"
+    },
+    {
+      "id": "product-designer",
+      "version": "1.0.0",
+      "owner": "product-designer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "f119bfa747419eb3cef7acfe1bf5b890b62a58e98ed6687c6e6a7e56280a0407"
+    },
+    {
+      "id": "product-manager",
+      "version": "1.0.0",
+      "owner": "product-manager",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "69046c796f2a4f5727e9cd230133f61bd5e47bb60eda88c05c71e23c2f9ab2bd"
+    },
+    {
+      "id": "product-researcher",
+      "version": "1.0.0",
+      "owner": "product-researcher",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "db7c004fc5844ac0ffee2641fd2241d24eb1263c7de9b0e8e53ce21df529328e"
+    },
+    {
+      "id": "product-validator",
+      "version": "1.0.0",
+      "owner": "product-validator",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "eeabb9d5b550b2e043bb32dd275829849cbaebefb675097097187db0756e75cc"
+    },
+    {
+      "id": "qa-engineer",
+      "version": "1.0.1",
+      "owner": "qa-engineer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.0",
+      "content_hash": "3ceeffa81d49c42c185b9709fde7c51b1a07ff3c2f8777c8171aec322410e202"
+    },
+    {
+      "id": "red-team-agent",
+      "version": "1.0.0",
+      "owner": "red-team-agent",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "cbefcf7c9f06ac71732fe51bf95046151add5c915ba0f799b1b4f3ba9d789010"
+    },
+    {
+      "id": "release-auditor",
+      "version": "1.0.0",
+      "owner": "release-auditor",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "5f81669fb84aaa57139e7b4378fb66c7d65883ee8c194cd401ed191ba2ecb31e"
+    },
+    {
+      "id": "release-manager",
+      "version": "1.0.4",
+      "owner": "release-manager",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.3",
+      "content_hash": "950d76b144e1faf2b9b054e5ab7772254f0db618ec89be6eb6c14630ef54546f"
+    },
+    {
+      "id": "reliability-engineer",
+      "version": "1.0.0",
+      "owner": "reliability-engineer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "63f7e6b6feadddc50e742601bddfc33ba974c3da67582a5b721afa54fac495d1"
+    },
+    {
+      "id": "security-reviewer",
+      "version": "1.0.0",
+      "owner": "security-reviewer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "bdd32fc5104b7f1cca6b29870b342b26e853f043bc6224a3f4d11f0fba70848f"
+    },
+    {
+      "id": "tech-lead",
+      "version": "1.0.0",
+      "owner": "tech-lead",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "b30ccbb5afd81b7b5caae7348fe934276bf6a834cf031f75c0bf2daf58002c82"
+    },
+    {
+      "id": "tech-manager",
+      "version": "1.0.0",
+      "owner": "tech-manager",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "38987f1b8e3828ea79494ecad2954673bbd9c41b87c5a27b3a932759cc9c94c8"
+    },
+    {
+      "id": "test-automation-engineer",
+      "version": "1.0.0",
+      "owner": "test-automation-engineer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "d35de003c14a3683540eea02b07db4e4802e70f39ef5f14e48a5ec8df7b6fc55"
+    },
+    {
+      "id": "ux-architect",
+      "version": "1.0.0",
+      "owner": "ux-architect",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "7114e4f0327bf9f988c715b23cb505f79a696978636ea45629ad6054e9d7b9da"
+    },
+    {
+      "id": "verification-engineer",
+      "version": "1.0.0",
+      "owner": "verification-engineer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "c5117eae819c62a6e7e784c4b28ca6e41c40ce2a30473acfac0699b8a5102930"
+    },
+    {
+      "id": "web-developer",
+      "version": "1.0.0",
+      "owner": "web-developer",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "2ce144e931c6664d6153c141fff3f060b2e4f66e78e2f97cd6623b4db4e7a139"
+    },
+    {
+      "id": "incident-commander",
+      "version": "1.0.0",
+      "owner": "incident-commander",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-08-01",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "6445ec11f8655dc005557b0817cecc185a43a62b884063e6ee0052e109d8687d"
+    }
+  ]
 }

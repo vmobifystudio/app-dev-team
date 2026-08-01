@@ -46,6 +46,7 @@ Product type: mobile-app  (source: docs/01-intake.md §Product type)
 | verification-engineer | active | never off — certifies constants, proves guard rules can fail |
 | release-auditor | active | never off — separation of duties: release-manager performs an irreversible action and must not be its sole evaluator |
 | release-manager | active | store release channel |
+| incident-commander | conditional | trigger: incident-ledger.mjs has an open sev1/sev2 record |
 
 ## Rules this file is held to
 

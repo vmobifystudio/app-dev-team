@@ -59,6 +59,8 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 - release-manager — version, signing, store upload, release notes
 - release-auditor — independently reviews the evidence bundle and the gate record, and can block the
   release. `release-manager` cannot satisfy it — separation of duties
+- incident-commander — owns coordination, containment, and resolution for an open sev1/sev2 incident
+  (conditional, activates only while one is open)
 
 End by reminding the user that **not every role runs on every project**: `role-activation` decides
 the roster from the product type and tier, records every deactivation with its reason in

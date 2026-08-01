@@ -2,8 +2,8 @@
 
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
-**Version:** 2.0.0 (`main`) · **Date:** 2026-07-31
-**Scale:** 29 roles · 31 skills · 26 commands · 48 top-level scripts (+9 shared libs) · 9 knowledge packs · 779 baseline assertions + Revamp P0/P1 cases
+**Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
+**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 896 assertions
 
 ---
 
@@ -18,11 +18,11 @@ is that **it does not trust its own agents, including about whether they did the
 Most of this document is about that distrust — where it is enforced, how, and what happened every
 time it was absent.
 
-## Current state — 2026-07-31
+## Current state — 2026-08-01
 
-This is the authoritative snapshot after the Revamp implementation checkpoints. The repository is
-on `main`, synchronized with `origin/main`, and the working tree is clean. The recent Revamp work
-was committed and pushed in small, reviewable slices:
+This is the authoritative snapshot after the Revamp implementation checkpoints and the
+strategy-review closure pass that followed. The repository is on `main`. The Revamp checkpoints
+below were committed and pushed in small, reviewable slices:
 
 | Commit | Delivered |
 |---|---|
@@ -32,6 +32,26 @@ was committed and pushed in small, reviewable slices:
 | `30b5a64` | Risk routing and incident lifecycle |
 | `0012489` | Revamp checkpoint documentation |
 | `084c6ac` | Layered context compilation and manager failover |
+| `3b3d75d` | Warm/cold manager compatibility harness (last commit on `main` as of this snapshot) |
+
+**Uncommitted on top of that, local and test-verified, not yet pushed:** an external
+strategy/architecture review found several of the controls above were built and unit-tested but not
+actually load-bearing — opt-in trust controls nobody opted into, a leasing primitive with no caller
+in the real claim path, a prompt registry that validated an empty shape, a memory ledger with no
+read path, and a staged-rollout section that was prose a human judged by eye. Every finding below is
+now closed and covered by a mirror-tested `test.sh` assertion (760 → 860): ticket-keyed run-ledger
+leases wired into `board.mjs move claimed`; `.studio-policy.json` defaulted on for new projects;
+`board.mjs move approved --bind` and `tech-manager`'s merge gate binding approvals to commit/diff
+before `git merge`, not only at `ship-gate`; a real "rule that cannot fail" bug fixed in
+`approval-check.mjs` (`git cat-file -e`/`git merge-base --is-ancestor` are silent on success, and the
+script was reading that silence as failure); `audit-anchor`/`prompt-registry`/`eval-lab` composed
+into `dispatch-preflight.mjs` so drift is caught at the next spawn, not the next release;
+`docs/03-decision-rights.md` plus a role-existence rule enforced by `team-doctor.mjs`; the ticket
+contract (`--invariant`/`--rollback`/`--file`-derived `risk`, with teeth at `review_requested`);
+`prompt-registry.mjs sync` and `memory-curator.mjs retrieve` turning two scaffolds into governance;
+five static contract-clause eval cases; and `release-health.mjs` plus the conditional
+`incident-commander` role. Nothing here is described anywhere else as committed — treat this
+paragraph, not the commit table above it, as the current edge of the work.
 
 ### What exists end to end
 
@@ -78,8 +98,8 @@ truth and the command documentation must be corrected.
 | Layered context | `context-manifest.mjs` | Hidden context, stale sources, precedence ambiguity |
 | Approval evidence | `approval-check.mjs` | Approval of a different commit, diff, context, or evidence set |
 | Audit integrity | Board chain plus `audit-anchor.mjs` | Unnoticed release-time event-log changes |
-| Memory governance | `memory-curator.mjs` | Unreviewed, unscoped, unprovenanced agent memory |
-| Prompt governance | `prompt-registry.mjs` | Unversioned prompts, missing owners, no rollback metadata |
+| Memory governance | `memory-curator.mjs` (`propose`/`review`/`retrieve`) | Unreviewed, unscoped, unprovenanced agent memory — `retrieve` excludes unpromoted, expired, and superseded/contradicted records, not just a write-only ledger |
+| Prompt governance | `prompt-registry.mjs` (`sync`/check) | Unversioned prompts, missing owners, no rollback metadata — `sync` populates one entry per `agents/*.md` from a real content hash; `team-doctor.mjs` blocks on a missing or stale entry |
 | Evaluation | `eval-lab.mjs`, `eval/manifest.json` | Claims that a role/workflow works without an executable case |
 | Scheduling | `scheduler.mjs` | Dependency violations, starvation, uncontrolled parallelism |
 | Capabilities | `capability-check.mjs`, `docs/team/capabilities.json` | Role access beyond declared operations or paths |
@@ -89,6 +109,9 @@ truth and the command documentation must be corrected.
 | Failover | `manager-failover.mjs` | Two managers acting concurrently or a dead manager blocking recovery |
 | Dispatch composition | `dispatch-preflight.mjs` | One spawn gate composing context, scheduler, capability, and risk checks |
 | Warm/cold contract | `manager-harness.mjs`, `eval/manager-scenario.json` | Persistent and respawned managers produce identical state |
+| Ticket contract | `board.mjs add --invariant/--rollback/--file`, `risk-router.mjs` | A high/critical-risk ticket (derived from `--file`, never hand-typed) reaching review with no recorded invariant |
+| Release health | `release-health.mjs` | Widening a staged rollout on a judgment call instead of a measured crash-free rate and open-P0 count |
+| Incident command | `agents/incident-commander.md` (conditional) | An incident coordinated by whoever happens to be free, instead of one independent authority for its duration |
 
 ### Command groups
 
@@ -314,6 +337,17 @@ silent error is most expensive.
 `release-manager` is opus because it is the only role that performs **irreversible** actions. The
 riskiest actor should not be the cheapest model.
 
+### Operational — conditional, off between incidents
+
+| Role | Model | Owns |
+|---|---|---|
+| `incident-commander` | opus | Severity, coordination, containment, communication, and the resolution decision for one open incident |
+
+Activates only while `incident-ledger.mjs` has an open `sev1`/`sev2` record (`role-activation`'s
+matrix: `?`). Deliberately not `release-manager` (may be the cause) or `tech-manager` (running an
+unrelated sprint) — independent coordination authority is the whole reason it is a separate role
+rather than a mode of either. Stands down the moment the incident is `resolved`.
+
 ### Who may own a ticket
 
 Ten roles can own an implementation ticket: the four developers, plus `devops-engineer`,
@@ -446,6 +480,10 @@ detectable. Rules enforced at write time:
 | the 3rd `changes` is refused | cycle-cap drift |
 | `claimed` refused if a dependency never merged | the silent stranded ticket |
 
+Who is authorized to make each transition — who proposes, who challenges, who decides, who executes,
+who records the evidence — is `docs/03-decision-rights.md`, not this table. This table is the state
+machine; that document is the authority behind it.
+
 A refusal names the current state and what is legal from it, so an agent can correct itself:
 
 ```
@@ -489,6 +527,20 @@ And a rule learned by getting it wrong: **every product type must name at least 
 an implementation ticket.** `cli` is currently *recognised but unstaffed* — activation refuses and
 names what is missing, rather than silently assembling a team that cannot build the product.
 `web-app` was in that state until `web-developer` existed; adding the IC is what moved it.
+
+A third, narrower activation shape exists alongside tier and product type: a role can also be
+**conditional on runtime state** rather than on the project's own axes — `incident-commander` is the
+one example, gated on whether `incident-ledger.mjs` currently has an open `sev1`/`sev2`, not on
+anything decided at intake.
+
+**Being on the roster answers only whether a role runs, never what it may decide.**
+`skills/role-activation/SKILL.md`'s "Why a role exists" table is the cheaper, prior question — a
+role is justified only by independent authority, independent context, a distinct capability/security
+boundary, or separated-duties accountability — and every role in this handbook clears that bar at
+least once. `docs/03-decision-rights.md` is where the actual authority lives once a role clears it:
+who proposes, who challenges, who decides, who executes, who records the evidence, for the
+decisions this studio actually makes. Both documents are sourced from what the role files already
+say, not the other way around — fix the role file first if the two ever disagree.
 
 ---
 
@@ -625,20 +677,23 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `dependency-check.mjs` | Dependency declarations, lockfiles, and reproducible version constraints |
 | `version-consistency-check.mjs` | Release version versus iOS/Android manifests |
 | `policy-check.mjs` | Explicit project policy ownership and required evidence |
-| `run-ledger.mjs` / `run-doctor.mjs` | Append-only execution attempts, checkpoints, leases, and orphan detection |
+| `run-ledger.mjs` / `run-doctor.mjs` | Append-only execution attempts, checkpoints, leases, and orphan detection — leases now claimed automatically by `board.mjs move claimed` |
 | `context-manifest.mjs` | Source hashes, git revision, omissions, and context freshness |
-| `approval-check.mjs` | Optional strict binding of approvals to commit, diff, context, and evidence |
-| `audit-anchor.mjs` | Release-time digest and tip anchor for the board event log |
-| `memory-curator.mjs` | Append-only memory proposals and explicit reviewer decisions |
-| `prompt-registry.mjs` | Semantic versions, owners, evaluation suites, and rollback metadata |
-| `eval-lab.mjs` | Deterministic executable evaluation cases with expected evidence |
+| `approval-check.mjs` | Binds approvals to commit, diff, context, and evidence — on by default for new projects (`--bind`), opt-in for onboarded ones |
+| `audit-anchor.mjs` | Digest and tip anchor for the board event log — composed into `dispatch-preflight.mjs`, not release-time-only |
+| `dispatch-preflight.mjs` | The gate before every spawn: composes context, scheduler, capability, risk, and (when enabled) audit-anchor/prompt-registry/eval-lab |
+| `memory-curator.mjs` | Append-only proposals, explicit reviewer decisions, and `retrieve` — the read path: live means promoted, unexpired, not superseded |
+| `prompt-registry.mjs` | Semantic versions, owners, evaluation suites, rollback metadata — `sync` populates real entries; `team-doctor.mjs` blocks on a missing or stale one |
+| `eval-lab.mjs` | Deterministic executable evaluation cases, plus static contract-clause checks over the agent files carrying this studio's hardest-won rules |
 | `scheduler.mjs` | Ready queue, dependency, fairness, and backpressure decisions |
 | `capability-check.mjs` | Role operation/path allowlist enforcement |
 | `impact-map.mjs` | Changed-surface consumer propagation |
-| `risk-router.mjs` | Blast-radius routing and required approval/evidence decisions |
-| `incident-ledger.mjs` | Append-only operational incident and release-health records |
+| `risk-router.mjs` | Blast-radius routing and required approval/evidence decisions — also drives `board.mjs add --file`'s ticket-contract risk field |
+| `incident-ledger.mjs` | Append-only operational incident records; a `sev1`/`sev2` activates `incident-commander` |
+| `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
-| `test.sh` | 779 assertions |
+| `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
+| `test.sh` | 896 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -657,16 +712,117 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 
 ### Current open work
 
-- **Runtime integration:** the new scripts are executable and release-gate-aware, but every agent
-  dispatch path still needs to invoke the relevant scheduler, capability, context, risk, impact,
-  and run-ledger checks consistently.
+- **Runtime integration — partially closed, 2026-07-31.** An external review found the P0 trust
+  controls were built and unit-tested but not actually load-bearing: `run-ledger.mjs` had no caller
+  in the real ticket-claim path (two agents could both claim the same ticket), and the five
+  `ship-gate` trust controls (`requireDurableRuns`, `requireApprovalBinding`, `requireAuditAnchor`,
+  `requirePromptRegistry`, `requireEvaluation`) were opt-in with no project ever opting in — a fresh
+  greenfield project shipped with all five silently absent. Both are now closed: `board.mjs move
+  <ID> claimed` acquires a ticket-keyed run-ledger lease and refuses a racing second claim
+  (`scripts/board.mjs:claimLease`); `/app-init`'s bootstrap step now writes a default
+  `.studio-policy.json` turning all five on for every new project (existing/onboarded repos stay
+  opt-in on purpose — they should not be retroactively blocked by controls they never adopted).
+  `board.mjs move <ID> approved --bind` also now computes and binds `commit`/`diff_hash` from git
+  and hashes reviewer-supplied `--evidence`/`--context` files, and `tech-manager`'s merge gate
+  re-checks that binding immediately before `git merge`, not only at `ship-gate` release time. Fixing
+  this also surfaced and fixed a genuine "rule that cannot fail" defect in `approval-check.mjs`:
+  `git cat-file -e` and `git merge-base --is-ancestor` print nothing on success, and the script was
+  treating that empty stdout as falsy — so the commit-exists and is-ancestor checks reported failure
+  on every call, including a perfectly valid commit, and no test had ever exercised the passing path.
+  Also closed, 2026-08-01: `audit-anchor.mjs`, `prompt-registry.mjs`, and `eval-lab.mjs` were
+  reachable only through `ship-gate` or their own slash command — a project found out its audit tip,
+  prompt registry, or eval baseline had drifted at release time, not when the drift happened. All
+  three are now composed into `dispatch-preflight.mjs`, the same gate that already runs before every
+  agent spawn, still policy-gated so a project that has not opted in pays nothing extra.
 - **Live evidence:** full CI/device/runtime/production replay, `/app-ship` end-to-end execution,
   mobile state matrices, performance/accessibility validation, and release rehearsals require the
   target project and toolchains.
-- **Operational depth:** memory curation, prompt evaluation, incident response, and manager
-  failover need repeated real-run evidence before they can be called mature operating practices.
+- **Operational depth:** incident response and manager failover still need repeated real-run
+  evidence before they can be called mature operating practices. Memory curation and prompt
+  governance moved from scaffolding to load-bearing, 2026-08-01: `memory-curator.mjs retrieve` is
+  the read path that was missing entirely — a memory record is served only if promoted, unexpired
+  as of `--now`, and not superseded/contradicted by a later-promoted record. `prompt-registry.mjs
+  sync` populates one entry per `agents/*.md` file from a real content hash instead of leaving
+  `docs/team/prompt-registry.json` empty (`"entries": []`), and `team-doctor.mjs` now blocks on a
+  role missing from a populated registry or whose file changed since its last sync.
+- **Evaluation is deliberately partial, and says so.** `eval/manifest.json` gained five static
+  contract-clause cases (`eval-lab.mjs`, 2026-08-01) that assert the agent files carrying the
+  studio's hardest-won rules — self-review refusal, the no-hand-edited-board instruction,
+  product-validator's independence, release-auditor's separation of duties, mandatory escalation
+  after one unresolved round — still say so, catching a future edit that silently drops one. This
+  is content-checking, not behavior: it proves the RULE IS WRITTEN, not that an agent obeys it under
+  load. A real role/pair/workflow/long-horizon behavioral eval (spawning an agent against a scenario
+  and grading its decision) needs a mechanism `test.sh` cannot provide — the `Agent` tool is not
+  shell-callable — and was deliberately not invented here. That remains open.
 - **Product truth:** the team can validate traceability and implementation evidence; it cannot
   determine market desirability or replace founder/user judgment.
+- **Staged-rollout health and incident command closed, 2026-08-01.** `release-manager.md`'s
+  staged-rollout section used to be prose a human read and judged by eye — "hold at each step until
+  the release health checks below are clean" checked nothing. `release-health.mjs` is now a real
+  three-state gate (crash-free floor, open-P0 ceiling, both overridable per project in
+  `.studio-policy.json`'s `releaseHealth`) called between ramp steps. `incident-commander` is a new
+  **conditional** role (`role-activation`'s matrix: `?`, trigger `incident-ledger.mjs` has an open
+  sev1/sev2) with independent coordination authority during a live incident, deliberately distinct
+  from `release-manager` (may be the cause) and `tech-manager` (running an unrelated sprint).
+- **Four ship-gate fail-open paths closed, 2026-08-01, following an external `/app-ship` end-to-end
+  audit** (`docs/reviews/2026-08-01-app-ship-end-to-end-audit.md`). Each was independently reproduced
+  before being fixed, and each fix is mirror-tested: (1) `release-health.mjs`'s policy override had
+  no numeric validation — a malformed `.studio-policy.json` (string thresholds) silently defeated
+  both the crash-free floor and the open-P0 ceiling at once, returning CLEAR for a 0% crash-free rate
+  and 99 open P0s; now a non-numeric threshold is CANNOT EVALUATE. (2) an explicit QA `HOLD` in
+  `docs/50-test-plan.md` was only ever a `note()` in `ship-gate.sh`, never a `block()` — the one thing
+  `app-ship.md` promises stops a release never reached the exit code; `qa-engineer` now writes a
+  structured `QA VERDICT: GO`/`HOLD — <reason>` line the gate keys on directly, and a plan with no
+  verdict line is CANNOT EVALUATE. (3) `version-consistency-check.mjs` recognized only `version:
+  X.Y.Z` prose, never `release-manager.md`'s own required release-note heading `## vX.Y.Z —
+  YYYY-MM-DD` — a correctly-formatted release note never triggered the checker at all; both the
+  checker and `ship-gate.sh`'s guard now recognize the heading form, taking the last one when a
+  project has shipped more than one release. (4) waivers bound to nothing but the artifact name — no
+  version, no expiry — so a waiver written for one release silently covered every release after it;
+  once a project declares a canonical version, `WAIVED:` lines must now name it as a fourth field
+  (`WAIVED: <artifact> — <who> — <reason> — vX.Y.Z`) or they do not count. The audit's remaining
+  findings (an immutable release-candidate identity binding every gate to one frozen artifact, a
+  structured per-control verdict schema, and a dedicated control-room Submission screen) are a larger
+  architectural change than these four fixes and were deliberately not attempted in the same pass —
+  see that review document for the full action plan if that work is taken on later.
+- **Four more findings closed, 2026-08-01, from an automated Codex review of PR #15** (all
+  independently reproduced before being fixed, all mirror-tested). (1) `run-ledger.mjs`'s
+  ticket-holder check and the write that followed it were two separate operations with no lock
+  between them — two `start` calls racing the same ticket could both read "no active holder" and
+  both append, corrupting the hash chain for every future read. Reproduced with two live concurrent
+  processes; fixed with an `O_EXCL` lockfile serializing the whole read-decide-append sequence, the
+  same mechanism Unix mail spools use for the identical problem. (2)
+  `readReleaseChecklist`'s block-terminating regex used the `m` flag, so `$` matched end-of-line
+  instead of end-of-input and the lazy body capture silently stopped after the block's first row — a
+  checklist with one checked item and two unchecked ones reported `1/1` done. (3) `/app-init`'s
+  default `.studio-policy.json` turned on all five P0 trust controls, but three of them
+  (`requireAuditAnchor`, `requirePromptRegistry`, `requireEvaluation`) are composed into
+  `dispatch-preflight.mjs`, which runs before every spawn, and each needs an artifact a fresh
+  project does not have yet (an event log with a first ticket, a prompt registry sync of an
+  `agents/` directory a shipped project doesn't have, an eval corpus of its own) — every spawn after
+  `/app-init` was silently blocked forever. Only `requireDurableRuns`/`requireApprovalBinding`
+  default on now; the other three are documented as an explicit later opt-in once their
+  prerequisite exists. (4) `board.mjs add --file`'s risk derivation collapsed "no risk policy
+  exists yet" (a legitimate unknown) and "a policy exists but is malformed" into the same silent
+  `null` — since `review_requested`'s invariant guard only fires on risk explicitly
+  `high`/`critical`, a broken policy let a billing/security ticket reach review with no invariant
+  recorded. A malformed policy is now a hard failure at ticket creation; a missing one stays a quiet
+  unknown.
+- **Support triage and experiment feedback are explicitly deferred, not silently dropped.** No app
+  built by this studio has shipped yet, so there is no real user-report or experiment-result signal
+  for a support-triage or experiment-feedback loop to act on — building either now would be process
+  for data that does not exist. Revisit once a real release produces real signal.
+- **Publishing and preparing-to-publish are now separated as different actions with different
+  actors, 2026-08-01.** `release-manager` used to instruct the actual App Store Connect / Play
+  Console upload commands (`xcrun altool --upload-app`, `fastlane supply --aab ... --track
+  internal`); those are gone, replaced by a founder-facing `- [ ]` submission checklist written into
+  `docs/60-releases.md`. `docs/03-decision-rights.md`'s Release readiness row now names the split
+  explicitly: `release-manager` assembles the signed, submission-ready build; the founder alone
+  executes the actual store submission, at any track. The control room reads that checklist
+  (`scripts/lib/project.mjs:readReleaseChecklist`) and surfaces it as a `submission_ready` Founder
+  Inbox item showing outstanding steps — read-only by construction, since its action name is
+  deliberately absent from `scripts/lib/actions.mjs`'s `ACTIONS` whitelist, so the control room
+  cannot execute a submission even by accident.
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the
@@ -675,7 +831,7 @@ current-state inventory wins.
 This section exists because a handbook that only describes the working parts is the same failure
 this system is built to prevent.
 
-> **Last verified: 2026-07-31 (post governance capability phase).** This section is only worth
+> **Last verified: 2026-08-01 (post strategy-review closure pass).** This section is only worth
 > reading if it is current, so it carries a date. It was stale for a day once already and listed
 > eight defects as open that had all been fixed, then stale a second time — merged to `main` as
 > v2.0.0 without this section mentioning either DR5-001, DR5-002, or the second codex review round

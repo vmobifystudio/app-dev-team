@@ -18,6 +18,7 @@
  */
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, basename, dirname } from 'node:path';
 
 import { BUILD_SPAWNABLE_OWNERS } from './lib/board.mjs';
@@ -186,8 +187,13 @@ if (!existsSync(MATRIX)) {
     'Restore skills/role-activation/SKILL.md with its activation matrix.');
 } else {
   const matrixText = readFileSync(MATRIX, 'utf8');
+  // The file now holds TWO backtick-role tables — the activation matrix and the "Why a role
+  // exists" rationale table added alongside it — and both start a row with `| `role` |`. Scoping
+  // to the activation-matrix section keeps its row-parsing from also matching the rationale
+  // table's rows as bogus/duplicate matrix entries.
+  const activationText = matrixText.slice(matrixText.indexOf('## The activation matrix'));
   const seen = new Map();
-  for (const m of matrixText.matchAll(/^\|\s*`([a-z][a-z0-9-]*)`\s*\|/gm)) {
+  for (const m of activationText.matchAll(/^\|\s*`([a-z][a-z0-9-]*)`\s*\|/gm)) {
     seen.set(m[1], (seen.get(m[1]) || 0) + 1);
   }
   for (const [role, count] of seen) {
@@ -243,14 +249,14 @@ if (!existsSync(MATRIX)) {
     // Local, because the shared `cells` helper is declared further down this file. Same rule:
     // strip the leading/trailing empties and the bold markers the matrix uses for readers.
     const cellsOf = (line) => line.split('|').slice(1, -1).map((c) => c.trim().replace(/\*/g, ''));
-    const headerLine = matrixText.split(/\r?\n/).find((l) => /^\|\s*Role\s*\|/.test(l));
+    const headerLine = activationText.split(/\r?\n/).find((l) => /^\|\s*Role\s*\|/.test(l));
     const headerCells = headerLine ? cellsOf(headerLine) : [];
     const mobileCol = headerCells.indexOf('mobile-app');
     // `on` → active · `—` → off · `?` → conditional. Anything else is a matrix cell this check does
     // not understand, and it says so rather than guessing.
     const EXPECTED = { on: 'active', '—': 'off', '?': 'conditional' };
     if (mobileCol > 0) {
-      for (const line of matrixText.split(/\r?\n/)) {
+      for (const line of activationText.split(/\r?\n/)) {
         const m = /^\|\s*\*?\*?`([a-z][a-z0-9-]*)`/.exec(line);
         if (!m) continue;
         const role = m[1];
@@ -286,6 +292,61 @@ if (!existsSync(MATRIX)) {
     }
   }
 
+  // --- 2d. every role justifies its own existence ---------------------------------------------------
+  //
+  // The matrix above decides WHEN a role activates; it never decided WHETHER the role should exist
+  // at all. `skills/role-activation/SKILL.md`'s "Why a role exists" table is that second, cheaper
+  // question — a role is justified only by independent authority, independent context, a distinct
+  // capability/security boundary, or separated-duties accountability (`authority`/`context`/
+  // `capability`/`duties`). A role with no row there is a role nobody has ever actually tested
+  // against that bar — the exact "role bench clearer than the active team" failure the studio's own
+  // strategy review flagged.
+  const RATIONALE_TAGS = new Set(['authority', 'context', 'capability', 'duties']);
+  const rationaleRoles = new Map();
+  for (const m of matrixText.matchAll(/^\|\s*`([a-z][a-z0-9-]*)`\s*\|\s*`([a-z]+)`\s*\|/gm)) {
+    if (RATIONALE_TAGS.has(m[2])) rationaleRoles.set(m[1], m[2]);
+  }
+  for (const role of roles.keys()) {
+    if (!rationaleRoles.has(role)) {
+      add(findings, 'role_rationale_missing', 'skills/role-activation/SKILL.md',
+        `"${role}" has no row in the "Why a role exists" table, so nothing has tested whether it needs independent authority, context, capability, or duties to justify existing as a separate role.`,
+        `Add a "${role}" row to the "Why a role exists" table with one of authority/context/capability/duties and why.`);
+    }
+  }
+
+  // --- 2e. the prompt registry tracks what agents/*.md actually says, not an empty shape --------------
+  //
+  // `docs/team/prompt-registry.json` validates a schema nothing populated — a registry with zero
+  // entries is scaffolding, not governance. Once populated (`prompt-registry.mjs sync`), it must stay
+  // populated and stay CURRENT: a role with no entry was never registered, and a role whose file
+  // changed since its last sync is an unversioned edit — the exact "unversioned prompt" gap the
+  // registry exists to close, happening silently unless something checks the hash back.
+  const REGISTRY = join(ROOT, 'docs/team/prompt-registry.json');
+  if (existsSync(REGISTRY)) {
+    let registry;
+    try { registry = JSON.parse(readFileSync(REGISTRY, 'utf8')); } catch { registry = null; }
+    if (registry && Array.isArray(registry.entries) && registry.entries.length > 0) {
+      const entryById = new Map(registry.entries.map((e) => [e.id, e]));
+      for (const [role, agent] of roles) {
+        const entry = entryById.get(role);
+        if (!entry) {
+          add(findings, 'prompt_registry_role_missing', 'docs/team/prompt-registry.json',
+            `"${role}" has no prompt-registry entry, but the registry is populated for other roles. A role missing from a populated registry was never registered — this is the drop, not the absence.`,
+            `Run: node scripts/prompt-registry.mjs sync`);
+          continue;
+        }
+        if (entry.content_hash) {
+          const hash = createHash('sha256').update(agent.text).digest('hex');
+          if (entry.content_hash !== hash) {
+            add(findings, 'prompt_registry_stale', 'docs/team/prompt-registry.json',
+              `"${role}"'s registry entry does not match agents/${role}.md's current content — the file changed since its last sync and the registry still describes the old version.`,
+              `Run: node scripts/prompt-registry.mjs sync`);
+          }
+        }
+      }
+    }
+  }
+
   // Every product type must name at least one IC that can own an implementation ticket, or be
   // declared unstaffed. `web-app` and `cli` were declared supported with no role able to build
   // either: the ticket strands with no spawnable owner, or lands on backend-developer and gets
@@ -298,7 +359,7 @@ if (!existsSync(MATRIX)) {
   // `**no**` is still no: the matrix bolds the unstaffed cells for readers, and comparing the raw
   // cell made both branches below unreachable for exactly the two types they exist to catch.
   const cells = (line) => line.split('|').slice(1, -1).map((c) => c.trim().replace(/\*/g, ''));
-  const rows = matrixText.split('\n').filter((l) => l.trim().startsWith('|')).map(cells);
+  const rows = activationText.split('\n').filter((l) => l.trim().startsWith('|')).map(cells);
   const header = rows.find((r) => r[0] === 'Role');
   const staffed = rows.find((r) => r[0] === 'staffed?');
   if (!header || !staffed) {
@@ -511,6 +572,9 @@ const DOC_WRITERS = new Map([
   ['docs/00-vision.md',                 ['agents/ceo.md']],
   ['docs/01-intake.md',                 ['skills/requirements-intake/SKILL.md']],
   ['docs/02-team-roster.md',            ['skills/role-activation/SKILL.md']],
+  // The decision-rights matrix. Foundational, like the roster template above — not a per-sprint
+  // artifact a role writes fresh each run, maintained alongside role-activation's own tables.
+  ['docs/03-decision-rights.md',        ['skills/role-activation/SKILL.md']],
   ['docs/10-prd.md',                    ['agents/cpo.md', 'skills/prd-builder/SKILL.md']],
   ['docs/11-backlog.md',                ['agents/cpo.md', 'skills/prd-builder/SKILL.md', 'agents/product-manager.md']],
   ['docs/12-flows.md',                  ['agents/ux-architect.md']],

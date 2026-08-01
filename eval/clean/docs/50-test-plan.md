@@ -19,3 +19,5 @@ row below names a criterion the PRD actually defines.
 | Case | Criterion | Result | Evidence |
 |---|---|---|---|
 | TC-01 | F-001 split rounds half-up to the cent | PASS | build 41, simulator run 2026-07-29T14:02Z |
+
+QA VERDICT: GO

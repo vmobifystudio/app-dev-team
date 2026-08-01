@@ -10,6 +10,12 @@
  * Usage:
  *   board.mjs add   <ID> --title T [--owner R] [--feature F-001] [--depends A,B] [--estimate M]
  *                        [--spec S] [--acceptance A] [--notes N] [--by role] [--status blocked]
+ *                        [--invariant "I1; I2"] [--rollback N] [--file path/to/touched.swift] [--change kind]
+ *
+ * `--file` derives `risk` from `risk-router.mjs` (docs/team/risk-policy.json), the same router
+ * `dispatch-preflight.mjs` uses at spawn time — risk is never hand-typed. A ticket risk-router
+ * marks `high`/`critical` cannot reach `review_requested` without at least one `--invariant`
+ * recorded at creation (see `validateTransition`'s `review_requested` case in lib/events.mjs).
  *   board.mjs move  <ID> <event> --by <role> [--detail "..."]
  *   board.mjs assign <ID> --to <role> [--by <role>]
  *   board.mjs show  [ID] [--json]
@@ -35,6 +41,9 @@
 
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
+import { spawnSync, execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
@@ -80,6 +89,7 @@ function resolveId(tickets, id) {
 const VALUE_FLAGS = new Set([
   'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
+  'invariant', 'rollback', 'file', 'change',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
@@ -222,6 +232,40 @@ function refuse(id, name, result) {
  */
 const BIRTH_STATUS = new Set(['todo', 'blocked']);
 
+const RISK_ROUTER = fileURLToPath(new URL('./risk-router.mjs', import.meta.url));
+
+/**
+ * Risk is derived, never hand-typed: `--file` names the surface the ticket touches, and
+ * `risk-router.mjs` (already built, already tested — see `docs/team/risk-policy.json`) decides the
+ * tier from it, the same way `dispatch-preflight.mjs` does at spawn time. No `--file`, or no risk
+ * policy in this project yet, means risk stays unknown — that is not a refusal, it is the honest
+ * absence of an opinion, and it must not read as "low risk" downstream.
+ *
+ * Codex, PR #15: this used to collapse "no policy exists yet" (a legitimate unknown) and "a policy
+ * exists but is malformed, or the router otherwise failed to classify a supplied --file" into the
+ * same `null`. `review_requested`'s guard (`lib/events.mjs`) only fires on risk EXPLICITLY
+ * `high`/`critical` — it treats unknown as harmless — so a broken policy silently let a
+ * billing/security/migration ticket reach review with no invariant recorded, which is exactly the
+ * gap this ticket contract exists to close. A missing policy file stays a quiet null; anything else
+ * that stops the router from answering is now a hard failure at ticket creation, loud where it can
+ * still be fixed, not silent where it would only be discovered by the guard never firing.
+ */
+function deriveRisk(flags, paths) {
+  if (!flags.file) return null;
+  const policyPath = resolve(dirname(paths.log), 'team', 'risk-policy.json');
+  if (!existsSync(policyPath)) return null; // no policy in this project yet — risk stays unknown, not silently low
+  const result = spawnSync(
+    process.execPath,
+    [RISK_ROUTER, '--policy', policyPath, '--file', String(flags.file), '--change', String(flags.change || '')],
+    { encoding: 'utf8' }
+  );
+  if (result.status !== 0) {
+    die(1, `--file was supplied but risk-router.mjs could not classify it against ${policyPath} — fix the policy, or drop --file if this ticket genuinely has none:\n${`${result.stdout || ''}${result.stderr || ''}`.trim()}`);
+  }
+  try { return JSON.parse(result.stdout).risk || null; }
+  catch (e) { die(1, `risk-router.mjs produced unparseable output for ${policyPath}: ${e.message}`); }
+}
+
 function cmdAdd(id, flags, paths) {
   if (!id) die(1, 'add needs a ticket ID: board.mjs add APP-001 --title "..."');
   const birth = String(flags.status || 'todo').toLowerCase().trim();
@@ -244,6 +288,11 @@ function cmdAdd(id, flags, paths) {
     spec: scrub('--spec', flags.spec || ''),
     acceptance: scrub('--acceptance', flags.acceptance || ''),
     notes: scrub('--notes', flags.notes || ''),
+    invariants: flags.invariant
+      ? String(flags.invariant).split(';').map((s) => scrub('--invariant', s.trim())).filter(Boolean)
+      : [],
+    rollback: scrub('--rollback', flags.rollback || ''),
+    risk: deriveRisk(flags, paths),
   };
   const event = {
     ts: new Date().toISOString(),
@@ -289,6 +338,61 @@ function cmdAdd(id, flags, paths) {
   if (birth === 'blocked') reportCascade(next.tickets, event.ticket);
 }
 
+const RUN_LEDGER = fileURLToPath(new URL('./run-ledger.mjs', import.meta.url));
+
+/**
+ * `claimed` is the moment two agents can race for the same ticket. The board's own transition
+ * graph refuses a ticket that is not `todo`, but that check reads state derived from THIS process's
+ * view of the log — it cannot see a second process claiming the same ticket in the same instant.
+ * The run-ledger lease is the durable, ticket-keyed lock that closes that race: a second claim is
+ * refused by the ledger even if both processes think the board is still `todo`.
+ */
+function claimLease(ticket, flags, paths) {
+  const ledgerPath = resolve(dirname(paths.log), 'team', 'runs.jsonl');
+  const args = ['start', '--ledger', ledgerPath, '--ticket', ticket, '--role', flags.by || 'unknown'];
+  if (flags.run) args.push('--run', String(flags.run));
+  if (flags.attempt) args.push('--attempt', String(flags.attempt));
+  if (flags['lease-seconds']) args.push('--lease-seconds', String(flags['lease-seconds']));
+  const result = spawnSync(process.execPath, [RUN_LEDGER, ...args], { encoding: 'utf8' });
+  if (result.status !== 0) {
+    return { ok: false, reason: (result.stderr || '').trim() || 'run-ledger refused the claim' };
+  }
+  return { ok: true };
+}
+
+/**
+ * `approved --bind` closes the other half of the race a lease cannot: nothing stopped an `approved`
+ * event from naming a commit that was later force-pushed over, or from carrying no evidence at all —
+ * `approval-check.mjs` could only ever catch that at release time, long after the review that should
+ * have bound it. `commit` and `diff_hash` are computed here, from git, the same way
+ * `approval-check.mjs` recomputes them to verify — this is the one place they are ever hand-entered.
+ * `--evidence` and `--context` point at whatever file the reviewer actually used (a verify-done
+ * transcript, a context-manifest.json); their content is hashed, not trusted by name.
+ */
+function bindApprovalEvidence(flags) {
+  let commit;
+  try { commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); }
+  catch { return { ok: false, code: 2, reason: 'cannot resolve HEAD — is this a git repository?' }; }
+  let diff;
+  try { diff = execFileSync('git', ['diff', `${commit}^`, commit, '--binary'], { encoding: 'utf8' }); }
+  catch { return { ok: false, code: 2, reason: `cannot diff ${commit}^..${commit} — does HEAD have a parent commit?` }; }
+  if (!flags.evidence) return { ok: false, reason: '--bind requires --evidence <path to the evidence the review used>' };
+  if (!flags.context) return { ok: false, reason: '--bind requires --context <path to the context the review used>' };
+  const evidencePath = resolve(process.cwd(), String(flags.evidence));
+  const contextPath = resolve(process.cwd(), String(flags.context));
+  if (!existsSync(evidencePath)) return { ok: false, reason: `no evidence file at ${flags.evidence}` };
+  if (!existsSync(contextPath)) return { ok: false, reason: `no context file at ${flags.context}` };
+  return {
+    ok: true,
+    detail: {
+      commit,
+      diff_hash: createHash('sha256').update(diff).digest('hex'),
+      evidence_hash: createHash('sha256').update(readFileSync(evidencePath)).digest('hex'),
+      context_snapshot: createHash('sha256').update(readFileSync(contextPath)).digest('hex'),
+    },
+  };
+}
+
 function cmdMove(id, name, flags, paths) {
   if (!id || !name) die(1, 'move needs a ticket and an event: board.mjs move APP-001 claimed --by ios-developer');
   const { events } = loadLog(paths.log);
@@ -319,6 +423,25 @@ function cmdMove(id, name, flags, paths) {
       reportCascade(next.tickets, ticket);
     }
     process.exit(1);
+  }
+
+  if (name === 'claimed') {
+    const lease = claimLease(ticket, flags, paths);
+    if (!lease.ok) {
+      process.stderr.write(`board: refused ${ticket} claimed — ${lease.reason}\n`);
+      process.exit(1);
+    }
+  }
+
+  if (name === 'approved' && flags.bind) {
+    const bound = bindApprovalEvidence(flags);
+    if (!bound.ok) {
+      process.stderr.write(`board: refused ${ticket} approved — ${bound.reason}\n`);
+      process.exit(bound.code || 1);
+    }
+    event.detail = typeof event.detail === 'object' && event.detail
+      ? { ...event.detail, ...bound.detail }
+      : { note: event.detail || undefined, ...bound.detail };
   }
 
   append(paths.log, event);

@@ -19,14 +19,20 @@ const approvals = events.filter((event) => event.event === 'approved');
 if (!approvals.length) { console.log('APPROVAL CHECK: CLEAR — no approvals require binding'); process.exit(0); }
 const issues = [];
 function git(args) { try { return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; } }
+// `cat-file -e` and `merge-base --is-ancestor` are silent on SUCCESS — their stdout is '', which is
+// falsy in JS. Using `git()`'s return value as a truthy pass/fail made every commit read as missing
+// and every ancestor check read as failed, whether or not it was — an assertion that could not pass
+// is an assertion that cannot fail either, the exact defect class this repo tracks (FC-002). These
+// two calls only ever mean "did the process exit 0", so they check that, not the printed text.
+function gitOk(args) { try { execFileSync('git', args, { stdio: 'ignore' }); return true; } catch { return false; } }
 for (const event of approvals) {
   let detail = event.detail;
   if (typeof detail === 'string') { try { detail = JSON.parse(detail); } catch { detail = null; } }
   const ticket = event.ticket || 'unknown-ticket';
   for (const field of ['commit', 'diff_hash', 'context_snapshot', 'evidence_hash']) if (!detail?.[field]) issues.push(`${ticket}: approved event is missing detail.${field}`);
   if (!detail?.commit) continue;
-  if (!git(['cat-file', '-e', `${detail.commit}^{commit}`])) issues.push(`${ticket}: approval commit does not exist: ${detail.commit}`);
-  if (flags.head && detail.commit !== flags.head && !git(['merge-base', '--is-ancestor', detail.commit, String(flags.head)])) issues.push(`${ticket}: approval commit ${detail.commit} is not an ancestor of ${flags.head}`);
+  if (!gitOk(['cat-file', '-e', `${detail.commit}^{commit}`])) issues.push(`${ticket}: approval commit does not exist: ${detail.commit}`);
+  if (flags.head && detail.commit !== flags.head && !gitOk(['merge-base', '--is-ancestor', detail.commit, String(flags.head)])) issues.push(`${ticket}: approval commit ${detail.commit} is not an ancestor of ${flags.head}`);
   const diff = git(['diff', `${detail.commit}^`, detail.commit, '--binary']);
   if (diff !== null) {
     const actual = createHash('sha256').update(diff).digest('hex');

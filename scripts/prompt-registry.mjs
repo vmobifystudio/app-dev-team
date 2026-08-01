@@ -1,11 +1,59 @@
 #!/usr/bin/env node
 /** Validate a versioned prompt/policy registry; registry entries are reviewable data, not prose. */
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { basename, dirname, resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
 const die = (code, message) => { process.stderr.write(`prompt-registry: ${message}\n`); process.exit(code); };
-const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['registry']), die });
+const { flags, positional } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['registry', 'agents-dir', 'now']), die });
 const path = resolve(String(flags.registry || 'docs/team/prompt-registry.json'));
+const command = positional[0] || 'check';
+
+/**
+ * `sync` is the only place an entry's `content_hash` and `version` are ever written — an empty
+ * registry validates a shape nothing populates, which is scaffolding, not governance. A role file
+ * with no prior entry gets one (`1.0.0`, `rollback_version: 0.0.0` — honestly "no prior version
+ * exists" rather than inventing one); a role file whose hash has drifted since its last sync gets
+ * its patch bumped and its old version recorded as the rollback target. Everything else is
+ * untouched, so a human's manually-set `owner`/`eval_suite`/`precedence` survives a re-sync.
+ */
+function cmdSync(flags) {
+  const agentsDir = resolve(String(flags['agents-dir'] || 'agents'));
+  if (!existsSync(agentsDir)) die(2, `no agents directory at ${agentsDir}`);
+  let registry = { schema: 'prompt-registry/v1', entries: [] };
+  if (existsSync(path)) {
+    try { registry = JSON.parse(readFileSync(path, 'utf8')); } catch (e) { die(2, `invalid registry: ${e.message}`); }
+  }
+  const byId = new Map(registry.entries.map((entry) => [entry.id, entry]));
+  const now = String(flags.now || new Date().toISOString().slice(0, 10));
+  const seen = new Set();
+  for (const file of readdirSync(agentsDir).filter((f) => f.endsWith('.md')).sort()) {
+    const id = basename(file, '.md');
+    seen.add(id);
+    const hash = createHash('sha256').update(readFileSync(resolve(agentsDir, file))).digest('hex');
+    const existing = byId.get(id);
+    if (!existing) {
+      byId.set(id, {
+        id, version: '1.0.0', owner: id, eval_suite: 'eval/manifest.json', validated_on: now,
+        change_reason: 'initial registration', rollback_version: '0.0.0', content_hash: hash,
+      });
+    } else if (existing.content_hash !== hash) {
+      const [major, minor, patch] = String(existing.version).replace(/^v/, '').split('.').map(Number);
+      byId.set(id, {
+        ...existing, version: `${major}.${minor}.${Number(patch || 0) + 1}`, validated_on: now,
+        change_reason: 'agent file content changed', rollback_version: existing.version, content_hash: hash,
+      });
+    }
+  }
+  for (const id of [...byId.keys()]) if (!seen.has(id)) byId.delete(id); // a deleted role loses its entry, not a stale one nobody reads
+  registry.entries = [...byId.values()];
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(registry, null, 2)}\n`);
+  console.log(`PROMPT REGISTRY: SYNCED — ${registry.entries.length} entr${registry.entries.length === 1 ? 'y' : 'ies'}`);
+}
+
+if (command === 'sync') { cmdSync(flags); process.exit(0); }
+
 if (!existsSync(path)) die(2, `no registry at ${path}`);
 let registry; try { registry = JSON.parse(readFileSync(path, 'utf8')); } catch (e) { die(2, `invalid registry: ${e.message}`); }
 if (registry.schema !== 'prompt-registry/v1' || !Array.isArray(registry.entries)) die(2, 'registry must use schema prompt-registry/v1 with entries');
