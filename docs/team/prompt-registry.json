@@ -210,13 +210,13 @@
     },
     {
       "id": "release-manager",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "owner": "release-manager",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-08-01",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.3",
-      "content_hash": "950d76b144e1faf2b9b054e5ab7772254f0db618ec89be6eb6c14630ef54546f"
+      "rollback_version": "1.0.4",
+      "content_hash": "94a51549713862a13b5a91cf127f601858ff7f312151f72c831e71c0fc781b1c"
     },
     {
       "id": "reliability-engineer",

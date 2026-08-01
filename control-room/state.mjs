@@ -55,6 +55,7 @@ import {
   readBugsFile,
   readRounds,
   readReleaseChecklist,
+  readShipGateVerdict,
 } from '../scripts/lib/project.mjs';
 import { ACTIONS, actionForms } from '../scripts/lib/actions.mjs';
 
@@ -189,8 +190,18 @@ function missionControl(model) {
   );
 
   // 5. Release readiness — DISPLAYED, NEVER AUTHORITATIVE. A blocking gate always wins.
+  //
+  // Dry run 5 (Android fixture, 2026-08-01): this section swept ONLY in-flight tickets, static-only
+  // verification and S1/S2 bugs — a narrower population than `ship-gate.sh` actually checks (version
+  // consistency, QA verdict, injection/dependency/policy scans, and more). It could therefore say
+  // `clear` while the real gate had just returned BLOCKED. `ship-gate.sh` now records its own
+  // verdict (`docs/team/ship-gate-verdict.json`); when the last recorded run was not CLEAR, that is
+  // now an item here too, so this section cannot say `clear` while the gate's own last word disagrees.
+  // A verdict this section has never seen (file absent) does not count as clear either — see
+  // `unavailable` below.
   const inFlight = rows.filter((r) => IN_FLIGHT_STATUS.has(r.status));
   const staticOnly = rows.filter((r) => r.staticOnly);
+  const shipGate = model.shipGateVerdict;
   const releaseItems = [
     ...inFlight.map((r) => ({ kind: 'in_flight', id: r.id, reason: `${r.status} — the sprint is not finished` })),
     ...staticOnly.map((r) => ({
@@ -199,15 +210,24 @@ function missionControl(model) {
       reason: `${r.unrun || 'the executable test suite'} has never run — it may merge and reach qa, it may not be called done`,
     })),
     ...(bugs.ok ? bugs.blocking : []).map((b) => ({ kind: 'blocking_bug', id: b.id, reason: `${b.severity} open — ${b.line.slice(0, 200)}` })),
+    ...(shipGate.ok && shipGate.result !== 'CLEAR'
+      ? [{
+          kind: 'ship_gate_recorded',
+          id: '-',
+          reason: `ship-gate.sh last recorded ${shipGate.result === 'CANNOT_EVALUATE' ? 'CANNOT EVALUATE' : 'BLOCKED'} at ${shipGate.evaluatedAt || 'an unknown time'}: ${
+            [...shipGate.blockers, ...shipGate.unknowns].slice(0, 3).join('; ') || 'no reason recorded'
+          }`,
+        }]
+      : []),
   ];
   sections.push(
     section('release', 'Release readiness', {
       unavailable:
         model.unavailableNote ||
         (bugs.ok ? '' : `${bugs.note}. Readiness cannot be claimed with the open S1/S2 count unknown`),
-      swept: `${rows.length} ticket(s) (in-flight = ${[...IN_FLIGHT_STATUS].join('/')}), ${staticOnly.length} verified static-only, ${bugs.ok ? `${bugs.open.length} open bug(s) of which ${bugs.blocking.length} are S1/S2` : 'the bug list could not be read'}`,
-      clearNote: 'nothing is in flight, nothing is carrying a static-only verification, and no S1/S2 bug is open',
-      note: 'displayed, never authoritative. This is a projection of recorded state; `scripts/ship-gate.sh` is the gate, and a blocking gate always wins over anything shown here',
+      swept: `${rows.length} ticket(s) (in-flight = ${[...IN_FLIGHT_STATUS].join('/')}), ${staticOnly.length} verified static-only, ${bugs.ok ? `${bugs.open.length} open bug(s) of which ${bugs.blocking.length} are S1/S2` : 'the bug list could not be read'}, ship-gate: ${shipGate.ok ? `last recorded ${shipGate.result} at ${shipGate.evaluatedAt}` : 'never recorded a verdict for this project'}`,
+      clearNote: 'nothing is in flight, nothing is carrying a static-only verification, no S1/S2 bug is open, and ship-gate.sh\'s last recorded verdict (if any) was CLEAR',
+      note: 'displayed, never authoritative. `scripts/ship-gate.sh` is the gate; a blocking gate always wins over anything shown here, and this panel now surfaces its last recorded verdict rather than only a narrower ticket/bug sweep',
       items: releaseItems,
     })
   );
@@ -832,6 +852,7 @@ function assembleStateRaw(root, { actions = true } = {}) {
   const bugs = readBugsFile(root);
   const rounds = readRounds(root);
   const releases = readReleaseChecklist(root);
+  const shipGateVerdict = readShipGateVerdict(root);
 
   const model = {
     rows,
@@ -843,6 +864,7 @@ function assembleStateRaw(root, { actions = true } = {}) {
     bugs,
     rounds,
     releases,
+    shipGateVerdict,
     // If neither input produced a ticket, every board-derived section is CANNOT EVALUATE — not clear.
     unavailableNote: rows.length
       ? ''
@@ -866,6 +888,7 @@ function assembleStateRaw(root, { actions = true } = {}) {
       { id: 'bugs', path: REL.bugs, ok: bugs.ok, note: bugs.note },
       { id: 'rounds', path: REL.rounds, ok: rounds.ok, note: rounds.note },
       { id: 'releases', path: REL.releases, ok: releases.ok, note: releases.note },
+      { id: 'ship-gate verdict', path: REL.shipGateVerdict, ok: shipGateVerdict.ok, note: shipGateVerdict.note },
     ],
     // Tamper evidence on the board log. A rewritten `approved` is the cheapest way to bypass a
     // failed gate, and a control room that showed the state without saying whether the log still

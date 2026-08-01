@@ -3697,6 +3697,24 @@ assert_exit 1 "...and does NOT clear a different value later" \
 assert_has "$TMP/out" "does not authorize this one" \
   "...saying the record has a pricing decision that does not cover this change"
 
+# Dry run 5 (both the Android and Daily Reading Log fixtures, 2026-08-01): the `waiver` trigger used
+# to scan every file under docs/ for the bare string "WAIVED:", so a roster template's own
+# explanatory prose about waiver syntax — teaching the format, not recording a real waiver — tripped
+# a founder gate the project never needed approval for. Reproduced directly: a template mentioning
+# `WAIVED:` outside docs/60-releases.md must not fire the gate; the same text inside that one file
+# still must.
+rm -rf "$TMP/waiver-template"; mkdir -p "$TMP/waiver-template/docs/00-founder-intent"
+printf 'brief\n' > "$TMP/waiver-template/docs/00-founder-intent/brief.md"
+printf '# Team roster\n\nA gate may be skipped only with a recorded waiver, written as:\nWAIVED: <artifact> — <who> — <reason>\n' \
+  > "$TMP/waiver-template/docs/02-team-roster.md"
+assert_exit 0 "template prose explaining the WAIVED: format does not trigger the founder gate" \
+  node "$TR" --project-root "$TMP/waiver-template" --only gates
+rm -rf "$TMP/waiver-real"; mkdir -p "$TMP/waiver-real/docs/00-founder-intent"
+printf 'brief\n' > "$TMP/waiver-real/docs/00-founder-intent/brief.md"
+printf 'WAIVED: docs/51-bugs.md — amol — internal distribution only\n' > "$TMP/waiver-real/docs/60-releases.md"
+assert_exit 1 "...but the identical text in docs/60-releases.md still does" \
+  node "$TR" --project-root "$TMP/waiver-real" --only gates
+
 # One parser. A second reading of the board is how the last four fail-open gates in this repo got
 # written, and a graph validator is exactly the kind of tool that grows its own board regex.
 grep -q "from './lib/board.mjs'" "$TR" \
@@ -4573,6 +4591,54 @@ import(process.argv[1]).then((m) => {
 ' "$CR/state.mjs" "$TMP/cr-empty" 2>"$TMP/cr-empty.txt" \
   && ok "an empty project produces no CLEAR anywhere — every screen says what it could not read" \
   || bad "an empty project produces no CLEAR anywhere" "$(cat "$TMP/cr-empty.txt")"
+
+# Dry run 5 (Android fixture, 2026-08-01): Mission Control's "Release readiness" panel could show
+# `clear` while `ship-gate.sh` itself had just returned BLOCKED, because the panel swept only
+# ticket/bug state — a narrower population than the gate actually checks. Reproduced with the exact
+# tools involved: run the real gate against a genuinely blocked fixture (recording its verdict),
+# then assemble control-room state against that SAME project root and confirm the panel agrees.
+# --record is opt-in, not the default: ship-gate.sh's own header calls it "read-only by default",
+# and several assertions elsewhere in this suite run it directly against tracked fixture
+# directories under scripts/fixtures/, never a $TMP copy. Recording unconditionally would leave
+# untracked files in this repo's own working tree on every test run.
+CRNOREC="$TMP/cr-no-record"; cp -R "$FIX/ship-blocked" "$CRNOREC"
+sh "$HERE/ship-gate.sh" "$CRNOREC" >/dev/null 2>&1
+[ ! -f "$CRNOREC/docs/team/ship-gate-verdict.json" ] \
+  && ok "ship-gate.sh without --record writes nothing, staying read-only by default" \
+  || bad "ship-gate.sh without --record writes nothing, staying read-only by default"
+
+CRSHIP="$TMP/cr-ship-blocked"; cp -R "$FIX/ship-blocked" "$CRSHIP"
+sh "$HERE/ship-gate.sh" "$CRSHIP" --record >/dev/null 2>&1
+[ -f "$CRSHIP/docs/team/ship-gate-verdict.json" ] \
+  && ok "...but with --record it writes its verdict to a durable file" \
+  || bad "...but with --record it writes its verdict to a durable file"
+node -e '
+import(process.argv[1]).then((m) => {
+  const s = m.assembleState(process.argv[2]);
+  const release = s.screens.flatMap((x) => x.sections).find((x) => x.id === "release");
+  if (!release) { console.error("no release section found"); process.exit(1); }
+  if (release.status === "clear") { console.error("release section says clear while ship-gate.sh recorded BLOCKED"); process.exit(1); }
+  if (!release.items.some((i) => i.kind === "ship_gate_recorded")) { console.error("no ship_gate_recorded item on a genuinely blocked project"); process.exit(1); }
+  process.exit(0);
+});
+' "$CR/state.mjs" "$CRSHIP" 2>"$TMP/cr-shipgate.txt" \
+  && ok "control-room release readiness cannot say clear while ship-gate.sh last recorded BLOCKED" \
+  || bad "control-room release readiness cannot say clear while ship-gate.sh last recorded BLOCKED" "$(cat "$TMP/cr-shipgate.txt")"
+
+# ...and the mirror: a genuinely clear fixture's recorded verdict does NOT, by itself, force an item —
+# the panel's other checks still apply independently.
+CRSHIPCLEAR="$TMP/cr-ship-clear"; cp -R "$FIX/ship-clear" "$CRSHIPCLEAR"
+sh "$HERE/ship-gate.sh" "$CRSHIPCLEAR" --record >/dev/null 2>&1
+node -e '
+import(process.argv[1]).then((m) => {
+  const s = m.assembleState(process.argv[2]);
+  const release = s.screens.flatMap((x) => x.sections).find((x) => x.id === "release");
+  if (release.items.some((i) => i.kind === "ship_gate_recorded")) { console.error("recorded CLEAR still produced a ship_gate_recorded item"); process.exit(1); }
+  process.exit(0);
+});
+' "$CR/state.mjs" "$CRSHIPCLEAR" 2>"$TMP/cr-shipgate-clear.txt" \
+  && ok "...but a recorded CLEAR verdict adds no item of its own" \
+  || bad "...but a recorded CLEAR verdict adds no item of its own" "$(cat "$TMP/cr-shipgate-clear.txt")"
 
 # HALF a population is not a population. The `decisions` section spans two inputs — blocked tickets
 # from the board, and questions routed to a founder from the channel — and it gated `unavailable` on

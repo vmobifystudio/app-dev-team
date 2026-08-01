@@ -1,5 +1,5 @@
 #!/bin/sh
-# ship-gate — decide whether a sprint may be released. Read-only.
+# ship-gate — decide whether a sprint may be released. Read-only by default.
 #
 # /app-ship's preconditions were prose for the orchestrator to improvise. Improvising them went
 # wrong three times in one session: a `grep | sed || echo` guard that could not fail, a field-index
@@ -9,7 +9,12 @@
 # `sprint-planner` requires that every Definition-of-Done gate name a runnable command. The release
 # gate is the most consequential gate in the plugin and it did not have one. This is it.
 #
-# Usage:  sh scripts/ship-gate.sh [project-root]
+# Usage:  sh scripts/ship-gate.sh [project-root] [--record]
+#   --record   also write the verdict to <project-root>/docs/team/ship-gate-verdict.json, so
+#              anything durable (the control room, a later run of this same gate) can read what the
+#              last real evaluation said without re-running it. Opt-in, not the default: a project
+#              root is sometimes a read-only fixture or someone else's checkout, and "read-only"
+#              is this script's own documented contract — /app-ship and release-manager pass it.
 # Exit:   0 clear to ship
 #         1 BLOCKED — the gate evaluated every precondition and one of them says no
 #         2 CANNOT EVALUATE — an input was missing or unreadable, so some precondition was never
@@ -20,7 +25,14 @@
 # There is no path from a check that did not run to exit 0.
 
 set -u
-ROOT=${1:-.}
+ROOT=.
+RECORD=0
+for arg in "$@"; do
+  case "$arg" in
+    --record) RECORD=1 ;;
+    *) ROOT="$arg" ;;
+  esac
+done
 BOARD="$ROOT/docs/31-board.md"
 BUGS="$ROOT/docs/51-bugs.md"
 PLAN="$ROOT/docs/50-test-plan.md"
@@ -123,11 +135,41 @@ unknown_unless_waived() {
   fi
 }
 
+# record_verdict <CLEAR|BLOCKED|CANNOT_EVALUATE> — the ONLY place this gate's verdict outlives the
+# process that ran it. Dry run 5 (Android fixture) found the control room's Mission Control panel
+# could show release readiness as `clear` while this gate returned BLOCKED, because nothing durable
+# ever recorded that this gate ran, or what it said — the panel only ever swept ticket/bug state,
+# which is a different, narrower population than this file checks. Writing the verdict here, and
+# reading it back in `scripts/lib/project.mjs`, closes that gap without control-room re-running this
+# shell script on every page load (a second orchestrator, which this repo does not do). A verdict
+# stays authoritative until a NEWER run overwrites it — an old BLOCKED does not silently go away
+# just because time passed; only re-running this gate can clear it.
+record_verdict() {
+  [ "$RECORD" = 1 ] || return 0
+  mkdir -p "$ROOT/docs/team" 2>/dev/null || return 0
+  SHIP_GATE_RESULT="$1" SHIP_GATE_BLOCKERS="$BLOCKERS" SHIP_GATE_UNKNOWNS="$UNKNOWNS" SHIP_GATE_NOTES="$NOTES" \
+    node -e '
+      const fs = require("node:fs");
+      const split = (s) => s.split("\n").map((l) => l.replace(/^\s*(BLOCKED|UNKNOWN|note)\s*/, "").trim()).filter(Boolean);
+      const record = {
+        schema: "ship-gate-verdict/v1",
+        result: process.env.SHIP_GATE_RESULT,
+        evaluated_at: new Date().toISOString(),
+        blockers: split(process.env.SHIP_GATE_BLOCKERS || ""),
+        unknowns: split(process.env.SHIP_GATE_UNKNOWNS || ""),
+        notes: split(process.env.SHIP_GATE_NOTES || ""),
+      };
+      fs.writeFileSync(process.argv[1], JSON.stringify(record, null, 2) + "\n");
+    ' "$ROOT/docs/team/ship-gate-verdict.json" 2>/dev/null || true
+}
+
 cannot_evaluate_now() {
   echo "SHIP GATE"
   echo "  UNKNOWN  $1"
   echo
   echo "RESULT: CANNOT EVALUATE — do not release. Supply the missing input and re-run."
+  UNKNOWNS="$1"
+  record_verdict CANNOT_EVALUATE
   exit 2
 }
 
@@ -418,14 +460,17 @@ if [ -n "$UNKNOWNS" ]; then
   echo
   echo "RESULT: CANNOT EVALUATE — do not release. Supply the missing inputs and re-run."
   echo "        This is NOT a pass. A precondition above was never checked."
+  record_verdict CANNOT_EVALUATE
   exit 2
 fi
 
 if [ -n "$BLOCKERS" ]; then
   echo
   echo "RESULT: BLOCKED — do not release. Fix the above, then re-run."
+  record_verdict BLOCKED
   exit 1
 fi
 echo
 echo "RESULT: CLEAR — preconditions met. Proceed to the parallel readiness agents."
+record_verdict CLEAR
 exit 0
