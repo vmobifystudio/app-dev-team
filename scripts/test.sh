@@ -5057,9 +5057,33 @@ echo
 # --- governance preflight, dependency, version and policy controls -------------------------------
 assert_exit 0 "dependency policy accepts the plugin's declared and locked control-room dependency" \
   node "$HERE/dependency-check.mjs" "$HERE/.."
+# This used to run context-preflight.mjs against the live plugin repo ($HERE/..) and assert its
+# CHECKED-OUT BRANCH is literally named "main" — true for a local dev checkout, false for every
+# GitHub Actions `pull_request` run, which checks out in DETACHED HEAD (no branch name at all).
+# That made this assertion fail on every PR's CI run, never on a push to main: a test gated on the
+# ambient state of the repo it lives in, rather than on an isolated fixture like every other test
+# here. Fixed with three deterministic git fixtures covering all three branch states the script
+# itself distinguishes: on main (blocked, names the branch), on a feature branch (clear), and
+# detached (blocked, names detachment) — proven regardless of what branch this suite is run from.
+CPMAIN="$TMP/context-preflight-main"; mkdir -p "$CPMAIN"
+( cd "$CPMAIN" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
 assert_exit 1 "context preflight blocks writes from the protected main branch" \
-  node "$HERE/context-preflight.mjs" "$HERE/.."
+  node "$HERE/context-preflight.mjs" "$CPMAIN"
 assert_has "$TMP/out" "protected branch main" "...and names the reason"
+
+CPFEAT="$TMP/context-preflight-feature"; mkdir -p "$CPFEAT"
+( cd "$CPFEAT" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init && git checkout -q -b feat/x ) >/dev/null 2>&1
+assert_exit 0 "...and clears an ordinary feature branch" node "$HERE/context-preflight.mjs" "$CPFEAT"
+
+CPDET="$TMP/context-preflight-detached"; mkdir -p "$CPDET"
+( cd "$CPDET" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init \
+  && git checkout -q "$(git rev-parse HEAD)" ) >/dev/null 2>&1
+assert_exit 1 "...and blocks a detached HEAD too — the exact state a GitHub Actions pull_request checkout leaves this suite in" \
+  node "$HERE/context-preflight.mjs" "$CPDET"
+assert_has "$TMP/out" "detached HEAD" "...and names THAT reason, distinct from the main-branch one"
 assert_exit 2 "policy checking without an explicit project policy is CANNOT EVALUATE" \
   node "$HERE/policy-check.mjs" "$HERE/.."
 
