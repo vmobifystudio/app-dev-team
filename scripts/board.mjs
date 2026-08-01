@@ -240,17 +240,30 @@ const RISK_ROUTER = fileURLToPath(new URL('./risk-router.mjs', import.meta.url))
  * tier from it, the same way `dispatch-preflight.mjs` does at spawn time. No `--file`, or no risk
  * policy in this project yet, means risk stays unknown — that is not a refusal, it is the honest
  * absence of an opinion, and it must not read as "low risk" downstream.
+ *
+ * Codex, PR #15: this used to collapse "no policy exists yet" (a legitimate unknown) and "a policy
+ * exists but is malformed, or the router otherwise failed to classify a supplied --file" into the
+ * same `null`. `review_requested`'s guard (`lib/events.mjs`) only fires on risk EXPLICITLY
+ * `high`/`critical` — it treats unknown as harmless — so a broken policy silently let a
+ * billing/security/migration ticket reach review with no invariant recorded, which is exactly the
+ * gap this ticket contract exists to close. A missing policy file stays a quiet null; anything else
+ * that stops the router from answering is now a hard failure at ticket creation, loud where it can
+ * still be fixed, not silent where it would only be discovered by the guard never firing.
  */
 function deriveRisk(flags, paths) {
   if (!flags.file) return null;
   const policyPath = resolve(dirname(paths.log), 'team', 'risk-policy.json');
+  if (!existsSync(policyPath)) return null; // no policy in this project yet — risk stays unknown, not silently low
   const result = spawnSync(
     process.execPath,
     [RISK_ROUTER, '--policy', policyPath, '--file', String(flags.file), '--change', String(flags.change || '')],
     { encoding: 'utf8' }
   );
-  if (result.status !== 0) return null; // no policy yet, or router refused — risk stays unknown, not silently low
-  try { return JSON.parse(result.stdout).risk || null; } catch { return null; }
+  if (result.status !== 0) {
+    die(1, `--file was supplied but risk-router.mjs could not classify it against ${policyPath} — fix the policy, or drop --file if this ticket genuinely has none:\n${`${result.stdout || ''}${result.stderr || ''}`.trim()}`);
+  }
+  try { return JSON.parse(result.stdout).risk || null; }
+  catch (e) { die(1, `risk-router.mjs produced unparseable output for ${policyPath}: ${e.message}`); }
 }
 
 function cmdAdd(id, flags, paths) {

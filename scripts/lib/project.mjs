@@ -471,8 +471,13 @@ function readReleaseChecklist(root) {
   if (!source.ok) {
     return { ok: false, note: `${source.note} — no release has been prepared yet`, items: [], version: '', done: 0, total: 0 };
   }
+  // Codex, PR #15: the `m` flag makes `$` in this lookahead match end-of-LINE, not end-of-input,
+  // so the lazy `[\s\S]*?` stopped after the block's first line — a checklist with one checked
+  // item and two unchecked ones reported 1/1 done and the Founder Inbox item vanished with real
+  // work still outstanding. `(?![\s\S])` is end-of-STRING regardless of the `m` flag (no character
+  // of any kind, including newline, can follow), so it isn't affected by multiline mode.
   const heading = /^###\s+Submission checklist\s+—\s+(\S+)/m;
-  const blocks = [...source.text.matchAll(/^###\s+Submission checklist\s+—\s+(\S+)[^\n]*\n([\s\S]*?)(?=\n##|\n###|$)/gm)];
+  const blocks = [...source.text.matchAll(/^###\s+Submission checklist\s+—\s+(\S+)[^\n]*\n([\s\S]*?)(?=\n##|\n###|(?![\s\S]))/gm)];
   if (!blocks.length) {
     return { ok: true, note: `no "### Submission checklist" section in ${REL.releases} yet — release-manager writes one when it assembles a candidate`, items: [], version: '', done: 0, total: 0 };
   }

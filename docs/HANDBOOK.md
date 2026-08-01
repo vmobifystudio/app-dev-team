@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 886 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 896 assertions
 
 ---
 
@@ -693,7 +693,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
-| `test.sh` | 886 assertions |
+| `test.sh` | 896 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -785,6 +785,29 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   structured per-control verdict schema, and a dedicated control-room Submission screen) are a larger
   architectural change than these four fixes and were deliberately not attempted in the same pass —
   see that review document for the full action plan if that work is taken on later.
+- **Four more findings closed, 2026-08-01, from an automated Codex review of PR #15** (all
+  independently reproduced before being fixed, all mirror-tested). (1) `run-ledger.mjs`'s
+  ticket-holder check and the write that followed it were two separate operations with no lock
+  between them — two `start` calls racing the same ticket could both read "no active holder" and
+  both append, corrupting the hash chain for every future read. Reproduced with two live concurrent
+  processes; fixed with an `O_EXCL` lockfile serializing the whole read-decide-append sequence, the
+  same mechanism Unix mail spools use for the identical problem. (2)
+  `readReleaseChecklist`'s block-terminating regex used the `m` flag, so `$` matched end-of-line
+  instead of end-of-input and the lazy body capture silently stopped after the block's first row — a
+  checklist with one checked item and two unchecked ones reported `1/1` done. (3) `/app-init`'s
+  default `.studio-policy.json` turned on all five P0 trust controls, but three of them
+  (`requireAuditAnchor`, `requirePromptRegistry`, `requireEvaluation`) are composed into
+  `dispatch-preflight.mjs`, which runs before every spawn, and each needs an artifact a fresh
+  project does not have yet (an event log with a first ticket, a prompt registry sync of an
+  `agents/` directory a shipped project doesn't have, an eval corpus of its own) — every spawn after
+  `/app-init` was silently blocked forever. Only `requireDurableRuns`/`requireApprovalBinding`
+  default on now; the other three are documented as an explicit later opt-in once their
+  prerequisite exists. (4) `board.mjs add --file`'s risk derivation collapsed "no risk policy
+  exists yet" (a legitimate unknown) and "a policy exists but is malformed" into the same silent
+  `null` — since `review_requested`'s invariant guard only fires on risk explicitly
+  `high`/`critical`, a broken policy let a billing/security ticket reach review with no invariant
+  recorded. A malformed policy is now a hard failure at ticket creation; a missing one stays a quiet
+  unknown.
 - **Support triage and experiment feedback are explicitly deferred, not silently dropped.** No app
   built by this studio has shipped yet, so there is no real user-report or experiment-result signal
   for a support-triage or experiment-feedback loop to act on — building either now would be process

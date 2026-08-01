@@ -7,12 +7,48 @@
  * lease is still alive. A process may die between any two records; recovery must inspect the
  * ledger, never silently create a second attempt.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { parseArgs } from './lib/args.mjs';
 
 const die = (code, message) => { process.stderr.write(`run-ledger: ${message}\n`); process.exit(code); };
+
+// Codex, PR #15: the ticket-holder check (`activeForTicket`, reading a snapshot of the ledger) and
+// the write that follows it (`append`, which re-reads the ledger for its own hash-chain tip) are
+// two separate operations with nothing between them. Two `start` invocations racing the same
+// ticket can both read "no active holder" before either writes, so both append a `start` record —
+// reproduced directly: two concurrent claims on one ticket both succeeded, and because each
+// process computed `prev_hash` against the same stale tip, the SECOND append's `prev_hash` no
+// longer matched the file's actual last hash, breaking the chain for every future read. An
+// `O_EXCL` lockfile serializes the whole read-decide-append sequence per ledger, the same
+// mechanism every Unix mail spool and package manager uses for exactly this problem — Node has no
+// built-in flock, and this plugin stays dependency-free by design.
+let lockHeld = '';
+process.on('exit', () => { if (lockHeld) { try { unlinkSync(lockHeld); } catch { /* already gone */ } } });
+function withLedgerLock(ledgerPath, fn) {
+  const lockPath = `${ledgerPath}.lock`;
+  mkdirSync(dirname(ledgerPath), { recursive: true });
+  const deadline = Date.now() + 5000;
+  let fd;
+  for (;;) {
+    try { fd = openSync(lockPath, 'wx'); break; }
+    catch (e) {
+      if (e.code !== 'EEXIST') die(2, `could not create lock ${lockPath}: ${e.message}`);
+      if (Date.now() > deadline) die(2, `could not acquire ${lockPath} within 5s — another run-ledger process appears stuck; remove it by hand if it is stale`);
+      try { execFileSync('sleep', ['0.02']); } catch { /* best-effort backoff */ }
+    }
+  }
+  lockHeld = lockPath;
+  try {
+    closeSync(fd);
+    return fn();
+  } finally {
+    lockHeld = '';
+    try { unlinkSync(lockPath); } catch { /* already gone */ }
+  }
+}
 const VALUE_FLAGS = new Set([
   'ledger', 'run', 'ticket', 'role', 'attempt', 'phase', 'lease-seconds', 'detail', 'context',
   'worktree', 'by', 'effect', 'pending', 'now',
@@ -90,6 +126,7 @@ function activeForTicket(records, ticket, now) {
 }
 
 if (!command) die(2, 'usage: start|checkpoint|heartbeat|complete|interrupt');
+withLedgerLock(ledger, () => {
 const records = readRecords();
 if (command === 'start') {
   const run = String(flags.run || `RUN-${randomUUID()}`);
@@ -135,3 +172,4 @@ if (command === 'start') {
     });
   } else die(2, `unknown command ${command}`);
 }
+});

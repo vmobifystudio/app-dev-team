@@ -4709,18 +4709,47 @@ echo
 # --------------------------------------------------------------------------------------------
 # The five Revamp P0 trust controls are opt-in at the ship-gate layer (an existing, onboarded repo
 # must not be retroactively blocked by controls it never adopted) — but a FRESH project has no such
-# excuse. /app-init's bootstrap step must write a default .studio-policy.json turning them on,
-# or every new project silently ships with all five absent, which is the exact gap closed here.
+# excuse. /app-init's bootstrap step must write a default .studio-policy.json turning on the two
+# that have no bootstrap-ordering problem.
+#
+# Codex, PR #15: this used to default all FIVE on, including three composed into
+# `dispatch-preflight.mjs` (which runs before every implementation spawn): `requireAuditAnchor`
+# needs docs/31-board-events.jsonl, which does not exist until the first ticket; `requirePromptRegistry`
+# needs an agents/ directory, which describes THIS plugin, not a shipped project; `requireEvaluation`
+# needs eval/manifest.json, which a fresh project has none of. Reproduced directly: all three exit 2
+# against a freshly `/app-init`'d project, which `dispatch-preflight.mjs` treats as a hard failure —
+# every spawn was blocked, forever, by the "trust control" meant to protect the project. Only
+# requireDurableRuns/requireApprovalBinding default on now; the other three are documented as an
+# explicit later opt-in once their prerequisite artifact exists.
 INIT="$HERE/../commands/app-init.md"
 grep -q '.studio-policy.json' "$INIT" && ok "/app-init bootstraps a default .studio-policy.json" \
   || bad "/app-init bootstraps a default .studio-policy.json"
-for FLAG in requireDurableRuns requireApprovalBinding requireAuditAnchor requirePromptRegistry requireEvaluation; do
+for FLAG in requireDurableRuns requireApprovalBinding; do
   grep -q "\"$FLAG\": true" "$INIT" && ok "/app-init's default policy turns on $FLAG" \
     || bad "/app-init's default policy turns on $FLAG"
+done
+for FLAG in requireAuditAnchor requirePromptRegistry requireEvaluation; do
+  grep -q "\"$FLAG\": true" "$INIT" && bad "/app-init's default policy does NOT turn on $FLAG (no bootstrap artifact exists yet)" \
+    "found \"$FLAG\": true in the default policy template" \
+    || ok "/app-init's default policy does NOT turn on $FLAG (no bootstrap artifact exists yet)"
 done
 grep -q '\[ -f .studio-policy.json \]' "$INIT" \
   && ok "...and the bootstrap is idempotent — never overwrites an onboarded repo's existing policy" \
   || bad "...and the bootstrap is idempotent — never overwrites an onboarded repo's existing policy"
+
+# The reproduction itself, kept as a permanent regression: dispatch-preflight against the LITERAL
+# policy /app-init writes (both defaulted flags true, none of the three bootstrap-ordering ones),
+# on a project with none of their prerequisite artifacts, must still clear the first spawn.
+INITSIM="$TMP/app-init-bootstrap-sim"; mkdir -p "$INITSIM/docs"
+printf 'context\n' > "$INITSIM/docs/context.md"
+node "$HERE/context-manifest.mjs" create --root "$INITSIM" --out "$INITSIM/context.json" --source project:docs/context.md >/dev/null
+printf '%s\n' '{"schema":"scheduler-plan/v1","max_parallel":1,"tasks":[{"id":"T","owner":"reviewer","status":"pending"}]}' > "$INITSIM/schedule.json"
+printf '%s\n' '{"schema":"capability-manifest/v1","root":".","roles":[{"role":"reviewer","operations":["write"],"allowed_paths":["docs"]}]}' > "$INITSIM/capabilities.json"
+cp "$HERE/../docs/team/risk-policy.json" "$INITSIM/risk.json"
+printf '{"owner":"founder","reviewedOn":"2026-08-01","requireDurableRuns":true,"requireApprovalBinding":true}\n' \
+  > "$INITSIM/.studio-policy.json"
+assert_exit 0 "a freshly /app-init'd project's exact default policy does not block the first spawn" \
+  node "$HERE/dispatch-preflight.mjs" --root "$INITSIM" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 echo
 # --------------------------------------------------------------------------------------------
 # --------------------------------------------------------------------------------------------
@@ -4732,6 +4761,25 @@ node "$HERE/run-ledger.mjs" start --ledger "$RUNX/runs.jsonl" --run RUN-001 --ti
 ATTEMPT=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).attempt_id)' "$RUNX/start.json")
 assert_exit 1 "run-ledger refuses a duplicate active attempt" node "$HERE/run-ledger.mjs" start --ledger "$RUNX/runs.jsonl" \
   --run RUN-001 --ticket APP-001 --role ios-developer --now 2026-07-31T00:00:01Z
+
+# Codex, PR #15: the ticket-holder check and the append that follows it were two separate
+# operations with nothing between them, so two `start` calls racing the same ticket could both
+# read "no active holder" before either wrote — reproduced directly: both succeeded, and the
+# SECOND writer's `prev_hash` was computed against a tip that no longer matched the file once the
+# first writer's record landed, breaking the hash chain for every future read. This runs the exact
+# race, for real, with two live processes — not a simulated ordering.
+RACE="$TMP/run-ledger-race"; mkdir -p "$RACE"
+( node "$HERE/run-ledger.mjs" start --ledger "$RACE/runs.jsonl" --ticket RACE-001 --role ios-developer \
+    --run RACE-A --attempt ATT-A --now 2026-07-31T00:00:00Z > "$RACE/a.out" 2>"$RACE/a.err" &
+  node "$HERE/run-ledger.mjs" start --ledger "$RACE/runs.jsonl" --ticket RACE-001 --role ios-developer \
+    --run RACE-B --attempt ATT-B --now 2026-07-31T00:00:00Z > "$RACE/b.out" 2>"$RACE/b.err" &
+  wait )
+WINNERS=$(grep -l '"event":"start"' "$RACE/a.out" "$RACE/b.out" 2>/dev/null | wc -l | tr -d ' ')
+[ "$WINNERS" = 1 ] && ok "two concurrent claims on one ticket: exactly one wins" \
+  || bad "two concurrent claims on one ticket: exactly one wins" "$WINNERS process(es) claimed RACE-001 (want exactly 1)"
+assert_exit 0 "...and the ledger's hash chain is still intact afterward, not corrupted by the race" \
+  node "$HERE/run-ledger.mjs" start --ledger "$RACE/runs.jsonl" --ticket RACE-002 --role ios-developer --now 2026-07-31T00:00:01Z
+
 assert_exit 0 "run-doctor accepts a live leased attempt" node "$HERE/run-doctor.mjs" --ledger "$RUNX/runs.jsonl" --now 2026-07-31T00:00:30Z
 assert_exit 1 "run-doctor detects an expired orphan lease" node "$HERE/run-doctor.mjs" --ledger "$RUNX/runs.jsonl" --now 2026-07-31T00:02:00Z
 node "$HERE/run-ledger.mjs" interrupt --ledger "$RUNX/runs.jsonl" --run RUN-001 --attempt "$ATTEMPT" --detail "operator recovery" >/dev/null
@@ -4943,6 +4991,21 @@ drive_to_review_only "$RISK" RK-003
 assert_exit 0 "...and a ticket with no --file (risk stays unknown) is unaffected by the gate" \
   bm "$RISK" move RK-003 review_requested --by ios-developer
 
+# Codex, PR #15: deriveRisk collapsed "no policy exists yet" (legitimate unknown) and "a policy
+# exists but is malformed" into the same silent null — so review_requested's guard, which only
+# fires on risk explicitly high/critical, never saw the billing/security/migration ticket as risky
+# at all, and it reached review with no invariant. Reproduced directly: a malformed risk policy let
+# a billing ticket through --file with no error. A malformed policy is now a hard failure at ticket
+# creation, distinct from the "no policy file present yet" case which stays a quiet null.
+NOPOLICY=$(newboard bd-nopolicy)
+assert_exit 0 "add --file with no risk-policy.json in the project at all is a quiet unknown, not an error" \
+  bm "$NOPOLICY" add NP-001 --title "Billing refactor" --owner ios-developer --file sources/billing.swift --change billing
+BADPOLICY=$(newboard bd-badpolicy); mkdir -p "$BADPOLICY/docs/team"
+printf '{"schema":"risk-policy/v1","rules":"not-an-array"}\n' > "$BADPOLICY/docs/team/risk-policy.json"
+assert_exit 1 "...but add --file against an EXISTING, malformed risk-policy.json fails loudly instead of silently going unknown" \
+  bm "$BADPOLICY" add BP-001 --title "Billing refactor" --owner ios-developer --file sources/billing.swift --change billing
+assert_has "$TMP/err" "could not classify it against" "...naming what went wrong, not a generic refusal"
+
 INCIDENT="$TMP/revamp-incidents"; mkdir -p "$INCIDENT"
 node "$HERE/incident-ledger.mjs" open --ledger "$INCIDENT/incidents.jsonl" --severity sev2 --title outage --owner incident-commander --by tech-manager > "$INCIDENT/open.json"
 INCIDENT_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).incident_id)' "$INCIDENT/open.json")
@@ -5046,6 +5109,21 @@ fi
 grep -q '^## Control room$' "$RM" \
   && ok "release-manager.md documents how the control room reads its checklist" \
   || bad "release-manager.md documents how the control room reads its checklist"
+
+# Codex, PR #15: readReleaseChecklist's block-terminating lookahead used the `m` flag, so `$` matched
+# end-of-LINE, not end-of-input — the lazy body capture stopped after the block's first line. A
+# checklist with one checked item and two unchecked ones below it reported 1/1 done, and the Founder
+# Inbox item vanished with real founder work still outstanding.
+RCFIX="$TMP/release-checklist-multiline"; mkdir -p "$RCFIX/docs"
+printf '## v1.0.0 — 2026-08-01\n\n### Submission checklist — v1.0.0 (founder action, not automated)\n- [x] iOS: upload build/export/App.ipa to App Store Connect\n- [ ] iOS: route the TestFlight build to internal testers\n- [ ] Android: upload app/build/outputs/bundle/release/app-release.aab\n' \
+  > "$RCFIX/docs/60-releases.md"
+node -e '
+import(process.argv[1]).then(({ readReleaseChecklist }) => {
+  const r = readReleaseChecklist(process.argv[2]);
+  process.stdout.write(JSON.stringify({ done: r.done, total: r.total }));
+});
+' "$PROJECT_LIB" "$RCFIX" > "$TMP/out" 2>"$TMP/err"
+assert_has "$TMP/out" '"done":1,"total":3' "readReleaseChecklist counts all three checklist rows, not just the first line of the block"
 
 echo "no conflict markers"
 # --------------------------------------------------------------------------------------------
