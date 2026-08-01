@@ -117,6 +117,20 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by code-r
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN changes  --by code-reviewer --detail "<one line>"
 ```
 
+**If `.studio-policy.json` sets `requireApprovalBinding`, approve with `--bind` instead** of a bare
+`--detail`. It pins the approval to the exact commit and evidence you reviewed — `commit` and
+`diff_hash` are computed from git, never hand-entered — so a later rebase, amend, or silently added
+commit invalidates the approval rather than riding along under it:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by code-reviewer \
+  --bind --evidence <path to the test/verify-done output you reviewed> \
+  --context <path to the context manifest or spec you reviewed>
+```
+
+`tech-manager`'s merge gate re-checks this binding immediately before `git merge` — an approval that
+does not name what is about to merge blocks the merge, not just the eventual release.
+
 `docs/31-board.md` is **generated** — every `board.mjs` append regenerates the whole file, including
 the `## Review ledger` section, from the event log. This role file used to tell you to append rows
 to that section by hand. Those rows were erased by the next append and were invisible to every

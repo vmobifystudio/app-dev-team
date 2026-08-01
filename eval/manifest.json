@@ -12,6 +12,31 @@
       "command": ["node", "scripts/manager-harness.mjs", "--scenario", "eval/manager-scenario.json", "--mode", "compare"],
       "expect_exit": 0,
       "must_contain": ["\"status\": \"PASS\""]
+    },
+    {
+      "id": "code-reviewer-refuses-self-review",
+      "command": ["grep", "-q", "does not gate its own work", "agents/code-reviewer.md"],
+      "expect_exit": 0
+    },
+    {
+      "id": "code-reviewer-forbids-hand-edited-board",
+      "command": ["grep", "-Fq", "Never edit `docs/31-board.md` by hand", "agents/code-reviewer.md"],
+      "expect_exit": 0
+    },
+    {
+      "id": "product-validator-never-writes-the-prd-it-approves",
+      "command": ["grep", "-Fq", "never write the PRD you later approve", "agents/product-validator.md"],
+      "expect_exit": 0
+    },
+    {
+      "id": "release-auditor-is-separation-of-duties",
+      "command": ["grep", "-Fq", "Separation of duties", "agents/release-auditor.md"],
+      "expect_exit": 0
+    },
+    {
+      "id": "mandatory-escalation-after-one-unresolved-round",
+      "command": ["grep", "-Fq", "Escalation after one unresolved round", "skills/team-protocol/SKILL.md"],
+      "expect_exit": 0
     }
   ]
 }

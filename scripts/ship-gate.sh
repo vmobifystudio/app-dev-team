@@ -47,14 +47,38 @@ unknown() { UNKNOWNS="${UNKNOWNS}  UNKNOWN  $1
 # converts a non-pass into a ship was pure improvisation — precisely what this file was written to
 # replace everywhere else in the command. It is read here, and held to its own stated shape.
 #
+# canonical_version — the LAST `## vX.Y.Z` heading in docs/60-releases.md (mirrors
+# version-consistency-check.mjs's own "last heading wins" rule), or nothing if this project has
+# never declared one. Used below to scope a waiver to the release it was actually written for.
+canonical_version() {
+  [ -f "$RELEASES" ] || return 1
+  awk '
+    /^##[ \t]+v[0-9]+\.[0-9]+\.[0-9]+/ {
+      line = $0
+      sub(/^##[ \t]+v/, "", line)
+      split(line, a, /[ \t]/)
+      v = a[1]
+    }
+    END { if (v != "") print v; else exit 1 }
+  ' "$RELEASES"
+}
+
 # waiver_for <artifact> — prints "<who> — <reason>" and returns 0 when a well-formed waiver names
 # exactly this artifact; returns 1 otherwise. The separator is the em dash /app-ship writes, with
 # `--` accepted as its ASCII spelling. All three fields must be present and non-empty: "WAIVED:
 # docs/51-bugs.md" on its own is a record that someone skipped a gate, not a decision anyone can be
 # held to, and a waiver nobody signed is indistinguishable from a check that was never there.
+#
+# SHIP-P0-005 (external audit, 2026-08-01): waivers used to be scanned with no version binding
+# whatsoever — an old waiver written for v0.1.0 satisfied a check run against v9.0.0. Reproduced.
+# Once a project has declared a canonical version (`## vX.Y.Z` in docs/60-releases.md), a waiver
+# must name it as a fourth field to count: `WAIVED: <artifact> — <who> — <reason> — vX.Y.Z`. A
+# project that has never declared a version (nothing to bind to yet) keeps the three-field form —
+# this is additive, not a breaking change to every waiver ever written.
 waiver_for() {
   [ -f "$RELEASES" ] || return 1
-  awk -v want="$1" '
+  CANON=$(canonical_version 2>/dev/null || true)
+  awk -v want="$1" -v canon="$CANON" '
     function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
     /WAIVED:/ {
       line = $0
@@ -65,6 +89,11 @@ waiver_for() {
       if (trim(f[1]) != want) next
       who = trim(f[2]); why = trim(f[3])
       if (who == "" || why == "") next
+      if (canon != "") {
+        if (n < 4) next
+        ver = trim(f[4]); sub(/^v/, "", ver)
+        if (ver != canon) next
+      }
       print who " — " why
       found = 1
       exit
@@ -78,9 +107,17 @@ waiver_for() {
 unknown_unless_waived() {
   W=$(waiver_for "$1") && { note "WAIVED: $1 by $W"; return 0; }
   if [ -f "$RELEASES" ] && grep -q "WAIVED:.*$1" "$RELEASES" 2>/dev/null; then
-    unknown "$2
+    CANON=$(canonical_version 2>/dev/null || true)
+    if [ -n "$CANON" ]; then
+      unknown "$2
+           A WAIVED: line naming $1 exists in docs/60-releases.md but is MALFORMED, WRONG-ARTIFACT,
+           or does not name the current release (v$CANON), so it does not count. It must read:
+           WAIVED: $1 — <who waived it> — <reason> — v$CANON, all four present."
+    else
+      unknown "$2
            A WAIVED: line naming $1 exists in docs/60-releases.md but is MALFORMED, so it does not
            count. It must read: WAIVED: $1 — <who waived it> — <reason>, all three present."
+    fi
   else
     unknown "$2"
   fi
@@ -150,7 +187,10 @@ run_detector "dependency-check" node "$HERE/dependency-check.mjs" "$ROOT"
 [ -f "$ROOT/docs/10-prd.md" ] && [ -f "$ROOT/docs/52-analytics.md" ] && \
   run_detector "analytics-coverage-scan" node "$HERE/analytics-coverage-scan.mjs" "$ROOT"
 [ -n "$SWIFT_FILES" ] && run_detector "subscription-restore-scan" node "$HERE/subscription-restore-scan.mjs" "$ROOT"
-[ -f "$ROOT/docs/60-releases.md" ] && grep -qiE '(^|[[:space:]])(release[[:space:]]+)?version[[:space:]]*[:=]' "$ROOT/docs/60-releases.md" 2>/dev/null && \
+# SHIP-P0-006: this guard only recognized `version: X.Y.Z` prose, not release-manager.md's own
+# required release-note heading `## vX.Y.Z — YYYY-MM-DD` — so the checker never even ran on a
+# correctly-formatted release note. Recognize both shapes; the checker's own regex mirrors this.
+[ -f "$ROOT/docs/60-releases.md" ] && grep -qiE '(^|[[:space:]])(release[[:space:]]+)?version[[:space:]]*[:=]|^##[[:space:]]+v[0-9]+\.[0-9]+\.[0-9]+' "$ROOT/docs/60-releases.md" 2>/dev/null && \
   run_detector "version-consistency-check" node "$HERE/version-consistency-check.mjs" "$ROOT"
 [ -f "$ROOT/.studio-policy.json" ] && run_detector "policy-check" node "$HERE/policy-check.mjs" "$ROOT"
 
@@ -267,9 +307,22 @@ fi
 # --- 4. QA's own verdict --------------------------------------------------------------------------
 # QA can recommend holding while every per-ticket review approved, and both can be right: a review
 # is scoped to one diff and cannot see that the sprint's journey was never wired together.
+#
+# This used to grep for loose hold-language ("hold", "blocked", ...) and only ever call note() —
+# so the ONE THING app-ship.md promises stops a release (a QA hold) never actually reached the exit
+# code CI and automation consume. Confirmed by reproduction: an explicit "Recommendation: HOLD —
+# composition journey failed" line in the test plan still returned ship-gate RESULT CLEAR. Fixed by
+# giving QA a structured, one-line verdict the gate can key on instead of reading prose: a plan with
+# no verdict line is CANNOT EVALUATE, same as every other missing-input case in this file, not a
+# silent pass.
 if [ -f "$PLAN" ]; then
-  if grep -qiE 'hold|do not ship|not shippable|blocked' "$BUGS" "$PLAN" 2>/dev/null; then
-    note "QA text mentions a hold — read docs/50-test-plan.md's exit criteria and QA's recommendation before overriding."
+  if grep -qE '^QA VERDICT:[[:space:]]*HOLD\b' "$PLAN" 2>/dev/null; then
+    block "$(grep -E '^QA VERDICT:[[:space:]]*HOLD\b' "$PLAN" | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
+  elif grep -qE '^QA VERDICT:[[:space:]]*GO\b' "$PLAN" 2>/dev/null; then
+    :
+  else
+    unknown_unless_waived "qa-verdict" \
+      "docs/50-test-plan.md has no 'QA VERDICT: GO' or 'QA VERDICT: HOLD — <reason>' line — whether qa-engineer is willing to ship is UNKNOWN, not clear. Have qa-engineer add the verdict line, then re-run."
   fi
   if grep -qiE 'NOT PERFORMED|not executed|by reading' "$PLAN" 2>/dev/null; then
     note "the test plan contains rows that were reasoned, not executed. Do not report those as tested."

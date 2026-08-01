@@ -80,6 +80,29 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      No command created this file. Observed live: an agent reported raising a question on the
      channel when the channel had never existed, and nothing contradicted it.
 
+   - **`.studio-policy.json`, if it does not already exist** — turns the Revamp P0 trust controls
+     (durable runs, approval binding, audit anchoring, prompt registry, evaluation) on by default for
+     every new project. They are opt-in at the `ship-gate` layer precisely so an *existing*, onboarded
+     repo is not retroactively blocked by controls it never adopted — a fresh project has no such
+     excuse, and shipping with all five silently absent is the gap, not a feature:
+
+     ```bash
+     [ -f .studio-policy.json ] || cat > .studio-policy.json <<EOF
+     {
+       "owner": "founder",
+       "reviewedOn": "$(date -u +%Y-%m-%d)",
+       "requireDurableRuns": true,
+       "requireApprovalBinding": true,
+       "requireAuditAnchor": true,
+       "requirePromptRegistry": true,
+       "requireEvaluation": true
+     }
+     EOF
+     ```
+
+     Edit `owner` to the actual accountable role once one is decided; `ship-gate.sh`'s `policy-check`
+     only requires the field to be non-empty, not who it names.
+
 6. **Print a summary**: list every doc produced, with one-line description each, and the suggested
    next command (`/app-run` for the mostly-autonomous flow, or `/app-plan` → `/app-build` for manual control).
 

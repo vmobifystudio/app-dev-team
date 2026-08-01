@@ -58,6 +58,13 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
       still says `CANNOT EVALUATE` after you wrote a waiver, the waiver did not count — do not
       proceed on the strength of having written it.
 
+      **Once this project has a canonical version** (a `## vX.Y.Z` heading exists anywhere in
+      `docs/60-releases.md`), a waiver must name it as a fourth field —
+      `WAIVED: <artifact> — <who waived it> — <reason> — vX.Y.Z` — or it does not count. This
+      closes the gap an external audit found and reproduced: an old waiver written for a prior
+      version silently cleared a check for a new one. Write the field yourself; the gate will not
+      infer it.
+
       **A waiver is a founder decision, so it is recorded as one.** After the user approves it here,
       append the matching line to `docs/00-founder-intent/decisions.md`:
       `<date> FOUNDER DECISION: waiver — <artifact>, <reason>. Approved by <who>.`
@@ -201,8 +208,12 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    question. Only a **human** may waive, and the waiver is recorded in `docs/60-releases.md` in the
    `WAIVED: <artifact> — <who> — <reason>` form with a real name.
 
-4. **If SHIP CANDIDATE and `RELEASE AUDIT` is not `FAIL`**: print release-manager's output and the
-   audit verdict verbatim. Ask the user one question before any upload command runs: "Confirm upload to TestFlight + Play internal track for vX.Y.Z?" Do not push without explicit confirmation.
+4. **If SHIP CANDIDATE and `RELEASE AUDIT` is not `FAIL`**: print release-manager's output, the audit
+   verdict, and the submission checklist from `docs/60-releases.md` verbatim. **The studio's work is
+   done at this point — nobody here uploads or submits anything.** Tell the user plainly: the signed
+   build is ready at the paths release-manager named; the checklist above is the founder's own
+   action list for App Store Connect / Play Console. There is no confirmation question to ask,
+   because there is no upload command for the studio to run.
 
 5. **If BLOCKED**: print the blocker list and the proposed unblock. Suggest the right command (`/app-build` for missing tickets, `/app-status` for context).
 
@@ -225,7 +236,10 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
 ## Safety
 
-- Never auto-confirm a store upload.
+- **Never upload or submit to a store, at any track.** The studio's function ends at a signed,
+  submission-ready build and a written checklist — App Store Connect / Play Console actions are
+  exclusively the human founder's. This is not a confirmation gate to pass; there is no command
+  here that performs the upload, confirmed or not.
 - Never ship across an open S1/S2 bug or a critical security finding.
 - **Never ship a build nobody launched.** `RUNTIME GATE: FAIL` has no waiver; `CANNOT EVALUATE`
   needs a recorded one naming who decided and why.

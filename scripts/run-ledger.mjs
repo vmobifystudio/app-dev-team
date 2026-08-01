@@ -67,6 +67,28 @@ function active(records, run, attempt) {
   return state && !state.terminal ? state : null;
 }
 
+/**
+ * A ticket has at most one live claim: two different runs racing `board.mjs move X claimed` must
+ * not both succeed. Unlike `active()`, this checks the ticket, not the run, and only counts a
+ * still-leased attempt — an expired lease is an orphan `run-doctor` reports, not a hold.
+ */
+function activeForTicket(records, ticket, now) {
+  const byAttempt = new Map();
+  for (const record of records) {
+    if (record.ticket !== ticket) continue;
+    const attemptKey = `${record.run_id}/${record.attempt_id}`;
+    const state = byAttempt.get(attemptKey) || {};
+    if (['start', 'checkpoint', 'heartbeat'].includes(record.event)) Object.assign(state, record, { terminal: false });
+    if (['complete', 'interrupt', 'abandon'].includes(record.event)) Object.assign(state, record, { terminal: true });
+    byAttempt.set(attemptKey, state);
+  }
+  for (const state of byAttempt.values()) {
+    if (state.terminal) continue;
+    if (state.lease_until && new Date(state.lease_until) > now) return state;
+  }
+  return null;
+}
+
 if (!command) die(2, 'usage: start|checkpoint|heartbeat|complete|interrupt');
 const records = readRecords();
 if (command === 'start') {
@@ -77,8 +99,14 @@ if (command === 'start') {
   if (!Number.isFinite(seconds) || seconds <= 0) die(2, '--lease-seconds must be a positive number');
   const now = new Date(String(flags.now || new Date().toISOString()));
   if (Number.isNaN(now.getTime())) die(2, '--now must be an ISO timestamp');
+  const ticket = value('ticket');
+  const holder = activeForTicket(records, ticket, now);
+  if (holder) {
+    die(1, `ticket ${ticket} is already leased by ${holder.run_id}/${holder.attempt_id} ` +
+      `(${holder.role}) until ${holder.lease_until}`);
+  }
   append('start', {
-    run_id: run, attempt_id: attempt, ticket: value('ticket'), role: value('role'),
+    run_id: run, attempt_id: attempt, ticket, role: value('role'),
     phase: String(flags.phase || 'start'), lease_until: new Date(now.getTime() + seconds * 1000).toISOString(),
     context_snapshot: flags.context || null, worktree: flags.worktree || null, by: flags.by || null,
   });

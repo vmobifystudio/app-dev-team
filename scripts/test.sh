@@ -1014,31 +1014,69 @@ assert_exit 2 "a waiver for another artifact does not cover this one" sh "$HERE/
 waivetree bare "WAIVED: docs/51-bugs.md"
 assert_exit 2 "a bare WAIVED: line does not count" sh "$HERE/ship-gate.sh" "$TMP/bare"
 
+# SHIP-P0-005 (external audit, 2026-08-01): waivers used to bind to nothing but the artifact name —
+# no version, no expiry, no scope — so a waiver written for one release silently covered every
+# release after it forever. Reproduced: an old v0.1.0 waiver for a missing bug board cleared a
+# v9.0.0 ship. Once a project declares a canonical version, a waiver must name it as a fourth field.
+waivetree stalewaiver "## v0.1.0 — 2026-01-01
+
+first cut
+
+## v9.0.0 — 2026-08-01
+
+WAIVED: docs/51-bugs.md — amol — internal distribution only, no QA wave this cycle — v0.1.0"
+assert_exit 2 "a waiver written for an old version does not cover the current one" \
+  sh "$HERE/ship-gate.sh" "$TMP/stalewaiver"
+assert_has "$TMP/out" "does not name the current release" "...and says why, naming the current version"
+
+waivetree versionedwaiver "## v9.0.0 — 2026-08-01
+
+WAIVED: docs/51-bugs.md — amol — internal distribution only, no QA wave this cycle — v9.0.0"
+assert_exit 0 "a waiver naming the current release's version clears it" \
+  sh "$HERE/ship-gate.sh" "$TMP/versionedwaiver"
+assert_has "$TMP/out" "WAIVED: docs/51-bugs.md by amol" "...and is reported, same as any other waiver"
+
 # --- the two NOTES, which nothing had ever asserted --------------------------------------------
 # RV-039. Both exist because a gate that only says BLOCKED/CLEAR loses the information a human
 # needs to decide, and both are invisible to every assertion above: notes do not change the exit
 # code, so deleting either one left this suite entirely green. A note that never prints is the same
 # as no note, and this is the output /app-ship shows the human at the last decision point.
 
-# QA can recommend holding while every per-ticket review approved, and both can be right: a review
-# is scoped to one diff and cannot see that the sprint's journey was never wired together.
+# SHIP-P0-004 (external audit, 2026-08-01): QA can recommend holding while every per-ticket review
+# approved, and both can be right — a review is scoped to one diff and cannot see that the sprint's
+# journey was never wired together. This USED to search for loose hold-language and only ever call
+# note(), so the one thing app-ship.md promises stops a release never actually reached the exit code.
+# Reproduced: an explicit "Recommendation: HOLD" line still returned ship-gate RESULT CLEAR. Fixed by
+# giving QA a structured verdict line the gate keys on instead of prose.
 mkship qahold ''
-printf '# Test plan\nExit criteria: QA recommends we HOLD this build — the onboarding journey was never run end to end.\n' \
+printf '# Test plan\nExit criteria: onboarding journey never run end to end.\n\nQA VERDICT: HOLD — the onboarding journey was never run end to end.\n' \
   > "$TMP/qahold/docs/50-test-plan.md"
-assert_exit 0 "a QA hold is a note, not a blocker — the human decides" sh "$HERE/ship-gate.sh" "$TMP/qahold"
-assert_has "$TMP/out" "QA text mentions a hold" "...and the gate says so instead of clearing silently"
+assert_exit 1 "an explicit QA VERDICT: HOLD blocks the release, not just a note" sh "$HERE/ship-gate.sh" "$TMP/qahold"
+assert_has "$TMP/out" "QA VERDICT: HOLD" "...and the gate quotes the verdict"
 assert_has "$TMP/out" "before overriding" "...and points at the exit criteria to read first"
 
-# ...and the mirror, so this is a discrimination rather than a note that always prints.
-sh "$HERE/ship-gate.sh" "$FIX/ship-clear" 2>/dev/null | grep -q "QA text mentions a hold" \
-  && bad "...and a test plan with no hold in it produces no such note" \
-  || ok "...and a test plan with no hold in it produces no such note"
+# ...and the mirror: a structured GO clears even when hold-shaped words appear elsewhere in the
+# file, so the gate is reading the one authoritative line, not re-running the old loose grep.
+mkship qago ''
+printf '# Test plan\nEarlier this cycle QA considered a hold, but the blocked journey was fixed and retested.\n\nQA VERDICT: GO\n' \
+  > "$TMP/qago/docs/50-test-plan.md"
+assert_exit 0 "a structured QA VERDICT: GO clears even with hold-shaped prose elsewhere in the file" \
+  sh "$HERE/ship-gate.sh" "$TMP/qago"
+
+# A test plan with no verdict line at all is CANNOT EVALUATE, not a silent pass — the same rule as
+# every other missing precondition in this file, distinct from a wholly missing plan (already
+# covered by the `noplan` case above) since here qa-engineer wrote a plan and simply omitted the
+# one line the gate reads.
+mkship noverdict ''
+printf '# Test plan\nExit criteria met. All rows executed on device.\n' > "$TMP/noverdict/docs/50-test-plan.md"
+assert_exit 2 "a test plan with no QA VERDICT line cannot be evaluated" sh "$HERE/ship-gate.sh" "$TMP/noverdict"
+assert_has "$TMP/out" "no 'QA VERDICT" "...and names the missing line, not a generic failure"
 
 # A test plan whose rows were reasoned rather than executed is the exact claim this repo exists to
 # refuse. It does not block — reasoning is legitimate for some rows — but it must never be reported
 # as tested, which requires the gate to say it out loud.
 mkship reasoned ''
-printf '# Test plan\n| T-1 | signup | NOT PERFORMED — verified by reading the implementation |\n' \
+printf '# Test plan\n| T-1 | signup | NOT PERFORMED — verified by reading the implementation |\n\nQA VERDICT: GO\n' \
   > "$TMP/reasoned/docs/50-test-plan.md"
 assert_exit 0 "rows that were reasoned instead of executed do not block" sh "$HERE/ship-gate.sh" "$TMP/reasoned"
 assert_has "$TMP/out" "reasoned, not executed" "...but the gate names them so they are not reported as tested"
@@ -1208,6 +1246,33 @@ restore_matrix
 assert_finding "$TMP/tdmx2.json" matrix_role_unknown \
   "a matrix row for a role that does not exist blocks" "ux-architectt"
 restore_matrix
+
+# The activation matrix decides WHEN a role runs; the "Why a role exists" table decides WHETHER it
+# should exist at all — a role with no row there has never actually been tested against the
+# authority/context/capability/duties bar. A role missing from that second table is not the same
+# defect as a role missing from the activation matrix, so it needs its own regression, not a rename
+# of the one above.
+grep -v '^| `ux-architect` | `capability` |' "$TMP/matrix-pristine.md" > "$MATRIX"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmxr1.json" 2>/dev/null
+[ $? = 1 ] && ok "a role missing from the 'Why a role exists' table blocks" \
+            || bad "a role missing from the 'Why a role exists' table blocks"
+assert_finding "$TMP/tdmxr1.json" role_rationale_missing \
+  "...as role_rationale_missing, naming the untested role" "ux-architect"
+restore_matrix
+
+# The two backtick-role tables in the same file (activation matrix, "Why a role exists") must not
+# bleed into each other's parsing — a rationale row like `| \`ceo\` | \`authority\` | ... |` matches
+# the same leading shape the activation-matrix parser looks for. Proven by confirming a pristine
+# file (both tables present) reports neither table's rows as bogus/duplicated in the other's check.
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdmxclean.json" 2>/dev/null
+grep -q "matrix_role_unknown" "$TMP/tdmxclean.json" \
+  && bad "the rationale table's rows are not misread as activation-matrix rows" \
+       "$(grep -m1 matrix_role_unknown "$TMP/tdmxclean.json")" \
+  || ok "the rationale table's rows are not misread as activation-matrix rows"
+grep -q "matrix_role_duplicated" "$TMP/tdmxclean.json" \
+  && bad "...and are not misread as duplicate activation-matrix entries" \
+       "$(grep -m1 matrix_role_duplicated "$TMP/tdmxclean.json")" \
+  || ok "...and are not misread as duplicate activation-matrix entries"
 
 # DR5-002. The matrix decides activation; docs/02-team-roster.md is the template every project is
 # generated from. Nothing compared them, and they drifted for as long as the split had existed: the
@@ -1445,6 +1510,20 @@ plugrestore skills/team-protocol/SKILL.md
 ( cd "$PLUG" && node "$HERE/team-doctor.mjs" ) >/dev/null 2>&1
 [ $? = 0 ] && ok "the scratch plugin is coherent again once every seeded defect is reverted" \
             || bad "the scratch plugin is coherent again once every seeded defect is reverted"
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "decision rights"
+# --------------------------------------------------------------------------------------------
+DR="$HERE/../docs/03-decision-rights.md"
+[ -f "$DR" ] && ok "docs/03-decision-rights.md exists" || bad "docs/03-decision-rights.md exists"
+for DECISION in "Product opportunity" "Scope lock" "Architecture" "UX and design" "Ticket readiness" \
+  "Code acceptance" "Security / privacy exception" "Release readiness" "Incident command" "Durable learning"; do
+  grep -qF "$DECISION" "$DR" && ok "decision-rights names: $DECISION" || bad "decision-rights names: $DECISION"
+done
+grep -q "human gate" "$DR" \
+  && ok "...and marks the two decisions that stay human-only (scope-lock, release)" \
+  || bad "...and marks the two decisions that stay human-only (scope-lock, release)"
 
 echo
 # --------------------------------------------------------------------------------------------
@@ -1935,6 +2014,27 @@ assert_has "$TMP/err" "has not merged" "...and names the dependency that is hold
 drive "$D" DEP-001 ios-developer
 assert_exit 0 "...and is allowed the moment that dependency merges (qa, not done)" \
   bm "$D" move DEP-002 claimed --by android-developer
+
+# --- `claimed` is the moment two agents can race for the same ticket. The board's own transition
+# graph only refuses a ticket that is not `todo` in THIS process's view of the log; it cannot see a
+# second process claiming the same ticket in the same instant. A durable, ticket-keyed lease in
+# docs/team/runs.jsonl closes that race — proven here by seeding a lease as if another process
+# already holds it, independent of the board's own state machine (which would refuse a second
+# `claimed` anyway once the first succeeds, and so cannot tell these two refusal reasons apart).
+L=$(newboard bd-lease)
+bm "$L" add L-001 --title "Racy ticket" --owner ios-developer >/dev/null 2>&1
+node "$HERE/run-ledger.mjs" start --ledger "$L/docs/team/runs.jsonl" --run RUN-RIVAL --ticket L-001 \
+  --role android-developer --lease-seconds 900 >/dev/null
+assert_exit 1 "a claim on a ticket another run already leases is refused" \
+  bm "$L" move L-001 claimed --by ios-developer
+assert_has "$TMP/err" "already leased" "...and names the lease, not a board-state refusal"
+L2=$(newboard bd-lease-ok)
+bm "$L2" add L-002 --title "Uncontested ticket" --owner ios-developer >/dev/null 2>&1
+assert_exit 0 "...and an uncontested claim still succeeds and records its own lease" \
+  bm "$L2" move L-002 claimed --by ios-developer
+grep -q '"ticket":"L-002"' "$L2/docs/team/runs.jsonl" \
+  && ok "...with a durable start record a run-doctor sweep can find" \
+  || bad "...with a durable start record a run-doctor sweep can find"
 
 # --- a DONE nobody checked is not reviewable. verify-done.sh existed and its result was recorded
 # nowhere the board could gate on, so an unverified claim reached a reviewer by an agent's say-so.
@@ -4607,6 +4707,22 @@ grep -q "zero" "$HERE/../commands/app-dashboard.md" \
 [ -f "$CR/README.md" ] && ok "control-room/README.md exists" || bad "control-room/README.md exists"
 echo
 # --------------------------------------------------------------------------------------------
+# The five Revamp P0 trust controls are opt-in at the ship-gate layer (an existing, onboarded repo
+# must not be retroactively blocked by controls it never adopted) — but a FRESH project has no such
+# excuse. /app-init's bootstrap step must write a default .studio-policy.json turning them on,
+# or every new project silently ships with all five absent, which is the exact gap closed here.
+INIT="$HERE/../commands/app-init.md"
+grep -q '.studio-policy.json' "$INIT" && ok "/app-init bootstraps a default .studio-policy.json" \
+  || bad "/app-init bootstraps a default .studio-policy.json"
+for FLAG in requireDurableRuns requireApprovalBinding requireAuditAnchor requirePromptRegistry requireEvaluation; do
+  grep -q "\"$FLAG\": true" "$INIT" && ok "/app-init's default policy turns on $FLAG" \
+    || bad "/app-init's default policy turns on $FLAG"
+done
+grep -q '\[ -f .studio-policy.json \]' "$INIT" \
+  && ok "...and the bootstrap is idempotent — never overwrites an onboarded repo's existing policy" \
+  || bad "...and the bootstrap is idempotent — never overwrites an onboarded repo's existing policy"
+echo
+# --------------------------------------------------------------------------------------------
 # --------------------------------------------------------------------------------------------
 echo "revamp P0 trust primitives"
 RUNX="$TMP/revamp-runs"; mkdir -p "$RUNX"
@@ -4635,6 +4751,45 @@ APPROVAL="$TMP/revamp-approval"; mkdir -p "$APPROVAL"; printf '{"requireApproval
 printf '{"ticket":"APP-001","event":"approved","detail":{"commit":"abc"}}\n' > "$APPROVAL/events.jsonl"
 assert_exit 1 "approval-check rejects an approval missing bound evidence" node "$HERE/approval-check.mjs" --policy "$APPROVAL/.studio-policy.json" --log "$APPROVAL/events.jsonl"
 
+# --- `board.mjs move ... approved --bind` is the only place these fields are ever computed rather
+# than hand-entered, and `approval-check.mjs` is the only thing that ever reads them back — proven
+# together, end to end, on a real git repo and a real commit, not a fixture with a fake hash.
+# `cat-file -e` and `merge-base --is-ancestor` print NOTHING on success, so treating their output as a
+# truthy pass/fail (the bug here before this test existed) made a valid commit read as missing on
+# every call — a rule that could never pass is a rule that could never fail either.
+AB="$TMP/revamp-approval-bind"; mkdir -p "$AB/docs"
+( cd "$AB" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && printf 'context\n' > context.json && printf 'evidence\n' > evidence.txt \
+  && git add -A && git commit -q -m seed && git commit -q --allow-empty -m "ticket change" )
+bm "$AB" add AB-001 --title "Bound approval" --owner ios-developer >/dev/null 2>&1
+drive_to_review() {
+  bm "$1" move "$2" claimed --by ios-developer >/dev/null 2>&1
+  bm "$1" move "$2" done_reported --by ios-developer >/dev/null 2>&1
+  bm "$1" move "$2" verified --by tech-manager >/dev/null 2>&1
+  bm "$1" move "$2" review_requested --by ios-developer >/dev/null 2>&1
+  bm "$1" move "$2" started --by code-reviewer >/dev/null 2>&1
+}
+drive_to_review "$AB" AB-001
+assert_exit 1 "approved --bind refuses without --evidence" \
+  bm "$AB" move AB-001 approved --by code-reviewer --bind --context context.json
+assert_exit 0 "...and succeeds once evidence and context both exist, computing commit + diff_hash from git" \
+  bm "$AB" move AB-001 approved --by code-reviewer --bind --evidence evidence.txt --context context.json
+( cd "$AB" && printf '{"requireApprovalBinding":true}\n' > .studio-policy.json )
+HEAD_SHA=$(cd "$AB" && git rev-parse HEAD)
+assert_exit 0 "...and approval-check reads that binding back as CLEAR against real git state" \
+  bash -c "cd '$AB' && node '$HERE/approval-check.mjs' --log docs/31-board-events.jsonl --policy .studio-policy.json --head $HEAD_SHA"
+( cd "$AB" && printf 'tampered\n' >> evidence.txt && git commit -q -a --amend -m "amend disguised as review" )
+NEW_HEAD=$(cd "$AB" && git rev-parse HEAD)
+assert_exit 1 "...and an amended commit invalidates the binding instead of riding along under it" \
+  bash -c "cd '$AB' && node '$HERE/approval-check.mjs' --log docs/31-board-events.jsonl --policy .studio-policy.json --head $NEW_HEAD"
+grep -q 'approved --by code-reviewer \\' "$HERE/../agents/code-reviewer.md" \
+  && grep -q -- '--bind' "$HERE/../agents/code-reviewer.md" \
+  && ok "code-reviewer.md documents --bind as the approval path when binding is required" \
+  || bad "code-reviewer.md documents --bind as the approval path when binding is required"
+grep -q 'approval-check.mjs' "$HERE/../agents/tech-manager.md" \
+  && ok "tech-manager.md's merge gate re-checks approval binding before git merge, not just at ship-gate" \
+  || bad "tech-manager.md's merge gate re-checks approval binding before git merge, not just at ship-gate"
+
 MEMORY="$TMP/revamp-memory"; mkdir -p "$MEMORY"
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
   --content "Keep acceptance criteria explicit" --source docs/2026-07-29-revamp-master-plan.md --confidence 0.9 > "$MEMORY/proposal.json"
@@ -4642,7 +4797,69 @@ MEMORY_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.a
 assert_exit 0 "memory-curator verifies chained proposals" node "$HERE/memory-curator.mjs" verify --ledger "$MEMORY/memory.jsonl"
 assert_exit 1 "memory-curator refuses review of an unknown candidate" node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id MEM-NOT-FOUND --reason promote --content rationale --by reviewer
 node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$MEMORY_ID" --reason promote --content rationale --by reviewer >/dev/null
-assert_exit 0 "prompt-registry accepts the versioned empty registry" node "$HERE/prompt-registry.mjs" --registry "$HERE/../docs/team/prompt-registry.json"
+
+# --- `retrieve` is the missing read path: propose/review write, but nothing read the six scopes
+# back — a memory vocabulary nobody queries is a write-only log, not governance. Live means
+# promoted, not expired as of --now, and not superseded/contradicted by a later PROMOTED memory.
+node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
+  --content "Expires before --now" --source spec.md --confidence 0.5 --expires 2020-01-01T00:00:00Z > "$MEMORY/expiring.json"
+EXPIRING_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/expiring.json")
+node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$EXPIRING_ID" --reason promote --content rationale --by reviewer >/dev/null
+node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class platform \
+  --content "Never reviewed" --source spec.md --confidence 0.4 >/dev/null
+node "$HERE/memory-curator.mjs" retrieve --ledger "$MEMORY/memory.jsonl" --now 2026-08-01T00:00:00Z > "$MEMORY/retrieved.json"
+grep -q "$MEMORY_ID" "$MEMORY/retrieved.json" \
+  && ok "retrieve returns a promoted, unexpired memory" \
+  || bad "retrieve returns a promoted, unexpired memory"
+grep -q "$EXPIRING_ID" "$MEMORY/retrieved.json" \
+  && bad "...and excludes one that expired before --now" "found $EXPIRING_ID in output" \
+  || ok "...and excludes one that expired before --now"
+grep -q "Never reviewed" "$MEMORY/retrieved.json" \
+  && bad "...and excludes one that was proposed but never reviewed" "found the unreviewed content" \
+  || ok "...and excludes one that was proposed but never reviewed"
+node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
+  --content "Superseding replacement" --source spec2.md --confidence 0.9 --supersedes "$MEMORY_ID" > "$MEMORY/replacement.json"
+REPLACEMENT_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/replacement.json")
+node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$REPLACEMENT_ID" --reason promote --content rationale --by reviewer >/dev/null
+node "$HERE/memory-curator.mjs" retrieve --ledger "$MEMORY/memory.jsonl" --now 2026-08-01T00:00:00Z --class project > "$MEMORY/retrieved2.json"
+grep -q '"memory_id":"'"$MEMORY_ID"'"' "$MEMORY/retrieved2.json" \
+  && bad "a memory superseded by a later-promoted replacement stops being served" "found the superseded $MEMORY_ID as its own record" \
+  || ok "a memory superseded by a later-promoted replacement stops being served"
+grep -q "$REPLACEMENT_ID" "$MEMORY/retrieved2.json" \
+  && ok "...and the replacement is served in its place" \
+  || bad "...and the replacement is served in its place"
+
+assert_exit 0 "prompt-registry accepts the shipped, populated registry" node "$HERE/prompt-registry.mjs" --registry "$HERE/../docs/team/prompt-registry.json"
+
+# --- `sync` is the only place a registry entry is ever written from real agent content — an empty
+# registry validates a shape nothing populated, which is scaffolding, not governance.
+PREG="$TMP/revamp-prompt-sync"; mkdir -p "$PREG/agents" "$PREG/docs/team"
+printf '# a\n' > "$PREG/agents/role-a.md"
+printf '# b\n' > "$PREG/agents/role-b.md"
+( cd "$PREG" && node "$HERE/prompt-registry.mjs" sync --now 2026-08-01 >/dev/null )
+node -e 'const r=require(process.argv[1]); if(r.entries.length!==2) process.exit(1); const a=r.entries.find(e=>e.id==="role-a"); if(a.version!=="1.0.0"||a.rollback_version!=="0.0.0"||!a.content_hash) process.exit(1)' "$PREG/docs/team/prompt-registry.json" \
+  && ok "sync seeds one entry per agent file, versioned from a real content hash" \
+  || bad "sync seeds one entry per agent file, versioned from a real content hash"
+printf '# a, edited\n' > "$PREG/agents/role-a.md"
+( cd "$PREG" && node "$HERE/prompt-registry.mjs" sync --now 2026-08-02 >/dev/null )
+node -e 'const r=require(process.argv[1]); const a=r.entries.find(e=>e.id==="role-a"); if(a.version!=="1.0.1"||a.rollback_version!=="1.0.0") process.exit(1)' "$PREG/docs/team/prompt-registry.json" \
+  && ok "...and re-syncing an edited agent file bumps its version, recording the old one as rollback" \
+  || bad "...and re-syncing an edited agent file bumps its version, recording the old one as rollback"
+
+# --- team-doctor reads the registry back: a role missing from a populated registry, or one whose
+# hash has drifted since its last sync, is a blocking finding — not silent staleness. Reuses $PLUG
+# (agents+commands+skills+knowledge, already set up above) rather than a fresh partial copy — a
+# scratch tree missing knowledge/ or docs/02-team-roster.md fails team-doctor for unrelated reasons.
+( cd "$PLUG" && node "$HERE/prompt-registry.mjs" sync --now 2026-08-01 >/dev/null )
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" ) >/dev/null 2>&1
+[ $? = 0 ] && ok "team-doctor is clean once every agent has a fresh registry entry" \
+            || bad "team-doctor is clean once every agent has a fresh registry entry"
+printf '\nstale edit\n' >> "$PLUG/agents/android-developer.md"
+( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdprompt-stale.json" 2>/dev/null
+assert_finding "$TMP/tdprompt-stale.json" prompt_registry_stale \
+  "an agent file edited without re-syncing the registry is a blocking finding" "android-developer"
+cp "$HERE/../agents/android-developer.md" "$PLUG/agents/android-developer.md"
+rm -f "$PLUG/docs/team/prompt-registry.json"
 assert_exit 0 "evaluation lab runs the checked-in baseline suite" node "$HERE/eval-lab.mjs" --manifest "$HERE/../eval/manifest.json"
 
 SCHED="$TMP/revamp-scheduler"; mkdir -p "$SCHED"
@@ -4669,17 +4886,166 @@ printf '%s\n' '{"schema":"capability-manifest/v1","root":".","roles":[{"role":"r
 cp "$HERE/../docs/team/risk-policy.json" "$DISPATCH/risk.json"
 assert_exit 0 "dispatch-preflight composes all spawn controls" node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 
+# --- audit-anchor, prompt-registry, and eval-lab used to be reachable only through ship-gate.sh at
+# release time — drift could sit for a whole sprint before anything noticed. Every spawn now composes
+# them too (still opt-in per .studio-policy.json), so this proves the composition catches drift at
+# the NEXT dispatch, not only at the release that happens to follow it.
+DISPATCH2="$TMP/revamp-dispatch-revamp"; mkdir -p "$DISPATCH2/docs/team" "$DISPATCH2/eval"
+cp "$DISPATCH/context.json" "$DISPATCH/schedule.json" "$DISPATCH/capabilities.json" "$DISPATCH/risk.json" "$DISPATCH2/"
+mkdir -p "$DISPATCH2/docs"; printf 'context\n' > "$DISPATCH2/docs/context.md"
+( cd "$DISPATCH2" && node "$BD" add DP-001 --title "x" --owner ios-developer >/dev/null 2>&1 )
+( cd "$DISPATCH2" && node "$HERE/audit-anchor.mjs" create --log docs/31-board-events.jsonl --out docs/team/audit-anchor.json >/dev/null )
+printf '{"schema":"prompt-registry/v1","entries":[]}\n' > "$DISPATCH2/docs/team/prompt-registry.json"
+printf '{"schema":"eval-manifest/v1","cases":[{"id":"trivial","command":["true"],"expect_exit":0}]}\n' > "$DISPATCH2/eval/manifest.json"
+printf '{"requireAuditAnchor":true,"requirePromptRegistry":true,"requireEvaluation":true}\n' > "$DISPATCH2/.studio-policy.json"
+assert_exit 0 "dispatch-preflight composes audit-anchor, prompt-registry and eval-lab when policy opts in" \
+  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH2" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+( cd "$DISPATCH2" && node "$BD" move DP-001 claimed --by ios-developer >/dev/null 2>&1 )
+assert_exit 1 "...and refuses the NEXT dispatch the moment the audit chain drifts, not only at ship time" \
+  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH2" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+DISPATCH3="$TMP/revamp-dispatch-noopt"; mkdir -p "$DISPATCH3/docs"
+cp "$DISPATCH/context.json" "$DISPATCH/schedule.json" "$DISPATCH/capabilities.json" "$DISPATCH/risk.json" "$DISPATCH3/"
+printf 'context\n' > "$DISPATCH3/docs/context.md"
+assert_exit 0 "...and a project with no .studio-policy.json pays nothing extra for controls it never opted into" \
+  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH3" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+
 node "$HERE/run-ledger.mjs" start --ledger "$RUNX/runs.jsonl" --run RUN-002 --ticket APP-002 --role ios-developer --now 2026-07-31T00:00:00Z --lease-seconds 60 >/dev/null
 assert_exit 0 "manager-failover holds while the primary lease is live" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:00:30Z
 assert_exit 0 "manager-failover recommends replacement after lease expiry" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:02:00Z
 
 assert_exit 0 "risk-router selects the critical route for payment changes" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json" --file Sources/Payment.swift --change billing
 assert_exit 1 "risk-router refuses missing route input" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json"
+
+# --- the ticket contract: risk is derived from risk-router (never hand-typed), and a ticket it
+# routes high/critical cannot reach review without at least one --invariant recorded at creation —
+# a field nobody reads is not a contract. Same risk-policy.json dispatch-preflight already uses.
+RISK=$(newboard bd-risk); mkdir -p "$RISK/docs/team"
+cp "$HERE/../docs/team/risk-policy.json" "$RISK/docs/team/risk-policy.json"
+drive_to_review_only() {
+  bm "$1" move "$2" claimed --by ios-developer >/dev/null 2>&1
+  bm "$1" move "$2" done_reported --by ios-developer >/dev/null 2>&1
+  bm "$1" move "$2" verified --by tech-manager >/dev/null 2>&1
+}
+bm "$RISK" add RK-001 --title "Billing refactor" --owner ios-developer --file sources/billing.swift --change billing >/dev/null 2>&1
+drive_to_review_only "$RISK" RK-001
+assert_exit 1 "a critical-risk ticket with no invariant is refused at review_requested" \
+  bm "$RISK" move RK-001 review_requested --by ios-developer
+assert_has "$TMP/err" "critical-risk" "...naming the risk tier, not a generic refusal"
+
+bm "$RISK" add RK-002 --title "Billing refactor, documented" --owner ios-developer --file sources/billing.swift --change billing \
+  --invariant "entitlement is never downgraded by stale local state" >/dev/null 2>&1
+drive_to_review_only "$RISK" RK-002
+assert_exit 0 "...and the identical risk ticket proceeds once an invariant is recorded" \
+  bm "$RISK" move RK-002 review_requested --by ios-developer
+
+bm "$RISK" add RK-003 --title "Copy tweak" --owner ios-developer >/dev/null 2>&1
+drive_to_review_only "$RISK" RK-003
+assert_exit 0 "...and a ticket with no --file (risk stays unknown) is unaffected by the gate" \
+  bm "$RISK" move RK-003 review_requested --by ios-developer
+
 INCIDENT="$TMP/revamp-incidents"; mkdir -p "$INCIDENT"
 node "$HERE/incident-ledger.mjs" open --ledger "$INCIDENT/incidents.jsonl" --severity sev2 --title outage --owner incident-commander --by tech-manager > "$INCIDENT/open.json"
 INCIDENT_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).incident_id)' "$INCIDENT/open.json")
 assert_exit 0 "incident-ledger verifies the operational record chain" node "$HERE/incident-ledger.mjs" verify --ledger "$INCIDENT/incidents.jsonl"
 node "$HERE/incident-ledger.mjs" resolve --ledger "$INCIDENT/incidents.jsonl" --id "$INCIDENT_ID" --detail "service restored" --evidence docs/evidence --by incident-commander >/dev/null
+
+# --- release-manager.md's staged-rollout section used to be prose a human read and judged by eye —
+# "hold at each step until the release health checks below are clean" checked nothing. Same
+# three-state contract as every other gate here: 0 clear, 1 hold, 2 cannot evaluate.
+assert_exit 0 "release-health clears a widen when both metrics are within threshold" \
+  node "$HERE/release-health.mjs" --crash-free-rate 0.998 --p0-count 0
+assert_exit 1 "...and holds when crash-free rate drops below the floor" \
+  node "$HERE/release-health.mjs" --crash-free-rate 0.98 --p0-count 0
+assert_has "$TMP/err" "below the floor" "...naming the metric that breached"
+assert_exit 1 "...and holds when a P0 is still open" \
+  node "$HERE/release-health.mjs" --crash-free-rate 0.998 --p0-count 1
+assert_exit 2 "...and is CANNOT EVALUATE when a metric is not supplied, never an implicit pass" \
+  node "$HERE/release-health.mjs" --crash-free-rate 0.998
+RHPOL="$TMP/release-health-policy"; mkdir -p "$RHPOL"
+printf '{"releaseHealth":{"minCrashFreeRate":0.999,"maxP0Count":0}}\n' > "$RHPOL/.studio-policy.json"
+assert_exit 1 "a project's own policy threshold overrides the default" \
+  node "$HERE/release-health.mjs" --crash-free-rate 0.998 --p0-count 0 --policy "$RHPOL/.studio-policy.json"
+
+# SHIP-P1-002 (external audit, 2026-08-01): `rate < "not-a-number"` and `p0 > "not-a-number"` both
+# coerce to NaN, and every comparison against NaN is false — so a malformed policy silently defeated
+# BOTH thresholds at once. Reproduced: this exact policy returned RELEASE HEALTH: CLEAR for a 0%
+# crash-free rate and 99 open P0s, exit 0. A malformed threshold must be CANNOT EVALUATE, same as a
+# malformed CLI argument.
+RHBAD="$TMP/release-health-bad-policy"; mkdir -p "$RHBAD"
+printf '{"releaseHealth":{"minCrashFreeRate":"not-a-number","maxP0Count":"not-a-number"}}\n' > "$RHBAD/.studio-policy.json"
+assert_exit 2 "a non-numeric policy threshold is CANNOT EVALUATE, not a silent pass" \
+  node "$HERE/release-health.mjs" --crash-free-rate 0 --p0-count 99 --policy "$RHBAD/.studio-policy.json"
+assert_has "$TMP/err" "must be a number between 0 and 1" "...naming the malformed field"
+
+# --- incident-commander is a conditional role, off between incidents — the matrix, the "why a role
+# exists" table, and the roster template must all say so, not just the agent file.
+grep -q '`incident-commander`' "$HERE/../skills/role-activation/SKILL.md" \
+  && ok "incident-commander is in the activation matrix" \
+  || bad "incident-commander is in the activation matrix"
+grep -q 'incident-commander.*conditional\|conditional.*incident-commander' "$HERE/../docs/02-team-roster.md" \
+  && ok "...and the roster template lists it as conditional, not active" \
+  || bad "...and the roster template lists it as conditional, not active"
+
+# --- incident-commander activates on an incident-ledger.mjs record — a role that only ever exists
+# on paper, with nothing in the actual release/post-release path ever opening that record, is a
+# conditional role no dispatch would ever condition on.
+grep -q 'incident-ledger.mjs. open' "$HERE/../agents/release-manager.md" \
+  && ok "release-manager.md opens the incident-ledger record that activates incident-commander" \
+  || bad "release-manager.md opens the incident-ledger record that activates incident-commander"
+grep -q 'incident-commander' "$HERE/../agents/release-manager.md" \
+  && ok "...and names incident-commander as who the incident hands to" \
+  || bad "...and names incident-commander as who the incident hands to"
+
+# --- publishing and preparing-to-publish are different actions with different actors. The studio
+# never executes a store upload/submit command, confirmed or not — the founder does. Proven by the
+# ABSENCE of the actual execution commands, not just the presence of a warning above them, since a
+# warning next to a command that still runs is exactly the failure this closes.
+RM="$HERE/../agents/release-manager.md"
+grep -q 'You never submit it' "$RM" \
+  && ok "release-manager.md states the boundary: prepare, never submit" \
+  || bad "release-manager.md states the boundary: prepare, never submit"
+grep -q 'xcrun altool --upload-app' "$RM" \
+  && bad "release-manager.md no longer instructs an actual iOS upload command" "found xcrun altool --upload-app" \
+  || ok "release-manager.md no longer instructs an actual iOS upload command"
+grep -q 'fastlane supply --aab' "$RM" \
+  && bad "release-manager.md no longer instructs an actual Android upload command" "found a runnable fastlane supply --aab invocation" \
+  || ok "release-manager.md no longer instructs an actual Android upload command"
+grep -q 'Submission checklist' "$RM" \
+  && ok "...and produces a founder-facing submission checklist instead" \
+  || bad "...and produces a founder-facing submission checklist instead"
+grep -q 'Confirm upload' "$HERE/../commands/app-ship.md" \
+  && bad "/app-ship no longer asks a confirm-then-upload question" "found the old 'Confirm upload' prompt" \
+  || ok "/app-ship no longer asks a confirm-then-upload question"
+grep -q 'Never upload or submit to a store' "$HERE/../commands/app-ship.md" \
+  && ok "...and its Safety section states the boundary explicitly" \
+  || bad "...and its Safety section states the boundary explicitly"
+grep -q 'founder alone executes the actual store submission' "$HERE/../docs/03-decision-rights.md" \
+  && ok "decision-rights.md's Release readiness row reflects the same boundary" \
+  || bad "decision-rights.md's Release readiness row reflects the same boundary"
+
+# --- the control room surfaces the founder's submission checklist as read-only progress, never as
+# a button that could execute a store submission. Proven three ways: the reader exists and is
+# shared (not a second parser), the inbox item is wired in state.mjs, and its action name is
+# deliberately absent from the CLI-action whitelist so Inbox.tsx cannot render it as runnable.
+PROJECT_LIB="$HERE/lib/project.mjs"
+grep -q 'function readReleaseChecklist' "$PROJECT_LIB" \
+  && ok "scripts/lib/project.mjs has one shared reader for the release submission checklist" \
+  || bad "scripts/lib/project.mjs has one shared reader for the release submission checklist"
+grep -q 'readReleaseChecklist' "$HERE/../control-room/state.mjs" \
+  && ok "control-room/state.mjs reads the release checklist through that shared reader" \
+  || bad "control-room/state.mjs reads the release checklist through that shared reader"
+grep -q "kind: 'submission_ready'" "$HERE/../control-room/state.mjs" \
+  && ok "...and surfaces it as a submission_ready Founder Inbox item" \
+  || bad "...and surfaces it as a submission_ready Founder Inbox item"
+if grep -q "name: 'submission_checklist'" "$HERE/lib/actions.mjs" 2>/dev/null; then
+  bad "the submission_ready item's action name stays out of the CLI-action whitelist" \
+    "found 'submission_checklist' registered in scripts/lib/actions.mjs — this would let the control room execute a store submission"
+else
+  ok "the submission_ready item's action name stays out of the CLI-action whitelist"
+fi
+grep -q '^## Control room$' "$RM" \
+  && ok "release-manager.md documents how the control room reads its checklist" \
+  || bad "release-manager.md documents how the control room reads its checklist"
 
 echo "no conflict markers"
 # --------------------------------------------------------------------------------------------
@@ -4705,6 +5071,31 @@ assert_exit 1 "version consistency blocks a mismatched iOS release version" \
 printf '<key>CFBundleShortVersionString</key>\n<string>1.2.3</string>\n' > "$VC/ios/Info.plist"
 assert_exit 0 "version consistency accepts aligned release metadata" \
   node "$HERE/version-consistency-check.mjs" "$VC"
+
+# SHIP-P0-006 (external audit, 2026-08-01): `release-manager.md`'s own required release-note format
+# is a `## vX.Y.Z — YYYY-MM-DD` heading, never the `version: X.Y.Z` prose this checker recognized —
+# so a correctly-formatted release note never matched and the checker silently never ran on it.
+# Reproduced: `## v1.2.3` with an iOS manifest at 9.9.9 returned CLEAR. The heading form is now
+# recognized directly, and the LAST heading wins when a project has shipped more than one release.
+VCH="$TMP/version-contract-heading"; mkdir -p "$VCH/docs" "$VCH/ios"
+printf '## v1.0.0 — 2026-01-01\n\nfirst release\n\n## v1.2.3 — 2026-08-01\n\nstuff.\n' > "$VCH/docs/60-releases.md"
+printf '<key>CFBundleShortVersionString</key>\n<string>9.9.9</string>\n' > "$VCH/ios/Info.plist"
+assert_exit 1 "version consistency also recognizes the '## vX.Y.Z' release-note heading" \
+  node "$HERE/version-consistency-check.mjs" "$VCH"
+assert_has "$TMP/out" "canonical 1.2.3" "...and takes the LAST heading, not the first, as canonical"
+printf '<key>CFBundleShortVersionString</key>\n<string>1.2.3</string>\n' > "$VCH/ios/Info.plist"
+assert_exit 0 "...and clears once the manifest matches the last heading's version" \
+  node "$HERE/version-consistency-check.mjs" "$VCH"
+
+# And through the real ship gate: the guard deciding whether to even invoke the checker used to
+# match only the same prose, so a project using only the heading form never triggered the checker
+# at all, checker fix notwithstanding.
+SHIP_VER="$TMP/ship-version"; cp -R "$FIX/ship-clear" "$SHIP_VER"
+printf '## v9.9.9 — 2026-08-01\n\nstuff.\n' > "$SHIP_VER/docs/60-releases.md"
+mkdir -p "$SHIP_VER/ios"
+printf '<key>CFBundleShortVersionString</key>\n<string>1.0.0</string>\n' > "$SHIP_VER/ios/Info.plist"
+assert_exit 1 "ship-gate blocks a version mismatch declared only via the '## vX.Y.Z' heading" \
+  sh "$HERE/ship-gate.sh" "$SHIP_VER"
 
 printf '{"owner":"cto","reviewedOn":"2026-07-31","requiredFiles":["docs/60-releases.md"]}\n' > "$VC/.studio-policy.json"
 assert_exit 0 "policy checker accepts owned, reviewed policy evidence" \

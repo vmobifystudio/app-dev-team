@@ -446,6 +446,18 @@ function validateTransition(tickets, candidate) {
           legal: state.verifyPending ? ['verified', 'rejected', 'blocked'] : ['done_reported', 'blocked'],
         };
       }
+      // A ticket risk-router routed `high`/`critical` at creation carries a real blast radius —
+      // billing, security, a destructive migration. `--invariant` at `board.mjs add` is where that
+      // gets named; a high-risk ticket that reaches review with none recorded is a field nobody
+      // read, not a contract. Low/medium/unknown risk (no --file at creation, or risk-router not
+      // opted into) is unaffected — this is teeth for the risk tier that already asked for scrutiny.
+      if (['high', 'critical'].includes(state.meta?.risk) && !(state.meta?.invariants?.length > 0)) {
+        return {
+          ok: false,
+          reason: `${id} is ${state.meta.risk}-risk and was created with no --invariant — a reviewer has nothing to check the change against`,
+          legal: legal.filter((e) => e !== 'review_requested'),
+        };
+      }
       return { ok: true };
     case 'approved':
       if (by && by === state.owner) {

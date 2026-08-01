@@ -13,7 +13,11 @@ const role = manifest.roles.find((entry) => entry.role === flags.role); if (!rol
 if (!flags.operation || !role.operations?.includes(flags.operation)) die(1, `${flags.role} is not allowed operation ${flags.operation || '(missing)'}`);
 if (flags.path) {
   const base = resolve(dirname(manifestPath), String(manifest.root || '.'));
-  const target = relative(base, resolve(String(flags.path)));
+  // Resolved against the manifest's own root, not the caller's process cwd — a relative --path is
+  // meaningless otherwise: dispatch-preflight always passes an absolute path (resolve() then leaves
+  // it untouched), but a human or agent invoking this directly types a path relative to the project
+  // the manifest governs, which is not necessarily the shell's current directory.
+  const target = relative(base, resolve(base, String(flags.path)));
   if (role.denied_paths?.some((prefix) => target === prefix || target.startsWith(`${prefix}/`))) die(1, `${flags.role} is denied path ${target}`);
   if (role.allowed_paths?.length && !role.allowed_paths.some((prefix) => target === prefix || target.startsWith(`${prefix}/`))) die(1, `${flags.role} is outside allowed paths: ${target}`);
 }

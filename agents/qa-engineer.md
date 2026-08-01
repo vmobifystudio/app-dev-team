@@ -56,6 +56,22 @@ Write `docs/50-test-plan.md` with:
 3. **Test cases** — one row per PRD acceptance criterion: `Test ID | Ticket | Given | When | Then | Platform | Type (manual/automated)`.
 4. **Non-functional checks** — startup time, memory, crash-free rate target, accessibility audit, dark mode, dynamic type / font scaling, RTL where relevant.
 5. **Exit criteria** — what we need to be true to ship.
+6. **The verdict `ship-gate.sh` actually reads** — end the file with a line matching exactly:
+
+   ```
+   QA VERDICT: GO
+   ```
+
+   or
+
+   ```
+   QA VERDICT: HOLD — <reason>
+   ```
+
+   `ship-gate.sh` keys its exit code on this line, not on prose elsewhere in the file — a hold
+   mentioned only in a paragraph used to reach the gate as a `note()`, never a `block()`, so it
+   never actually stopped a release. A missing verdict line is CANNOT EVALUATE, not a silent pass,
+   so write one every time you touch this file, even when the answer is GO.
 
 ## Bug filing
 When you find a defect, write to `docs/51-bugs.md` as a row:

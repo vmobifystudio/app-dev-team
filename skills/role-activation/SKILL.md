@@ -42,6 +42,66 @@ Tier for brownfield: derive from the app's size and shape (module count, subscri
 present), and say which signal decided it. **When detection is ambiguous, ask the user one
 question — do not guess.** A wrong product type turns off the wrong specialists.
 
+## Why a role exists
+
+The matrix below decides *when* a role activates. It does not decide whether the role should exist
+at all — that is a separate, cheaper question, and skipping it is how a role catalogue grows past
+what any product actually needs. Once a role clears this bar, `docs/03-decision-rights.md` is where
+its actual authority — propose, challenge, decide, execute, record evidence — is written down; this
+table only answers whether the role should exist, not what it may do once it does.
+
+**A role is justified only if it needs at least one of:**
+
+| Tag | Meaning |
+|---|---|
+| `authority` | independent decision authority — it decides something no other role can decide for it |
+| `context` | an independent context that must not inherit another role's framing (an evidence-gatherer that reasoned from the thing it's evidence-gathering *for* would confirm its own hypothesis) |
+| `capability` | a materially different capability or security boundary (a different platform, a different attack surface, a different tool) |
+| `duties` | accountability that must remain separate for governance reasons (the author cannot be the sole reviewer, the actor cannot be the sole auditor) |
+
+Everything else is a skill, an operating mode, a checklist, or a gate inside an existing role —
+not a new agent file. This is the test Phase 2 of the studio's own revamp already applied once,
+cutting a ~40-role plan to today's 29; the table below re-applies it to the roster as it stands now.
+
+| Role | Tag | Why |
+|---|---|---|
+| `ceo` | `authority` | final scope/vision authority no other role holds |
+| `cpo` | `authority` | product-decision authority distinct from engineering |
+| `cto` | `authority` | technical-strategy authority distinct from product |
+| `chief-of-staff` | `context` | one founder-facing decision-brief context, deliberately not the CEO's own strategic framing — its own description says it "is only worth running if it removes more decisions than it creates" |
+| `product-manager` | `capability` | day-to-day ticket-clarification capability below CPO's strategic layer, so CPO is not the bottleneck for every clarification |
+| `product-researcher` | `context` | evidence-gathering that must not inherit the CPO's framing, or it would confirm its own hypothesis rather than test it |
+| `tech-lead` | `authority` | technical-design authority distinct from CTO's strategic layer |
+| `tech-manager` | `authority` | execution/scheduling authority — the only role that merges |
+| `ux-architect` | `capability` | information-architecture/flow capability distinct from screen composition |
+| `product-designer` | `capability` | visual/screen-composition capability, deliberately not self-approving its own fidelity |
+| `ios-developer` | `capability` | Swift/SwiftUI platform capability |
+| `android-developer` | `capability` | Kotlin/Compose platform capability |
+| `backend-developer` | `capability` | server/API/infra-as-code capability |
+| `web-developer` | `capability` | browser-platform capability — the IC that makes product type `web-app` staffed |
+| `monetization-engineer` | `capability` | billing/ads correctness is a distinct capability and a distinct financial-blast-radius boundary from general implementation |
+| `aso-specialist` | `capability` | store-listing/keyword capability, distinct from product or engineering |
+| `data-analyst` | `capability` | analytics-schema and consent-gate capability |
+| `devops-engineer` | `capability` | repo plumbing, CI, signing — a distinct operational boundary |
+| `product-validator` | `duties` | must sit outside the cpo/cto/tech-manager chain by construction — it cannot validate a PRD it had a hand in writing |
+| `qa-engineer` | `duties` | acceptance verification independent of the implementer |
+| `test-automation-engineer` | `capability` | harness/infra-building capability distinct from `qa-engineer`'s exploratory pass |
+| `code-reviewer` | `duties` | the implementer cannot be its own sole reviewer |
+| `security-reviewer` | `capability` | a distinct attack-surface/compliance boundary from functional review — "never off, handles user data" |
+| `privacy-reviewer` | `capability` | a distinct evidence set from security (data inventory, consent, retention, regional compliance) |
+| `reliability-engineer` | `capability` | offline/retry/recovery is broad enough to need its own pass — "a checklist item inside code review is where it has always been skipped" |
+| `red-team-agent` | `context` | adversarial framing does not compose with a reviewer's frame — its own description states this explicitly |
+| `verification-engineer` | `duties` | certifies a claim nobody executed — independent of whoever made the claim |
+| `release-auditor` | `duties` | the actor performing an irreversible release action must not be its sole evaluator |
+| `release-manager` | `authority` | executes the one irreversible action (the actual upload) |
+| `incident-commander` | `authority` | independent coordination authority during a live sev1/sev2 — deliberately not `release-manager` (may be the cause) or `tech-manager` (running an unrelated sprint) |
+
+**Honest finding, not a rubber stamp**: every current role clears the bar above at least once. That
+is not surprising — this roster already survived one real cut (the studio's own Phase 2 revamp
+narrowed a ~40-role plan to these 29 using this same test), so a second pass finding nothing to cut
+is the expected outcome of a test that already ran once, not evidence the test is toothless. Re-run
+this table whenever a new role is proposed, and expect it to sometimes say no.
+
 ## The activation matrix
 
 `on` = active · `?` = conditional, on its named trigger · `—` = off, for the named reason.
@@ -78,6 +138,7 @@ question — do not guess.** A wrong product type turns off the wrong specialist
 | `verification-engineer` | on | on | on | on | on | — | on | **never off on a staffed type.** It certifies constants and proves guard rules can fail — every product has both |
 | `release-auditor` | on | on | on | on | on | — | on | **never off on a staffed type, never tier-gated.** Separation of duties: `release-manager` performs an irreversible action and must not be its sole evaluator |
 | `release-manager` | on | on | on | on | on | — | on | the channel differs (store · deploy · package registry), the role does not |
+| `incident-commander` | ? | ? | ? | ? | ? | — | ? | `?` `incident-ledger.mjs` has an open `sev1`/`sev2` record — never active between incidents; a role that ran all sprint for no reason is the opposite of what a conditional role is for |
 
 The `—` down the `cli` column is not a judgement about those roles. That product type is unstaffed,
 so **nothing** activates on it and no team is assembled at all.

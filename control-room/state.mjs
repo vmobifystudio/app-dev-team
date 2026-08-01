@@ -54,6 +54,7 @@ import {
   readRoster,
   readBugsFile,
   readRounds,
+  readReleaseChecklist,
 } from '../scripts/lib/project.mjs';
 import { ACTIONS, actionForms } from '../scripts/lib/actions.mjs';
 
@@ -715,7 +716,40 @@ function founderInbox(model) {
     }
   }
 
+  // 4. A prepared release still has founder action items outstanding. `release-manager` never
+  // uploads or submits to a store at any track (`docs/03-decision-rights.md`) — the checklist it
+  // writes in `docs/60-releases.md` is the founder's own to-do list. This is read-only: `action.name`
+  // deliberately has no entry in `scripts/lib/actions.mjs`'s ACTIONS, so `Inbox.tsx` renders it as
+  // information ("actions are disabled on this control room") rather than offering a button that
+  // would need to execute a submission this studio must never automate.
+  const releases = model.releases;
+  const releaseItems = [];
+  if (releases.ok && releases.total > 0 && releases.done < releases.total) {
+    releaseItems.push({
+      kind: 'submission_ready',
+      id: releases.version,
+      title: `${releases.version} — ${releases.done}/${releases.total} submission steps done`,
+      owner: 'founder',
+      since: 'inferred',
+      context: releases.items
+        .filter((i) => !i.done)
+        .map((i) => i.text)
+        .join('; '),
+      recommendation: null,
+      recommendationNote: 'these are founder-only actions — release-manager assembles the build, the founder submits it.',
+      action: { name: 'submission_checklist', prefill: {} },
+    });
+  }
+
   const sections = [
+    section('release', 'Release readiness', {
+      unavailable: releases.ok ? '' : `${releases.note} — release readiness is unknown, not empty`,
+      note: releases.ok ? releases.note : '',
+      swept: releases.ok ? `${REL.releases}${releases.version ? ` §${releases.version}` : ''}` : 'nothing',
+      clearNote: 'no prepared release has outstanding founder action items',
+      items: releaseItems,
+      data: releases.ok && releases.total ? { version: releases.version, done: releases.done, total: releases.total } : null,
+    }),
     section('decisions', 'Decisions required', {
       // EITHER input missing makes this verdict unavailable, not just both.
       //
@@ -758,9 +792,9 @@ function founderInbox(model) {
     id: 'inbox',
     title: 'Founder Inbox',
     status: rollUp(sections),
-    // The count a founder actually reads. Derived from the same list, so the badge cannot disagree
+    // The count a founder actually reads. Derived from the same lists, so the badge cannot disagree
     // with the page under it.
-    count: items.length,
+    count: items.length + releaseItems.length,
     sections,
   };
 }
@@ -797,6 +831,7 @@ function assembleStateRaw(root, { actions = true } = {}) {
   const roster = readRoster(root);
   const bugs = readBugsFile(root);
   const rounds = readRounds(root);
+  const releases = readReleaseChecklist(root);
 
   const model = {
     rows,
@@ -807,6 +842,7 @@ function assembleStateRaw(root, { actions = true } = {}) {
     roster,
     bugs,
     rounds,
+    releases,
     // If neither input produced a ticket, every board-derived section is CANNOT EVALUATE — not clear.
     unavailableNote: rows.length
       ? ''
@@ -829,6 +865,7 @@ function assembleStateRaw(root, { actions = true } = {}) {
       { id: 'roster', path: REL.roster, ok: roster.ok, note: roster.note },
       { id: 'bugs', path: REL.bugs, ok: bugs.ok, note: bugs.note },
       { id: 'rounds', path: REL.rounds, ok: rounds.ok, note: rounds.note },
+      { id: 'releases', path: REL.releases, ok: releases.ok, note: releases.note },
     ],
     // Tamper evidence on the board log. A rewritten `approved` is the cheapest way to bypass a
     // failed gate, and a control room that showed the state without saying whether the log still

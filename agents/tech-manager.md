@@ -92,6 +92,14 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add APP-001 \
   --acceptance "Given the store, When I submit text, Then it persists" --by tech-manager
 ```
 
+**If the ticket touches a named file, add `--file <path>`** (and `--change <kind>`, e.g. `billing`,
+`migration`, `auth`, if the title doesn't already say it). Risk is derived from the project's risk
+policy via `risk-router.mjs` — never hand-typed — and a ticket routed `high`/`critical` **cannot
+reach `review_requested`** without at least one `--invariant` recorded here at creation (repeatable:
+separate several with `;`). A ticket with no `--file` is unaffected; risk stays unknown rather than
+defaulting to safe. `--rollback <note>` records the recovery path for anything that isn't trivially
+reversible — optional, but read it back before `/app-ship` on anything that touches stored data.
+
 ```
 ID: APP-NNN
 Feature: F-NNN (the PRD feature this implements)
@@ -244,6 +252,21 @@ promotes to `main` via a release branch, while a new single-app project usually 
 not recoverable by a later fix.
 
 1. Trigger: `code-reviewer` returns `APPROVED: APP-NNN` for branch `feat/APP-NNN-...`.
+1a. **If the project's `.studio-policy.json` sets `requireApprovalBinding`, verify the approval still
+   binds to the exact commit about to merge** — a rebase, an amend, or a new commit pushed to the
+   branch after `code-reviewer` approved silently invalidates an unpinned approval otherwise, and
+   nothing else in the loop would notice before release:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/approval-check.mjs" --log docs/31-board-events.jsonl \
+     --policy .studio-policy.json --head "$(git rev-parse HEAD)"
+   ```
+
+   `NOT REQUIRED` → binding is off for this project; proceed. `CLEAR` → proceed. Exit `1` → **stop;
+   run no git command.** The approval no longer names what is about to merge. Ask `code-reviewer` to
+   re-approve against the current commit with `board.mjs move APP-NNN approved --by code-reviewer
+   --bind --evidence <path> --context <path>` — never merge on the strength of a stale approval.
+
 2. **The gate runs first, before any git command** — it is not the bookkeeping that follows a
    merge. Run it and read its exit code:
 
