@@ -54,6 +54,16 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
    convention (Conventional Commits *or* `[Module]` style — pick one and state it), PR rules,
    squash-vs-merge policy, and the release/tag process from `git-workflow.md`.
 
+   **Squash-merge is incompatible with `requireApprovalBinding`** (dry run 3, tap-counter,
+   2026-08-02, DR-TC-P0-003). `board.mjs move ... approved --bind` records the reviewed commit's
+   SHA; `approval-check.mjs` proves it is still reachable with `git merge-base --is-ancestor`.
+   A squash merge writes a brand-new commit and the original reviewed SHA is never an ancestor of
+   it — the exact commit that was approved disappears from history, so the check fails by design,
+   not by bug. If `.studio-policy.json` has `requireApprovalBinding: true`, choose `--no-ff` merges
+   (this repo's own tech-manager only ever merges this way, for the same reason) or fast-forward.
+   If the project genuinely needs squash merges, say so explicitly in `docs/23-git-strategy.md` and
+   leave `requireApprovalBinding` off — do not silently pick a strategy the plugin cannot verify.
+
    **It MUST contain this line, on its own, spelled exactly like this:**
 
    ```

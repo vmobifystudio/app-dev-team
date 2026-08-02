@@ -64,6 +64,32 @@ import {
 const DEFAULT_LOG = 'docs/31-board-events.jsonl';
 const DEFAULT_BOARD = 'docs/31-board.md';
 
+/**
+ * Dry run 3 (tap-counter, 2026-08-02): `docs/31-board-events.jsonl` is operational state, not
+ * source — it is never git-tracked. `git worktree add` only populates a new worktree from what
+ * git tracks, so an agent operating with `cwd` inside `.agent-wt/<TICKET>` (this repo's own
+ * `agent-isolation` convention) who runs `board.mjs` with no explicit `--log`/`--board` resolved
+ * those defaults against `process.cwd()` — a SEPARATE, EMPTY ledger inside the worktree, not the
+ * project's real one. Two isolated agents can each believe they hold the single source of truth.
+ * Reproduced directly: a `code-reviewer` spawn operating inside a worktree found its own ledger
+ * held a strict subset of the real one, purely because of the order commands happened to run in —
+ * luck, not a guarantee.
+ *
+ * `git rev-parse --git-common-dir` resolves to the ORIGINAL `.git` directory in every case,
+ * including from inside a linked worktree (git follows the `gitdir:` pointer file back to it) —
+ * so its parent is the one project root regardless of which worktree asked. Only the DEFAULT path
+ * uses this: an operator who explicitly passes `--log`/`--board` is making a deliberate choice and
+ * that still resolves against cwd, unchanged.
+ */
+function projectRoot() {
+  try {
+    const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
+    return dirname(common);
+  } catch {
+    return process.cwd();
+  }
+}
+
 const die = (code, message) => {
   process.stderr.write(`board: ${message}\n`);
   process.exit(code);
@@ -89,7 +115,7 @@ function resolveId(tickets, id) {
 const VALUE_FLAGS = new Set([
   'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
-  'invariant', 'rollback', 'file', 'change',
+  'invariant', 'rollback', 'file', 'change', 'commit',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
@@ -368,11 +394,25 @@ function claimLease(ticket, flags, paths) {
  * `approval-check.mjs` recomputes them to verify — this is the one place they are ever hand-entered.
  * `--evidence` and `--context` point at whatever file the reviewer actually used (a verify-done
  * transcript, a context-manifest.json); their content is hashed, not trusted by name.
+ *
+ * Dry run 3 (tap-counter, 2026-08-02): with no `--commit`, this reads `HEAD` from `process.cwd()`
+ * — correct when invoked from inside the reviewed ticket's own worktree, silently wrong when
+ * invoked from the project root instead (binds whatever `main` happens to be, not the reviewed
+ * branch). `--log`/`--board` now resolve to the project root by default regardless of `cwd` (see
+ * `projectRoot()`), which makes running from the project root the natural thing to do — so the
+ * commit can no longer be assumed from `cwd`. `--commit <sha>` makes it explicit instead of
+ * ambient; omitting it keeps the old cwd-relative behavior for a caller that really is inside the
+ * right worktree.
  */
 function bindApprovalEvidence(flags) {
   let commit;
-  try { commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); }
-  catch { return { ok: false, code: 2, reason: 'cannot resolve HEAD — is this a git repository?' }; }
+  if (typeof flags.commit === 'string' && flags.commit) {
+    try { commit = execFileSync('git', ['rev-parse', '--verify', `${flags.commit}^{commit}`], { encoding: 'utf8' }).trim(); }
+    catch { return { ok: false, code: 2, reason: `--commit ${flags.commit} does not resolve to a real commit` }; }
+  } else {
+    try { commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); }
+    catch { return { ok: false, code: 2, reason: 'cannot resolve HEAD — is this a git repository, and if not run from inside the reviewed worktree, pass --commit <sha>?' }; }
+  }
   let diff;
   try { diff = execFileSync('git', ['diff', `${commit}^`, commit, '--binary'], { encoding: 'utf8' }); }
   catch { return { ok: false, code: 2, reason: `cannot diff ${commit}^..${commit} — does HEAD have a parent commit?` }; }
@@ -760,8 +800,8 @@ function main() {
   const { flags, positional } = parseArgs(process.argv.slice(2));
   const [command, ...rest] = positional;
   const paths = {
-    log: resolve(process.cwd(), typeof flags.log === 'string' ? flags.log : DEFAULT_LOG),
-    board: resolve(process.cwd(), typeof flags.board === 'string' ? flags.board : DEFAULT_BOARD),
+    log: typeof flags.log === 'string' ? resolve(process.cwd(), flags.log) : resolve(projectRoot(), DEFAULT_LOG),
+    board: typeof flags.board === 'string' ? resolve(process.cwd(), flags.board) : resolve(projectRoot(), DEFAULT_BOARD),
   };
 
   switch (command) {

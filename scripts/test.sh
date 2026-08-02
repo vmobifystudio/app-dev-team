@@ -4904,6 +4904,60 @@ grep -q 'approval-check.mjs' "$HERE/../agents/tech-manager.md" \
   && ok "tech-manager.md's merge gate re-checks approval binding before git merge, not just at ship-gate" \
   || bad "tech-manager.md's merge gate re-checks approval binding before git merge, not just at ship-gate"
 
+# --- Dry run 3 (tap-counter, 2026-08-02), DR-TC-P0-001: `docs/31-board-events.jsonl` is never git
+# tracked, so `git worktree add` never populates it into a linked worktree. Before the fix, `board.mjs`
+# with no explicit --log/--board resolved its defaults against `process.cwd()` — an agent operating
+# inside `.agent-wt/<TICKET>` silently wrote/read a SEPARATE, empty ledger instead of the project's
+# real one. `projectRoot()` now resolves the default via `git rev-parse --git-common-dir`, which
+# points at the one project root regardless of which worktree asked.
+WTB="$TMP/revamp-board-worktree"; mkdir -p "$WTB"
+( cd "$WTB" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && git commit -q --allow-empty -m init )
+bm "$WTB" add WT-001 --title "Worktree ledger fork" --owner ios-developer >/dev/null 2>&1
+( cd "$WTB" && git worktree add -q .agent-wt/WT-001 -b feat/WT-001-x ) >/dev/null 2>&1
+assert_exit 0 "board.mjs sees the project's real ticket from inside a linked worktree, no --log/--board needed (DR-TC-P0-001)" \
+  bash -c "cd '$WTB/.agent-wt/WT-001' && node '$BD' show WT-001"
+[ ! -f "$WTB/.agent-wt/WT-001/docs/31-board-events.jsonl" ] \
+  && ok "...and does not fork a second, empty ledger inside the worktree" \
+  || bad "...and does not fork a second, empty ledger inside the worktree"
+# Mirror test: prove this assertion would have caught the bug it fixes, by reverting projectRoot()
+# to the old cwd-only behavior and confirming the same assertion goes red (exits nonzero — "no event
+# log" — because the ledger the worktree's OWN cwd resolves to was never populated by `git worktree`).
+sed -i.bak "s/resolve(projectRoot(), DEFAULT_LOG)/resolve(process.cwd(), DEFAULT_LOG)/; s/resolve(projectRoot(), DEFAULT_BOARD)/resolve(process.cwd(), DEFAULT_BOARD)/" "$BD"
+assert_exit 2 "mirror test: reverting projectRoot() reproduces the fork (ticket unreachable from the worktree)" \
+  bash -c "cd '$WTB/.agent-wt/WT-001' && node '$BD' show WT-001"
+mv "$BD.bak" "$BD"
+
+# --- DR-TC-P0-002: once defaults resolve to the project root regardless of `cwd`, `--bind`'s
+# assumption that `HEAD` always names the reviewed commit breaks the OPPOSITE way — invoked from the
+# project root (now the natural place to run board.mjs), `HEAD` names `main`, not the ticket's branch.
+# `--commit <sha>` makes the binding explicit instead of ambient.
+CB="$TMP/revamp-board-commit"; mkdir -p "$CB/docs"
+( cd "$CB" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && printf 'context\n' > context.json && printf 'evidence\n' > evidence.txt \
+  && git add -A && git commit -q -m seed )
+bm "$CB" add CB-001 --title "Explicit commit binding" --owner ios-developer >/dev/null 2>&1
+( cd "$CB" && git checkout -q -b feat/CB-001-x && printf 'feature work\n' >> evidence.txt \
+  && git commit -q -a -m "CB-001 feature commit" )
+FEATURE_SHA=$(cd "$CB" && git rev-parse feat/CB-001-x)
+( cd "$CB" && git checkout -q main )
+drive_to_review "$CB" CB-001
+assert_exit 0 "approved --bind --commit <sha> binds the named commit, not HEAD" \
+  bm "$CB" move CB-001 approved --by code-reviewer --bind --commit "$FEATURE_SHA" --evidence evidence.txt --context context.json
+BOUND_COMMIT=$(node -e '
+  const fs = require("fs");
+  const lines = fs.readFileSync(process.argv[1], "utf8").trim().split("\n");
+  const ev = JSON.parse(lines[lines.length - 1]);
+  console.log(ev.detail.commit);
+' "$CB/docs/31-board-events.jsonl")
+[ "$BOUND_COMMIT" = "$FEATURE_SHA" ] \
+  && ok "...and the recorded commit is the feature branch tip, not main's HEAD (DR-TC-P0-002)" \
+  || bad "...and the recorded commit is the feature branch tip, not main's HEAD (DR-TC-P0-002)" "got $BOUND_COMMIT want $FEATURE_SHA"
+bm "$CB" add CB-002 --title "Bad commit ref" --owner ios-developer >/dev/null 2>&1
+drive_to_review "$CB" CB-002
+assert_exit 2 "--commit that does not resolve to a real commit is refused, not silently ignored" \
+  bm "$CB" move CB-002 approved --by code-reviewer --bind --commit not-a-real-sha --evidence evidence.txt --context context.json
+
 MEMORY="$TMP/revamp-memory"; mkdir -p "$MEMORY"
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
   --content "Keep acceptance criteria explicit" --source docs/2026-07-29-revamp-master-plan.md --confidence 0.9 > "$MEMORY/proposal.json"
@@ -5029,6 +5083,28 @@ assert_exit 0 "manager-failover recommends replacement after lease expiry" node 
 
 assert_exit 0 "risk-router selects the critical route for payment changes" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json" --file Sources/Payment.swift --change billing
 assert_exit 1 "risk-router refuses missing route input" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json"
+
+# --- Dry run 3 (tap-counter, 2026-08-02): the critical rule's pattern was a bare `store`, which
+# matched any path containing the substring — `CounterStore.kt`, a plain state-holder class with no
+# billing/release relevance, got routed critical purely by name. Anchored to real app-store/play-store/
+# storefront language instead; a genuine "prepare the app store listing" mention must still match.
+STORENAME=$(node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json" --file app/src/main/kotlin/com/example/counterstore/CounterStore.kt --change "")
+if echo "$STORENAME" | grep -q '"risk": "critical"'; then
+  bad "risk-router false-positives on a Store-suffixed class name (DR-TC-P1-004)"
+else
+  ok "risk-router no longer false-positives on a Store-suffixed class name (DR-TC-P1-004)"
+fi
+STOREREAL=$(node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json" --file docs/15-aso.md --change "prepare app store listing")
+echo "$STOREREAL" | grep -q '"risk": "critical"' \
+  && ok "...while a genuine app-store-listing change still routes critical" \
+  || bad "...while a genuine app-store-listing change still routes critical"
+
+# --- DR-TC-P0-003: squash-merge rewrites history, so the approved commit's SHA is never an
+# ancestor of the squash commit and `approval-check.mjs`'s `merge-base --is-ancestor` fails by
+# design — not a bug to patch, an incompatibility devops-engineer must not silently choose into.
+grep -q 'Squash-merge is incompatible with .requireApprovalBinding' "$HERE/../agents/devops-engineer.md" \
+  && ok "devops-engineer.md documents squash-merge's incompatibility with requireApprovalBinding (DR-TC-P0-003)" \
+  || bad "devops-engineer.md documents squash-merge's incompatibility with requireApprovalBinding (DR-TC-P0-003)"
 
 # --- the ticket contract: risk is derived from risk-router (never hand-typed), and a ticket it
 # routes high/critical cannot reach review without at least one --invariant recorded at creation —
