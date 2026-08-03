@@ -42,8 +42,19 @@ if (command === 'propose') {
   const decision = required('reason'); if (!['promote', 'reject', 'supersede', 'contradict'].includes(decision)) die(2, '--reason must be promote, reject, supersede, or contradict');
   append('reviewed', { memory_id: id, decision, by: required('by'), rationale: required('content'), source: candidate.source });
 } else if (command === 'list') {
+  // `retrieve` already filtered by `--class` (studio/founder/etc.) so a reviewer could ask "what's
+  // live in this class"; `list` — the one place a PENDING proposal is visible before promotion —
+  // had no such filter, so a class with proposals nobody had reviewed yet (e.g. `studio`, still
+  // scaffolding with zero producers before this) was invisible to a targeted look and only found
+  // by scanning every class's output by eye.
+  const proposalsById = new Map();
+  for (const record of all) if (record.event === 'proposed') proposalsById.set(record.memory_id, record);
   const latest = new Map(); for (const record of all) if (record.memory_id) latest.set(record.memory_id, record);
-  for (const record of latest.values()) if (record.event === 'proposed' || (record.event === 'reviewed' && record.decision === 'promote')) console.log(JSON.stringify(record));
+  for (const record of latest.values()) {
+    if (record.event !== 'proposed' && !(record.event === 'reviewed' && record.decision === 'promote')) continue;
+    if (flags.class && proposalsById.get(record.memory_id)?.class !== String(flags.class)) continue;
+    console.log(JSON.stringify(record));
+  }
 } else if (command === 'retrieve') {
   // The missing read path: `propose`/`review` write, but nothing ever read the six scopes back —
   // a memory-scope vocabulary with no retrieval that respects it is not governance, it is a write-

@@ -5139,6 +5139,33 @@ grep -q "$REPLACEMENT_ID" "$MEMORY/retrieved2.json" \
   && ok "...and the replacement is served in its place" \
   || bad "...and the replacement is served in its place"
 
+# --- Studio self-improvement plan (2026-08-03): `retrieve` already filtered by `--class`, but
+# `list` — the one place a PENDING (proposed, not yet reviewed) memory is visible before promotion
+# — had no such filter, so the `studio` class (zero producers until /app-learn's new studio-process
+# pass) had no way to be looked at on its own; an operator had to scan every class's output by eye.
+STUDIO_MEM=$(node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class studio \
+  --content "question-quality: ask about offline behavior before implementation, not after" \
+  --source docs/dry-runs/example.md --confidence 0.6)
+STUDIO_MEM_ID=$(node -e 'console.log(JSON.parse(process.argv[1]).memory_id)' "$STUDIO_MEM")
+node "$HERE/memory-curator.mjs" list --ledger "$MEMORY/memory.jsonl" --class studio > "$MEMORY/list-studio.json"
+grep -q "$STUDIO_MEM_ID" "$MEMORY/list-studio.json" \
+  && ok "memory-curator list --class studio surfaces a pending studio-class proposal" \
+  || bad "memory-curator list --class studio surfaces a pending studio-class proposal"
+grep -q "Keep acceptance criteria explicit" "$MEMORY/list-studio.json" \
+  && bad "...and does not leak a project-class proposal into a studio-class listing" \
+  || ok "...and does not leak a project-class proposal into a studio-class listing"
+# Mirror test: prove the filter is load-bearing, not decoration — `list` with no --class must still
+# show both.
+node "$HERE/memory-curator.mjs" list --ledger "$MEMORY/memory.jsonl" > "$MEMORY/list-all.json"
+grep -q "$STUDIO_MEM_ID" "$MEMORY/list-all.json" \
+  && ok "...while an unfiltered list still shows the studio-class entry alongside everything else" \
+  || bad "...while an unfiltered list still shows the studio-class entry alongside everything else"
+
+tr '\n' ' ' < "$HERE/../commands/app-learn.md" | tr -s ' ' | grep -q -- "--class studio" \
+  && grep -q "memory-curator.mjs.*list" "$HERE/../commands/app-learn.md" \
+  && ok "/app-learn documents the studio-process harvest via memory-curator's already-governed pipeline" \
+  || bad "/app-learn documents the studio-process harvest via memory-curator's already-governed pipeline"
+
 assert_exit 0 "prompt-registry accepts the shipped, populated registry" node "$HERE/prompt-registry.mjs" --registry "$HERE/../docs/team/prompt-registry.json"
 
 # --- `sync` is the only place a registry entry is ever written from real agent content — an empty

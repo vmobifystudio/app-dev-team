@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 925 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 929 assertions
 
 ---
 
@@ -693,7 +693,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
-| `test.sh` | 925 assertions |
+| `test.sh` | 929 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -896,6 +896,25 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   holds the lease, so the board and the run ledger were two records about the same claim with
   nothing joining them. `claimed` events now carry `run_id`/`attempt_id`/`lease_until` in `detail`,
   parsed from run-ledger's own output rather than re-derived.
+- **The `studio` memory class has a real producer, 2026-08-03**
+  (`docs/2026-08-03-self-improvement-and-skill-reuse-plan.md`). `scripts/memory-curator.mjs`'s
+  class vocabulary (`run/ticket/project/platform/studio/founder`) has existed since the Revamp
+  work, but nothing ever proposed a `studio`-class memory — pure scaffolding, the same shape as the
+  leasing primitive with no caller and the prompt registry validating an empty shape, both fixed
+  earlier this session. Before building a harvester, I checked whether the plan's paired idea
+  (role files should check for a better-equipped local skill before reinventing one) was actually a
+  gap too — it was not: 11 of 30 role files already carry "external and optional, degrade
+  gracefully, never file absence as a defect" language for exactly this, with a named incident
+  (`DR4-011`) and its own mirror-tested regression. `/app-learn` now has a sixth pass — distinct
+  from its existing app-convention/failure-corpus mining — that reads a `docs/dry-runs/*.md` report
+  or an `/app-ship` retro for what the STUDIO's own process should do differently (question
+  quality, output format, flow logic, gate design, role design) and proposes each via
+  `memory-curator.mjs propose --class studio`, the same governed propose → review → retrieve
+  pipeline every other class already uses — never auto-applied. `memory-curator.mjs list` gained a
+  `--class` filter so a pending (proposed, not yet reviewed) `studio` entry can be looked at on its
+  own instead of scanning every class's output by eye. What promoted learnings actually change
+  about agent/role/gate behavior once reviewed is deliberately NOT built yet — that's the next
+  phase, once real proposals exist to design the lifecycle around rather than guessing its shape.
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the
