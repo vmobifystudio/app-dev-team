@@ -373,6 +373,14 @@ const RUN_LEDGER = fileURLToPath(new URL('./run-ledger.mjs', import.meta.url));
  * The run-ledger lease is the durable, ticket-keyed lock that closes that race: a second claim is
  * refused by the ledger even if both processes think the board is still `todo`.
  */
+/**
+ * `run-ledger.mjs start` prints the record it just appended — `run_id`, `attempt_id`,
+ * `lease_until` — and this discarded it, keeping only a pass/fail bit. A `claimed` event carried no
+ * durable pointer back to the run that made the claim, so nothing downstream (recovery, the
+ * candidate-identity work the global enhancement plan calls for) could trace a ticket to the attempt
+ * that is actually working it without re-deriving one from the ledger by hand. Global plugin
+ * enhancement plan (2026-08-03), P0.2's narrow first slice.
+ */
 function claimLease(ticket, flags, paths) {
   const ledgerPath = resolve(dirname(paths.log), 'team', 'runs.jsonl');
   const args = ['start', '--ledger', ledgerPath, '--ticket', ticket, '--role', flags.by || 'unknown'];
@@ -383,7 +391,15 @@ function claimLease(ticket, flags, paths) {
   if (result.status !== 0) {
     return { ok: false, reason: (result.stderr || '').trim() || 'run-ledger refused the claim' };
   }
-  return { ok: true };
+  let record;
+  try { record = JSON.parse((result.stdout || '').trim()); }
+  catch { return { ok: true }; } // The lease itself succeeded; identity just isn't parseable — don't fail a claim over it.
+  return {
+    ok: true,
+    run_id: record.run_id,
+    attempt_id: record.attempt_id,
+    lease_until: record.lease_until,
+  };
 }
 
 /**
@@ -470,6 +486,12 @@ function cmdMove(id, name, flags, paths) {
     if (!lease.ok) {
       process.stderr.write(`board: refused ${ticket} claimed — ${lease.reason}\n`);
       process.exit(1);
+    }
+    if (lease.run_id) {
+      const identity = { run_id: lease.run_id, attempt_id: lease.attempt_id, lease_until: lease.lease_until };
+      event.detail = typeof event.detail === 'object' && event.detail
+        ? { ...event.detail, ...identity }
+        : { note: event.detail || undefined, ...identity };
     }
   }
 

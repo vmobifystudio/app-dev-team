@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 920 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 925 assertions
 
 ---
 
@@ -693,7 +693,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
-| `test.sh` | 920 assertions |
+| `test.sh` | 925 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -882,6 +882,20 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   log can produce" and there is no reader yet for a founder-intent/PRD doc-graph or `trace.mjs`'s
   founder-gate approvals. Inventing those verdicts from signals that don't exist would be the exact
   failure the rule exists to prevent.
+- **Dispatch preflight now requires a ticket, and a claim now records its own run identity,
+  2026-08-03** (`docs/reviews/2026-08-03-global-plugin-enhancement-plan.md` P0.2's narrow first
+  slice — the full workflow-engine rewrite that plan describes is a multi-week program and was
+  deliberately NOT started; this is the two-item slice the plan itself named as safe to do first).
+  `dispatch-preflight.mjs` ran context/scheduler/capability/risk checks but never required the
+  ticket the spawn was actually for — a caller with a valid role/operation/path got a CLEAR with no
+  ticket in the picture, so nothing stopped two agents (or one agent twice) from each passing
+  preflight for a ticket the scheduler had not marked ready. `--ticket` is now required and checked
+  against the scheduler's own `ready` list; a ticket that's unknown, blocked, or dependency-gated is
+  refused the same way. Separately, `board.mjs`'s `claimLease()` ran `run-ledger.mjs start` and kept
+  only its exit code — the `claimed` event carried no pointer back to the run/attempt that actually
+  holds the lease, so the board and the run ledger were two records about the same claim with
+  nothing joining them. `claimed` events now carry `run_id`/`attempt_id`/`lease_until` in `detail`,
+  parsed from run-ledger's own output rather than re-derived.
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the

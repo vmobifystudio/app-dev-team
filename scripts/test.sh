@@ -2036,6 +2036,52 @@ grep -q '"ticket":"L-002"' "$L2/docs/team/runs.jsonl" \
   && ok "...with a durable start record a run-doctor sweep can find" \
   || bad "...with a durable start record a run-doctor sweep can find"
 
+# --- Global plugin enhancement plan (2026-08-03), P0.2's narrow first slice: `claimLease` ran
+# run-ledger.mjs start and kept only its exit code, so the `claimed` event on the board carried no
+# pointer back to the run/attempt that actually holds the lease — the two records existed side by
+# side with nothing joining them. The run_id printed by run-ledger.mjs at claim time must be the
+# SAME run_id recorded on the board's own claimed event.
+board_run_id() {
+  node -e '
+    const fs = require("fs");
+    const lines = fs.readFileSync(process.argv[1], "utf8").trim().split("\n");
+    const claimed = JSON.parse(lines[lines.length - 1]);
+    process.stdout.write((claimed.detail && claimed.detail.run_id) || "");
+  ' "$1"
+}
+LEDGER_RUN_ID=$(node -e '
+  const fs = require("fs");
+  const lines = fs.readFileSync(process.argv[1], "utf8").trim().split("\n");
+  process.stdout.write(JSON.parse(lines[lines.length - 1]).run_id);
+' "$L2/docs/team/runs.jsonl")
+BOARD_RUN_ID=$(board_run_id "$L2/docs/31-board-events.jsonl")
+[ -n "$BOARD_RUN_ID" ] && [ "$BOARD_RUN_ID" = "$LEDGER_RUN_ID" ] \
+  && ok "board.mjs's claimed event carries the SAME run_id run-ledger.mjs recorded for the lease" \
+  || bad "board.mjs's claimed event carries the same run_id as the lease" "board=$BOARD_RUN_ID ledger=$LEDGER_RUN_ID"
+
+# Mirror test: prove the assertion above would have caught the old discard-the-result bug, by
+# temporarily making claimLease() ignore run-ledger's output the way it used to.
+cp "$HERE/board.mjs" "$HERE/board.mjs.bak"
+node -e '
+  const fs = require("fs");
+  const path = process.argv[1];
+  let text = fs.readFileSync(path, "utf8");
+  const marker = "  let record;\n  try { record = JSON.parse((result.stdout || \x27\x27).trim()); }";
+  if (!text.includes(marker)) { console.error("marker not found"); process.exit(1); }
+  text = text.replace(marker, "  return { ok: true }; // mutated for mirror test — the old discard-the-result behavior\n" + marker);
+  fs.writeFileSync(path, text);
+' "$HERE/board.mjs"
+L3=$(newboard bd-lease-mirror)
+bm "$L3" add L-003 --title "Mirror ticket" --owner ios-developer >/dev/null 2>&1
+bm "$L3" move L-003 claimed --by ios-developer >/dev/null 2>&1
+MIRROR_RUN_ID=$(board_run_id "$L3/docs/31-board-events.jsonl")
+if [ -n "$MIRROR_RUN_ID" ]; then
+  bad "mirror test: discarding the run-ledger result should leave the claimed event with no run_id"
+else
+  ok "mirror test: discarding the run-ledger result reproduces a claimed event with no run identity"
+fi
+mv "$HERE/board.mjs.bak" "$HERE/board.mjs"
+
 # --- a DONE nobody checked is not reviewable. verify-done.sh existed and its result was recorded
 # nowhere the board could gate on, so an unverified claim reached a reviewer by an agent's say-so.
 V=$(newboard bd-verify)
@@ -4911,7 +4957,7 @@ cp "$HERE/../docs/team/risk-policy.json" "$INITSIM/risk.json"
 printf '{"owner":"founder","reviewedOn":"2026-08-01","requireDurableRuns":true,"requireApprovalBinding":true}\n' \
   > "$INITSIM/.studio-policy.json"
 assert_exit 0 "a freshly /app-init'd project's exact default policy does not block the first spawn" \
-  node "$HERE/dispatch-preflight.mjs" --root "$INITSIM" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+  node "$HERE/dispatch-preflight.mjs" --root "$INITSIM" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 echo
 # --------------------------------------------------------------------------------------------
 # --------------------------------------------------------------------------------------------
@@ -5148,7 +5194,21 @@ node "$HERE/context-manifest.mjs" create --root "$DISPATCH" --out "$DISPATCH/con
 printf '%s\n' '{"schema":"scheduler-plan/v1","max_parallel":1,"tasks":[{"id":"T","owner":"reviewer","status":"pending"}]}' > "$DISPATCH/schedule.json"
 printf '%s\n' '{"schema":"capability-manifest/v1","root":".","roles":[{"role":"reviewer","operations":["write"],"allowed_paths":["docs"]}]}' > "$DISPATCH/capabilities.json"
 cp "$HERE/../docs/team/risk-policy.json" "$DISPATCH/risk.json"
-assert_exit 0 "dispatch-preflight composes all spawn controls" node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+assert_exit 0 "dispatch-preflight composes all spawn controls" node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+
+# --- Global plugin enhancement plan (2026-08-03), P0.2's narrow first slice: dispatch-preflight ran
+# every check EXCEPT whether the requested ticket was actually admissible — a caller with a valid
+# context/capability/risk set but a ticket the scheduler had not marked ready still got a CLEAR.
+assert_exit 2 "--ticket is required, not optional" \
+  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+assert_exit 1 "a ticket outside the scheduler's ready set is refused, even with every other check passing" \
+  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH" --ticket NOT-IN-PLAN --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+DISPATCH_BLOCKED="$TMP/revamp-dispatch-blocked"; mkdir -p "$DISPATCH_BLOCKED/docs"
+cp "$DISPATCH/context.json" "$DISPATCH/capabilities.json" "$DISPATCH/risk.json" "$DISPATCH_BLOCKED/"
+printf 'context\n' > "$DISPATCH_BLOCKED/docs/context.md"
+printf '%s\n' '{"schema":"scheduler-plan/v1","max_parallel":1,"tasks":[{"id":"T1","owner":"reviewer","status":"pending","depends":["T0"]},{"id":"T0","owner":"reviewer","status":"pending"}]}' > "$DISPATCH_BLOCKED/schedule.json"
+assert_exit 1 "...and a ticket whose dependency has not completed is refused the same way, not just an unknown ID" \
+  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH_BLOCKED" --ticket T1 --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 
 # --- audit-anchor, prompt-registry, and eval-lab used to be reachable only through ship-gate.sh at
 # release time — drift could sit for a whole sprint before anything noticed. Every spawn now composes
@@ -5163,15 +5223,15 @@ printf '{"schema":"prompt-registry/v1","entries":[]}\n' > "$DISPATCH2/docs/team/
 printf '{"schema":"eval-manifest/v1","cases":[{"id":"trivial","command":["true"],"expect_exit":0}]}\n' > "$DISPATCH2/eval/manifest.json"
 printf '{"requireAuditAnchor":true,"requirePromptRegistry":true,"requireEvaluation":true}\n' > "$DISPATCH2/.studio-policy.json"
 assert_exit 0 "dispatch-preflight composes audit-anchor, prompt-registry and eval-lab when policy opts in" \
-  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH2" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH2" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 ( cd "$DISPATCH2" && node "$BD" move DP-001 claimed --by ios-developer >/dev/null 2>&1 )
 assert_exit 1 "...and refuses the NEXT dispatch the moment the audit chain drifts, not only at ship time" \
-  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH2" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH2" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 DISPATCH3="$TMP/revamp-dispatch-noopt"; mkdir -p "$DISPATCH3/docs"
 cp "$DISPATCH/context.json" "$DISPATCH/schedule.json" "$DISPATCH/capabilities.json" "$DISPATCH/risk.json" "$DISPATCH3/"
 printf 'context\n' > "$DISPATCH3/docs/context.md"
 assert_exit 0 "...and a project with no .studio-policy.json pays nothing extra for controls it never opted into" \
-  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH3" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+  node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH3" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 
 node "$HERE/run-ledger.mjs" start --ledger "$RUNX/runs.jsonl" --run RUN-002 --ticket APP-002 --role ios-developer --now 2026-07-31T00:00:00Z --lease-seconds 60 >/dev/null
 assert_exit 0 "manager-failover holds while the primary lease is live" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:00:30Z
