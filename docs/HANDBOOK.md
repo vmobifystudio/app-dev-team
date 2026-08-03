@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 902 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 911 assertions
 
 ---
 
@@ -693,7 +693,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
-| `test.sh` | 902 assertions |
+| `test.sh` | 911 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -840,6 +840,30 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   Inbox item showing outstanding steps — read-only by construction, since its action name is
   deliberately absent from `scripts/lib/actions.mjs`'s `ACTIONS` whitelist, so the control room
   cannot execute a submission even by accident.
+- **Four findings from dry run 3 closed, 2026-08-02** (`docs/dry-runs/2026-08-01-tap-counter-real-multiagent-pilot.md`,
+  the first dry run to spawn genuinely isolated subagent processes through the real `Agent` tool
+  rather than narrating what agents would do). (1) `docs/31-board-events.jsonl` is operational state,
+  never git-tracked, so `git worktree add` never populates it into a linked worktree — an agent
+  operating with `cwd` inside `.agent-wt/<TICKET>` (this repo's own `agent-isolation` convention) had
+  its default `--log`/`--board` paths resolve against `process.cwd()`, a separate, empty ledger
+  inside the worktree instead of the project's real one; reproduced directly when a `code-reviewer`
+  spawn inside a worktree held a strict subset of the real board, purely by luck of command order.
+  `board.mjs`'s default paths now resolve via `git rev-parse --path-format=absolute
+  --git-common-dir`, which finds the one project root regardless of which worktree asked; an
+  explicit `--log`/`--board` still resolves against `cwd`, unchanged. (2) Fixing (1) made running
+  `board.mjs` from the project root — not the worktree — the natural thing to do, which broke `--bind`
+  the opposite way: it assumed `HEAD` from `cwd` always named the reviewed commit, silently binding
+  whatever `main` happened to be instead of the reviewed branch. `--commit <sha>` makes the bound
+  commit explicit instead of ambient; omitting it keeps the old cwd-relative behavior for a caller
+  that really is inside the right worktree. (3) Squash-merge is incompatible with
+  `requireApprovalBinding`: a squash merge writes a brand-new commit, so the approved commit's SHA is
+  never an ancestor of it and `approval-check.mjs`'s `merge-base --is-ancestor` fails by design, not
+  by bug — not fixed in code, documented as an explicit incompatibility in `agents/devops-engineer.md`
+  so a project's git-strategy choice and its trust-control choice can't silently contradict each
+  other. (4) `docs/team/risk-policy.json`'s critical rule matched the bare substring `store`, so a
+  Kotlin class named `CounterStore` — a plain state holder with no billing/release relevance — routed
+  critical purely by name; anchored to `app.?store|play.?store|storefront` instead, which still
+  matches genuine "prepare the app store listing" language.
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the
