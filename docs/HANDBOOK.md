@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 911 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 920 assertions
 
 ---
 
@@ -693,7 +693,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
-| `test.sh` | 911 assertions |
+| `test.sh` | 920 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -864,6 +864,24 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   Kotlin class named `CounterStore` — a plain state holder with no billing/release relevance — routed
   critical purely by name; anchored to `app.?store|play.?store|storefront` instead, which still
   matches genuine "prepare the app store listing" language.
+- **Independent readiness verdicts, 2026-08-03** (`docs/dry-runs/2026-08-02-blood-pressure-journal-10-10-readiness-plan.md`,
+  a dry-run pilot's own readiness charter, which named this as the fix for its sharpest
+  self-criticism: a single blended score can read `clear` while one real dimension is not).
+  Mission Control's `release` section swept only in-flight tickets, static-only verification and
+  S1/S2 bugs into one status — narrower than what "is this actually ready" requires, and averaging
+  hides exactly the kind of gap the pilot's reviewer addendum flagged about its own plan (8.5/10
+  checklist, 6/10 executability). Two new, independent verdicts now live on Mission Control's
+  `readiness.dimensions`, never rolled into the existing section's clear/attention status: an
+  `engineering` verdict (`unverified` → `buildable` → `tested` → `production-ready`, derived from
+  verification events and `ship-gate.sh`'s last recorded verdict) and a `store` verdict
+  (`not-ready` → `founder-actions-required` → `submission-ready`, derived from the same submission
+  checklist `readReleaseChecklist` already parses for the Founder Inbox). This is a deliberately
+  **partial** implementation of the plan's five-dimension idea (Product/Engineering/
+  Compliance/Store/AI-workflow) — Product, Compliance and AI-workflow verdicts are not included and
+  `readiness.notCovered` says so explicitly, because this file's own rule is "render only what the
+  log can produce" and there is no reader yet for a founder-intent/PRD doc-graph or `trace.mjs`'s
+  founder-gate approvals. Inventing those verdicts from signals that don't exist would be the exact
+  failure the rule exists to prevent.
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the

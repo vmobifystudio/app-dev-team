@@ -4640,6 +4640,102 @@ import(process.argv[1]).then((m) => {
   && ok "...but a recorded CLEAR verdict adds no item of its own" \
   || bad "...but a recorded CLEAR verdict adds no item of its own" "$(cat "$TMP/cr-shipgate-clear.txt")"
 
+# --- Independent readiness verdicts (docs/dry-runs/2026-08-02-blood-pressure-journal-10-10-readiness-plan.md):
+# Mission Control's single "release readiness" blend can say clear while one real dimension is not —
+# these are separate, never-averaged verdicts derived from signals this file already reads.
+readiness_state() {
+  node -e '
+import(process.argv[1]).then((m) => {
+  const s = m.assembleState(process.argv[2]);
+  const mission = s.screens.find((x) => x.id === "mission");
+  const dim = mission.readiness.dimensions.find((d) => d.id === process.argv[3]);
+  process.stdout.write(dim ? dim.state : "MISSING");
+});
+' "$CR/state.mjs" "$1" "$2"
+}
+
+CRREADY="$TMP/cr-readiness-unverified"; mkdir -p "$CRREADY"
+( cd "$CRREADY" && node "$HERE/board.mjs" add RD-001 --title "Readiness ticket" --owner ios-developer ) >/dev/null 2>&1
+[ "$(readiness_state "$CRREADY" engineering)" = "unverified" ] \
+  && ok "engineering readiness is unverified before any verification event exists" \
+  || bad "engineering readiness is unverified before any verification event exists" "got $(readiness_state "$CRREADY" engineering)"
+
+CRSTATIC="$TMP/cr-readiness-buildable"; mkdir -p "$CRSTATIC"
+( cd "$CRSTATIC" && node "$HERE/board.mjs" add RD-002 --title "Static-only ticket" --owner ios-developer \
+    && node "$HERE/board.mjs" move RD-002 claimed --by ios-developer \
+    && node "$HERE/board.mjs" move RD-002 done_reported --by ios-developer \
+    && node "$HERE/board.mjs" move RD-002 verified_static --by tech-manager ) >/dev/null 2>&1
+[ "$(readiness_state "$CRSTATIC" engineering)" = "buildable" ] \
+  && ok "engineering readiness is buildable when a ticket is verified static-only" \
+  || bad "engineering readiness is buildable when a ticket is verified static-only" "got $(readiness_state "$CRSTATIC" engineering)"
+
+CRTESTED="$TMP/cr-readiness-tested"; mkdir -p "$CRTESTED"
+( cd "$CRTESTED" && node "$HERE/board.mjs" add RD-003 --title "Really tested ticket" --owner ios-developer \
+    && node "$HERE/board.mjs" move RD-003 claimed --by ios-developer \
+    && node "$HERE/board.mjs" move RD-003 done_reported --by ios-developer \
+    && node "$HERE/board.mjs" move RD-003 verified --by tech-manager ) >/dev/null 2>&1
+[ "$(readiness_state "$CRTESTED" engineering)" = "tested" ] \
+  && ok "engineering readiness is tested (not production-ready) with a real verification but no recorded CLEAR ship-gate verdict" \
+  || bad "engineering readiness is tested" "got $(readiness_state "$CRTESTED" engineering)"
+
+mkdir -p "$CRTESTED/docs/team"
+printf '{"schema":"ship-gate-verdict/v1","result":"CLEAR","evaluated_at":"2026-08-03T00:00:00Z","blockers":[],"unknowns":[]}\n' \
+  > "$CRTESTED/docs/team/ship-gate-verdict.json"
+[ "$(readiness_state "$CRTESTED" engineering)" = "production-ready" ] \
+  && ok "engineering readiness reaches production-ready only once ship-gate.sh has recorded CLEAR" \
+  || bad "engineering readiness reaches production-ready" "got $(readiness_state "$CRTESTED" engineering)"
+
+[ "$(readiness_state "$CRREADY" store)" = "not-ready" ] \
+  && ok "store readiness is not-ready with no submission checklist" \
+  || bad "store readiness is not-ready with no submission checklist" "got $(readiness_state "$CRREADY" store)"
+
+CRSTOREPART="$TMP/cr-readiness-store-partial"; mkdir -p "$CRSTOREPART/docs"
+printf '### Submission checklist — 1.0.0\n\n- [x] Build signed\n- [ ] Store listing copy\n' \
+  > "$CRSTOREPART/docs/60-releases.md"
+[ "$(readiness_state "$CRSTOREPART" store)" = "founder-actions-required" ] \
+  && ok "store readiness is founder-actions-required with an incomplete checklist" \
+  || bad "store readiness is founder-actions-required" "got $(readiness_state "$CRSTOREPART" store)"
+
+CRSTOREDONE="$TMP/cr-readiness-store-done"; mkdir -p "$CRSTOREDONE/docs"
+printf '### Submission checklist — 1.0.0\n\n- [x] Build signed\n- [x] Store listing copy\n' \
+  > "$CRSTOREDONE/docs/60-releases.md"
+[ "$(readiness_state "$CRSTOREDONE" store)" = "submission-ready" ] \
+  && ok "store readiness is submission-ready once every checklist item is checked" \
+  || bad "store readiness is submission-ready once every checklist item is checked" "got $(readiness_state "$CRSTOREDONE" store)"
+
+# These verdicts are never averaged into the existing "release" section's clear/attention rollup —
+# a partially-built engineering verdict must not move that unrelated section's status.
+node -e '
+import(process.argv[1]).then((m) => {
+  const s = m.assembleState(process.argv[2]);
+  const mission = s.screens.find((x) => x.id === "mission");
+  if (!Array.isArray(mission.readiness.notCovered) || !mission.readiness.notCovered.includes("product")) {
+    console.error("notCovered does not honestly list product as unmeasured"); process.exit(1);
+  }
+  process.exit(0);
+});
+' "$CR/state.mjs" "$CRREADY" 2>"$TMP/cr-notcovered.txt" \
+  && ok "readiness honestly lists product/compliance/ai-workflow as not covered, rather than fabricating a verdict" \
+  || bad "readiness honestly lists dimensions it cannot measure" "$(cat "$TMP/cr-notcovered.txt")"
+
+# Mirror test: prove these assertions would catch a regression, by reverting the CLEAR-gate check to
+# always treat any real verification as production-ready and confirming the tested-vs-production-ready
+# assertion goes red.
+cp "$CR/state.mjs" "$CR/state.mjs.bak"
+sed -i.tmp "s/!(shipGate.ok \&\& shipGate.result === 'CLEAR')/false/" "$CR/state.mjs"
+rm -f "$CR/state.mjs.tmp"
+CRTESTED2="$TMP/cr-readiness-tested-mirror"; mkdir -p "$CRTESTED2"
+( cd "$CRTESTED2" && node "$HERE/board.mjs" add RD-004 --title "Mirror ticket" --owner ios-developer \
+    && node "$HERE/board.mjs" move RD-004 claimed --by ios-developer \
+    && node "$HERE/board.mjs" move RD-004 done_reported --by ios-developer \
+    && node "$HERE/board.mjs" move RD-004 verified --by tech-manager ) >/dev/null 2>&1
+if [ "$(readiness_state "$CRTESTED2" engineering)" = "tested" ]; then
+  bad "mirror test: dropping the ship-gate check should make an unrecorded gate read production-ready"
+else
+  ok "mirror test: dropping the ship-gate check reproduces a false production-ready verdict"
+fi
+mv "$CR/state.mjs.bak" "$CR/state.mjs"
+
 # HALF a population is not a population. The `decisions` section spans two inputs — blocked tickets
 # from the board, and questions routed to a founder from the channel — and it gated `unavailable` on
 # BOTH being unreadable. So a readable board with an unreadable channel could still reach `clear`,

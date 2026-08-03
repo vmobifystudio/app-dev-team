@@ -115,6 +115,71 @@ function derivePhase(model) {
   };
 }
 
+/**
+ * Independent readiness verdicts — one state per dimension, never averaged into a single score.
+ *
+ * `docs/dry-runs/2026-08-02-blood-pressure-journal-10-10-readiness-plan.md` (a dry-run pilot's
+ * readiness charter) named this as the fix for its own weakest point: a single "Release readiness"
+ * blend can read `clear` while one dimension is actually blocked, because a narrow population
+ * (in-flight tickets, S1/S2 bugs) says nothing about whether the build has ever run a real test
+ * suite or whether the store submission packet is complete. Two dimensions ship here because this
+ * repo already reads the signals they need (`buildRows`'s verification state, `readReleaseChecklist`).
+ * Product, Compliance and AI-workflow verdicts are NOT included — this file's own rule is "render
+ * only what the log can produce", and there is no reader yet for a founder-intent/PRD doc-graph or
+ * `trace.mjs`'s founder-gate approvals. Adding those verdicts with invented signals would be the
+ * exact failure this rule exists to prevent; they stay future work until a real reader exists.
+ */
+function readinessVerdicts(model) {
+  const { rows, releases, shipGateVerdict: shipGate, log } = model;
+  const verifications = log.ok ? log.events.filter((e) => VERIFY_EVENTS.has(e.event)) : [];
+  const staticOnly = rows.filter((r) => r.staticOnly);
+
+  let engineering;
+  let why;
+  if (!log.ok) {
+    engineering = 'unverified';
+    why = `${log.note} — verification state cannot be read, so this cannot claim more than unverified`;
+  } else if (!verifications.length) {
+    engineering = 'unverified';
+    why = 'no ticket has recorded a verification event yet';
+  } else if (staticOnly.length) {
+    engineering = 'buildable';
+    why = `${staticOnly.length} ticket(s) verified static-only — the executable test suite has not run`;
+  } else if (!(shipGate.ok && shipGate.result === 'CLEAR')) {
+    engineering = 'tested';
+    why = `${verifications.length} verification event(s) recorded, none static-only, but ship-gate.sh has ${
+      shipGate.ok ? `last recorded ${shipGate.result}` : 'never recorded a verdict for this project'
+    }`;
+  } else {
+    engineering = 'production-ready';
+    why = `ship-gate.sh last recorded CLEAR at ${shipGate.evaluatedAt || 'an unrecorded time'}`;
+  }
+
+  let store;
+  let storeWhy;
+  if (!releases.ok) {
+    store = 'not-ready';
+    storeWhy = releases.note;
+  } else if (!releases.total) {
+    store = 'not-ready';
+    storeWhy = `no submission checklist recorded at ${REL.releases}`;
+  } else if (releases.done < releases.total) {
+    store = 'founder-actions-required';
+    storeWhy = `${releases.total - releases.done} of ${releases.total} submission checklist item(s) outstanding`;
+  } else {
+    store = 'submission-ready';
+    storeWhy = `all ${releases.total} submission checklist item(s) complete`;
+  }
+
+  return {
+    dimensions: [
+      { id: 'engineering', label: 'Engineering', state: engineering, states: ['unverified', 'buildable', 'tested', 'production-ready'], why },
+      { id: 'store', label: 'Store submission', state: store, states: ['not-ready', 'founder-actions-required', 'submission-ready'], why: storeWhy },
+    ],
+    notCovered: ['product', 'compliance', 'ai-workflow'],
+  };
+}
+
 function missionControl(model) {
   const { rows, log, bugs, rounds } = model;
 
@@ -238,6 +303,7 @@ function missionControl(model) {
     title: 'Mission Control',
     status: rollUp(sections),
     phase,
+    readiness: readinessVerdicts(model),
     sections,
   };
 }
