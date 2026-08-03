@@ -98,9 +98,54 @@ this command folds its real conventions back into the packs so future apps start
    4. **Never delete an instance** to clear a flag. The dates are the evidence; a corpus you can
       quietly tidy is a corpus that measures nothing.
 
-6. **Summarize.** Print a diff summary: recurrences first, then packs touched, conventions added,
-   failure classes touched (added / instance appended / confirmed-no-change), conflicts pending, and
-   a one-line note per source app. Append a dated entry to `CHANGELOG.md` under the KB section.
+6. **The studio-process pass — harvest into `memory-curator.mjs`'s `studio` class.** Steps 1–5
+   learn about the APPS this studio builds — conventions and code-level failure shapes. Nothing
+   accumulates what the STUDIO ITSELF should do differently: a question that should have been
+   asked earlier, an output format an operator had to manually rework, flow logic that had to be
+   reordered mid-run, a missing or redundant gate, a missing or redundant role. That's a different
+   population from `knowledge/failure-corpus.md`'s and it lives in a different, already-governed
+   place — `scripts/memory-curator.mjs`'s `studio` class, proposed and reviewed the same way any
+   other memory class is, never auto-promoted.
+
+   Run this pass whenever a `docs/dry-runs/*.md` report (or an `/app-ship` retro) exists to read —
+   it does not require a shipped app, unlike steps 1–5.
+
+   1. **Harvest.** Read the dry-run report or retro for the studio's OWN process, not the app's
+      code. Classify each finding into one of five categories:
+      - `question-quality` — a question that should have been asked earlier or wasn't asked at all
+      - `output-format` — an agent's output had to be manually reworked before it was usable
+      - `flow-logic` — steps had to be reordered, re-run, or worked around mid-execution
+      - `gate-design` — a check that should have existed and didn't, or fired on the wrong signal
+      - `role-design` — a role was missing, redundant, or had an unclear boundary with another
+
+   2. **Propose, never write directly.** For each finding, run:
+
+      ```bash
+      node "${CLAUDE_PLUGIN_ROOT}/scripts/memory-curator.mjs" propose \
+        --ledger docs/team/memory.jsonl --class studio --confidence <0-1> \
+        --content "<category>: <the finding, stated as an abstract shape, not this app's specifics>" \
+        --source <path to the dry-run report or retro>
+      ```
+
+      This is a PROPOSAL, not a change. A human (or a dedicated reviewer role) runs
+      `memory-curator.mjs review` to promote or reject it — the same governance every other memory
+      class already has. `/app-learn` never edits `agents/*.md`, `commands/*.md`, or `scripts/*`
+      directly from this pass; it only proposes.
+
+   3. **Surface what's pending.** After proposing, run:
+
+      ```bash
+      node "${CLAUDE_PLUGIN_ROOT}/scripts/memory-curator.mjs" list --ledger docs/team/memory.jsonl --class studio
+      ```
+
+      and print every entry still showing `"event":"proposed"` (not yet reviewed) in the summary —
+      a proposal nobody reviews is the exact "scaffolding with no producer" failure this pass exists
+      to close, and it should not be able to happen quietly a second time.
+
+7. **Summarize.** Print a diff summary: recurrences first, then packs touched, conventions added,
+   failure classes touched (added / instance appended / confirmed-no-change), conflicts pending,
+   pending studio-process proposals from step 6, and a one-line note per source app. Append a dated
+   entry to `CHANGELOG.md` under the KB section.
 
 ## Rules
 

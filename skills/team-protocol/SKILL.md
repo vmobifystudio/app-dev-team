@@ -307,6 +307,7 @@ Canonical paths, used verbatim by the loop — no other spelling is recognised:
 | ...and its generated view | `docs/team/messages.md` |
 | A review verdict | `docs/53-reviews/APP-NNN-cycle-N.md` |
 | ship-gate.sh's last recorded verdict | `docs/team/ship-gate-verdict.json` |
+| memory-curator.mjs's proposed/reviewed ledger | `docs/team/memory.jsonl` |
 
 If you hit a blocker, end with this instead — and name **who** must answer **what**, never just
 "unclear":
