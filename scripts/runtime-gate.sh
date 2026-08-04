@@ -324,7 +324,15 @@ ios_gate() {
       if xcrun simctl io "$UDID" screenshot "$SHOT" >/dev/null 2>&1; then
         pass "ios    " "built, installed, launched and still running after 3s ($BUNDLE). Evidence: docs/evidence/runtime-$DATE-ios.png"
       else
-        pass "ios    " "built, installed, launched and still running after 3s ($BUNDLE). Screenshot capture failed — no evidence artifact."
+        # EVIDENCE IS NOT OPTIONAL. This used to `pass` with the reason "Screenshot capture failed —
+        # no evidence artifact", which is a PASS whose own text says it proved nothing: /app-ship
+        # quotes this verdict, and a reader sees PASS. A gate that returns its success value when
+        # the evidence it exists to capture is missing cannot fail for the reason it was written.
+        # Same three-state rule as every other missing input in this file — the app may well be
+        # fine, and that is exactly what UNKNOWN means.
+        unknown "ios    " "built, installed and launched ($BUNDLE), still running after 3s — but SCREENSHOT CAPTURE FAILED,
+                    so there is no visual evidence for this run. Not a pass: the artifact this gate
+                    exists to produce is missing. Re-run once the simulator can be captured."
       fi
     fi
   else
@@ -435,7 +443,11 @@ android_gate() {
         pass "android" "built, installed, launched and still running after 3s ($PKG). Evidence: docs/evidence/runtime-$DATE-android.png"
       else
         rm -f "$SHOT"
-        pass "android" "built, installed, launched and still running after 3s ($PKG). Screenshot capture failed — no evidence artifact."
+        # EVIDENCE IS NOT OPTIONAL — see the iOS branch above for the full reasoning. Reported by
+        # the 2026-08-03 post-enhancement audit (F-06) and verified in the tree before this fix.
+        unknown "android" "built, installed and launched ($PKG), still running after 3s — but SCREENSHOT CAPTURE FAILED,
+                    so there is no visual evidence for this run. Not a pass: the artifact this gate
+                    exists to produce is missing. Re-run once the device can be captured."
       fi
     fi
   else

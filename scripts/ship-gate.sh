@@ -241,8 +241,27 @@ run_detector "dependency-check" node "$HERE/dependency-check.mjs" "$ROOT"
 if [ -f "$ROOT/.studio-policy.json" ]; then
   grep -q '"requireDurableRuns"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
     run_detector "run-doctor" node "$HERE/run-doctor.mjs" --ledger "$ROOT/docs/team/runs.jsonl"
-  grep -q '"requireApprovalBinding"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
-    run_detector "approval-check" node "$HERE/approval-check.mjs" --log "$ROOT/docs/31-board-events.jsonl" --policy "$ROOT/.studio-policy.json"
+  # `approval-check.mjs` verifies that every approval names a commit that is still reachable from
+  # the candidate being shipped — but that comparison only happens when it is GIVEN the candidate,
+  # via `--head`. This call omitted it, so the one check that ties an approval to the thing being
+  # released did the least useful half of its job: it confirmed the approval had a commit field and
+  # never asked whether that commit is in what ships. An approval for an abandoned branch passed.
+  #
+  # Reported by the 2026-08-01 app-ship audit (SHIP-P1-001) and verified still live in the tree on
+  # 2026-08-04. Resolving HEAD here also makes the failure mode honest: a project root that is not
+  # a git repository cannot have its approvals bound to a candidate at all, and that is CANNOT
+  # EVALUATE — not a silent pass, which is what omitting `--head` quietly produced.
+  if grep -q '"requireApprovalBinding"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null; then
+    SHIP_HEAD=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
+    if [ -n "$SHIP_HEAD" ]; then
+      run_detector "approval-check" node "$HERE/approval-check.mjs" --log "$ROOT/docs/31-board-events.jsonl" \
+        --policy "$ROOT/.studio-policy.json" --head "$SHIP_HEAD"
+    else
+      unknown "requireApprovalBinding is on, but $ROOT is not a git repository (or has no commits),
+           so no approval can be checked against the candidate being shipped. Approval binding is
+           UNKNOWN here, not clear."
+    fi
+  fi
   grep -q '"requireAuditAnchor"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
     run_detector "audit-anchor" node "$HERE/audit-anchor.mjs" verify --log "$ROOT/docs/31-board-events.jsonl" --out "$ROOT/docs/team/audit-anchor.json"
   grep -q '"requirePromptRegistry"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \

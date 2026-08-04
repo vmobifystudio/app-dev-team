@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 929 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 944 assertions
 
 ---
 
@@ -693,7 +693,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
-| `test.sh` | 929 assertions |
+| `test.sh` | 944 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -915,6 +915,39 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   own instead of scanning every class's output by eye. What promoted learnings actually change
   about agent/role/gate behavior once reviewed is deliberately NOT built yet — that's the next
   phase, once real proposals exist to design the lifecycle around rather than guessing its shape.
+- **Phase 0 truth repair, and the first half of a product-correctness engine, 2026-08-04**
+  (`docs/2026-08-04-consolidated-enhancement-plan.md`, built from all 20 review/dry-run documents
+  with every high-value claim re-verified against the tree — several audit claims were already
+  stale and are marked so there rather than acted on).
+  (1) **`runtime-gate.sh` returned PASS when screenshot capture failed**, on both the iOS and
+  Android paths, with the reason "Screenshot capture failed — no evidence artifact" — a PASS whose
+  own sentence says it proved nothing, which `/app-ship` then quotes. Both paths are now
+  CANNOT EVALUATE: the app may well be fine, and that is exactly what UNKNOWN means.
+  (2) **`ship-gate.sh` invoked `approval-check.mjs` with no `--head`**, so the one check that ties
+  an approval to the thing being released never compared them; a project root that is not a git
+  repository is now a stated UNKNOWN rather than the silent pass that omission produced.
+  (3) **The plugin misreported itself** — `plugin.json` advertised 29 roles while shipping 30, and
+  `metadata-check.mjs` printed CLEAR because it only ever inspected the marketplace description.
+  It now inspects every manifest, and rejects the "takes an idea to a shipped app" overclaim: the
+  pipeline stops at submission-ready and publishing is human-owned, so the shop window may not say
+  otherwise.
+  (4) **Eval manifests carried narratives that had outlived their code** — `stale-approval` still
+  claimed "no board field records what was approved" four days after `--bind` began recording
+  commit + diff_hash. Every manifest now carries `last_verified_at`, the corrected claim is
+  regression-locked against returning, and named workflow paths must resolve. That check caught a
+  second live instance on its first run — and its own first draft produced a false positive on a
+  fixture's planted `ci.yml`, fixed by resolving fixture-relative paths first.
+  (5) **`defect-hunting` §4b — follow the user's value across the boundary**, required by
+  `code-reviewer.md` rather than merely available. Six dry runs measured the same result: the gates
+  caught every process defect and **zero** product defects. A date picker whose selection was
+  discarded for `System.currentTimeMillis()`, a 24dp touch target where the spec said 56dp, a stale
+  TalkBack announcement, a corrupt-data fallback indistinguishable from data loss, a device test
+  that exercised its own stub — every one found by a reviewer who went and looked, or by a human
+  afterwards. §4b makes the round trip, the distinguishable test value, the on-device measurement,
+  and reintroducing the defect to prove the regression catches it into contract rather than a
+  reviewer's good day. **The journey gate (a runtime PASS must prove a declared P0 journey, not
+  process liveness) is NOT built yet** — §4b raises the floor for review; it does not yet raise it
+  for the runtime gate.
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the

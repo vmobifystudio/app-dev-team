@@ -6,7 +6,12 @@
   "severity": "S2",
   "why": "P1.5 is exactly this item — \"a planted contradiction produces a report, not a guess\" — and it is unbuilt. Today a developer reading both picks one silently and the choice ships.",
   "detector": {
-    "run": ["node", "scripts/requirements-conflict-scan.mjs", "{project}"],
+    "run": [
+      "node",
+      "scripts/requirements-conflict-scan.mjs",
+      "{project}"
+    ],
     "expect_exit": 1
-  }
+  },
+  "last_verified_at": "2026-08-04"
 }

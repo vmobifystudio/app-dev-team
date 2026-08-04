@@ -6,7 +6,12 @@
   "severity": "S2",
   "why": "team-doctor's doc graph checks that an ARTIFACT has a writer. Nothing checks that every P0 FEATURE has an event. The traceability graph in P1.3/P1.4 is the structure that would make this mechanical; it does not exist yet.",
   "detector": {
-    "run": ["node", "scripts/analytics-coverage-scan.mjs", "{project}"],
+    "run": [
+      "node",
+      "scripts/analytics-coverage-scan.mjs",
+      "{project}"
+    ],
     "expect_exit": 1
-  }
+  },
+  "last_verified_at": "2026-08-04"
 }

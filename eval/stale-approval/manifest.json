@@ -4,6 +4,10 @@
   "expected_detector": null,
   "expected_signal": null,
   "severity": "S1",
-  "why": "board-doctor checks that an approval EXISTS and that it did not come from the owner. It does not compare the approval's timestamp against the code it approved, because the board carries no commit SHA to compare against.",
-  "gap": "No detector, and the missing input is structural: no board field records what was approved. Until an approval names a commit, \"approved\" is a claim about a moment, not about a diff. This is FC-005 in advance — a check nobody can write because nobody writes its input."
+  "status": "detector-exists-fixture-cannot-reach-it",
+  "introduced_in": "2026-07-29",
+  "fixed_in": "2026-07-31",
+  "last_verified_at": "2026-08-04",
+  "why": "board-doctor checks that an approval EXISTS and that it did not come from the owner. It does not compare the approval's timestamp against the code it approved — that part of the original note still stands, and board-doctor is still not the right layer to ask.",
+  "gap": "STALE NARRATIVE, CORRECTED 2026-08-04. This entry used to claim the input was structurally missing: 'until an approval names a commit, approved is a claim about a moment, not about a diff'. That has been false since 2026-07-31. `board.mjs move ... approved --bind` computes `commit` and `diff_hash` from git and records them on the event; `scripts/approval-check.mjs` recomputes and verifies them, and as of 2026-08-04 `ship-gate.sh` finally passes it `--head` so the comparison actually runs at release time. The detector exists. What is still missing is THIS FIXTURE: it carries a docs/ tree with no bound approval and no git history, so there is nothing for approval-check to be pointed at — hence `expected_detector: null`, and hence this project stays OUT of the scored denominator rather than being counted as a caught defect it did not catch. Rebuilding the fixture as a real repo with a bound approval and a later commit is tracked work, not an unknown. Flagged by the 2026-08-03 post-enhancement audit (F-08) as a manifest whose narrative outlived the code it describes, which is why the lifecycle fields above now exist: `status` and `fixed_in` make this contradiction visible instead of leaving it to be re-discovered by the next reader."
 }

@@ -1596,6 +1596,38 @@ for f in agents/code-reviewer.md agents/verification-engineer.md skills/defect-h
     && ok "$f invokes the failure corpus" \
     || bad "$f invokes the failure corpus"
 done
+# --- §4b, the product-correctness half. Six dry runs measured the same result: the gates caught
+# every PROCESS defect and ZERO PRODUCT defects. A discarded date-picker selection, a 24dp touch
+# target where the spec said 56dp, a stale TalkBack announcement, a corrupt-data fallback
+# indistinguishable from data loss, a device test that exercised its own stub — every one found by a
+# reviewer who went and looked, or by a human afterwards. §4b turns "a reviewer's good day" into the
+# contract; these assertions stop it from quietly becoming prose again.
+grep -q "4b" "$HERE/../skills/defect-hunting/SKILL.md" \
+  && ok "defect-hunting carries the round-trip section (§4b)" \
+  || bad "defect-hunting carries the round-trip section (§4b)"
+for needle in "across the boundary" "distinguishable value" "reintroduc"; do
+  tr '\n' ' ' < "$HERE/../skills/defect-hunting/SKILL.md" | tr -s ' ' | grep -qi -- "$needle" \
+    && ok "...and states the '$needle' obligation" \
+    || bad "...and states the '$needle' obligation"
+done
+# The rule has to be REQUIRED somewhere an agent actually reads, or it is a skill nobody applies —
+# the exact "rule nobody executes" shape this suite opens by naming.
+tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "4b" \
+  && ok "code-reviewer requires §4b rather than merely citing defect-hunting" \
+  || bad "code-reviewer requires §4b rather than merely citing defect-hunting"
+tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -qi "measure on-device\|measure, on-device\|on-device anything the spec quantifies" \
+  && ok "...including measuring on-device whatever the spec quantifies" \
+  || bad "...including measuring on-device whatever the spec quantifies"
+# Mirror test: strip the requirement and prove the assertion above goes red.
+cp "$HERE/../agents/code-reviewer.md" "$TMP/cr-4b.bak"
+sed 's/§4b/SECTION-REMOVED/g' "$TMP/cr-4b.bak" > "$HERE/../agents/code-reviewer.md"
+if tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "4b"; then
+  bad "mirror test: removing §4b from code-reviewer should make its assertion fail"
+else
+  ok "mirror test: removing §4b from code-reviewer reproduces an unrequired round-trip rule"
+fi
+cp "$TMP/cr-4b.bak" "$HERE/../agents/code-reviewer.md"
+
 grep -q "corpus_recurrence" "$HERE/../commands/app-learn.md" \
   && ok "/app-learn's failure pass reads the recurrence flag" \
   || bad "/app-learn's failure pass reads the recurrence flag"
@@ -1897,6 +1929,56 @@ cp "$ASTUB/aapt2" "$DEADSTUB/aapt2"
 assert_exit 1 "the identical build whose process is gone after 3s is FAIL, not PASS" \
   env PATH="$DEADSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP"
 assert_has "$TMP/out" "crashed on launch" "...and names crash-on-launch as the reason"
+
+# EVIDENCE IS NOT OPTIONAL. Post-enhancement audit F-06, verified live in the tree before the fix:
+# when `screencap` failed, the gate called pass() with the reason "Screenshot capture failed — no
+# evidence artifact" — a PASS whose own sentence says it proved nothing. /app-ship quotes this
+# verdict and a reader sees PASS. Same tree as the PASS above, one stub changed: screencap writes
+# nothing. The app really is alive here, which is the point — UNKNOWN is the honest answer, and the
+# difference between this and the PASS above is a single failing capture.
+NOSHOTSTUB="$TMP/noshotstub"; mkdir -p "$NOSHOTSTUB"
+# Written out rather than sed-mutated from $ASTUB: a fragile in-test rewrite is itself the
+# "checking tool carries the defect it checks for" class this suite exists to catch. Identical to
+# $ASTUB/adb in every branch EXCEPT screencap, which fails — so the app is genuinely alive here.
+cat > "$NOSHOTSTUB/adb" <<'EOF'
+#!/bin/sh
+case "$*" in
+  devices)      printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  *pidof*)      echo 4213 ;;
+  *screencap*)  exit 1 ;;
+  *)            exit 0 ;;
+esac
+EOF
+chmod +x "$NOSHOTSTUB/adb"; cp "$ASTUB/aapt2" "$NOSHOTSTUB/aapt2"
+rm -rf "$RGP/docs/evidence"
+assert_exit 2 "a live app whose screenshot could not be captured is CANNOT EVALUATE, never PASS" \
+  env PATH="$NOSHOTSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP"
+cp "$TMP/out" "$TMP/rg-noshot.txt"
+assert_has "$TMP/rg-noshot.txt" "SCREENSHOT CAPTURE FAILED" "...and names the missing evidence as the reason"
+grep -q "^RESULT: PASS" "$TMP/rg-noshot.txt" \
+  && bad "...and never prints PASS for a run with no evidence artifact" \
+  || ok "...and never prints PASS for a run with no evidence artifact"
+[ -f "$RGP/docs/evidence/runtime-$(date +%F)-android.png" ] \
+  && bad "...and leaves no empty evidence file behind to be mistaken for a capture" \
+  || ok "...and leaves no empty evidence file behind to be mistaken for a capture"
+# Mirror test: restore the old evidence-optional behaviour and prove the assertion above goes red.
+cp "$HERE/runtime-gate.sh" "$HERE/runtime-gate.sh.bak"
+node -e '
+  const fs = require("fs");
+  const p = process.argv[1];
+  let t = fs.readFileSync(p, "utf8");
+  const marker = "        unknown \"android\" \"built, installed and launched ($PKG), still running after 3s";
+  if (!t.includes(marker)) { console.error("marker not found"); process.exit(1); }
+  t = t.replace(marker, "        pass \"android\" \"MUTATED evidence-optional pass ($PKG)\"; : \"");
+  fs.writeFileSync(p, t);
+' "$HERE/runtime-gate.sh"
+env PATH="$NOSHOTSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP" >"$TMP/rg-mirror.txt" 2>&1
+if grep -q "^RESULT: PASS" "$TMP/rg-mirror.txt"; then
+  ok "mirror test: restoring the evidence-optional pass reproduces a PASS with no evidence"
+else
+  bad "mirror test: restoring the evidence-optional pass should reproduce a PASS with no evidence"
+fi
+mv "$HERE/runtime-gate.sh.bak" "$HERE/runtime-gate.sh"
 
 # The timeout branch. RUNTIME_GATE_BUILD_TIMEOUT exists in the source for exactly one reason —
 # "so the timeout branch is testable in seconds instead of in a quarter of an hour" — and no test
@@ -4472,6 +4554,61 @@ assert_exit 2 "a detector script that does not exist is CANNOT RUN, never DETECT
 rm -f "$TMP/lab-copy/eval/clean/manifest.json"
 assert_exit 2 "with no clean project the lab CANNOT RUN — a detection score alone is not a result" \
   node "$TMP/lab-copy/scripts/studio-eval.mjs"
+
+# --- A manifest's NARRATIVE can outlive the code it describes, and nothing noticed for four days.
+# `eval/stale-approval` said "no board field records what was approved… a check nobody can write
+# because nobody writes its input" — while `board.mjs --bind` had been recording commit + diff_hash
+# and `approval-check.mjs` had been verifying them since 2026-07-31. The lab still printed a clean
+# score, because a manifest is prose to it. Post-enhancement audit F-08.
+#
+# The durable fix is not correcting today's wording — it is making a stale claim mechanically
+# detectable. Every manifest carries `last_verified_at`, and any manifest whose prose asserts a
+# capability is ABSENT must name the file that would provide it, so the claim can be re-checked
+# against the tree instead of re-read.
+for m in "$HERE"/../eval/*/manifest.json; do
+  node -e '
+    const fs = require("fs");
+    const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    if (!m.last_verified_at) { console.error("no last_verified_at"); process.exit(1); }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(m.last_verified_at)) { console.error("bad date"); process.exit(1); }
+  ' "$m" 2>/dev/null \
+    || bad "$(basename "$(dirname "$m")")/manifest.json carries a dated last_verified_at" \
+         "a manifest with no verification date cannot be told apart from one whose claims have rotted"
+done
+ok "every eval manifest carries a dated last_verified_at"
+# The specific correction, kept as a regression: this manifest may never again claim the input for
+# approval binding does not exist, because it does.
+node -e '
+  const fs = require("fs");
+  const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const text = `${m.why || ""} ${m.gap || ""}`;
+  // The live capability: board.mjs --bind writes commit+diff_hash, approval-check.mjs verifies.
+  if (/no board field records what was approved/i.test(text)) process.exit(1);
+  if (!/--bind|approval-check/.test(text)) process.exit(1);
+' "$HERE/../eval/stale-approval/manifest.json" \
+  && ok "...and stale-approval names the binding that exists instead of claiming it does not" \
+  || bad "...and stale-approval names the binding that exists instead of claiming it does not"
+# A manifest naming a CI workflow must name one that exists — the crash-on-launch fixture pointed at
+# checks.yml after the job moved to runtime-gate.yml, so its stated proof was unfollowable.
+#
+# A workflow path in a manifest can mean one of TWO things, and conflating them makes this check
+# lie: either the PLUGIN's own workflow (the proof that a detector runs somewhere), or a path inside
+# the FIXTURE (`eval/ci-that-cannot-fail` plants its defect in its own `.github/workflows/ci.yml`).
+# The first draft of this check only looked at the plugin root and reported the fixture's own
+# planted file as missing — a false positive on the very first run, which is exactly the outcome
+# `eval/clean` exists to make expensive. Resolve against the fixture first, then the plugin root.
+WF_MISSING=""
+for m in "$HERE"/../eval/*/manifest.json; do
+  FIXTURE=$(dirname "$m")
+  for wf in $(grep -o '\.github/workflows/[a-z0-9-]*\.yml' "$m" 2>/dev/null | sort -u); do
+    [ -f "$FIXTURE/$wf" ] && continue      # the fixture's own file — the planted defect itself
+    [ -f "$HERE/../$wf" ] && continue      # the plugin's own workflow — the stated proof
+    WF_MISSING="$WF_MISSING $(basename "$FIXTURE")/$wf"
+  done
+done
+[ -z "$WF_MISSING" ] \
+  && ok "every workflow path named in an eval manifest resolves to a real file" \
+  || bad "every workflow path named in an eval manifest resolves to a real file" "unresolved:$WF_MISSING"
 
 # Same rule as mutate.sh: a gate nobody runs is not a gate.
 grep -q 'studio-eval.mjs' "$HERE/../.github/workflows/checks.yml" \

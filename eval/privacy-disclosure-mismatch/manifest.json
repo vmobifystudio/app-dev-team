@@ -6,7 +6,12 @@
   "severity": "S1",
   "why": "security-reviewer covers this in prose and runs as an agent. No script reconciles a declared privacy label against the fields the code actually transmits, and no gate reads docs/15-aso.md at all.",
   "detector": {
-    "run": ["node", "scripts/privacy-disclosure-scan.mjs", "{project}"],
+    "run": [
+      "node",
+      "scripts/privacy-disclosure-scan.mjs",
+      "{project}"
+    ],
     "expect_exit": 1
-  }
+  },
+  "last_verified_at": "2026-08-04"
 }
