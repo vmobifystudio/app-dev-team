@@ -17,6 +17,28 @@
  * against a per-project registry. Zero dependencies, one file, no network — the studio must keep
  * working offline on a laptop.
  *
+ * THE BOUND THAT ACTUALLY MATTERS, AND WHICH THIS FILE ORIGINALLY FAILED TO STATE. The secrets live
+ * in plaintext in `docs/team/actors.json`, INSIDE THE TREE AGENTS READ. So against the threat model
+ * this studio actually has — a semi-trusted LLM agent with Read — any agent that can read that file
+ * can mint a token for any role in it, including code-reviewer and founder. The security reviewer
+ * demonstrated it: read the file, call mintToken, get a valid approval.
+ *
+ * That is sound cryptography with the key stored inside the attacker's reach. It bounds NOTHING
+ * against a hostile agent. What it does bound, honestly:
+ *
+ *   - a CONFUSED agent cannot assert a role by spelling it, which is the common failure;
+ *   - every event records whether its role was proven or merely asserted, so history stays readable;
+ *   - a token is scoped to one (actor, role, ticket, event), so a captured one is not universal.
+ *
+ * The earlier version of this comment bounded itself against "enterprise identity" and never
+ * against "the caller can read the key" — which is the bound that decides whether the mechanism is
+ * real here. Overclaiming in a docstring is how a team comes to believe a control holds.
+ *
+ * To make this an actual authority boundary the secret has to leave the agent's read scope: an
+ * environment variable the spawner sets and the agent never sees, an OS keychain, or a signing
+ * helper the agent can call but not read. Until then, treat `attested` as "this event was produced
+ * by something that had the key", never as "this role was independently verified".
+ *
  * TWO MODES, AND THE DIFFERENCE IS NEVER BLURRED:
  *
  *   insecure-local   the default. No token required. Every event is STAMPED `actor_mode:

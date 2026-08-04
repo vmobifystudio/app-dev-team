@@ -348,9 +348,19 @@ function reduce(events) {
         if (typeof fields.owner === 'string' && fields.owner) state.owner = fields.owner;
         break;
       }
-      case 'assigned':
-        state.owner = (typeof detail === 'object' ? detail.to : detail) || by || state.owner;
+      case 'assigned': {
+        // THE SAME STRING/OBJECT BUG `corrected` WAS JUST FIXED FOR, THREE LINES AWAY, IN THE SAME
+        // SWITCH. `--detail '{"to":"x"}'` arrives from the CLI as text, so `typeof detail ===
+        // 'object'` was false and the whole JSON string became the owner — the reducer wrote
+        // `owner: '{"to":"ios-developer"}'`. FC-001 at its shortest range yet: I fixed the case I
+        // had written and did not look at its neighbour.
+        let parsed = detail;
+        if (typeof parsed === 'string' && parsed.trim().startsWith('{')) {
+          try { parsed = JSON.parse(parsed); } catch { parsed = detail; }
+        }
+        state.owner = (typeof parsed === 'object' && parsed ? parsed.to : parsed) || by || state.owner;
         break;
+      }
       case 'claimed':
         state.status = 'in_progress';
         state.owner = by || state.owner;
@@ -444,6 +454,42 @@ function validate(tickets, candidate) {
   return checkCapability(tickets.get(key(candidate.ticket)), candidate, legalEvents(tickets.get(key(candidate.ticket)) || { status: 'todo' }));
 }
 
+/**
+ * Everyone who actually DID work on this ticket.
+ *
+ * SEPARATION MUST BE CHECKED AGAINST HISTORY, NOT AGAINST A MUTABLE CELL. It compared `by` against
+ * `state.owner` — and `owner` is rewritten by `assigned` and by `corrected`, both of which any role
+ * may append. The security reviewer walked straight through it with ONE actor:
+ *
+ *     tech-lead approves own ticket        -> refused, "a role does not gate its own work"
+ *     tech-lead corrects owner to "ghost"  -> accepted
+ *     tech-lead approves the same ticket   -> ACCEPTED
+ *     merged                               -> ACCEPTED
+ *
+ * And `corrected` was not the hole. The identical escalation works through `assigned`, which is a
+ * work event with no capability check and predates all of this — so fixing only `corrected` would
+ * have fixed nothing while looking like a fix. FC-001 in the reasoning rather than the code: I went
+ * after the mechanism I had just written instead of the property being violated.
+ *
+ * The property is: THE ROLE THAT DID THE WORK MAY NOT BE THE ROLE THAT CLEARS IT. Who did the work
+ * is written in the log — `claimed`, `started`, `done_reported` — and nothing can rewrite it,
+ * because the log is append-only. So that is what separation is measured against.
+ */
+function workedOn(state) {
+  // `started` IS NOT WORK — it is the REVIEWER opening the review (`case 'started'` sets
+  // state.reviewer). Including it made every reviewer an author of the thing they were reviewing,
+  // so the fix for the separation bypass refused every legitimate approval in the suite. Twelve
+  // assertions went red at once, which is the only reason it was caught before it shipped: a
+  // narrower fix would have passed and quietly broken the review path in the field.
+  const WORK = new Set(['claimed', 'done_reported']);
+  const who = new Set();
+  if (state.owner) who.add(state.owner);
+  for (const e of state.events || []) {
+    if (WORK.has(e.event) && e.by) who.add(e.by);
+  }
+  return who;
+}
+
 function validateTransition(tickets, candidate) {
   const { ticket: id, event: name, by } = candidate;
 
@@ -512,21 +558,24 @@ function validateTransition(tickets, candidate) {
         };
       }
       return { ok: true };
-    case 'approved':
-      if (by && by === state.owner) {
+    case 'approved': {
+      const workers = workedOn(state);
+      if (by && workers.has(by)) {
         return {
           ok: false,
-          reason: `${by} owns ${id} — a role does not gate its own work`,
+          reason: `${by} worked on ${id} (owner or an author of claimed/started/done_reported) — a role does not gate its own work`,
           legal: legal.filter((e) => e !== 'approved'),
         };
       }
       return { ok: true };
+    }
     case 'merged': {
-      const external = state.approvals.filter((a) => a.by && a.by !== state.owner);
+      const workers = workedOn(state);
+      const external = state.approvals.filter((a) => a.by && !workers.has(a.by));
       if (!external.length) {
         return {
           ok: false,
-          reason: `${id} has no "approved" by a role other than its owner (${state.owner || 'unset'})`,
+          reason: `${id} has no "approved" by a role that did not work on it (workers: ${[...workers].join(', ') || 'unset'})`,
           legal: legal.filter((e) => e !== 'merged'),
         };
       }

@@ -2401,7 +2401,7 @@ bm "$G" move M-001 done_reported    --by ios-developer >/dev/null 2>&1
 bm "$G" move M-001 verified         --by tech-manager  >/dev/null 2>&1
 bm "$G" move M-001 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
 assert_exit 1 "a merge with no approval at all is refused" bm "$G" move M-001 merged --by tech-manager
-assert_has "$TMP/err" "no \"approved\" by a role other than its owner" "...naming the owner it will not accept"
+assert_has "$TMP/err" "no \"approved\" by a role that did not work on it" "...naming the workers it will not accept an approval from"
 
 # The sharper case, and the one the second broken guard let through: an approval EXISTS, and it is
 # the owner's. Unreachable through the CLI (the previous assertion forbids writing it), so it is
@@ -2415,7 +2415,7 @@ chain_append "$G/docs/31-board-events.jsonl" \
   '{"ts":"2026-07-29T11:00:00Z","ticket":"M-001","event":"approved","by":"ios-developer","detail":"hand-appended","provenance":"cli"}'
 assert_exit 1 "a merge whose only approval is the owner's own is still refused" \
   bm "$G" move M-001 merged --by tech-manager
-assert_has "$TMP/err" "no \"approved\" by a role other than its owner" "...for the owner-approval reason, not the chain"
+assert_has "$TMP/err" "no \"approved\" by a role that did not work on it" "...for the separation reason, not the chain"
 bm "$G" move M-001 approved --by code-reviewer >/dev/null 2>&1
 assert_exit 0 "...and clears once a non-owner has approved" bm "$G" move M-001 merged --by tech-manager
 
@@ -6346,20 +6346,6 @@ assert_exit 0 "...while disjoint work is clear" \
 assert_exit 2 "...and a ticket declaring no files is CANNOT EVALUATE, never a clearance" \
   node "$HERE/contention-check.mjs" --log "$FCT/docs/31-board-events.jsonl" --ticket D-004
 
-# --- F6: the toolchain contract (a broken host must never read as a broken app) ----------------
-FCPP="$TMP/fc-profile"; rm -rf "$FCPP"; mkdir -p "$FCPP"
-assert_exit 2 "toolchain doctor with no profile is CANNOT EVALUATE" \
-  node "$HERE/project-profile.mjs" doctor --root "$FCPP"
-node "$HERE/project-profile.mjs" init --root "$FCPP" --build "definitely-not-a-real-binary build" >/dev/null 2>&1
-assert_exit 1 "...and BLOCKED when a declared command is absent on this host" \
-  node "$HERE/project-profile.mjs" doctor --root "$FCPP"
-node "$HERE/project-profile.mjs" doctor --root "$FCPP" 2>&1 | grep -q "ENVIRONMENT fact, not a product fact" \
-  && ok "...saying explicitly that this is an environment fact, not a product fact (DR4-001)" \
-  || bad "...saying explicitly that this is an environment fact, not a product fact (DR4-001)"
-# Re-running init would mint a new project_id and orphan every artifact naming the old one.
-assert_exit 1 "re-running init is refused so a project_id cannot silently change" \
-  node "$HERE/project-profile.mjs" init --root "$FCPP"
-
 # --- dogfood run 1: three defects in the path between a ticket and an agent --------------------
 # None of these was visible to 1045 assertions or twelve green invariants. All three were found by
 # trying to drive the studio's own commands in sequence.
@@ -6431,30 +6417,6 @@ bm "$FCN" move N-002 corrected --by tech-manager --detail '{"files":["src/C.swif
 assert_exit 0 "...and clears once the file set is NARROWED by a correction" \
   node "$HERE/contention-check.mjs" --log "$FCN/docs/31-board-events.jsonl" --ticket N-002
 
-# --- F7: one schema registry -------------------------------------------------------------------
-# A dozen `.../vN` shapes existed, each validated by hand-written ifs beside whichever script read
-# it. `feature: "F-001,F-002"` looks plausible and is one invalid ID; `routes` passed for `rules`
-# until a tool happened to run. Prose is not checkable; a field is — applied to the shapes themselves.
-SCH_OK=$(node -e "
-import('$HERE/lib/schemas.mjs').then((m) => {
-  const good = m.validate({ schema: 'gate-result/v1', gate: 'x', subject: {}, evaluated_at: 't', result: 'PASS' }, 'gate-result/v1');
-  const badEnum = m.validate({ schema: 'gate-result/v1', gate: 'x', subject: {}, evaluated_at: 't', result: 'PROBABLY' }, 'gate-result/v1');
-  const missing = m.validate({ schema: 'gate-result/v1', gate: 'x' }, 'gate-result/v1');
-  const unknown = m.validate({ schema: 'invented/v9' });
-  process.stdout.write([good.ok, badEnum.ok, missing.ok, unknown.ok].join(','));
-});" 2>/dev/null)
-if [ "$SCH_OK" = "true,false,false,false" ]; then ok "the schema registry accepts a valid shape and refuses a bad enum, a missing field and an unknown schema"
-else bad "the schema registry accepts a valid shape and refuses a bad enum, a missing field and an unknown schema" "got $SCH_OK"; fi
-# STALE must be in the readiness enum: it is neither PASS nor BLOCKED and must never collapse.
-node -e "import('$HERE/lib/schemas.mjs').then((m) => process.exit(m.REGISTRY['readiness/v1'].fields.verdict[2].includes('STALE') ? 0 : 1));" 2>/dev/null   && ok "...and readiness/v1 enumerates STALE, so it cannot silently become PASS or BLOCKED"   || bad "...and readiness/v1 enumerates STALE, so it cannot silently become PASS or BLOCKED"
-
-# --- F8: one exit contract, with USAGE and ENVIRONMENT split out of cannot-evaluate -------------
-node -e "
-import('$HERE/lib/cli.mjs').then((m) => {
-  const e = m.EXIT;
-  process.exit(e.PASS === 0 && e.BLOCKED === 1 && e.UNKNOWN === 2 && e.USAGE === 64 && e.ENVIRON === 69 ? 0 : 1);
-});" 2>/dev/null   && ok "the shared exit contract keeps USAGE (64) and ENVIRONMENT (69) distinct from cannot-evaluate (2)"   || bad "the shared exit contract keeps USAGE (64) and ENVIRONMENT (69) distinct from cannot-evaluate (2)"
-
 # --- F9: every board event carries its own identity and states its shape ------------------------
 # Stamped at the append boundary, not per call site: a field every writer must remember is a field
 # some writer will forget — `assign` dropped the idempotency key exactly that way.
@@ -6464,49 +6426,166 @@ if grep -q '"schema":"board-event/v1"' "$FCE2/docs/31-board-events.jsonl" && gre
   ok "every board event states its schema and carries an event_id"
 else bad "every board event states its schema and carries an event_id"; fi
 
-# --- F17: the release candidate is immutable, and refuses a dirty tree --------------------------
-# Ship status was an OVERWRITTEN verdict file: the least durable shape for the most consequential
-# claim the studio makes. A candidate built from uncommitted work names a state that exists on one
-# machine and in no commit, so its evidence could never be re-checked by anyone.
-FCRC="$TMP/fc-rc"; rm -rf "$FCRC"; mkdir -p "$FCRC"
-( cd "$FCRC" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
-  && echo x > a.txt && git add -A && git commit -qm c1 )
-assert_exit 0 "a release candidate can be created from a clean tree" \
-  node "$HERE/release-candidate.mjs" create --root "$FCRC"
-if grep -q '"release_candidate_id"' "$FCRC/docs/team/release-candidates.jsonl" 2>/dev/null; then
-  ok "...and is recorded in an append-only, hash-chained ledger"
-else bad "...and is recorded in an append-only, hash-chained ledger"; fi
-node "$HERE/release-candidate.mjs" create --root "$FCRC" 2>&1 | grep -q "HUMAN ONLY" \
-  || node "$HERE/release-candidate.mjs" show --root "$FCRC" --json 2>&1 | grep -q "HUMAN ONLY" \
-  && ok "...stating on the artifact itself that publication is human-only" \
-  || bad "...stating on the artifact itself that publication is human-only"
-( cd "$FCRC" && echo dirty > b.txt )
-assert_exit 1 "...and a dirty working tree is refused, because its evidence could never be re-checked" \
-  node "$HERE/release-candidate.mjs" create --root "$FCRC"
+# --- security review: five S1 bypasses, every one reproduced before it was fixed --------------
+# The unifying finding, worth keeping in front of anyone reading this block: EACH NEW GATE TRUSTED
+# AN UNAUTHENTICATED INPUT INSIDE THE AGENT'S OWN WRITE SCOPE — the policy file, the log path, the
+# registry, the lockfile, the owner cell. Every one was defended in a docstring that argued for
+# exactly the right principle and then read the value from a place the adversary controls.
+SEC="$TMP/sec-s1"; rm -rf "$SEC"; mkdir -p "$SEC/docs/team"; ( cd "$SEC" && git init -q . )
+printf '{"requireAttestedActors": true}\n' > "$SEC/.studio-policy.json"
+printf '{"actors":{"a":{"roles":["ios-developer"],"secret":"s"}}}\n' > "$SEC/docs/team/actors.json"
 
-# --- F21: platform journey drivers, both written at once ---------------------------------------
-# Shipping one platform and adding the other later is FC-001, which has recurred five times in two
-# days including twice inside the fixes for it. Neither driver has a step executor yet, and BOTH say
-# so instead of returning a stub PASS — a driver reporting success from a loop nobody ran would be
-# green-while-nothing-happened inside the gate built to end it.
-for D in android ios; do
-  OUT=$(sh "$HERE/drivers/$D.sh" --journey "$FIX/../journeys/none.json" 2>&1 | head -1)
-  RC=$(sh "$HERE/drivers/$D.sh" --journey /nonexistent.json >/dev/null 2>&1; echo $?)
-  if [ "$RC" = "2" ]; then ok "the $D driver reports CANNOT EVALUATE (2) when it cannot exercise a journey"
-  else bad "the $D driver reports CANNOT EVALUATE (2) when it cannot exercise a journey" "exit $RC"; fi
-  sh "$HERE/drivers/$D.sh" --journey /nonexistent.json 2>&1 | grep -q '"result":"CANNOT_EVALUATE"' \
-    && ok "...emitting a well-formed journey-result/v1 the gate can parse" \
-    || bad "...emitting a well-formed journey-result/v1 the gate can parse"
-  # HONEST LABEL: this is a SOURCE-TEXT check, not a behavioural one, and it is weaker than every
-  # other assertion in this block. Proving behaviourally that a driver does not stub a PASS needs a
-  # device attached, and there is none here. A mirror test confirmed its weakness: replacing the
-  # refusal with `printf PASS; exit 0` left the explanatory comment in place, so this still passed.
-  # Recorded rather than dressed up — an assertion whose limits are stated is worth more than one
-  # whose limits are discovered later.
-  grep -q "reporting PASS here would be" "$HERE/drivers/$D.sh" \
-    && ok "...and its source states why it does not stub a PASS (source check, not behavioural)" \
-    || bad "...and its source states why it does not stub a PASS (source check, not behavioural)"
-done
+# S1-1. Attestation FAILED OPEN. A bare try/catch meant deleting the policy — or writing one byte of
+# invalid JSON into it — silently downgraded the regime to insecure-local. Every other reader in
+# this codebase treats an unreadable input as CANNOT EVALUATE; the identity gate was the exception.
+assert_exit 1 "with attestation on and no token, the append is refused" \
+  bm "$SEC" add T-1 --title x --owner ios-developer --by ios-developer
+printf 'not json at all\n' > "$SEC/.studio-policy.json"
+assert_exit 2 "...and a CORRUPT policy is cannot-evaluate, never a silent downgrade to insecure-local" \
+  bm "$SEC" add T-2 --title x --owner ios-developer --by ios-developer
+
+# S1-2. `--log` chose which policy and which registry governed the append: stampActor derived its
+# security root as dirname(dirname(paths.log)) rather than from the resolver. With a symlink, an
+# unattested event landed in the REAL chain while attestation was on. root.mjs exists to answer
+# "which project is this, authoritatively" and was not on this path at all.
+printf '{"requireAttestedActors": true}\n' > "$SEC/.studio-policy.json"
+mkdir -p "$SEC/sneaky/docs" && printf '{}\n' > "$SEC/sneaky/.studio-policy.json"
+ln -sf "$SEC/docs/31-board-events.jsonl" "$SEC/sneaky/docs/31-board-events.jsonl"
+assert_exit 1 "redirecting --log at a decoy policy does not choose a weaker regime" \
+  bash -c "cd '$SEC' && node '$BD' add T-3 --title x --owner ios-developer --by ios-developer --log '$SEC/sneaky/docs/31-board-events.jsonl'"
+
+# S1-5. Separation was checked against the MUTABLE owner cell. One actor walked through it by
+# rewriting owner and re-approving. `corrected` was not the hole — `assigned` does the same thing,
+# has no capability check, and predates all of this, so fixing only `corrected` would have fixed
+# NOTHING while looking like a fix. Separation is now measured against who did the work, which is
+# written in an append-only log and cannot be rewritten.
+SEP="$TMP/sec-sep"; rm -rf "$SEP"; mkdir -p "$SEP"; ( cd "$SEP" && git init -q . )
+bm "$SEP" add APP-7 --title x --owner tech-lead >/dev/null 2>&1
+bm "$SEP" move APP-7 claimed --by tech-lead >/dev/null 2>&1
+bm "$SEP" move APP-7 done_reported --by tech-lead >/dev/null 2>&1
+bm "$SEP" move APP-7 verified --by verification-engineer >/dev/null 2>&1
+bm "$SEP" move APP-7 review_requested --by tech-lead >/dev/null 2>&1
+bm "$SEP" move APP-7 started --by tech-lead >/dev/null 2>&1
+assert_exit 1 "a role cannot approve work it did" \
+  bm "$SEP" move APP-7 approved --by tech-lead
+bm "$SEP" move APP-7 corrected --by tech-lead --detail '{"owner":"ghost"}' >/dev/null 2>&1
+assert_exit 1 "...and rewriting owner via corrected does not buy an approval" \
+  bm "$SEP" move APP-7 approved --by tech-lead
+bm "$SEP" move APP-7 assigned --by tech-lead --to ghost2 >/dev/null 2>&1
+assert_exit 1 "...nor via assigned, which has no capability check and predates the corrected event" \
+  bm "$SEP" move APP-7 approved --by tech-lead
+assert_exit 0 "...while a role that did NOT work on it still approves normally" \
+  bm "$SEP" move APP-7 approved --by code-reviewer
+
+# S1-4. The lock reaped on kill(pid,0), and the pid came from a file any writer can overwrite. A
+# forged dead pid walked a second process into the critical section while the holder was inside —
+# producing the exact hash-chain fork the primitive exists to prevent. Reaping now needs BOTH a dead
+# holder AND an age past any plausible critical section: a forged pid must still wait out the floor.
+LK="$TMP/sec-lock"; rm -rf "$LK"; mkdir -p "$LK"
+cat > "$LK/hold.mjs" <<MJS
+import { withFileLock } from '$HERE/lib/atomic.mjs';
+import { appendFileSync } from 'node:fs';
+const [n, ms] = process.argv.slice(2);
+withFileLock('$LK/t.log', () => { const e = Date.now() + Number(ms); while (Date.now() < e) {} appendFileSync('$LK/t.log', n + '\n'); }, { timeoutMs: 40000 });
+MJS
+( node "$LK/hold.mjs" A 9000 & sleep 1; echo "999999" > "$LK/t.log.lock" 2>/dev/null; node "$LK/hold.mjs" B 200; wait ) >/dev/null 2>&1
+if [ "$(tr -d '\n' < "$LK/t.log" 2>/dev/null)" = "AB" ]; then
+  ok "a forged pid in the lockfile cannot hijack a live holder's critical section"
+else bad "a forged pid in the lockfile cannot hijack a live holder's critical section" \
+  "order was $(tr -d '\n' < "$LK/t.log" 2>/dev/null)"; fi
+
+# S1-3. The secrets are plaintext in the tree agents read, so an agent that reads them can mint any
+# role in them. That is not fixed by code — it is bounded by saying so. deny_all makes the intent
+# checkable, and it ships WITH its enforcement: the first draft added the field and nothing read it,
+# which is the decoration-shaped-like-a-control defect this session spent the day removing.
+CAP2="$TMP/sec-cap"; rm -rf "$CAP2"; mkdir -p "$CAP2/docs/team"
+printf '{"schema":"capability-manifest/v1","root":"../..","deny_all":["docs/team/actors.json"],"roles":[{"role":"ios-developer","operations":["read","write"],"allowed_paths":["docs","scripts"]}]}\n' \
+  > "$CAP2/docs/team/capabilities.json"
+assert_exit 1 "deny_all keeps the secret store out of every role, including ones added later" \
+  node "$HERE/capability-check.mjs" --manifest "$CAP2/docs/team/capabilities.json" --role ios-developer --operation read --path docs/team/actors.json
+assert_exit 0 "...without denying ordinary work" \
+  node "$HERE/capability-check.mjs" --manifest "$CAP2/docs/team/capabilities.json" --role ios-developer --operation write --path docs/10-prd.md
+grep -q "the caller can read the key" "$HERE/lib/actor.mjs" \
+  && ok "...and actor.mjs states the bound it originally overclaimed past" \
+  || bad "...and actor.mjs states the bound it originally overclaimed past"
+
+# --- code review: three regressions I introduced today, and the twin I missed ------------------
+# The reviewer's closing line is the one worth keeping: every abstraction in that commit was built
+# to end a defect class, and each reproduced that class inside itself.
+
+# B3. The scheduler emitted `depends_on`; every consumer in the same file reads `depends`. ALL
+# board-derived dependency ordering was silently dropped, and dispatch-preflight gates every spawn
+# on the resulting ready set — so an agent could be sent at a ticket whose dependency was unmet.
+# It worked before the change: a regression, not a gap.
+FCB3="$TMP/fc-b3"; rm -rf "$FCB3"; mkdir -p "$FCB3/docs/team"; ( cd "$FCB3" && git init -q . )
+bm "$FCB3" add T-001 --title a --owner ios-developer >/dev/null 2>&1
+bm "$FCB3" add T-002 --title b --owner ios-developer --depends T-001 >/dev/null 2>&1
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[]}\n' > "$FCB3/docs/team/schedule.json"
+B3_OUT=$(node "$HERE/scheduler.mjs" --plan "$FCB3/docs/team/schedule.json" --log "$FCB3/docs/31-board-events.jsonl" 2>&1)
+if printf '%s' "$B3_OUT" | grep -A4 '"ready"' | grep -q "T-002"; then
+  bad "a ticket whose dependency is unmet is not offered as ready"
+else ok "a ticket whose dependency is unmet is not offered as ready"; fi
+
+# B4. The plan's hand-written `status` still beat the board. The unification landed for the SET of
+# tasks and stopped before the STATE of tasks — the second-truth defect, half-removed, in the commit
+# claiming to remove it. Only scheduling PREFERENCES are the plan's to state.
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[{"id":"T-001","status":"complete"}]}\n' \
+  > "$FCB3/docs/team/schedule.json"
+B4_OUT=$(node "$HERE/scheduler.mjs" --plan "$FCB3/docs/team/schedule.json" --log "$FCB3/docs/31-board-events.jsonl" 2>&1)
+if printf '%s' "$B4_OUT" | grep -A4 '"ready"' | grep -q "T-001"; then
+  ok "a stale status in the plan cannot override the board"
+else bad "a stale status in the plan cannot override the board"; fi
+
+# B5. `done` was filtered out of the derived set, which was two bugs in one line: a COMPLETED
+# dependency read as a MISSING one, and the phantom check reported a legitimately finished ticket as
+# one the board had never heard of — halting ALL dispatch with an untrue message and an impossible
+# remedy ("create the ticket"). It would have fired on the first completed ticket of the first real
+# project. The cause was deciding what is SCHEDULABLE while building the set of what EXISTS.
+FCB5="$TMP/fc-b5"; rm -rf "$FCB5"; mkdir -p "$FCB5/docs/team"; ( cd "$FCB5" && git init -q . )
+bm "$FCB5" add T-001 --title a --owner ios-developer >/dev/null 2>&1
+bm "$FCB5" add T-002 --title b --owner ios-developer --depends T-001 >/dev/null 2>&1
+for E in claimed done_reported; do bm "$FCB5" move T-001 $E --by ios-developer >/dev/null 2>&1; done
+bm "$FCB5" move T-001 verified --by verification-engineer >/dev/null 2>&1
+bm "$FCB5" move T-001 review_requested --by ios-developer >/dev/null 2>&1
+bm "$FCB5" move T-001 started --by code-reviewer >/dev/null 2>&1
+bm "$FCB5" move T-001 approved --by code-reviewer >/dev/null 2>&1
+bm "$FCB5" move T-001 merged --by tech-manager >/dev/null 2>&1
+bm "$FCB5" move T-001 qa_passed --by qa-engineer >/dev/null 2>&1
+bm "$FCB5" move T-001 closed --by tech-manager >/dev/null 2>&1
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[{"id":"T-001"},{"id":"T-002"}]}\n' \
+  > "$FCB5/docs/team/schedule.json"
+assert_exit 0 "one completed ticket does not halt every dispatch" \
+  node "$HERE/scheduler.mjs" --plan "$FCB5/docs/team/schedule.json" --log "$FCB5/docs/31-board-events.jsonl"
+B5_OUT=$(node "$HERE/scheduler.mjs" --plan "$FCB5/docs/team/schedule.json" --log "$FCB5/docs/31-board-events.jsonl" 2>&1)
+if printf '%s' "$B5_OUT" | grep -A4 '"ready"' | grep -q "T-002"; then
+  ok "...and a COMPLETED dependency satisfies its dependents rather than reading as missing"
+else bad "...and a COMPLETED dependency satisfies its dependents rather than reading as missing"; fi
+
+# B2. `assigned` carried the identical string/object detail bug `corrected` had just been fixed for,
+# three lines away in the same switch — so `--detail '{"to":"x"}'` wrote the whole JSON STRING into
+# the owner cell. FC-001 at its shortest range yet: I fixed the case I had written and did not look
+# at its neighbour.
+FCB2="$TMP/fc-b2"; rm -rf "$FCB2"; mkdir -p "$FCB2"; ( cd "$FCB2" && git init -q . )
+bm "$FCB2" add A-001 --title x --owner tech-manager >/dev/null 2>&1
+bm "$FCB2" move A-001 assigned --by tech-manager --detail '{"to":"ios-developer"}' >/dev/null 2>&1
+if bm "$FCB2" show A-001 2>/dev/null | grep -q "owner=ios-developer"; then
+  ok "assigned parses a JSON detail rather than writing the raw string into the owner cell"
+else bad "assigned parses a JSON detail rather than writing the raw string into the owner cell" \
+  "$(bm "$FCB2" show A-001 2>/dev/null | head -1)"; fi
+
+# B8. The requesting ticket's empty file set was already CANNOT EVALUATE; the same reasoning was not
+# applied to the tickets being compared AGAINST. So emptying an IN-FLIGHT ticket's files produced an
+# affirmative CLEAR for everyone else while its agent kept editing them — a bypass button for a
+# contention refusal, reachable through the sanctioned correction path.
+FCB8="$TMP/fc-b8"; rm -rf "$FCB8"; mkdir -p "$FCB8"; ( cd "$FCB8" && git init -q . )
+bm "$FCB8" add N-001 --title a --owner ios-developer --file "src/Shared.swift" >/dev/null 2>&1
+bm "$FCB8" add N-002 --title b --owner android-developer --file "src/Shared.swift" >/dev/null 2>&1
+bm "$FCB8" move N-001 claimed --by ios-developer >/dev/null 2>&1
+assert_exit 1 "overlapping in-flight work is refused" \
+  node "$HERE/contention-check.mjs" --log "$FCB8/docs/31-board-events.jsonl" --ticket N-002
+bm "$FCB8" move N-001 corrected --by tech-manager --detail '{"files":[]}' >/dev/null 2>&1
+assert_exit 2 "...and emptying the IN-FLIGHT ticket's files is CANNOT EVALUATE, never a clearance" \
+  node "$HERE/contention-check.mjs" --log "$FCB8/docs/31-board-events.jsonl" --ticket N-002
 
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER

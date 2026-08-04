@@ -16,7 +16,7 @@
  * Node has no built-in flock and this plugin stays dependency-free by design, so an `O_EXCL`
  * lockfile does the work — the same mechanism Unix mail spools and package managers use.
  */
-import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname } from 'node:path';
 
@@ -82,9 +82,34 @@ function withFileLock(target, fn, { timeoutMs = 5000, die = defaultDie } = {}) {
   }
 }
 
-/** Reap the lock only if its recorded holder is gone. A slow holder is not a dead holder. */
+/**
+ * Reap the lock only if its recorded holder is gone AND the lock has aged past any plausible
+ * critical section.
+ *
+ * WHY BOTH, AFTER TWO WRONG ANSWERS. The first version reaped on mtime alone: a live 14-second
+ * holder had its lock stolen by a waiter, and both ran the critical section. The second version
+ * reaped on `kill(pid, 0)` — which moved the trust from a clock to AN UNAUTHENTICATED FILE IN THE
+ * SHARED DIRECTORY. The security reviewer overwrote the lockfile with a dead pid and walked a
+ * second process straight in, while the real holder was still inside. Worse, the "only unlink our
+ * own lock" guard made it quiet: the holder found a foreign pid, declined to clean up, and nothing
+ * reported anything.
+ *
+ * Neither signal is trustworthy alone. A pid can be forged by anyone who can write the file; a
+ * clock cannot distinguish slow from dead. Requiring BOTH means a forged pid still has to wait out
+ * the age floor, which is longer than any legitimate section and bounded, so a genuinely crashed
+ * holder is still recovered without a human.
+ *
+ * This does not make the lock hostile-proof — an adversary who can write the lockfile can also
+ * write the log it protects, so the lock is not the last line of defence and was never the one that
+ * mattered. What it does is stop a SINGLE crafted write from silently producing the hash-chain fork
+ * this primitive exists to prevent.
+ */
+const MIN_REAP_AGE_MS = 30_000;
+
 function reapIfStale(lockPath) {
   try {
+    // The age floor is checked FIRST and cheaply: a young lock is never reaped, whatever it claims.
+    if (Date.now() - statSync(lockPath).mtimeMs < MIN_REAP_AGE_MS) return false;
     const pid = Number(readFileSync(lockPath, 'utf8').trim());
     // An unreadable or pid-less lockfile is left alone. Guessing that it must be abandoned is how
     // the mtime version stole a live holder's lock; if it really is orphaned, the timeout below

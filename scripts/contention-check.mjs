@@ -89,11 +89,34 @@ if (!mine.size) {
 
 const IN_FLIGHT = new Set(['in_progress', 'review']);
 const clashes = [];
+const opaque = [];
 for (const [id, state] of tickets) {
   if (id === ticket) continue;
   if (!IN_FLIGHT.has(state.status)) continue;
-  const overlap = [...filesOf(state)].filter((f) => mine.has(f));
+  const theirs = filesOf(state);
+  // AN IN-FLIGHT TICKET THAT DECLARES NO FILES IS UNKNOWABLE, NOT HARMLESS.
+  //
+  // The requesting ticket's empty file set was already treated as CANNOT EVALUATE (below) — and
+  // the same reasoning was not applied to the tickets being compared AGAINST. So correcting an
+  // in-flight ticket's files to `[]` produced an affirmative CLEAR for everyone else, while its
+  // agent carried on editing those files. A bypass button, reachable through the sanctioned
+  // correction path, for the refusal that correction path exists to satisfy.
+  //
+  // FC-001 in the shape this checker was written to prevent: I applied the rule to the input I was
+  // thinking about and not to the inputs I was comparing it with.
+  if (!theirs.size) { opaque.push(`${state.id || id} (${state.status}, ${state.owner || 'unassigned'})`); continue; }
+  const overlap = [...theirs].filter((f) => mine.has(f));
   if (overlap.length) clashes.push({ id: state.id || id, owner: state.owner || 'unassigned', status: state.status, overlap });
+}
+
+if (!clashes.length && opaque.length) {
+  process.stdout.write(
+    `CONTENTION: CANNOT EVALUATE — ${ticket} does not overlap any ticket that says what it touches,\n` +
+    `  but ${opaque.length} in-flight ticket(s) declare no files at all:\n` +
+    opaque.map((o) => `    ${o}\n`).join('') +
+    '  Their agents may be editing anything. This is not a clearance.\n'
+  );
+  process.exit(2);
 }
 
 if (!clashes.length) {

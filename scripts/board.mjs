@@ -312,10 +312,37 @@ function append(logPath, event) {
  * `requireAttestedActors: true` an unproven role is refused outright.
  */
 function stampActor(paths, flags, ticket, eventName) {
-  const root = dirname(dirname(paths.log));
+  // THE SECURITY ROOT COMES FROM THE RESOLVER, NOT FROM THE CALLER'S --log.
+  //
+  // This was `dirname(dirname(paths.log))`. `--log` is a caller-supplied path, so the caller chose
+  // which .studio-policy.json and which actors.json governed their own append. Reproduced by the
+  // security reviewer: a symlink pointing a decoy directory's log at the REAL log let an unattested
+  // event into the real chain while attestation was on and the registry was intact. `root.mjs`
+  // exists precisely to answer "which project is this, authoritatively" — and it was not on this
+  // path at all.
+  const resolved = resolveProjectRoot({});
+  if (!resolved.ok) die(2, explainRootFailure(resolved));
+  const root = resolved.root;
+
+  // AND THE POLICY READ FAILS CLOSED.
+  //
+  // This was a bare try/catch that fell through to `insecure-local`. So deleting the policy file,
+  // or writing one byte of invalid JSON into it, SILENTLY DOWNGRADED THE SECURITY REGIME — all
+  // three reproduced. Every other reader in this codebase treats an unreadable input as CANNOT
+  // EVALUATE and refuses; actor.mjs argues for exactly that one layer down, about the registry.
+  // The identity gate was the one place a corrupt config was a downgrade instead of a refusal.
+  const policyPath = resolve(root, '.studio-policy.json');
   let requireAttested = false;
-  try { requireAttested = JSON.parse(readFileSync(resolve(root, '.studio-policy.json'), 'utf8')).requireAttestedActors === true; }
-  catch { /* no policy, or unreadable: the default regime is insecure-local */ }
+  if (existsSync(policyPath)) {
+    let policy;
+    try { policy = JSON.parse(readFileSync(policyPath, 'utf8')); }
+    catch (e) {
+      die(2, `.studio-policy.json exists but is unreadable (${e.message}).\n` +
+             '  Refusing rather than assuming the permissive default: an unparseable policy must not\n' +
+             '  be able to turn attestation off. Fix the file, or delete it deliberately.');
+    }
+    requireAttested = policy.requireAttestedActors === true;
+  }
   const result = resolveActor({
     root,
     role: String(flags.by || ''),

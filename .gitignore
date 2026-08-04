@@ -53,3 +53,8 @@ docs/31-board-events.jsonl
 docs/31-board.md
 docs/team/context-manifest.json
 docs/team/runs.jsonl
+
+# Actor secrets. Plaintext HMAC keys — never commit them, and see the bound stated in
+# scripts/lib/actor.mjs: while they live in the tree, an agent that can read them can mint
+# a token for any role they grant.
+docs/team/actors.json
