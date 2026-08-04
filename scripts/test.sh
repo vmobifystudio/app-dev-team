@@ -6172,6 +6172,79 @@ if grep "requirement_not_implemented" "$TMP/fc-disp.out" | grep -q "F-004"; then
   bad "...while a structured disposition naming the deciding role does exempt it"
 else ok "...while a structured disposition naming the deciding role does exempt it"; fi
 
+# --- F11: --by is a claim that must be proven, not a spelling ---------------------------------
+# Every consequential event accepted `--by <role>`: an unauthenticated string. Separation between
+# role names was enforced and entitlement to either name never was, so one process could supply
+# `ios-developer` for the work and `code-reviewer` for the approval, satisfy every rule, and leave
+# no artifact recording that both came from the same place.
+FCA="$TMP/fc-actor"; rm -rf "$FCA"; mkdir -p "$FCA/docs/team"; ( cd "$FCA" && git init -q . )
+printf '{"requireAttestedActors": true}\n' > "$FCA/.studio-policy.json"
+printf '{"actors":{"dev-1":{"roles":["ios-developer"],"secret":"s-dev"}}}\n' > "$FCA/docs/team/actors.json"
+# Args go through process.argv, NOT through shell interpolation into the script body: the first
+# version spliced "\$1" into the -e string, so node received the literal characters rather than the
+# argument, minted a token for actor "" role "", and every attested assertion below failed. The
+# helper looked plausible and was measuring nothing.
+mint_tok() { node -e "
+import('$HERE/lib/actor.mjs').then((m) => {
+  const [id, role, ticket, event] = process.argv.slice(1);
+  const r = m.mintToken({ root: '$FCA', actorId: id, role, ticket, event, ts: '' });
+  process.stdout.write(r.ok ? r.token : '');
+});" "$1" "$2" "$3" "$4"; }
+assert_exit 1 "under requireAttestedActors, a bare --by is refused" \
+  bm "$FCA" add T-001 --title x --owner ios-developer --by tech-manager
+# THE SELF-APPROVAL BYPASS IN ITS PUREST FORM: a real actor, a real token, a role it was never granted.
+TOK_BAD=$(mint_tok dev-1 code-reviewer T-001 created)
+assert_exit 1 "...and a registered actor cannot assert a role it was never granted" \
+  bm "$FCA" add T-001 --title x --owner ios-developer --by code-reviewer --actor dev-1 --actor-token "$TOK_BAD"
+TOK_OK=$(mint_tok dev-1 ios-developer T-001 created)
+assert_exit 0 "...while a correctly attested actor proceeds (a gate, not a wall)" \
+  bm "$FCA" add T-001 --title x --owner ios-developer --by ios-developer --actor dev-1 --actor-token "$TOK_OK"
+# Replay: the signature covers the whole assertion, so a token minted for one event cannot be
+# reused on another. Signing only the role would make every captured token universal.
+assert_exit 1 "...and a token minted for one event does not authorise a different one" \
+  bm "$FCA" move T-001 claimed --by ios-developer --actor dev-1 --actor-token "$TOK_OK"
+if grep -q '"mode":"attested"' "$FCA/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "...and the event records WHICH regime produced it"
+else bad "...and the event records WHICH regime produced it"; fi
+# The default is unchanged, but no longer silent: an unproven role is permanently marked as such,
+# so turning attestation on tomorrow cannot retroactively launder yesterday's assertions.
+FCA2="$TMP/fc-actor-local"; rm -rf "$FCA2"; mkdir -p "$FCA2"; ( cd "$FCA2" && git init -q . )
+bm "$FCA2" add T-001 --title x --owner ios-developer --by tech-manager >/dev/null 2>&1
+if grep -q '"mode":"insecure-local"' "$FCA2/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "the default regime still works and stamps every event insecure-local"
+else bad "the default regime still works and stamps every event insecure-local"; fi
+
+# --- F13: the risk route is a precondition, not advice on stdout -------------------------------
+# risk-router has always computed which specialist roles a blast radius requires. board.mjs read
+# `.risk` and threw the rest away, so the requirement was derived and discarded in the same breath.
+# A critical-risk billing change could merge on one generic code review, and every gate reported
+# CLEAR because every gate was asking a different question.
+FCP="$TMP/fc-policy"; rm -rf "$FCP"; mkdir -p "$FCP/docs/team"; ( cd "$FCP" && git init -q . )
+cat > "$FCP/docs/team/risk-policy.json" <<'RP'
+{"schema":"risk-policy/v1","default":{"risk":"low","model":"sonnet","approvals":[],"required_evidence":[]},
+ "rules":[{"match":{"path":"**/billing/**"},"risk":"critical","model":"opus",
+           "approvals":["code-reviewer","security-reviewer"],"required_evidence":["threat-model"]}]}
+RP
+bm "$FCP" add PAY-001 --title "billing change" --owner ios-developer \
+  --file "src/billing/Checkout.swift" --invariant "totals never negative" >/dev/null 2>&1
+if grep -q '"required_approvals":\["code-reviewer","security-reviewer"\]' "$FCP/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "the whole policy decision is stored on the ticket, not just its risk tier"
+else bad "the whole policy decision is stored on the ticket, not just its risk tier"; fi
+for E in "claimed ios-developer" "done_reported ios-developer"; do
+  set -- $E; bm "$FCP" move PAY-001 "$1" --by "$2" >/dev/null 2>&1; done
+bm "$FCP" move PAY-001 verified --by verification-engineer >/dev/null 2>&1
+bm "$FCP" move PAY-001 review_requested --by ios-developer >/dev/null 2>&1
+bm "$FCP" move PAY-001 started --by code-reviewer >/dev/null 2>&1
+bm "$FCP" move PAY-001 approved --by code-reviewer >/dev/null 2>&1
+assert_exit 1 "a critical-risk change cannot merge without the specialist its risk route demands" \
+  bm "$FCP" move PAY-001 merged --by tech-manager
+bm "$FCP" move PAY-001 merged --by tech-manager 2>&1 | grep -q "security-reviewer" \
+  && ok "...naming the missing specialist, not a generic refusal" \
+  || bad "...naming the missing specialist, not a generic refusal"
+bm "$FCP" move PAY-001 approved --by security-reviewer >/dev/null 2>&1
+assert_exit 0 "...and merges once every required approval is recorded" \
+  bm "$FCP" move PAY-001 merged --by tech-manager
+
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
 # conflicted file untouched. A broken agent file reached the base branch and was found two merges

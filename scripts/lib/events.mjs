@@ -477,6 +477,32 @@ function validateTransition(tickets, candidate) {
           legal: legal.filter((e) => e !== 'merged'),
         };
       }
+      // THE POLICY DECISION IS ENFORCED HERE, AT THE MUTATION IT GOVERNS.
+      //
+      // risk-router has always computed `approvals` — which specialist roles a given blast radius
+      // requires — and until now that list was printed and discarded. Ticket creation kept the
+      // tier; nothing ever checked the roster it demanded. So a `critical`-risk change touching
+      // billing or auth could merge on one generic code-review, exactly as a trivial one does, and
+      // every gate reported CLEAR because every gate was asking a different question.
+      //
+      // `merged` is the right place: it is the last point before the change is in the trunk, and
+      // it is where the existing separation rule already lives, so the two authority checks are
+      // read together instead of drifting apart.
+      const required = state.meta?.policy_decision?.required_approvals || [];
+      if (required.length) {
+        const have = new Set(state.approvals.map((a) => a.by).filter(Boolean));
+        const missing = required.filter((role) => !have.has(role));
+        if (missing.length) {
+          return {
+            ok: false,
+            reason:
+              `${id} is risk "${state.meta.policy_decision.risk}" and its policy decision requires approval from ` +
+              `${required.join(', ')} — missing: ${missing.join(', ')}. ` +
+              'A specialist requirement that only prints to stdout is advice; this one is a precondition.',
+            legal: legal.filter((e) => e !== 'merged'),
+          };
+        }
+      }
       return { ok: true };
     }
     case 'changes':
