@@ -12,5 +12,7 @@
       "{project}/docs/31-board.md"
     ],
     "expect_exit": 1
-  }
+  },
+  "last_verified_at": "2026-08-04",
+  "status": "detector-exists-and-is-scored"
 }

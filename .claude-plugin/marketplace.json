@@ -8,7 +8,7 @@
     {
       "name": "app-dev-team",
       "source": "./",
-      "description": "Autonomous 30-role mobile-app development team for Claude Code — takes an idea to a shipped iOS/Android app, OR onboards an existing codebase and audits it against your standards, with parallel self-reviewing agents, the installed Axiom/Material 3/ASO skills, and a House Knowledge Base mined from real shipped apps.",
+      "description": "Autonomous 30-role mobile-app development team for Claude Code — takes an idea to a submission-ready iOS/Android build (store upload and publishing stay human-owned), OR onboards an existing codebase and audits it against your standards, with parallel self-reviewing agents, the installed Axiom/Material 3/ASO skills, and a House Knowledge Base mined from real shipped apps.",
       "version": "2.0.0",
       "author": {
         "name": "Amol Pomane",

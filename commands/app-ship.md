@@ -132,6 +132,31 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      `WAIVED: runtime gate (<platform>) — <who waived it> — <reason>` in `docs/60-releases.md` and
      repeat the waiver in the release summary and in step 4's confirmation question.
 
+   **Then the journey gate — the runtime gate above proves the app is ALIVE, not that it WORKS.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . [--driver <path>]
+   ```
+
+   Six dry runs measured the gates catching every process defect and **zero** product defects. An
+   app that launches and sits there satisfies `runtime-gate.sh` exit `0` completely. This is the
+   only precondition in this command that asks whether the product does what it is for.
+
+   - Exit `0` → a declared P0 journey completed with its assertions holding. Quote the evidence.
+   - Exit `1` → **stop.** Same standing as a runtime FAIL: a release candidate whose P0 journey
+     does not complete is not a release candidate. Note the gate distinguishes a failing product
+     from a broken driver, so do not waive one believing it is the other.
+   - Exit `2` → **CANNOT EVALUATE — not a pass**, and it is reached two different ways that must be
+     recorded differently:
+     - **No journey declared** → this is a *planning* gap, not a tooling one. `ux-architect`'s
+       screen-and-state inventory already names the ids. Declare at least one P0 journey (see
+       `docs/team/journeys/README.md`) and re-run — do not waive it, because the waiver would be
+       recording that nobody ever stated what this product must do.
+     - **No driver available** → follow step 1a's produce-or-waive rule: make it evaluable, or
+       record `WAIVED: journey gate — <who waived it> — <reason>` in `docs/60-releases.md` and
+       repeat it in the release summary and step 4's confirmation. **Drivers do not ship yet**, so
+       this is the expected path today and the waiver is the honest record of it.
+
    **Product types the script cannot see are N/A, not waived — and not unchecked.** `runtime-gate.sh`
    detects iOS and Android only, so a `backend-service`, `web-app`, `cli` or `library` reaches exit
    `2` structurally, every time, and waiving it every release would train everyone to waive it.

@@ -16,6 +16,15 @@ name: runtime gate (macOS)
 on:
   pull_request:
     branches: [main]
+    # PATH FILTER — this is the ONLY macOS job in the repo, and GitHub bills macOS minutes at 10x
+    # the Linux rate. A 7-minute run costs what 70 minutes of ubuntu would. It builds and launches a
+    # real iOS app, so a change that touches neither the gate nor the fixture it drives cannot
+    # change its verdict.
+    paths:
+      - 'scripts/runtime-gate.sh'
+      - 'scripts/journey-gate.mjs'
+      - 'eval/crash-on-launch/**'
+      - '.github/workflows/runtime-gate.yml'
   workflow_dispatch:
 
 permissions:

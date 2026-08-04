@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 929 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 52 top-level scripts (+9 shared libs) · 9 knowledge packs · 981 assertions
 
 ---
 
@@ -693,7 +693,8 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
-| `test.sh` | 929 assertions |
+| `journey-gate.mjs` | Proves a DECLARED P0 user journey completes — not that a process is alive |
+| `test.sh` | 981 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -915,6 +916,92 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   own instead of scanning every class's output by eye. What promoted learnings actually change
   about agent/role/gate behavior once reviewed is deliberately NOT built yet — that's the next
   phase, once real proposals exist to design the lifecycle around rather than guessing its shape.
+- **Phase 0 truth repair, and the first half of a product-correctness engine, 2026-08-04**
+  (`docs/2026-08-04-consolidated-enhancement-plan.md`, built from all 20 review/dry-run documents
+  with every high-value claim re-verified against the tree — several audit claims were already
+  stale and are marked so there rather than acted on).
+  (1) **`runtime-gate.sh` returned PASS when screenshot capture failed**, on both the iOS and
+  Android paths, with the reason "Screenshot capture failed — no evidence artifact" — a PASS whose
+  own sentence says it proved nothing, which `/app-ship` then quotes. Both paths are now
+  CANNOT EVALUATE: the app may well be fine, and that is exactly what UNKNOWN means.
+  (2) **`ship-gate.sh` invoked `approval-check.mjs` with no `--head`**, so the one check that ties
+  an approval to the thing being released never compared them; a project root that is not a git
+  repository is now a stated UNKNOWN rather than the silent pass that omission produced.
+  (3) **The plugin misreported itself** — `plugin.json` advertised 29 roles while shipping 30, and
+  `metadata-check.mjs` printed CLEAR because it only ever inspected the marketplace description.
+  It now inspects every manifest, and rejects the "takes an idea to a shipped app" overclaim: the
+  pipeline stops at submission-ready and publishing is human-owned, so the shop window may not say
+  otherwise.
+  (4) **Eval manifests carried narratives that had outlived their code** — `stale-approval` still
+  claimed "no board field records what was approved" four days after `--bind` began recording
+  commit + diff_hash. Every manifest now carries `last_verified_at`, the corrected claim is
+  regression-locked against returning, and named workflow paths must resolve. That check caught a
+  second live instance on its first run — and its own first draft produced a false positive on a
+  fixture's planted `ci.yml`, fixed by resolving fixture-relative paths first.
+  (5) **`defect-hunting` §4b — follow the user's value across the boundary**, required by
+  `code-reviewer.md` rather than merely available. Six dry runs measured the same result: the gates
+  caught every process defect and **zero** product defects. A date picker whose selection was
+  discarded for `System.currentTimeMillis()`, a 24dp touch target where the spec said 56dp, a stale
+  TalkBack announcement, a corrupt-data fallback indistinguishable from data loss, a device test
+  that exercised its own stub — every one found by a reviewer who went and looked, or by a human
+  afterwards. §4b makes the round trip, the distinguishable test value, the on-device measurement,
+  and reintroducing the defect to prove the regression catches it into contract rather than a
+  reviewer's good day.
+  (6) **`scripts/journey-gate.mjs` — a runtime PASS that means the product WORKS, not that a process
+  is alive.** Journeys are declared in `docs/team/journeys/*.json` (never inferred) and the gate
+  refuses two shapes at load, before anything runs: a journey whose only assertion is `screen`
+  (liveness theatre — it re-proves what `runtime-gate` already proves), and a journey that enters
+  `""`, `"0"` or **today's date** (indistinguishable from an empty default or a clock call — which
+  is precisely why the discarded date picker survived three separate reviews). Wired into
+  `/app-build` step 5 immediately after the runtime gate. **The platform drivers are NOT written**:
+  with no `--driver`, every declared journey is CANNOT EVALUATE and is listed by name, because an
+  unrun journey and a passing journey are different facts. The schema, validation, driver contract
+  (`journey-result/v1`) and reporting are complete and carry 21 assertions — including that a driver
+  reporting PASS with no evidence is UNKNOWN, and that a driver which *crashes* is UNKNOWN rather
+  than FAIL, so a broken harness is never mistaken for a broken app (DR4-001).
+- **Dry run 6 — the first measurement of the product-correctness engine, 2026-08-04**
+  (`docs/dry-runs/2026-08-04-dry-run-6-findings.md`; hypotheses committed before the fixture
+  existed). A real `code-reviewer` agent, told nothing about the plants, against five planted product
+  defects of exactly the classes six prior dry runs missed, plus two controls. Result: **8 of 8
+  hypotheses passed, 5 of 5 defects detected, 0 misidentifications.**
+  **And the honest reading is the deflating one, per the hypotheses doc's own rule.** §4b's table
+  *names* those five defect classes and I then planted those five classes, so 5/5 is close to
+  tautological — a reviewer applied a checklist and found the checklist's contents. The evidence that
+  actually counts is the four findings nobody planted: a compound defect where `save()`→`load()`→
+  `persist()` **destroys the entire history on one corrupt byte** (worse than anything planted); the
+  ticket's journey being unreachable at all; a boundary test asserting a value the PRD explicitly
+  calls "not a limit"; and a critique of the fixture itself (no build files, so "tests pass" had no
+  producing step).
+  **The most useful negative result: every planted defect was caught by READING. Not one required
+  execution.** §4b's expensive half — run the round trip, measure on-device — never ran, so this run
+  says nothing about it. §4b's value is the questions it forces, not the device work it mandates.
+  The two things reading genuinely could not settle (the 56dp measurement, the clinical range) were
+  routed to `verification-engineer` unprompted, which is the reviewer/verifier seam behaving as
+  designed. **DR6-01, landed rather than reported:** the reviewer stated its ten unmeasured items
+  beautifully and *nothing verified that it had* — "state what you did not do" with no fixed heading
+  is unfalsifiable, so it is now a literal `## Not checked` heading required even when empty.
+- **Codex review of PR #21 — five findings, two of them against the fixes above, 2026-08-04.**
+  (1) `journey-gate` accepted `evidence: ["does-not-exist.png"]` as a PASS — **recreating, inside the
+  gate written to forbid evidence-optional passes, exactly that defect**, hours after the same shape
+  was fixed in `runtime-gate.sh`. FC-001 in its purest form: the fix that lands in one mechanism and
+  stops before its sibling. Every cited artifact must now resolve to a non-empty file.
+  (2) The gate checked only `schema` and `result`, never `journey_id`, so a driver that ignored
+  `--journey` and returned one cached report counted as a PASS for **every** declared journey.
+  (3) `ship-gate.sh` bound the approval to `HEAD` while the runtime gate, the build and the release
+  tooling all consume the working TREE — a dirty tree meant the thing being released was not the
+  commit any approval named. Now a stated UNKNOWN.
+  (4) The journey gate existed but neither shipping path enforced it: `/app-build` printed exit 2 and
+  continued, `/app-ship` never invoked it, so a release could clear with no P0 journey ever run.
+  (5) `last_verified_at` had been **bulk-stamped without reading the narratives** — the exact defect
+  those fields were added to expose, committed by the person adding them. Sweeping for it found a
+  SECOND contradictory manifest codex had not flagged.
+  **Two method notes worth more than the fixes.** The anti-staleness check first grepped prose for
+  absence-claims and then failed on the CORRECTED manifests, because a correction must *quote* the
+  false claim to refute it and a regex cannot tell an assertion from a citation — so the claim moved
+  into an enumerated `status` field and the prose became free text nobody parses. **Prose is not
+  checkable; a field is.** And the dirty-tree fix's own end-to-end test caught two further bugs that
+  reading the diff had missed: a false "not a git repository" message emitted alongside the real one,
+  and a test using `$BD` ~340 lines above the line that assigns it. §4b's rule, applied to its author.
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the

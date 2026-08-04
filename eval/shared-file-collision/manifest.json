@@ -6,7 +6,14 @@
   "severity": "S2",
   "why": "scripts/spawn-gate.sh looks like the detector and is not. It refuses two writers that lack worktrees — ANY two, whatever files they touch — and says GO the moment both have worktrees, which is precisely the configuration where two branches edit one file and collide at merge. Naming it as this defect's detector would be the \"caught by the wrong assertion\" class mutate.sh reports separately, so it is not named.",
   "detector": {
-    "run": ["node", "scripts/board-doctor.mjs", "{project}/docs/31-board.md", "--json"],
+    "run": [
+      "node",
+      "scripts/board-doctor.mjs",
+      "{project}/docs/31-board.md",
+      "--json"
+    ],
     "expect_exit": 1
-  }
+  },
+  "last_verified_at": "2026-08-04",
+  "status": "detector-exists-and-is-scored"
 }

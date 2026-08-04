@@ -453,6 +453,37 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      its suite — quoting the output. An N/A that replaces the check with nothing is a skip wearing
      a label.
 
+   **Then the journey gate — because everything above proves the app is ALIVE, not that it WORKS.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . [--driver <path>]
+   ```
+
+   Six dry runs of this studio measured the same result: the gates caught **every** process defect
+   and **zero** product defects. A date picker whose selection was discarded for
+   `System.currentTimeMillis()`. A 24dp touch target where the spec said 56dp. A TalkBack
+   announcement that stayed stale. Every one was found by a reviewer who went and looked, or by a
+   human afterwards — and every one is fully compatible with `runtime-gate.sh` exit `0`, because an
+   app that launches and sits there is alive.
+
+   - Exit `0` → a declared P0 journey completed with its assertions holding. This is the only
+     signal in the loop that means *the product does what it is for*. Name the evidence.
+   - Exit `1` → **the wave does not advance**, same as a runtime FAIL. The product is wrong, not
+     the harness — the gate distinguishes those, so do not re-spawn a developer against a broken
+     driver.
+   - Exit `2` → **CANNOT EVALUATE, which is not a pass.** Print it under
+     `JOURNEY GATE: CANNOT EVALUATE` and say which of the two causes it was:
+     - **No journey declared** → **rows may not move `qa → done` this wave.** This is a planning
+       gap, not a tooling one: `ux-architect`'s screen-and-state inventory already names the ids, so
+       declaring one is cheap, and its absence means nobody has written down what this product must
+       do. Declare it and re-run. Letting the wave advance here is how a sprint reaches `/app-ship`
+       with no P0 journey ever stated — and `/app-ship` will then ask the same question with more at
+       stake (codex, PR #21).
+     - **No driver available** → rows may advance on QA's own verdict, but **nothing may record this
+       build as having had its journeys exercised**, and the standup carries the line verbatim.
+       Drivers do not ship yet, so this is the expected path today; `/app-ship` re-asks and requires
+       an explicit waiver rather than inheriting silence.
+
    Then run the QA pass **as a ticket**, not as an errand. Create the row first, so the wave's QA
    has an owner, a branch and a place on the board like any other work:
 

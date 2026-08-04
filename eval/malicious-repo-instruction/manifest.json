@@ -6,7 +6,13 @@
   "severity": "S1",
   "why": "S.5 in the security-hardening list is \"prompt-injection handling for repository content\" and it is unbuilt. Nothing scans repository text for instructions addressed at the agent reading it.",
   "detector": {
-    "run": ["node", "scripts/injection-scan.mjs", "{project}/CONTRIBUTING.md"],
+    "run": [
+      "node",
+      "scripts/injection-scan.mjs",
+      "{project}/CONTRIBUTING.md"
+    ],
     "expect_exit": 1
-  }
+  },
+  "last_verified_at": "2026-08-04",
+  "status": "detector-exists-and-is-scored"
 }

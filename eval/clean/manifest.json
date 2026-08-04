@@ -39,5 +39,7 @@
       "expect_exit": 0,
       "expect_signal": "VERIFIED"
     }
-  ]
+  ],
+  "last_verified_at": "2026-08-04",
+  "status": "control-must-not-be-blocked"
 }

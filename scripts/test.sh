@@ -1596,6 +1596,48 @@ for f in agents/code-reviewer.md agents/verification-engineer.md skills/defect-h
     && ok "$f invokes the failure corpus" \
     || bad "$f invokes the failure corpus"
 done
+# --- §4b, the product-correctness half. Six dry runs measured the same result: the gates caught
+# every PROCESS defect and ZERO PRODUCT defects. A discarded date-picker selection, a 24dp touch
+# target where the spec said 56dp, a stale TalkBack announcement, a corrupt-data fallback
+# indistinguishable from data loss, a device test that exercised its own stub — every one found by a
+# reviewer who went and looked, or by a human afterwards. §4b turns "a reviewer's good day" into the
+# contract; these assertions stop it from quietly becoming prose again.
+grep -q "4b" "$HERE/../skills/defect-hunting/SKILL.md" \
+  && ok "defect-hunting carries the round-trip section (§4b)" \
+  || bad "defect-hunting carries the round-trip section (§4b)"
+for needle in "across the boundary" "distinguishable value" "reintroduc"; do
+  tr '\n' ' ' < "$HERE/../skills/defect-hunting/SKILL.md" | tr -s ' ' | grep -qi -- "$needle" \
+    && ok "...and states the '$needle' obligation" \
+    || bad "...and states the '$needle' obligation"
+done
+# The rule has to be REQUIRED somewhere an agent actually reads, or it is a skill nobody applies —
+# the exact "rule nobody executes" shape this suite opens by naming.
+tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "4b" \
+  && ok "code-reviewer requires §4b rather than merely citing defect-hunting" \
+  || bad "code-reviewer requires §4b rather than merely citing defect-hunting"
+tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -qi "measure on-device\|measure, on-device\|on-device anything the spec quantifies" \
+  && ok "...including measuring on-device whatever the spec quantifies" \
+  || bad "...including measuring on-device whatever the spec quantifies"
+# DR6-01. Dry run 6 measured a reviewer stating its ten unmeasured items unprompted — and measured
+# that NOTHING verified it had. "State what you did not do" with no fixed heading is unfalsifiable:
+# a verdict that omits the section reads exactly like a thorough one. The heading is what makes the
+# gap greppable by a later gate instead of trusted by its absence.
+grep -q '## Not checked' "$HERE/../agents/code-reviewer.md" \
+  && ok "code-reviewer must put unchecked items under a fixed, greppable '## Not checked' heading" \
+  || bad "code-reviewer must put unchecked items under a fixed, greppable '## Not checked' heading"
+tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "even when the list is empty" \
+  && ok "...and writes the heading even when nothing was skipped, so its absence means omission" \
+  || bad "...and writes the heading even when nothing was skipped, so its absence means omission"
+# Mirror test: strip the requirement and prove the assertion above goes red.
+cp "$HERE/../agents/code-reviewer.md" "$TMP/cr-4b.bak"
+sed 's/§4b/SECTION-REMOVED/g' "$TMP/cr-4b.bak" > "$HERE/../agents/code-reviewer.md"
+if tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "4b"; then
+  bad "mirror test: removing §4b from code-reviewer should make its assertion fail"
+else
+  ok "mirror test: removing §4b from code-reviewer reproduces an unrequired round-trip rule"
+fi
+cp "$TMP/cr-4b.bak" "$HERE/../agents/code-reviewer.md"
+
 grep -q "corpus_recurrence" "$HERE/../commands/app-learn.md" \
   && ok "/app-learn's failure pass reads the recurrence flag" \
   || bad "/app-learn's failure pass reads the recurrence flag"
@@ -1737,6 +1779,165 @@ PCMD="$HERE/../commands/app-portfolio.md"
 [ -f "$PCMD" ] && ok "/app-portfolio exists" || bad "/app-portfolio exists"
 grep -q "scripts/portfolio.mjs" "$PCMD" && ok "...and invokes scripts/portfolio.mjs" \
                                         || bad "...and invokes scripts/portfolio.mjs"
+
+echo
+# --------------------------------------------------------------------------------------------
+echo "journey-gate (the product-correctness half)"
+# --------------------------------------------------------------------------------------------
+# Six dry runs measured the gates catching every PROCESS defect and ZERO PRODUCT defects. The
+# closest thing that existed, runtime-gate, proves the app built/installed/launched/stayed alive —
+# true, useful, and entirely compatible with a splash screen that does nothing the user asked for.
+# This gate proves a DECLARED JOURNEY completed. Its two load-time refusals are the interesting
+# part: they encode the two ways a journey lies about itself.
+JG="$HERE/journey-gate.mjs"
+jgproj() { d="$TMP/$1"; rm -rf "$d"; mkdir -p "$d/docs/team/journeys"; printf '%s' "$d"; }
+
+# No declaration is CANNOT EVALUATE. Nothing states what the product must do, so nothing was checked.
+JGNONE=$(jgproj jg-none); rm -rf "$JGNONE/docs/team/journeys"
+assert_exit 2 "no journey declarations is CANNOT EVALUATE, never a pass" node "$JG" --root "$JGNONE"
+assert_has "$TMP/out" "NOT a pass" "...and says so in the words an agent reads"
+
+# REFUSAL 1 — liveness theatre. A journey whose only assertion is `screen` re-proves what
+# runtime-gate already proves. Accepting it would let a P0 flow be "covered" by a launch check.
+JGTH=$(jgproj jg-theatre)
+printf '%s\n' '{"schema":"journey/v1","id":"t","priority":"P0","steps":[{"action":"launch"},{"assert":"screen","id":"home"}]}' \
+  > "$JGTH/docs/team/journeys/t.json"
+assert_exit 1 "a journey that only asserts a screen rendered is refused as liveness theatre" node "$JG" --root "$JGTH"
+assert_has "$TMP/err" "runtime-gate already proves" "...and says why, naming the gate it would duplicate"
+
+# REFUSAL 2 — the round trip. A date picker that discards the selection and writes
+# System.currentTimeMillis() PASSES a journey that entered today's date. That defect survived three
+# separate reviews of the same fixture; this is it encoded as a load-time refusal.
+JGTODAY=$(jgproj jg-today)
+printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"%s"},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
+  "$(date +%F)" > "$JGTODAY/docs/team/journeys/r.json"
+assert_exit 1 "a journey entering TODAY's date is refused as indistinguishable from a clock call" node "$JG" --root "$JGTODAY"
+assert_has "$TMP/err" "distinguishable" "...and names the property the value lacks"
+for BAD in '""' '"0"'; do
+  printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"enter","id":"n","value":%s},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
+    "$BAD" > "$JGTODAY/docs/team/journeys/r.json"
+  assert_exit 1 "...as is a journey entering $BAD, indistinguishable from an empty default" node "$JG" --root "$JGTODAY"
+done
+
+# A well-formed journey with no driver is CANNOT EVALUATE and NAMES the journey it did not run —
+# an unrun journey and a passing journey are different facts, which is the whole point of the gate.
+JGOK=$(jgproj jg-ok)
+printf '%s\n' '{"schema":"journey/v1","id":"record-reading","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"1999-01-02"},{"assert":"value_equals","id":"saved","value":"1999-01-02"}]}' \
+  > "$JGOK/docs/team/journeys/ok.json"
+assert_exit 2 "a valid journey with no driver is CANNOT EVALUATE, never a pass" node "$JG" --root "$JGOK"
+assert_has "$TMP/out" "record-reading" "...naming the journey that was not executed"
+assert_has "$TMP/out" "NOT executed" "...and stating plainly that it did not run"
+assert_exit 0 "--list reports declared journeys without running anything" node "$JG" --root "$JGOK" --list
+
+# --- The driver contract. A stub driver is the only way to prove these branches without a device,
+# and each rule below exists because its absence is a known false-pass shape.
+JGDRV="$TMP/jg-drivers"; mkdir -p "$JGDRV"
+mkstub() { printf '#!/bin/sh\n%s\n' "$2" > "$JGDRV/$1"; chmod +x "$JGDRV/$1"; }
+mkstub pass.sh 'echo "{\"schema\":\"journey-result/v1\",\"result\":\"PASS\",\"journey_id\":\"record-reading\",\"detail\":\"ok\",\"evidence\":[\"docs/evidence/j.png\"]}"'
+mkstub noev.sh 'echo "{\"schema\":\"journey-result/v1\",\"result\":\"PASS\",\"journey_id\":\"record-reading\",\"detail\":\"ok\",\"evidence\":[]}"'
+mkstub fail.sh 'echo "{\"schema\":\"journey-result/v1\",\"result\":\"FAIL\",\"journey_id\":\"record-reading\",\"failed_step\":3,\"detail\":\"saved 2026-08-04, expected 1999-01-02\"}"; exit 1'
+mkstub crash.sh 'echo "driver blew up" >&2; exit 9'
+mkstub junk.sh  'echo "not json at all"'
+# codex, PR #21: a driver that ignores --journey and returns one cached report was counted as a
+# PASS for EVERY selected journey, because only `schema` and `result` were checked.
+mkstub wrongid.sh 'echo "{\"schema\":\"journey-result/v1\",\"result\":\"PASS\",\"journey_id\":\"totally-different\",\"evidence\":[\"docs/evidence/j.png\"]}"'
+mkstub noid.sh    'echo "{\"schema\":\"journey-result/v1\",\"result\":\"PASS\",\"evidence\":[\"docs/evidence/j.png\"]}"'
+# codex, PR #21: a non-empty evidence array naming a file that does not exist returned PASS —
+# recreating, inside the gate written to forbid it, the evidence-optional pass it exists to end.
+mkstub ghostev.sh 'echo "{\"schema\":\"journey-result/v1\",\"result\":\"PASS\",\"journey_id\":\"record-reading\",\"evidence\":[\"does-not-exist.png\"]}"'
+mkstub emptyev.sh 'echo "{\"schema\":\"journey-result/v1\",\"result\":\"PASS\",\"journey_id\":\"record-reading\",\"evidence\":[\"docs/evidence/empty.png\"]}"'
+
+# The PASS stub cites docs/evidence/j.png — which must actually exist, or the new check correctly
+# refuses it. Creating it here is the point: the artifact is what makes the pass inspectable.
+mkdir -p "$JGOK/docs/evidence"; printf 'png-bytes\n' > "$JGOK/docs/evidence/j.png"
+: > "$JGOK/docs/evidence/empty.png"
+assert_exit 0 "a driver reporting PASS with evidence that exists is a PASS" node "$JG" --root "$JGOK" --driver "$JGDRV/pass.sh"
+assert_exit 2 "a driver reporting a DIFFERENT journey_id is UNKNOWN, not a pass for this journey" node "$JG" --root "$JGOK" --driver "$JGDRV/wrongid.sh"
+assert_has "$TMP/out" "totally-different" "...and names the journey the driver actually reported on"
+assert_exit 2 "a driver report with no journey_id at all is UNKNOWN — it cannot be matched" node "$JG" --root "$JGOK" --driver "$JGDRV/noid.sh"
+assert_exit 2 "a driver citing evidence that does not exist is UNKNOWN — a path is not an artifact" node "$JG" --root "$JGOK" --driver "$JGDRV/ghostev.sh"
+assert_has "$TMP/out" "does-not-exist.png" "...and names the artifact it could not find"
+assert_exit 2 "a driver citing a ZERO-BYTE evidence file is UNKNOWN — an empty file inspects to nothing" node "$JG" --root "$JGOK" --driver "$JGDRV/emptyev.sh"
+
+# codex, PR #21: the journey gate existed but neither shipping path enforced it — /app-build printed
+# exit 2 and continued into QA, and /app-ship never invoked it at all, so a release could clear with
+# no declared P0 journey ever run. A gate nobody's flow consults is the "rule nobody executes" shape.
+grep -q 'journey-gate.mjs' "$HERE/../commands/app-ship.md" \
+  && ok "/app-ship invokes the journey gate rather than inheriting /app-build's silence" \
+  || bad "/app-ship invokes the journey gate rather than inheriting /app-build's silence"
+tr '\n' ' ' < "$HERE/../commands/app-ship.md" | tr -s ' ' | grep -q "WAIVED: journey gate" \
+  && ok "...and a missing driver must be explicitly waived there, not passed over" \
+  || bad "...and a missing driver must be explicitly waived there, not passed over"
+tr '\n' ' ' < "$HERE/../commands/app-build.md" | tr -s ' ' | grep -q "rows may not move .qa → done. this wave" \
+  && ok "/app-build stops the wave when no journey is declared, instead of printing and continuing" \
+  || bad "/app-build stops the wave when no journey is declared, instead of printing and continuing"
+
+# codex, PR #21: passing --head bound the approval to a COMMIT while the runtime gate, the build and
+# the release tooling all consume the working TREE. A dirty tree means HEAD is not the candidate.
+tr '\n' ' ' < "$HERE/../scripts/ship-gate.sh" | tr -s ' ' | grep -q "working tree is DIRTY" \
+  && ok "ship-gate refuses to bind an approval to HEAD when the tree is dirty" \
+  || bad "ship-gate refuses to bind an approval to HEAD when the tree is dirty"
+SGDIRTY="$TMP/sg-dirty"; rm -rf "$SGDIRTY"; mkdir -p "$SGDIRTY/docs"
+( cd "$SGDIRTY" && git init -q -b main . && git config user.email t@t.t && git config user.name t \
+  && printf 'x\n' > seed.txt && git add -A && git commit -q -m seed ) >/dev/null 2>&1
+printf '{"requireApprovalBinding":true}\n' > "$SGDIRTY/.studio-policy.json"
+# The fixture needs a real board: without one ship-gate bails on the missing board BEFORE reaching
+# the binding section, and the test would pass or fail for a reason unrelated to what it asserts.
+#
+# `$HERE/board.mjs` spelled out rather than `$BD` — this block runs ~340 lines ABOVE the line that
+# first assigns `BD`, so `node "$BD"` was `node ""`, no board was created, and ship-gate exited on
+# the missing board without ever reaching the check under test. The assertion failed for a reason
+# that had nothing to do with dirty trees. A test that depends on a variable set later in the file
+# is a test whose meaning depends on where someone pastes it.
+( cd "$SGDIRTY" && node "$HERE/board.mjs" add SG-001 --title "seed" --owner ios-developer ) >/dev/null 2>&1
+( cd "$SGDIRTY" && git add -A && git commit -q -m board ) >/dev/null 2>&1
+printf 'uncommitted\n' > "$SGDIRTY/dirty-file.txt"
+sh "$HERE/ship-gate.sh" "$SGDIRTY" > "$TMP/sg-dirty.txt" 2>&1
+grep -q "working tree is DIRTY" "$TMP/sg-dirty.txt" \
+  && ok "...proven against a real repo with an untracked file present" \
+  || bad "...proven against a real repo with an untracked file present" "$(head -20 "$TMP/sg-dirty.txt")"
+# THREE STATES, THREE MESSAGES. The first version of this fix cleared SHIP_HEAD to skip the detector
+# and then fell through to the no-git branch, so a dirty repo ALSO reported "not a git repository" —
+# a second UNKNOWN for the same cause, and a false one. Found by running it against a real dirty
+# repo rather than by reading the diff.
+grep -q "not a git repository" "$TMP/sg-dirty.txt" \
+  && bad "...and does not ALSO claim the dirty repo is not a git repository" \
+  || ok "...and does not ALSO claim the dirty repo is not a git repository"
+( cd "$SGDIRTY" && git add -A && git commit -q -m "commit everything" ) >/dev/null 2>&1
+sh "$HERE/ship-gate.sh" "$SGDIRTY" > "$TMP/sg-clean.txt" 2>&1
+grep -q "working tree is DIRTY" "$TMP/sg-clean.txt" \
+  && bad "...and stops complaining once the tree is clean" \
+  || ok "...and stops complaining once the tree is clean"
+# EVIDENCE IS NOT OPTIONAL — the corrected runtime-gate rule, applied here from the start rather
+# than after an audit finds it.
+assert_exit 2 "a driver reporting PASS with NO evidence is UNKNOWN, never a pass" node "$JG" --root "$JGOK" --driver "$JGDRV/noev.sh"
+assert_has "$TMP/out" "no evidence artifact" "...and says the pass could not be inspected"
+assert_exit 1 "a driver reporting FAIL is a FAIL — the product is wrong" node "$JG" --root "$JGOK" --driver "$JGDRV/fail.sh"
+assert_has "$TMP/out" "product is wrong, not the harness" "...and distinguishes that from a broken harness"
+# DR4-001's lesson: a broken harness read as a broken app sends a developer to fix a defect that
+# does not exist. A crashing driver must be UNKNOWN, never FAIL.
+assert_exit 2 "a driver that crashes is UNKNOWN, not FAIL — a broken harness is not a broken app" node "$JG" --root "$JGOK" --driver "$JGDRV/crash.sh"
+assert_exit 2 "a driver emitting unparseable output is UNKNOWN, not a verdict" node "$JG" --root "$JGOK" --driver "$JGDRV/junk.sh"
+assert_exit 2 "a --driver path that does not exist is CANNOT EVALUATE, never a silent pass" node "$JG" --root "$JGOK" --driver "$JGDRV/no-such-driver.sh"
+
+# Mirror test: drop the evidence requirement and prove the assertion above goes red — the rule that
+# cannot fail is the rule this whole suite exists to forbid.
+cp "$JG" "$JG.bak"
+node -e '
+  const fs = require("fs");
+  const p = process.argv[1];
+  let t = fs.readFileSync(p, "utf8");
+  const m = "if (report.result === \x27PASS\x27 && !(Array.isArray(report.evidence) && report.evidence.length)) {";
+  if (!t.includes(m)) { console.error("marker not found"); process.exit(1); }
+  fs.writeFileSync(p, t.replace(m, "if (false) {"));
+' "$JG"
+node "$JG" --root "$JGOK" --driver "$JGDRV/noev.sh" >/dev/null 2>&1
+if [ $? = 0 ]; then
+  ok "mirror test: dropping the evidence rule reproduces a PASS with no evidence"
+else
+  bad "mirror test: dropping the evidence rule should reproduce a PASS with no evidence"
+fi
+mv "$JG.bak" "$JG"
 
 echo
 # --------------------------------------------------------------------------------------------
@@ -1897,6 +2098,56 @@ cp "$ASTUB/aapt2" "$DEADSTUB/aapt2"
 assert_exit 1 "the identical build whose process is gone after 3s is FAIL, not PASS" \
   env PATH="$DEADSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP"
 assert_has "$TMP/out" "crashed on launch" "...and names crash-on-launch as the reason"
+
+# EVIDENCE IS NOT OPTIONAL. Post-enhancement audit F-06, verified live in the tree before the fix:
+# when `screencap` failed, the gate called pass() with the reason "Screenshot capture failed — no
+# evidence artifact" — a PASS whose own sentence says it proved nothing. /app-ship quotes this
+# verdict and a reader sees PASS. Same tree as the PASS above, one stub changed: screencap writes
+# nothing. The app really is alive here, which is the point — UNKNOWN is the honest answer, and the
+# difference between this and the PASS above is a single failing capture.
+NOSHOTSTUB="$TMP/noshotstub"; mkdir -p "$NOSHOTSTUB"
+# Written out rather than sed-mutated from $ASTUB: a fragile in-test rewrite is itself the
+# "checking tool carries the defect it checks for" class this suite exists to catch. Identical to
+# $ASTUB/adb in every branch EXCEPT screencap, which fails — so the app is genuinely alive here.
+cat > "$NOSHOTSTUB/adb" <<'EOF'
+#!/bin/sh
+case "$*" in
+  devices)      printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  *pidof*)      echo 4213 ;;
+  *screencap*)  exit 1 ;;
+  *)            exit 0 ;;
+esac
+EOF
+chmod +x "$NOSHOTSTUB/adb"; cp "$ASTUB/aapt2" "$NOSHOTSTUB/aapt2"
+rm -rf "$RGP/docs/evidence"
+assert_exit 2 "a live app whose screenshot could not be captured is CANNOT EVALUATE, never PASS" \
+  env PATH="$NOSHOTSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP"
+cp "$TMP/out" "$TMP/rg-noshot.txt"
+assert_has "$TMP/rg-noshot.txt" "SCREENSHOT CAPTURE FAILED" "...and names the missing evidence as the reason"
+grep -q "^RESULT: PASS" "$TMP/rg-noshot.txt" \
+  && bad "...and never prints PASS for a run with no evidence artifact" \
+  || ok "...and never prints PASS for a run with no evidence artifact"
+[ -f "$RGP/docs/evidence/runtime-$(date +%F)-android.png" ] \
+  && bad "...and leaves no empty evidence file behind to be mistaken for a capture" \
+  || ok "...and leaves no empty evidence file behind to be mistaken for a capture"
+# Mirror test: restore the old evidence-optional behaviour and prove the assertion above goes red.
+cp "$HERE/runtime-gate.sh" "$HERE/runtime-gate.sh.bak"
+node -e '
+  const fs = require("fs");
+  const p = process.argv[1];
+  let t = fs.readFileSync(p, "utf8");
+  const marker = "        unknown \"android\" \"built, installed and launched ($PKG), still running after 3s";
+  if (!t.includes(marker)) { console.error("marker not found"); process.exit(1); }
+  t = t.replace(marker, "        pass \"android\" \"MUTATED evidence-optional pass ($PKG)\"; : \"");
+  fs.writeFileSync(p, t);
+' "$HERE/runtime-gate.sh"
+env PATH="$NOSHOTSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP" >"$TMP/rg-mirror.txt" 2>&1
+if grep -q "^RESULT: PASS" "$TMP/rg-mirror.txt"; then
+  ok "mirror test: restoring the evidence-optional pass reproduces a PASS with no evidence"
+else
+  bad "mirror test: restoring the evidence-optional pass should reproduce a PASS with no evidence"
+fi
+mv "$HERE/runtime-gate.sh.bak" "$HERE/runtime-gate.sh"
 
 # The timeout branch. RUNTIME_GATE_BUILD_TIMEOUT exists in the source for exactly one reason —
 # "so the timeout branch is testable in seconds instead of in a quarter of an hour" — and no test
@@ -4472,6 +4723,99 @@ assert_exit 2 "a detector script that does not exist is CANNOT RUN, never DETECT
 rm -f "$TMP/lab-copy/eval/clean/manifest.json"
 assert_exit 2 "with no clean project the lab CANNOT RUN — a detection score alone is not a result" \
   node "$TMP/lab-copy/scripts/studio-eval.mjs"
+
+# --- A manifest's NARRATIVE can outlive the code it describes, and nothing noticed for four days.
+# `eval/stale-approval` said "no board field records what was approved… a check nobody can write
+# because nobody writes its input" — while `board.mjs --bind` had been recording commit + diff_hash
+# and `approval-check.mjs` had been verifying them since 2026-07-31. The lab still printed a clean
+# score, because a manifest is prose to it. Post-enhancement audit F-08.
+#
+# The durable fix is not correcting today's wording — it is making a stale claim mechanically
+# detectable. Every manifest carries `last_verified_at`, and any manifest whose prose asserts a
+# capability is ABSENT must name the file that would provide it, so the claim can be re-checked
+# against the tree instead of re-read.
+for m in "$HERE"/../eval/*/manifest.json; do
+  node -e '
+    const fs = require("fs");
+    const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    if (!m.last_verified_at) { console.error("no last_verified_at"); process.exit(1); }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(m.last_verified_at)) { console.error("bad date"); process.exit(1); }
+  ' "$m" 2>/dev/null \
+    || bad "$(basename "$(dirname "$m")")/manifest.json carries a dated last_verified_at" \
+         "a manifest with no verification date cannot be told apart from one whose claims have rotted"
+done
+ok "every eval manifest carries a dated last_verified_at"
+# The specific correction, kept as a regression: this manifest may never again claim the input for
+# approval binding does not exist, because it does.
+node -e '
+  const fs = require("fs");
+  const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const text = `${m.why || ""} ${m.gap || ""}`;
+  // The live capability: board.mjs --bind writes commit+diff_hash, approval-check.mjs verifies.
+  if (/no board field records what was approved/i.test(text)) process.exit(1);
+  if (!/--bind|approval-check/.test(text)) process.exit(1);
+' "$HERE/../eval/stale-approval/manifest.json" \
+  && ok "...and stale-approval names the binding that exists instead of claiming it does not" \
+  || bad "...and stale-approval names the binding that exists instead of claiming it does not"
+
+# --- A STATUS FIELD, NOT A PROSE SCAN. codex (PR #21) caught `accessibility-violation` carrying a
+# fresh `last_verified_at` while its own `why` said "no script in this repo inspects UI code" — with
+# `scripts/accessibility-scan.mjs` sitting right there in its own detector block. I had bulk-stamped
+# the date without reading the narratives: the exact defect the field was added to expose, committed
+# by the person adding it. Sweeping for it found a SECOND instance codex had not flagged
+# (`missing-analytics`).
+#
+# The first version of this check grepped the prose for absence-claims — and then failed on the
+# CORRECTED manifests, because a correction has to QUOTE the false claim in order to refute it. A
+# regex cannot tell an assertion from a citation of one. So the claim moved into an enumerated
+# `status` field and the prose became free text nobody parses. That is the same lesson the audits
+# kept reaching for structured records over Markdown-line greps.
+EVAL_STATUS_BAD=""
+for m in "$HERE"/../eval/*/manifest.json; do
+  node -e '
+    const fs = require("fs"), path = require("path");
+    const root = process.argv[2];
+    const m = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const ALLOWED = new Set([
+      "detector-exists-and-is-scored",
+      "detector-exists-fixture-cannot-reach-it",
+      "detector-proven-in-ci-unreachable-on-this-host",
+      "no-detector-exists",
+      "control-must-not-be-blocked",
+    ]);
+    if (!ALLOWED.has(m.status)) { console.error(`status ${JSON.stringify(m.status)} is not one of the allowed values`); process.exit(1); }
+    const det = m.expected_detector;
+    const detExists = det ? fs.existsSync(path.join(root, det)) : false;
+    // The contradiction that matters: claiming no detector exists while naming one that does.
+    if (m.status === "no-detector-exists" && detExists) { console.error(`status says no detector exists, but ${det} does`); process.exit(1); }
+    if (m.status === "detector-exists-and-is-scored" && !detExists) { console.error(`status claims a scored detector, but ${det || "(none named)"} is not there`); process.exit(1); }
+  ' "$m" "$HERE/.." 2>"$TMP/evalstatus.txt" \
+    || EVAL_STATUS_BAD="$EVAL_STATUS_BAD $(basename "$(dirname "$m")"):$(tr -d '\n' < "$TMP/evalstatus.txt")"
+done
+[ -z "$EVAL_STATUS_BAD" ] \
+  && ok "every eval manifest's status is enumerated and agrees with whether its detector exists" \
+  || bad "every eval manifest's status agrees with whether its detector exists" "$EVAL_STATUS_BAD"
+# A manifest naming a CI workflow must name one that exists — the crash-on-launch fixture pointed at
+# checks.yml after the job moved to runtime-gate.yml, so its stated proof was unfollowable.
+#
+# A workflow path in a manifest can mean one of TWO things, and conflating them makes this check
+# lie: either the PLUGIN's own workflow (the proof that a detector runs somewhere), or a path inside
+# the FIXTURE (`eval/ci-that-cannot-fail` plants its defect in its own `.github/workflows/ci.yml`).
+# The first draft of this check only looked at the plugin root and reported the fixture's own
+# planted file as missing — a false positive on the very first run, which is exactly the outcome
+# `eval/clean` exists to make expensive. Resolve against the fixture first, then the plugin root.
+WF_MISSING=""
+for m in "$HERE"/../eval/*/manifest.json; do
+  FIXTURE=$(dirname "$m")
+  for wf in $(grep -o '\.github/workflows/[a-z0-9-]*\.yml' "$m" 2>/dev/null | sort -u); do
+    [ -f "$FIXTURE/$wf" ] && continue      # the fixture's own file — the planted defect itself
+    [ -f "$HERE/../$wf" ] && continue      # the plugin's own workflow — the stated proof
+    WF_MISSING="$WF_MISSING $(basename "$FIXTURE")/$wf"
+  done
+done
+[ -z "$WF_MISSING" ] \
+  && ok "every workflow path named in an eval manifest resolves to a real file" \
+  || bad "every workflow path named in an eval manifest resolves to a real file" "unresolved:$WF_MISSING"
 
 # Same rule as mutate.sh: a gate nobody runs is not a gate.
 grep -q 'studio-eval.mjs' "$HERE/../.github/workflows/checks.yml" \

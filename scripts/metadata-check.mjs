@@ -48,6 +48,26 @@ if (entry) {
   }
 }
 
+// EVERY manifest, not just the marketplace. This checked the marketplace description, the README and
+// the CHANGELOG — and never `plugin.json`'s own description, which is the one the installer shows.
+// So the plugin advertised "29 role agents" while shipping 30 and this script printed CLEAR: a
+// metadata checker that skips a manifest is a checker whose green means "the files I happened to
+// read agree". Post-enhancement audit F-07, verified in the tree before this fix.
+if (!String(plugin.description || '').includes(`${roles} role`)) {
+  fail(`plugin.json description does not advertise the current role count (${roles})`);
+}
+
+// The boundary this whole system is built around must not be contradicted by its own shop window.
+// "takes an idea to a shipped app" reads as store publishing; the pipeline stops at submission-ready
+// and publishing is human-owned (docs/03-decision-rights.md). An overclaim here is the one piece of
+// drift a user sees before they install anything.
+for (const [label, text] of [['plugin.json', plugin.description], ['marketplace entry', entry?.description]]) {
+  if (!text) continue;
+  if (/\bto a shipped\b/i.test(text)) {
+    fail(`${label} description claims it takes an idea "to a shipped app" — the pipeline stops at submission-ready and publishing is human-owned`);
+  }
+}
+
 const readme = read('README.md');
 const badge = readme.match(/version-([0-9]+\.[0-9]+\.[0-9]+)-blue/);
 if (!badge || badge[1] !== plugin.version) fail(`README version badge ${badge?.[1] || '(missing)'} != ${plugin.version}`);

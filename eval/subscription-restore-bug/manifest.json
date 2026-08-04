@@ -6,7 +6,13 @@
   "severity": "S1",
   "why": "Restore is an App Review requirement and a refund driver. The axiom iap-auditor covers it, but it is an agent in another plugin — not a script this lab can execute — and nothing in scripts/ inspects billing code.",
   "detector": {
-    "run": ["node", "scripts/subscription-restore-scan.mjs", "{project}"],
+    "run": [
+      "node",
+      "scripts/subscription-restore-scan.mjs",
+      "{project}"
+    ],
     "expect_exit": 1
-  }
+  },
+  "last_verified_at": "2026-08-04",
+  "status": "detector-exists-and-is-scored"
 }
