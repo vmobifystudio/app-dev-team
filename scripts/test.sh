@@ -6587,6 +6587,35 @@ bm "$FCB8" move N-001 corrected --by tech-manager --detail '{"files":[]}' >/dev/
 assert_exit 2 "...and emptying the IN-FLIGHT ticket's files is CANNOT EVALUATE, never a clearance" \
   node "$HERE/contention-check.mjs" --log "$FCB8/docs/31-board-events.jsonl" --ticket N-002
 
+# --- S1-3, actually fixed rather than documented ------------------------------------------------
+# The first response to "the secrets are in the tree agents read" was to say so honestly in the
+# docstring. That was necessary and not sufficient: a stated caveat is not a boundary. The secret
+# now comes from the SPAWNER'S ENVIRONMENT first — STUDIO_ACTOR_SECRET_<ACTOR_ID> — which the agent
+# has no tool to read. The registry field remains as a local-operator fallback, and every event
+# records which store signed it, so the two regimes are distinguishable forever rather than inferred.
+FCS3="$TMP/fc-secret"; rm -rf "$FCS3"; mkdir -p "$FCS3/docs/team"; ( cd "$FCS3" && git init -q . )
+printf '{"requireAttestedActors": true}\n' > "$FCS3/.studio-policy.json"
+# A registry with NO secret field at all — the whole point is that it need not carry one.
+printf '{"actors":{"dev-1":{"roles":["ios-developer"]}}}\n' > "$FCS3/docs/team/actors.json"
+assert_exit 2 "with no secret in the environment or the registry, attestation is CANNOT EVALUATE" \
+  bm "$FCS3" add T-1 --title x --owner ios-developer --by ios-developer --actor dev-1 --actor-token bogus
+S3_TOK=$(STUDIO_ACTOR_SECRET_DEV_1=env-only-secret node -e "
+import('$HERE/lib/actor.mjs').then((m) => {
+  const r = m.mintToken({ root: '$FCS3', actorId: 'dev-1', role: 'ios-developer', ticket: 'T-1', event: 'created', ts: '' });
+  process.stdout.write(r.ok ? r.token : 'NONE');
+});")
+( cd "$FCS3" && STUDIO_ACTOR_SECRET_DEV_1=env-only-secret node "$BD" add T-1 --title x --owner ios-developer \
+    --by ios-developer --actor dev-1 --actor-token "$S3_TOK" ) >/dev/null 2>&1
+S3_EXIT=$?
+if [ "$S3_EXIT" = "0" ]; then ok "...and a secret held only in the spawner's environment signs correctly"
+else bad "...and a secret held only in the spawner's environment signs correctly" "exit $S3_EXIT"; fi
+if grep -q '"key_source":"env"' "$FCS3/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "...recording WHICH key store signed it, so a file-signed era is never mistaken for a proven one"
+else bad "...recording WHICH key store signed it, so a file-signed era is never mistaken for a proven one"; fi
+if grep -rq "env-only-secret" "$FCS3/docs" 2>/dev/null; then
+  bad "...and the secret never appears anywhere in the tree the agent reads"
+else ok "...and the secret never appears anywhere in the tree the agent reads"; fi
+
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
 # conflicted file untouched. A broken agent file reached the base branch and was found two merges

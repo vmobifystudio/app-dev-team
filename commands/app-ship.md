@@ -135,7 +135,19 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    **Then the journey gate — the runtime gate above proves the app is ALIVE, not that it WORKS.**
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . [--driver <path>]
+   # Pick the driver for the platform under test. `[--driver <path>]` used to be a LITERAL
+   # placeholder here, which meant journey-gate was always invoked without one — so the drivers
+   # described as "the seam the gate was built around" were unreachable, and every declared journey
+   # was CANNOT EVALUATE for a reason nobody could see. A detector nobody calls is FC-002 with extra
+   # steps; this is the call.
+   #
+   #   android  scripts/drivers/android.sh   drives adb + uiautomator; needs a device or emulator
+   #   ios      scripts/drivers/ios.sh       launches and screenshots; step execution needs XCUITest
+   #
+   # With no device attached either driver returns CANNOT EVALUATE naming the missing thing, which
+   # is the correct answer and NOT a pass.
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
+     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh
    ```
 
    Six dry runs measured the gates catching every process defect and **zero** product defects. An

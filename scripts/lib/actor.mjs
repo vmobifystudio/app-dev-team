@@ -34,10 +34,14 @@
  * against "the caller can read the key" — which is the bound that decides whether the mechanism is
  * real here. Overclaiming in a docstring is how a team comes to believe a control holds.
  *
- * To make this an actual authority boundary the secret has to leave the agent's read scope: an
- * environment variable the spawner sets and the agent never sees, an OS keychain, or a signing
- * helper the agent can call but not read. Until then, treat `attested` as "this event was produced
- * by something that had the key", never as "this role was independently verified".
+ * SO THE SECRET NOW COMES FROM THE ENVIRONMENT FIRST — `STUDIO_ACTOR_SECRET_<ACTOR_ID>`, set by
+ * whatever spawns the agent, which the agent has no tool to read. The registry field is a kept
+ * fallback for a single-machine local operator, and every event records `key_source` so the two
+ * regimes are distinguishable forever rather than by inference.
+ *
+ * With `key_source: "env"`, `attested` means the role was proven. With `key_source:
+ * "registry-file"`, it means the caller could read a file — still useful against a CONFUSED agent,
+ * still worthless against a hostile one, and now it says which.
  *
  * TWO MODES, AND THE DIFFERENCE IS NEVER BLURRED:
  *
@@ -71,6 +75,35 @@ function canonical({ actorId, role, ticket, event, ts }) {
 
 function sign(secret, parts) {
   return createHmac('sha256', secret).update(canonical(parts)).digest('hex');
+}
+
+
+/**
+ * The signing secret for an actor, and WHERE IT IS ALLOWED TO LIVE.
+ *
+ * The registry entry's `secret` field is the fallback, not the primary. The primary is an
+ * environment variable the SPAWNER sets and the agent never sees:
+ *
+ *     STUDIO_ACTOR_SECRET_<ACTOR_ID>      (dashes and dots become underscores, upper-cased)
+ *
+ * That is the whole difference between a control and a decoration here. A secret in
+ * `docs/team/actors.json` is inside the agent's read scope, so any agent that can read a file can
+ * mint a token for every role the registry grants — the security reviewer demonstrated exactly
+ * that. Moving it to the process environment of whatever spawns the agent puts it somewhere the
+ * agent has no tool to reach, which is what "a caller cannot invent a reviewer" has to mean before
+ * the sentence is worth writing down.
+ *
+ * The file fallback is KEPT, because a local operator running the studio on one machine with no
+ * secret manager is a real and supported case. But its use is recorded on every event it signs, so
+ * the two regimes never look alike in history — the same reason `insecure-local` is stamped rather
+ * than assumed.
+ */
+function secretFor(actorId, entry) {
+  const key = `STUDIO_ACTOR_SECRET_${String(actorId).replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}`;
+  const fromEnv = process.env[key];
+  if (fromEnv) return { secret: fromEnv, source: 'env' };
+  if (entry && entry.secret) return { secret: String(entry.secret), source: 'registry-file' };
+  return { secret: '', source: 'none' };
 }
 
 function loadRegistry(root) {
@@ -133,7 +166,11 @@ function resolveActor({ root, role, ticket, event, ts, token = '', actorId = '',
     return { ok: false, code: 1, reason: `${id} may act as [${allowed.join(', ') || 'nothing'}] and is not granted "${role}"` };
   }
 
-  const expected = sign(String(entry.secret || ''), { actorId: id, role, ticket, event, ts });
+  const { secret: signing, source } = secretFor(id, entry);
+  if (!signing) {
+    return { ok: false, code: 2, reason: `no signing secret for ${id}: set ${`STUDIO_ACTOR_SECRET_${String(id).replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}`} in the spawner's environment, or add one to ${REGISTRY} for local use` };
+  }
+  const expected = sign(signing, { actorId: id, role, ticket, event, ts });
   const given = Buffer.from(String(secret));
   const want = Buffer.from(expected);
   // Constant-time, and length-checked first because timingSafeEqual throws on a length mismatch —
@@ -150,6 +187,11 @@ function resolveActor({ root, role, ticket, event, ts, token = '', actorId = '',
       actor_id: id,
       role,
       mode: 'attested',
+      // WHICH KEY STORE SIGNED THIS. `registry-file` means the secret was readable by whatever it
+      // authorised, so the signature proves the caller could read a file — not that the role was
+      // independently verified. Recording it means a project that later moves to `env` can tell its
+      // two eras apart, and an auditor is never left inferring which regime an approval came from.
+      key_source: source,
       session: session || null,
       model: model || null,
       delegator: delegator || null,
@@ -163,7 +205,9 @@ function mintToken({ root, actorId, role, ticket, event, ts }) {
   if (!registry.ok) return { ok: false, reason: registry.reason };
   const entry = registry.actors[actorId];
   if (!entry) return { ok: false, reason: `${actorId} is not in ${REGISTRY}` };
-  return { ok: true, token: sign(String(entry.secret || ''), { actorId, role, ticket, event, ts }) };
+  const { secret: signing } = secretFor(actorId, entry);
+  if (!signing) return { ok: false, reason: `no signing secret for ${actorId} (checked the environment, then ${REGISTRY})` };
+  return { ok: true, token: sign(signing, { actorId, role, ticket, event, ts }) };
 }
 
 export { resolveActor, mintToken, REGISTRY };
