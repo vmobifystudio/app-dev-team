@@ -44,14 +44,15 @@
  * without re-litigating any of it.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
 
 const die = (code, message) => { process.stderr.write(`journey-gate: ${message}\n`); process.exit(code); };
 const { flags } = parseArgs(process.argv.slice(2), {
-  valueFlags: new Set(['root', 'journeys', 'driver', 'only']),
+  valueFlags: new Set(['root', 'journeys', 'driver', 'only', 'out']),
   die,
 });
 
@@ -244,10 +245,10 @@ for (const j of selected) {
   // forbid it, exactly the evidence-optional pass this gate exists to end. A path is not an
   // artifact. Reported by codex on PR #21; the same shape as the runtime-gate defect fixed hours
   // earlier, which is FC-001: the fix that lands in one mechanism and not its sibling.
+  let digests = [];
   if (report.result === 'PASS') {
-    const missing = report.evidence
-      .map((e) => ({ e, abs: resolve(root, String(e)) }))
-      .filter(({ abs }) => !existsSync(abs) || !statSync(abs).isFile() || statSync(abs).size === 0);
+    const resolved = report.evidence.map((e) => ({ e, abs: resolve(root, String(e)) }));
+    const missing = resolved.filter(({ abs }) => !existsSync(abs) || !statSync(abs).isFile() || statSync(abs).size === 0);
     if (missing.length) {
       results.push({
         j,
@@ -257,26 +258,78 @@ for (const j of selected) {
       });
       continue;
     }
+    // ...AND EXISTENCE IS STILL NOT ENOUGH. "The file is there" says nothing about WHICH file is
+    // there. A path is mutable: the screenshot cited by yesterday's PASS can be overwritten by
+    // today's run, by a different journey, or by hand, and the verdict keeps pointing at it as
+    // though nothing happened. The check above closed "no artifact"; this one closes "a different
+    // artifact wearing the same name".
+    //
+    // The digest is taken AT EVALUATION TIME, which is the only moment the gate can honestly speak
+    // for the bytes it looked at. Recording it is what makes the verdict re-checkable later —
+    // without it, staleness is undetectable and every gate result is implicitly "true when written,
+    // unknown ever since".
+    digests = resolved.map(({ e, abs }) => ({
+      path: e,
+      sha256: createHash('sha256').update(readFileSync(abs)).digest('hex'),
+      bytes: statSync(abs).size,
+    }));
   }
   results.push({
     j,
     state: report.result === 'CANNOT_EVALUATE' ? 'UNKNOWN' : report.result,
     detail: report.detail || (report.failed_step ? `failed at step ${report.failed_step}` : ''),
     evidence: report.evidence || [],
+    digests,
     started,
   });
+}
+
+/**
+ * Write the machine-readable, candidate-bound result.
+ *
+ * WHY A FILE AND NOT JUST STDOUT. A verdict that exists only as console output cannot be
+ * re-evaluated later, which means it cannot go STALE — it is implicitly "true when printed, unknown
+ * ever since", and the next reader has no way to tell which of those they are looking at. Binding
+ * the verdict to the candidate (HEAD, tree cleanliness) and to the evidence digests is what lets a
+ * later check say "this PASS was about a different candidate" instead of silently honouring it.
+ */
+function writeResultFile() {
+  const out = typeof flags.out === 'string' ? resolve(root, flags.out) : resolve(root, 'docs/team/journey-result.json');
+  let head = '';
+  let dirty = null;
+  try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* not a repo */ }
+  try { dirty = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0; } catch { /* not a repo */ }
+  const payload = {
+    schema: 'gate-result/v1',
+    gate: 'journey-gate',
+    // The SUBJECT. A verdict with no subject is a verdict about nothing in particular.
+    subject: { head: head || null, dirty },
+    evaluated_at: new Date().toISOString(),
+    result: results.some((r) => r.state === 'FAIL') ? 'FAIL'
+      : results.some((r) => r.state === 'UNKNOWN') ? 'CANNOT_EVALUATE' : 'PASS',
+    journeys: results.map((r) => ({ id: r.j.id, state: r.state, detail: r.detail || '', evidence: r.digests || [] })),
+  };
+  try { mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, `${JSON.stringify(payload, null, 2)}\n`); }
+  catch (e) { process.stderr.write(`journey-gate: could not write ${out}: ${e.message}\n`); }
 }
 
 process.stdout.write('JOURNEY GATE\n');
 for (const r of results) {
   const label = r.state === 'PASS' ? 'PASS   ' : r.state === 'FAIL' ? 'FAIL   ' : 'UNKNOWN';
   process.stdout.write(`  ${label}  ${r.j.id}  ${r.detail}\n`);
-  (r.evidence || []).forEach((e) => process.stdout.write(`           evidence: ${e}\n`));
+  // The digest is PRINTED, not merely stored. A provenance record nobody can see is a record that
+  // silently rots; showing it means a human reading two runs can tell whether the same bytes were
+  // examined without going and hashing files themselves.
+  (r.evidence || []).forEach((e, i) => {
+    const d = (r.digests || [])[i];
+    process.stdout.write(`           evidence: ${e}${d ? `  sha256:${d.sha256.slice(0, 12)} (${d.bytes}B)` : ''}\n`);
+  });
 }
 
 const anyFail = results.some((r) => r.state === 'FAIL');
 const anyUnknown = results.some((r) => r.state === 'UNKNOWN');
 process.stdout.write('\n');
+writeResultFile();
 if (anyFail) {
   process.stdout.write('RESULT: FAIL — a declared P0 journey did not complete. The product is wrong, not the harness.\n');
   process.exit(1);

@@ -37,6 +37,24 @@ function ancestors(from) {
   }
 }
 
+/**
+ * If `from` is inside a LINKED worktree, return the main project root; otherwise ''.
+ *
+ * `--git-dir` differs from `--git-common-dir` in a linked worktree (`.git/worktrees/<name>` versus
+ * `.git`) and is identical in the main one. That difference is the only reliable signal, and it is
+ * what tells "the agent is working in `.agent-wt/APP-001`, which is this project" apart from "the
+ * agent is standing in a different repository entirely".
+ */
+function linkedWorktreeRoot(from) {
+  try {
+    const opts = { cwd: from, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] };
+    const gitDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-dir'], opts).trim();
+    const commonDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], opts).trim();
+    if (!gitDir || !commonDir || resolve(gitDir) === resolve(commonDir)) return '';
+    return dirname(commonDir);
+  } catch { return ''; }
+}
+
 function gitRoot(from) {
   try {
     return dirname(execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
@@ -61,6 +79,22 @@ function resolveProjectRoot({ from = process.cwd(), explicit = '' } = {}) {
       ? { ok: true, root, via: 'explicit' }
       : { ok: false, reason: `--project-root ${explicit} does not look like a studio project (no ${MARKERS.join(' / ')})`, candidates: [] };
   }
+
+  // A LINKED WORKTREE IS THE SAME PROJECT, ANSWERED FIRST.
+  //
+  // The previous version claimed worktrees were unaffected because `--git-common-dir` points back
+  // at the original. That claim was FALSE, and the comment asserting it was the reason nobody
+  // looked: a worktree never reached the git-boundary branch, because `docs/31-board.md` and
+  // `docs/31-board-events.jsonl` are TRACKED, so `git worktree add` checks them out and the
+  // worktree becomes a marker directory nested inside a marker directory — `marked.length > 1`,
+  // ambiguous, exit 2.
+  //
+  // `skills/agent-isolation` makes a worktree MANDATORY for every writing agent, so this refused
+  // the studio's primary path on every board command. A regression against main, shipped behind a
+  // comment stating the opposite. Being inside a linked worktree is not ambiguity — it is exactly
+  // the case where the answer is known: the common dir's parent, which is what dry run 3 required.
+  const linked = linkedWorktreeRoot(from);
+  if (linked) return { ok: true, root: linked, via: 'worktree' };
 
   const chain = ancestors(from);
   const marked = chain.filter(isProjectRoot);

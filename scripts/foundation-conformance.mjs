@@ -160,26 +160,58 @@ invariant('I-04', 'Authenticated authority', true, () => sandbox((dir) => {
 // I-05  Complete work identity
 // ---------------------------------------------------------------------------------------------
 invariant('I-05', 'Complete work identity', true, () => sandbox((dir) => {
-  // BEHAVIOURAL, deliberately. The first draft of this check grepped approval-check.mjs for
-  // /merge[_-]?base|candidate_id/ and reported PASS — it had matched a COMMENT and an unrelated
-  // ancestor test. A regex cannot tell an assertion from a citation; only running the thing can.
-  writeFileSync(join(dir, 'a.txt'), 'one\n');
-  run('git', ['add', '-A'], dir); run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'c1'], dir);
-  const base = run('git', ['rev-parse', 'HEAD'], dir).out.trim();
-  writeFileSync(join(dir, 'b.txt'), 'two\n');
-  run('git', ['add', '-A'], dir); run('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'c2'], dir);
-  const head = run('git', ['rev-parse', 'HEAD'], dir).out.trim();
-  const src = readFileSync(join(ROOT, 'scripts/approval-check.mjs'), 'utf8');
-  // The subject an approval names must be the whole change (base..head plus its file manifest),
-  // not one commit. Accepting --base at all is the minimum observable form of that.
-  const acceptsBase = /--base|flags\.base\b/.test(src);
-  if (!acceptsBase) {
-    return {
-      state: 'FAIL',
-      detail: `approval binds a single commit (${head.slice(0, 7)}): a ${base.slice(0, 7)}..${head.slice(0, 7)} branch is reviewed as its last commit only`,
-    };
+  // BEHAVIOURAL, AND IT TOOK TWO TRIES TO GET THERE. The first draft grepped approval-check.mjs for
+  // /merge[_-]?base|candidate_id/ and matched a COMMENT. The second draft grepped for `--base` and
+  // was PROVEN by the code-reviewer to pass on main's UNFIXED file plus one added comment line
+  // reading "someday we should accept --base" — it certified the exact code it exists to reject,
+  // while carrying a comment saying a regex cannot tell an assertion from a citation.
+  //
+  // So this one runs the product: it builds a real two-commit branch, binds an approval through the
+  // CLI, and asks git what the approval actually covers.
+  const g = (args) => run('git', args, dir).out.trim();
+  run('git', ['config', 'user.email', 't@t'], dir); run('git', ['config', 'user.name', 't'], dir);
+  writeFileSync(join(dir, 'a.txt'), 'base\n');
+  run('git', ['add', '-A'], dir); run('git', ['commit', '-qm', 'base'], dir);
+  run('git', ['branch', '-M', 'main'], dir);
+  run('git', ['checkout', '-q', '-b', 'feat/x'], dir);
+  writeFileSync(join(dir, 'f1.txt'), 'one\n');
+  run('git', ['add', '-A'], dir); run('git', ['commit', '-qm', 'c1'], dir);
+  writeFileSync(join(dir, 'f2.txt'), 'two\n');
+  run('git', ['add', '-A'], dir); run('git', ['commit', '-qm', 'c2'], dir);
+  writeFileSync(join(dir, 'ev.txt'), 'evidence\n');
+  writeFileSync(join(dir, 'ctx.txt'), 'context\n');
+
+  board(['add', 'A-001', '--title', 'x', '--owner', 'ios-developer'], dir);
+  for (const [e, by] of [['claimed', 'ios-developer'], ['done_reported', 'ios-developer'],
+    ['verified', 'verification-engineer'], ['review_requested', 'ios-developer'], ['started', 'code-reviewer']]) {
+    board(['move', 'A-001', e, '--by', by], dir);
   }
-  return { state: 'PASS', detail: 'approval names base..head, not one commit' };
+  const bind = board(['move', 'A-001', 'approved', '--by', 'code-reviewer', '--bind',
+    '--evidence', 'ev.txt', '--context', 'ctx.txt'], dir);
+  if (bind.code !== 0) return { state: 'CANNOT_EVALUATE', detail: `could not bind an approval: ${bind.out.trim().split('\n')[0]}` };
+
+  const events = logLines(dir).map((l) => { try { return JSON.parse(l); } catch { return {}; } });
+  const approval = events.filter((e) => e.event === 'approved').pop();
+  const detail = approval?.detail || {};
+  const mergeBase = g(['merge-base', 'main', 'HEAD']);
+  const tipParent = g(['rev-parse', 'HEAD^']);
+
+  if (!detail.base) return { state: 'FAIL', detail: 'the approval records no base — it binds a single commit, so earlier commits on the branch are unapproved' };
+  if (detail.base === tipParent && tipParent !== mergeBase) {
+    return { state: 'FAIL', detail: `the approval binds HEAD^..HEAD (${tipParent.slice(0, 8)}), not the branch (${mergeBase.slice(0, 8)}..HEAD) — earlier commits are unapproved` };
+  }
+  if (detail.base !== mergeBase) return { state: 'FAIL', detail: `the approval's base ${String(detail.base).slice(0, 8)} is neither the merge-base nor HEAD^` };
+  if (!Array.isArray(detail.files) || !detail.files.includes('f1.txt') || !detail.files.includes('f2.txt')) {
+    return { state: 'FAIL', detail: `the approved file set is ${JSON.stringify(detail.files)} — it does not cover every commit on the branch` };
+  }
+  // THE ROUND TRIP. Binding and verifying were written apart, and for the life of that gap a
+  // correctly bound approval was reported as tampered with because one side trimmed the diff and
+  // the other did not. Section 4b: put the collection site and the verification site next to each other.
+  writeFileSync(join(dir, '.studio-policy.json'), JSON.stringify({ requireApprovalBinding: true }));
+  const check = run('node', [join(ROOT, 'scripts/approval-check.mjs'),
+    '--log', join(dir, 'docs/31-board-events.jsonl'), '--policy', join(dir, '.studio-policy.json')], dir);
+  if (check.code !== 0) return { state: 'FAIL', detail: `approval-check rejects an approval the CLI just bound: ${check.out.trim().split('\n')[0]}` };
+  return { state: 'PASS', detail: 'an approval binds base..head, covers every commit, and re-verifies clean' };
 }));
 
 // ---------------------------------------------------------------------------------------------
@@ -188,7 +220,11 @@ invariant('I-05', 'Complete work identity', true, () => sandbox((dir) => {
 invariant('I-06', 'Candidate-bound evidence', true, () => {
   const gate = readFileSync(join(ROOT, 'scripts/journey-gate.mjs'), 'utf8');
   const digests = /sha256|digest|content[_-]?hash/i.test(gate);
-  const stale = run('grep', ['-rl', 'STALE', join(ROOT, 'scripts')], ROOT).code === 0;
+  // `--exclude` self, exactly as I-11 already does. Without it this matched its own source line
+  // AND `STALE_LOCK_MS`, an unrelated lock constant — a check reporting the feature it is looking
+  // for because it mentioned it. I-11 carried the exclusion and a comment explaining this trap;
+  // I-06 did not get it. FC-001 inside the anti-FC-002 tool.
+  const stale = run('grep', ['-rl', '--exclude=foundation-conformance.mjs', 'STALE:', join(ROOT, 'scripts')], ROOT).code === 0;
   if (digests && stale) return { state: 'PASS', detail: 'evidence is content-addressed and invalidates as STALE' };
   return {
     state: 'FAIL',

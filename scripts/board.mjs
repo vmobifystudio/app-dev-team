@@ -221,12 +221,36 @@ function loadLog(logPath, { required = true } = {}) {
  * most common thing an agent or operator does after an ambiguous failure, and until now the board
  * had no way to tell a retry from a second, genuinely-intended transition.
  */
-function alreadyApplied(logPath, key) {
+/**
+ * Has THIS transition — this ticket, this event, this key — already been committed?
+ *
+ * ALL THREE PARTS MATTER, and the first version of this compared only the key. A bare global string
+ * meant that `move APP-002 claimed --idempotency-key RETRY-1`, after APP-001 had used RETRY-1,
+ * printed "already applied" and exited 0 with APP-002 NEVER MOVED and nothing written.
+ *
+ * That is the single worst outcome available to this codebase: a real transition silently discarded
+ * and reported as success. An orchestrator retrying a wave with one per-wave key — the obvious
+ * thing to do, and the reason the flag exists — would have dropped every transition after the
+ * first, and the board would have looked fine.
+ *
+ * A dedup guard that swallows work is strictly worse than no dedup guard, because the duplicate it
+ * was preventing is visible and the loss it causes is not. Found by the code-reviewer, reproduced
+ * on two tickets.
+ *
+ * Returns 'duplicate' (same ticket, same event — a genuine retry), 'collision' (the key was used
+ * for something ELSE, which is a caller bug and must never be treated as success), or false.
+ */
+function idempotencyState(logPath, key, ticket, eventName) {
   if (!key) return false;
   if (!existsSync(logPath)) return false;
-  return readFileSync(logPath, 'utf8')
-    .split('\n').filter(Boolean)
-    .some((line) => { try { return JSON.parse(line).idempotency_key === key; } catch { return false; } });
+  for (const line of readFileSync(logPath, 'utf8').split('\n').filter(Boolean)) {
+    let e;
+    try { e = JSON.parse(line); } catch { continue; }
+    if (e.idempotency_key !== key) continue;
+    if (key && e.ticket === ticket && e.event === eventName) return 'duplicate';
+    return 'collision';
+  }
+  return false;
 }
 
 function append(logPath, event) {
@@ -491,7 +515,13 @@ function bindApprovalEvidence(flags) {
     catch { return { ok: false, code: 2, reason: `cannot resolve a base for ${commit} — it has no parent and no integration branch was found. Pass --base <sha>.` }; }
   }
   let diff;
-  try { diff = execFileSync('git', ['diff', base, commit, '--binary'], { encoding: 'utf8' }); }
+  // `.trim()` ON BOTH SIDES, DELIBERATELY. This hashed the RAW git output while approval-check's
+  // `git()` helper trimmed before hashing, and a diff always ends in a newline — so the two hashes
+  // could never agree and a correctly bound approval was reported as "not the change on disk".
+  // The gate accused clean work of tampering, which teaches everyone to ignore it: FC-002 by
+  // erosion rather than by design. Pre-existing on main; found because the reviewer ran the round
+  // trip instead of reading either side alone.
+  try { diff = execFileSync('git', ['diff', base, commit, '--binary'], { encoding: 'utf8' }).trim(); }
   catch { return { ok: false, code: 2, reason: `cannot diff ${base}..${commit}` }; }
   // The changed-file manifest is recorded alongside the diff hash. The hash proves the content did
   // not change; the manifest is what a human or a policy check can actually read to see the blast
@@ -607,9 +637,14 @@ function reportCascade(tickets, id) {
   );
 }
 
-function cmdAssign(id, flags, paths) {
+// The key is FORWARDED. `assign` sat inside the lock and inside the dedup check but dropped the
+// key on its way to cmdMove, so no `assigned` event ever carried one and every retry appended a
+// second event. FC-001 in the same file as the comment claiming the FC-001 sweep was finished: the
+// sweep covered `created` and `move` and stopped one caller short. I-10 could not see it because
+// I-10 exercises `move`.
+function cmdAssign(id, flags, paths, idempotencyKey = '') {
   if (!id || !flags.to) die(1, 'assign needs a ticket and a role: board.mjs assign APP-001 --to ios-developer');
-  return cmdMove(id, 'assigned', { ...flags, detail: { to: flags.to } }, paths);
+  return cmdMove(id, 'assigned', { ...flags, detail: { to: flags.to } }, paths, idempotencyKey);
 }
 
 function cmdShow(id, flags, paths) {
@@ -922,11 +957,27 @@ function main() {
       // same key could both find "not yet applied" and both commit — the very race the lock exists
       // to close, reintroduced by the deduplication meant to prevent duplicates.
       const key = typeof flags['idempotency-key'] === 'string' ? flags['idempotency-key'] : '';
-      if (key && alreadyApplied(paths.log, key)) {
-        // Exit 0, not an error: the caller asked for a state that now holds. A retry after an
-        // ambiguous timeout must be able to report success without committing a second effect.
-        process.stdout.write(`already applied (idempotency-key ${key}) — nothing appended\n`);
-        return undefined;
+      if (key) {
+        // The subject of the retry must be named, or the guard cannot tell a repeat from a
+        // different piece of work. `assign` is `assigned` under the hood — spelled out here so the
+        // key is scoped to the event actually appended.
+        const subject = normalizeId(rest[0] || '');
+        const eventName = command === 'add' ? 'created' : command === 'assign' ? 'assigned' : String(rest[1] || '');
+        const state = idempotencyState(paths.log, key, subject, eventName);
+        if (state === 'duplicate') {
+          // Exit 0: the caller asked for a state that now holds. A retry after an ambiguous timeout
+          // must report success without committing a second effect.
+          process.stdout.write(`already applied (idempotency-key ${key} on ${subject} ${eventName}) — nothing appended\n`);
+          return undefined;
+        }
+        if (state === 'collision') {
+          // NEVER exit 0 here. This key was used for DIFFERENT work, so treating it as a duplicate
+          // would discard a real transition and call it success — the defect this branch exists to
+          // prevent. Exit 2: cannot evaluate, because the caller's intent is genuinely unknowable.
+          die(2, `idempotency-key ${key} was already used for a DIFFERENT transition.\n` +
+                 `  Refusing: treating this as a duplicate would silently discard ${subject} ${eventName}.\n` +
+                 '  Use a key unique to the transition (for example "<ticket>-<event>-<attempt>").');
+        }
       }
       return dispatch(command, rest, flags, paths, key);
     }, { die });
@@ -941,7 +992,7 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
     case 'move':
       return cmdMove(rest[0], rest[1], flags, paths, idempotencyKey);
     case 'assign':
-      return cmdAssign(rest[0], flags, paths);
+      return cmdAssign(rest[0], flags, paths, idempotencyKey);
     case 'show':
       return cmdShow(rest[0], flags, paths);
     case 'render':

@@ -5885,7 +5885,7 @@ rm -f "$VC/docs/60-releases.md"
 assert_exit 1 "policy checker blocks missing required policy evidence" \
   node "$HERE/policy-check.mjs" "$VC"
 
-section "foundation invariants (I-01..I-12)"
+# --- foundation invariants (I-01..I-12) ------------------------------------------------------
 
 # THE BOARD UNDER CONCURRENCY. Twelve parallel `add` calls on a clean repo used to commit two or
 # three events — nine or ten tickets lost with no error — and left the hash chain broken, after
@@ -6028,12 +6028,149 @@ if grep -q "requirement_not_implemented" "$TMP/fc-reverse.out" && grep -q "F-002
   ok "an in-scope requirement that no ticket implements is reported"
 else bad "an in-scope requirement that no ticket implements is reported"; fi
 # ...but an explicit disposition is not a defect. Silence is the problem, not a stated decision.
-printf '# PRD\n\n- [F-001] the user can save a reading.\n- [F-002] the user can export their history. (deferred to v2)\n' \
+printf '# PRD\n\n- [F-001] the user can save a reading.\n- [F-002] the user can export their history. (disposition: deferred, by: cpo)\n' \
   > "$FCR/docs/10-prd.md"
 node "$HERE/trace.mjs" --project-root "$FCR" > "$TMP/fc-reverse2.out" 2>&1 || true
 if grep -q "requirement_not_implemented" "$TMP/fc-reverse2.out"; then
   bad "...and an explicitly deferred requirement is not reported"
 else ok "...and an explicitly deferred requirement is not reported"; fi
+
+# --- F14/F15: evidence is content-addressed and subject-bound ---------------------------------
+# The existence check closed "no artifact". It cannot close "a DIFFERENT artifact wearing the same
+# name": a path is mutable, so the screenshot a PASS cites can be overwritten by the next run, by
+# another journey, or by hand, and the verdict keeps pointing at it as though nothing happened.
+# Only a digest taken AT EVALUATION TIME can tell those apart.
+FCE="$TMP/fc-evidence"; rm -rf "$FCE"; mkdir -p "$FCE/docs/team/journeys" "$FCE/artifacts"
+( cd "$FCE" && git init -q -b main . && git config user.email t@t.com && git config user.name t )
+cat > "$FCE/docs/team/journeys/j1.json" <<'JJ'
+{"schema":"journey/v1","id":"J-001","title":"log a reading","steps":[
+ {"action":"launch"},{"action":"enter","id":"value","value":"137"},{"action":"tap","id":"save"},
+ {"assert":"value_equals","id":"latest","value":"137"}]}
+JJ
+printf 'REAL SCREENSHOT BYTES\n' > "$FCE/artifacts/j1.png"
+printf '#!/bin/sh\necho %s\n' "'"'{"schema":"journey-result/v1","journey_id":"J-001","result":"PASS","evidence":["artifacts/j1.png"]}'"'" > "$FCE/driver.sh"
+chmod +x "$FCE/driver.sh"
+( cd "$FCE" && git add -A && git commit -qm init ) >/dev/null 2>&1
+assert_exit 0 "journey-gate passes with real evidence and records its digest" \
+  node "$HERE/journey-gate.mjs" --root "$FCE" --driver "$FCE/driver.sh"
+if grep -q '"sha256"' "$FCE/docs/team/journey-result.json" 2>/dev/null; then
+  ok "...and the gate result is a candidate-bound gate-result/v1 with evidence digests"
+else bad "...and the gate result is a candidate-bound gate-result/v1 with evidence digests"; fi
+assert_exit 0 "evidence-check reports the verdict CURRENT while nothing has moved" \
+  node "$HERE/evidence-check.mjs" --root "$FCE"
+# THE ASSERTION THAT MATTERS. Same path, same name, still non-empty — the existence check waves it
+# through. Only the recorded digest shows the bytes are gone.
+printf "A DIFFERENT RUN'S SCREENSHOT\n" > "$FCE/artifacts/j1.png"
+assert_exit 1 "...and STALE once the cited artifact is overwritten with different bytes" \
+  node "$HERE/evidence-check.mjs" --root "$FCE"
+node "$HERE/evidence-check.mjs" --root "$FCE" 2>&1 | grep -q "contents changed" \
+  && ok "...naming the digest mismatch, not just 'something changed'" \
+  || bad "...naming the digest mismatch, not just 'something changed'"
+# The subject half: the evidence is untouched, but the candidate moved on.
+printf 'REAL SCREENSHOT BYTES\n' > "$FCE/artifacts/j1.png"
+( cd "$FCE" && echo x > newfile.txt && git add -A && git commit -qm second ) >/dev/null 2>&1
+assert_exit 1 "...and STALE when the evidence is intact but the candidate moved" \
+  node "$HERE/evidence-check.mjs" --root "$FCE"
+node "$HERE/evidence-check.mjs" --root "$FCE" 2>&1 | grep -q "no longer exists\|candidate that no longer exists" \
+  && ok "...naming the commit it was recorded against" \
+  || bad "...naming the commit it was recorded against"
+# STALE IS NOT FAIL. The distinction is the whole point: nothing here says the product is broken.
+node "$HERE/evidence-check.mjs" --root "$FCE" 2>&1 | grep -q "nothing here says the product is broken" \
+  && ok "...and says plainly that STALE is not a failure of the product" \
+  || bad "...and says plainly that STALE is not a failure of the product"
+
+# --- code-reviewer findings on the foundation series (all eight reproduced first) --------------
+
+# B1. THE WORST DEFECT IN THE SERIES, and it was in the fix rather than the thing being fixed. The
+# idempotency guard compared the KEY ALONE, so a key reused on a different ticket printed "already
+# applied", exited 0, and DISCARDED A REAL TRANSITION. An orchestrator retrying a wave with one
+# per-wave key — the obvious use, and the reason the flag exists — would have dropped every
+# transition after the first, silently. A dedup guard that swallows work is worse than none: the
+# duplicate it prevents is visible, the loss it causes is not.
+FCK="$TMP/fc-idemkey"; rm -rf "$FCK"; mkdir -p "$FCK"; ( cd "$FCK" && git init -q . )
+bm "$FCK" add APP-001 --title a --owner ios-developer >/dev/null 2>&1
+bm "$FCK" add APP-002 --title b --owner ios-developer >/dev/null 2>&1
+bm "$FCK" move APP-001 claimed --by ios-developer --idempotency-key RETRY-1 >/dev/null 2>&1
+assert_exit 2 "an idempotency key reused on a DIFFERENT ticket is refused, never treated as a duplicate" \
+  bm "$FCK" move APP-002 claimed --by ios-developer --idempotency-key RETRY-1
+bm "$FCK" show APP-002 2>/dev/null | grep -q "todo" \
+  && ok "...and the refused ticket is untouched rather than silently skipped" \
+  || bad "...and the refused ticket is untouched rather than silently skipped"
+assert_exit 0 "...while a genuine retry (same ticket, same event, same key) still reports success" \
+  bm "$FCK" move APP-001 claimed --by ios-developer --idempotency-key RETRY-1
+FCK_N=$(grep -c '"event":"claimed"' "$FCK/docs/31-board-events.jsonl" 2>/dev/null | tr -d ' ')
+if [ "$FCK_N" = "1" ]; then ok "...committing exactly once"; else bad "...committing exactly once" "got $FCK_N"; fi
+
+# B2. `assign` sat inside the lock and inside the dedup check but never forwarded the key to
+# cmdMove, so no `assigned` event carried one and every retry appended a second. FC-001 in the same
+# file as the comment claiming the FC-001 sweep was complete — it covered `created` and `move` and
+# stopped one caller short. I-10 could not see it because I-10 exercises `move`.
+bm "$FCK" assign APP-001 --to ios-developer --idempotency-key K-ASSIGN >/dev/null 2>&1
+bm "$FCK" assign APP-001 --to ios-developer --idempotency-key K-ASSIGN >/dev/null 2>&1
+FCK_A=$(grep -c '"event":"assigned"' "$FCK/docs/31-board-events.jsonl" 2>/dev/null | tr -d ' ')
+if [ "$FCK_A" = "1" ]; then ok "assign honours the idempotency key it accepts"
+else bad "assign honours the idempotency key it accepts" "appended $FCK_A assigned events"; fi
+
+# B3. A REGRESSION SHIPPED BEHIND A COMMENT ASSERTING THE OPPOSITE. The board files are TRACKED, so
+# `git worktree add` checks them out and the worktree becomes a marker directory nested inside a
+# marker directory — ambiguous, exit 2. skills/agent-isolation makes a worktree MANDATORY for every
+# writing agent, so this refused the studio's primary path on every board command.
+FCW2="$TMP/fc-worktree"; rm -rf "$FCW2"; mkdir -p "$FCW2"
+( cd "$FCW2" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && git commit -q --allow-empty -m init )
+bm "$FCW2" add APP-001 --title x --owner ios-developer >/dev/null 2>&1
+( cd "$FCW2" && git add -A && git commit -qm board && git worktree add -q .agent-wt/APP-001 -b feat/APP-001 ) >/dev/null 2>&1
+assert_exit 0 "a board command from inside a linked agent worktree resolves to the one project" \
+  bash -c "cd '$FCW2/.agent-wt/APP-001' && node '$BD' move APP-001 claimed --by ios-developer"
+if grep -q '"event":"claimed"' "$FCW2/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "...and the write lands in the project log, not a fork inside the worktree"
+else bad "...and the write lands in the project log, not a fork inside the worktree"; fi
+
+# B6. A LOCK THAT HANDS THE CRITICAL SECTION TO SOMEONE ELSE is worse than no lock. Staleness was
+# judged by mtime with a 10-second cutoff justified by an assertion nobody executed — but the locked
+# section contains `git diff --binary` over a branch, a full chain verify and a board render. A live
+# 14-second holder had its lock unlinked by a waiter, both ran the critical section, and the first
+# one's `finally` deleted the second's lock. Liveness is now asked directly, via the holder's pid.
+FCL2="$TMP/fc-lock"; rm -rf "$FCL2"; mkdir -p "$FCL2"
+cat > "$FCL2/hold.mjs" <<MJS
+import { withFileLock } from '$HERE/lib/atomic.mjs';
+import { appendFileSync } from 'node:fs';
+const [name, ms] = process.argv.slice(2);
+withFileLock('$FCL2/target.log', () => {
+  const end = Date.now() + Number(ms);
+  while (Date.now() < end) { /* hold */ }
+  appendFileSync('$FCL2/target.log', name + '\n');
+}, { timeoutMs: 30000 });
+MJS
+( node "$FCL2/hold.mjs" A 12000 & sleep 1; node "$FCL2/hold.mjs" B 200; wait ) >/dev/null 2>&1
+if [ "$(tr -d '\n' < "$FCL2/target.log" 2>/dev/null)" = "AB" ]; then
+  ok "a slow lock holder is waited for, not reaped while it is still running"
+else bad "a slow lock holder is waited for, not reaped while it is still running" \
+  "order was $(tr -d '\n' < "$FCL2/target.log" 2>/dev/null)"; fi
+
+# B7. THE ROUND TRIP NOBODY RAN. board.mjs hashed the raw diff; approval-check hashed the trimmed
+# one; a diff always ends in a newline, so the two could never agree and a correctly bound approval
+# was reported as tampered with. Pre-existing, and it survived a commit dedicated to this mechanism
+# because the new test asserted on the recorded JSON instead of running the verifier. Section 4b:
+# put the collection site and the verification site next to each other.
+printf '{"requireApprovalBinding":true}\n' > "$FCB/.studio-policy.json"
+assert_exit 0 "an approval the CLI just bound re-verifies clean (bind -> approval-check round trip)" \
+  bash -c "cd '$FCB' && node '$HERE/approval-check.mjs' --log '$FCB/docs/31-board-events.jsonl' --policy '$FCB/.studio-policy.json'"
+
+# B8. A RULE SATISFIED BY PROSE ABOUT THE THING. The disposition escape matched free text, so
+# ordinary requirement wording — "invitations were REJECTED", "NOT IN V1 currency format" — exempted
+# in-scope, unimplemented requirements from the very check that exists to find them. Third time in
+# two days: prose is not checkable; a field is.
+FCD="$TMP/fc-disposition"; rm -rf "$FCD"; mkdir -p "$FCD/docs"; ( cd "$FCD" && git init -q . )
+printf '# PRD\n\n- [F-001] the user can save a reading.\n- [F-002] the user can see which invitations were rejected.\n- [F-003] the payment sheet shows a card that is not in v1 currency format.\n- [F-004] bulk import. (disposition: deferred, by: cpo)\n' > "$FCD/docs/10-prd.md"
+bm "$FCD" add T-001 --title x --owner ios-developer --feature F-001 >/dev/null 2>&1
+node "$HERE/trace.mjs" --project-root "$FCD" > "$TMP/fc-disp.out" 2>&1 || true
+if grep -q "F-002" "$TMP/fc-disp.out" && grep -q "F-003" "$TMP/fc-disp.out"; then
+  ok "requirement prose containing 'rejected' or 'not in v1' does not exempt it from the reverse check"
+else bad "requirement prose containing 'rejected' or 'not in v1' does not exempt it from the reverse check"; fi
+if grep "requirement_not_implemented" "$TMP/fc-disp.out" | grep -q "F-004"; then
+  bad "...while a structured disposition naming the deciding role does exempt it"
+else ok "...while a structured disposition naming the deciding role does exempt it"; fi
 
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
