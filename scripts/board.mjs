@@ -46,6 +46,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
 import { parseArgs as parseArgv } from './lib/args.mjs';
+import { withFileLock } from './lib/atomic.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
 import {
@@ -115,7 +116,7 @@ function resolveId(tickets, id) {
 const VALUE_FLAGS = new Set([
   'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
-  'invariant', 'rollback', 'file', 'change', 'commit',
+  'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
@@ -204,6 +205,21 @@ function loadLog(logPath, { required = true } = {}) {
  * so a broken chain means "restore the file", never "append a repair". There is deliberately no
  * `--force` — a flag that re-anchors a broken chain is a flag that erases the only evidence.
  */
+/**
+ * Return true when this exact logical transition has already been committed.
+ *
+ * WITHOUT THIS, "the command timed out, run it again" DUPLICATES THE EFFECT. A retry is the single
+ * most common thing an agent or operator does after an ambiguous failure, and until now the board
+ * had no way to tell a retry from a second, genuinely-intended transition.
+ */
+function alreadyApplied(logPath, key) {
+  if (!key) return false;
+  if (!existsSync(logPath)) return false;
+  return readFileSync(logPath, 'utf8')
+    .split('\n').filter(Boolean)
+    .some((line) => { try { return JSON.parse(line).idempotency_key === key; } catch { return false; } });
+}
+
 function append(logPath, event) {
   mkdirSync(dirname(logPath), { recursive: true });
   const existing = existsSync(logPath) ? readFileSync(logPath, 'utf8') : '';
@@ -214,7 +230,14 @@ function append(logPath, event) {
       `the audit chain of ${logPath} is broken at line ${chain.line}.\n` +
         `  ${chain.reason}\n` +
         '  Refusing to append: a new line on a rewritten log makes the rewrite permanent.\n' +
-        `  Recover the log from version control (git checkout -- ${logPath}), then re-run.`
+        `  Recover the log from version control (git checkout -- ${logPath}), then re-run.\n` +
+        // THE OLD MESSAGE SAID ONLY "find out what wrote to it directly" — and for the entire life
+        // of this defect the answer was: this CLI did, racing itself, because appends were not
+        // serialized. Blaming the operator for the tool's own corruption is DR4-001 (a broken
+        // harness must never read as sabotage). Appends are locked now, so a chain break here is
+        // once again genuinely external — but the message must say which world it is in.
+        '  Appends are serialized by a lockfile, so concurrent CLI writers can no longer cause\n' +
+        '  this. A break now means the file was edited or truncated outside the CLI.'
     );
   }
   // A LEGACY LOG WITHOUT A TRAILING NEWLINE MUST GET ONE FIRST. `appendFileSync` concatenates raw
@@ -292,7 +315,7 @@ function deriveRisk(flags, paths) {
   catch (e) { die(1, `risk-router.mjs produced unparseable output for ${policyPath}: ${e.message}`); }
 }
 
-function cmdAdd(id, flags, paths) {
+function cmdAdd(id, flags, paths, idempotencyKey = '') {
   if (!id) die(1, 'add needs a ticket ID: board.mjs add APP-001 --title "..."');
   const birth = String(flags.status || 'todo').toLowerCase().trim();
   if (!BIRTH_STATUS.has(birth)) {
@@ -327,6 +350,7 @@ function cmdAdd(id, flags, paths) {
     by: flags.by || 'tech-manager',
     detail,
     provenance: 'cli',
+    ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
   };
 
   const result = validate(tickets, event);
@@ -449,7 +473,7 @@ function bindApprovalEvidence(flags) {
   };
 }
 
-function cmdMove(id, name, flags, paths) {
+function cmdMove(id, name, flags, paths, idempotencyKey = '') {
   if (!id || !name) die(1, 'move needs a ticket and an event: board.mjs move APP-001 claimed --by ios-developer');
   const { events } = loadLog(paths.log);
   const { tickets } = reduce(events);
@@ -462,6 +486,11 @@ function cmdMove(id, name, flags, paths) {
     by: flags.by || '',
     detail: typeof flags.detail === 'object' ? flags.detail : scrub('--detail', flags.detail || ''),
     provenance: 'cli',
+    // Stamped here as well as in `cmdAdd`. The first version of this fix stamped the key on
+    // `created` only, so `alreadyApplied` could never find it for a `move` — the dedup guard ran,
+    // found nothing, and the retry fell through to the state machine. FC-001 inside the fix for
+    // FC-001's cousin, caught by the conformance suite rather than by reading the diff.
+    ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
   };
 
   const result = validate(tickets, event);
@@ -826,11 +855,45 @@ function main() {
     board: typeof flags.board === 'string' ? resolve(process.cwd(), flags.board) : resolve(projectRoot(), DEFAULT_BOARD),
   };
 
+  // EVERY MUTATING COMMAND RUNS UNDER ONE LOCK, HELD ACROSS THE WHOLE READ-DECIDE-APPEND.
+  //
+  // `cmdAdd` and friends do loadLog -> reduce -> validate -> append: four steps with nothing
+  // serializing them. Twelve concurrent `add` calls on a clean repo committed TWO events. Ten
+  // tickets vanished with no error, and because each process chained its append onto the same
+  // stale tip, the log was left corrupt — `verify` then reported "rewritten history" and told the
+  // operator to go find what wrote to the file directly. The studio's own CLI had.
+  //
+  // Locking only the append would not fix this: the DECISION (is this transition legal, what is
+  // the tip to chain onto) is made during the read, so the read must be inside the lock too.
+  //
+  // The lock lives HERE, at the single dispatch point, rather than inside each command — this
+  // repository's defining defect is the fix that lands in one mechanism and stops before its
+  // sibling, and a per-command lock is that defect waiting for the next command to be added.
+  const MUTATES = new Set(['add', 'move', 'assign', 'migrate']);
+  if (MUTATES.has(command)) {
+    return withFileLock(paths.log, () => {
+      // IDEMPOTENCY IS CHECKED INSIDE THE LOCK, not before it. Checked outside, two retries of the
+      // same key could both find "not yet applied" and both commit — the very race the lock exists
+      // to close, reintroduced by the deduplication meant to prevent duplicates.
+      const key = typeof flags['idempotency-key'] === 'string' ? flags['idempotency-key'] : '';
+      if (key && alreadyApplied(paths.log, key)) {
+        // Exit 0, not an error: the caller asked for a state that now holds. A retry after an
+        // ambiguous timeout must be able to report success without committing a second effect.
+        process.stdout.write(`already applied (idempotency-key ${key}) — nothing appended\n`);
+        return undefined;
+      }
+      return dispatch(command, rest, flags, paths, key);
+    }, { die });
+  }
+  return dispatch(command, rest, flags, paths, '');
+}
+
+function dispatch(command, rest, flags, paths, idempotencyKey = '') {
   switch (command) {
     case 'add':
-      return cmdAdd(rest[0], flags, paths);
+      return cmdAdd(rest[0], flags, paths, idempotencyKey);
     case 'move':
-      return cmdMove(rest[0], rest[1], flags, paths);
+      return cmdMove(rest[0], rest[1], flags, paths, idempotencyKey);
     case 'assign':
       return cmdAssign(rest[0], flags, paths);
     case 'show':

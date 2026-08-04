@@ -53,6 +53,7 @@ import {
   MAX_CHAIN,
   MAX_PER_TICKET,
 } from './lib/messages.mjs';
+import { parseEventLog, reduce as reduceEvents } from './lib/events.mjs';
 // --------------------------------------------------------------------------------------------
 // the cascade
 // --------------------------------------------------------------------------------------------
@@ -604,6 +605,63 @@ function report({ anomalies, warnings }, board, capabilities, options) {
 
 // --------------------------------------------------------------------------------------------
 
+/**
+ * The generated view must match the log it was generated from.
+ *
+ * `project.mjs` now reads the log rather than the Markdown, so a hand-edit can no longer CHANGE
+ * what the studio believes. But silently ignoring the edit is its own failure: it means a human or
+ * an agent wrote something down and the system quietly discarded it. The three reasons a divergence
+ * exists — a confused agent, a hand-edit that lost real work, or tampering — all deserve to be said
+ * out loud rather than papered over by the next render.
+ *
+ * The expected rows are derived from the LOG. Deriving them by re-parsing the same Markdown would
+ * make this the checking tool that carries the defect it checks for: it would agree with itself
+ * every time.
+ */
+function reportViewDivergence(boardPath, board) {
+  const logPath = join(dirname(boardPath), '31-board-events.jsonl');
+  if (!existsSync(logPath)) return false; // legacy hand-written board, nothing to compare against
+  let expected;
+  try {
+    const { events } = parseEventLog(readFileSync(logPath, 'utf8'));
+    expected = reduceEvents(events).tickets;
+  } catch {
+    return false; // an unreadable log is loadLog's exit-2 problem, not a divergence finding
+  }
+  const drift = [];
+  for (const row of board.rows) {
+    // The log keys tickets with `key()`, which UPPERCASES. Looking up a lowercased id found
+    // nothing and reported every row as "present in the view, absent from the log" — a divergence
+    // checker that fires on a correct board is worse than none, because the first thing anyone
+    // learns is to ignore it.
+    const truth = expected.get(String(normalizeId(row.id)).toUpperCase());
+    // A row the log has never heard of is NOT reported. It is what a half-migrated legacy board
+    // looks like — the log was started partway through, so early rows exist only in Markdown — and
+    // flagging it would make this check fire on projects that have done nothing wrong. The signal
+    // worth blocking on is CONTRADICTION: the log and the view describing the same ticket
+    // differently. That is also the shape of the attack this check was written for.
+    if (!truth) continue;
+    const seenStatus = (row.status || '').toLowerCase().trim();
+    if (truth.status && seenStatus && truth.status !== seenStatus) {
+      drift.push(`${row.id}: view says status "${seenStatus}", log says "${truth.status}"`);
+    }
+    const seenOwner = isEmpty(row.owner) ? '' : String(row.owner).trim();
+    if (truth.owner && seenOwner && truth.owner !== seenOwner) {
+      drift.push(`${row.id}: view says owner "${seenOwner}", log says "${truth.owner}"`);
+    }
+  }
+  if (!drift.length) return false;
+  process.stderr.write(
+    `board-doctor: docs/31-board.md DIVERGES from the event log it is generated from.\n` +
+      drift.map((d) => `  ${d}\n`).join('') +
+      '  The log is authoritative and nothing reads these edits, so this is not corrupt state —\n' +
+      '  but the edit expressed an intention that has been discarded. Two ways forward:\n' +
+      `    regenerate the view:  node scripts/board.mjs render\n` +
+      '    record the intention: node scripts/board.mjs move <ID> <event> --by <role>\n'
+  );
+  return true;
+}
+
 function main() {
   const args = process.argv.slice(2);
   const options = { json: args.includes('--json'), quiet: args.includes('--quiet') };
@@ -645,9 +703,18 @@ function main() {
     process.exit(2);
   }
 
+  // The return value is USED. The first version of this set `process.exitCode` and let the call
+  // below run — `process.exit()` overrode it, so the divergence printed and the tool still exited 0
+  // and still announced "Board is coherent. Safe to spawn." three lines under its own warning.
+  // A finding the final exit discards is not a finding; it is a log line.
+  const diverged = reportViewDivergence(boardPath, board);
+
   const result = diagnose(board, ledger, capabilities, channel.messages);
   if (!options.quiet || result.anomalies.length > 0) report(result, board, capabilities, options);
-  process.exit(result.anomalies.length > 0 ? 1 : 0);
+  if (diverged && !result.anomalies.length) {
+    process.stderr.write('board-doctor: refusing to report a coherent board while the view diverges from the log.\n');
+  }
+  process.exit(result.anomalies.length > 0 || diverged ? 1 : 0);
 }
 
 main();
