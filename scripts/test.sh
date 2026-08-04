@@ -6431,6 +6431,83 @@ bm "$FCN" move N-002 corrected --by tech-manager --detail '{"files":["src/C.swif
 assert_exit 0 "...and clears once the file set is NARROWED by a correction" \
   node "$HERE/contention-check.mjs" --log "$FCN/docs/31-board-events.jsonl" --ticket N-002
 
+# --- F7: one schema registry -------------------------------------------------------------------
+# A dozen `.../vN` shapes existed, each validated by hand-written ifs beside whichever script read
+# it. `feature: "F-001,F-002"` looks plausible and is one invalid ID; `routes` passed for `rules`
+# until a tool happened to run. Prose is not checkable; a field is — applied to the shapes themselves.
+SCH_OK=$(node -e "
+import('$HERE/lib/schemas.mjs').then((m) => {
+  const good = m.validate({ schema: 'gate-result/v1', gate: 'x', subject: {}, evaluated_at: 't', result: 'PASS' }, 'gate-result/v1');
+  const badEnum = m.validate({ schema: 'gate-result/v1', gate: 'x', subject: {}, evaluated_at: 't', result: 'PROBABLY' }, 'gate-result/v1');
+  const missing = m.validate({ schema: 'gate-result/v1', gate: 'x' }, 'gate-result/v1');
+  const unknown = m.validate({ schema: 'invented/v9' });
+  process.stdout.write([good.ok, badEnum.ok, missing.ok, unknown.ok].join(','));
+});" 2>/dev/null)
+if [ "$SCH_OK" = "true,false,false,false" ]; then ok "the schema registry accepts a valid shape and refuses a bad enum, a missing field and an unknown schema"
+else bad "the schema registry accepts a valid shape and refuses a bad enum, a missing field and an unknown schema" "got $SCH_OK"; fi
+# STALE must be in the readiness enum: it is neither PASS nor BLOCKED and must never collapse.
+node -e "import('$HERE/lib/schemas.mjs').then((m) => process.exit(m.REGISTRY['readiness/v1'].fields.verdict[2].includes('STALE') ? 0 : 1));" 2>/dev/null   && ok "...and readiness/v1 enumerates STALE, so it cannot silently become PASS or BLOCKED"   || bad "...and readiness/v1 enumerates STALE, so it cannot silently become PASS or BLOCKED"
+
+# --- F8: one exit contract, with USAGE and ENVIRONMENT split out of cannot-evaluate -------------
+node -e "
+import('$HERE/lib/cli.mjs').then((m) => {
+  const e = m.EXIT;
+  process.exit(e.PASS === 0 && e.BLOCKED === 1 && e.UNKNOWN === 2 && e.USAGE === 64 && e.ENVIRON === 69 ? 0 : 1);
+});" 2>/dev/null   && ok "the shared exit contract keeps USAGE (64) and ENVIRONMENT (69) distinct from cannot-evaluate (2)"   || bad "the shared exit contract keeps USAGE (64) and ENVIRONMENT (69) distinct from cannot-evaluate (2)"
+
+# --- F9: every board event carries its own identity and states its shape ------------------------
+# Stamped at the append boundary, not per call site: a field every writer must remember is a field
+# some writer will forget — `assign` dropped the idempotency key exactly that way.
+FCE2="$TMP/fc-envelope"; rm -rf "$FCE2"; mkdir -p "$FCE2"; ( cd "$FCE2" && git init -q . )
+bm "$FCE2" add E-001 --title x --owner ios-developer >/dev/null 2>&1
+if grep -q '"schema":"board-event/v1"' "$FCE2/docs/31-board-events.jsonl" && grep -q '"event_id"' "$FCE2/docs/31-board-events.jsonl"; then
+  ok "every board event states its schema and carries an event_id"
+else bad "every board event states its schema and carries an event_id"; fi
+
+# --- F17: the release candidate is immutable, and refuses a dirty tree --------------------------
+# Ship status was an OVERWRITTEN verdict file: the least durable shape for the most consequential
+# claim the studio makes. A candidate built from uncommitted work names a state that exists on one
+# machine and in no commit, so its evidence could never be re-checked by anyone.
+FCRC="$TMP/fc-rc"; rm -rf "$FCRC"; mkdir -p "$FCRC"
+( cd "$FCRC" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm c1 )
+assert_exit 0 "a release candidate can be created from a clean tree" \
+  node "$HERE/release-candidate.mjs" create --root "$FCRC"
+if grep -q '"release_candidate_id"' "$FCRC/docs/team/release-candidates.jsonl" 2>/dev/null; then
+  ok "...and is recorded in an append-only, hash-chained ledger"
+else bad "...and is recorded in an append-only, hash-chained ledger"; fi
+node "$HERE/release-candidate.mjs" create --root "$FCRC" 2>&1 | grep -q "HUMAN ONLY" \
+  || node "$HERE/release-candidate.mjs" show --root "$FCRC" --json 2>&1 | grep -q "HUMAN ONLY" \
+  && ok "...stating on the artifact itself that publication is human-only" \
+  || bad "...stating on the artifact itself that publication is human-only"
+( cd "$FCRC" && echo dirty > b.txt )
+assert_exit 1 "...and a dirty working tree is refused, because its evidence could never be re-checked" \
+  node "$HERE/release-candidate.mjs" create --root "$FCRC"
+
+# --- F21: platform journey drivers, both written at once ---------------------------------------
+# Shipping one platform and adding the other later is FC-001, which has recurred five times in two
+# days including twice inside the fixes for it. Neither driver has a step executor yet, and BOTH say
+# so instead of returning a stub PASS — a driver reporting success from a loop nobody ran would be
+# green-while-nothing-happened inside the gate built to end it.
+for D in android ios; do
+  OUT=$(sh "$HERE/drivers/$D.sh" --journey "$FIX/../journeys/none.json" 2>&1 | head -1)
+  RC=$(sh "$HERE/drivers/$D.sh" --journey /nonexistent.json >/dev/null 2>&1; echo $?)
+  if [ "$RC" = "2" ]; then ok "the $D driver reports CANNOT EVALUATE (2) when it cannot exercise a journey"
+  else bad "the $D driver reports CANNOT EVALUATE (2) when it cannot exercise a journey" "exit $RC"; fi
+  sh "$HERE/drivers/$D.sh" --journey /nonexistent.json 2>&1 | grep -q '"result":"CANNOT_EVALUATE"' \
+    && ok "...emitting a well-formed journey-result/v1 the gate can parse" \
+    || bad "...emitting a well-formed journey-result/v1 the gate can parse"
+  # HONEST LABEL: this is a SOURCE-TEXT check, not a behavioural one, and it is weaker than every
+  # other assertion in this block. Proving behaviourally that a driver does not stub a PASS needs a
+  # device attached, and there is none here. A mirror test confirmed its weakness: replacing the
+  # refusal with `printf PASS; exit 0` left the explanatory comment in place, so this still passed.
+  # Recorded rather than dressed up — an assertion whose limits are stated is worth more than one
+  # whose limits are discovered later.
+  grep -q "reporting PASS here would be" "$HERE/drivers/$D.sh" \
+    && ok "...and its source states why it does not stub a PASS (source check, not behavioural)" \
+    || bad "...and its source states why it does not stub a PASS (source check, not behavioural)"
+done
+
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
 # conflicted file untouched. A broken agent file reached the base branch and was found two merges

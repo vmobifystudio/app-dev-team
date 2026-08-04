@@ -43,7 +43,7 @@ import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } fr
 import { resolve, dirname } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { withFileLock } from './lib/atomic.mjs';
@@ -280,8 +280,24 @@ function append(logPath, event) {
   // `not valid JSON`. `verifyChain` above tolerates a missing trailing newline when reading (each
   // line is `trim()`-checked), so this went unnoticed until the log was read again. Reported by
   // codex.
+  // THE ENVELOPE. Every event carries its own identity and the version of the shape it was written
+  // in, stamped in ONE place so no writer can omit them.
+  //
+  // `event_id` makes an event referenceable — causation ("this happened because of that") is
+  // unstateable without it, and a log where nothing can be pointed at is a log you can only read
+  // forwards. `schema` makes the shape self-describing: every reader currently infers the shape from
+  // context, which is precisely how `routes` came to pass for `rules` elsewhere in this repo.
+  //
+  // Added at the append boundary rather than at each call site, because a field every writer must
+  // remember is a field some writer will forget — the lesson of `assign` dropping the idempotency
+  // key three commits ago.
+  const enveloped = {
+    schema: 'board-event/v1',
+    event_id: randomUUID(),
+    ...event,
+  };
   const sep = existing && !existing.endsWith('\n') ? '\n' : '';
-  appendFileSync(logPath, `${sep}${JSON.stringify({ ...event, hash: chainHash(chain.tip, event) })}\n`);
+  appendFileSync(logPath, `${sep}${JSON.stringify({ ...enveloped, hash: chainHash(chain.tip, enveloped) })}\n`);
 }
 
 /**
