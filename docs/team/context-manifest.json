@@ -1,0 +1,35 @@
+{
+  "schema": "context-manifest/v2",
+  "snapshot_id": "CTX-ab60c91837f6f528",
+  "generated_at": "2026-08-04T11:26:43.179Z",
+  "root": "/Users/amolpomane/Documents/Mobify Studio Apps/app-dev-team",
+  "ticket": "STUDIO-002",
+  "role": "android-developer",
+  "precedence": [
+    "constitutional",
+    "role",
+    "project",
+    "ticket",
+    "retrieved"
+  ],
+  "compiled_order": [
+    "ea97a05ef4089c95"
+  ],
+  "git": {
+    "head": "8fe632ac88b0b13805abc88bc5aec40b404f0c38",
+    "branch": "feat/f18-f21-remaining-kernel"
+  },
+  "sources": [
+    {
+      "id": "ea97a05ef4089c95",
+      "layer": "ticket",
+      "precedence": 3,
+      "path": "docs/31-board.md",
+      "sha256": "eee7d6c0405f2dba242fbb343feb1e4671a1efe9a64f214ae9305ef08f7d4ab5",
+      "bytes": 1323,
+      "reason": "declared source"
+    }
+  ],
+  "omitted": [],
+  "token_estimate": 331
+}

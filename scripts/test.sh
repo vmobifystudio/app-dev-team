@@ -5580,7 +5580,11 @@ assert_exit 0 "dispatch-preflight composes all spawn controls" node "$HERE/dispa
 # --- Global plugin enhancement plan (2026-08-03), P0.2's narrow first slice: dispatch-preflight ran
 # every check EXCEPT whether the requested ticket was actually admissible — a caller with a valid
 # context/capability/risk set but a ticket the scheduler had not marked ready still got a CLEAR.
-assert_exit 2 "--ticket is required, not optional" \
+# Exit 64 (EX_USAGE), not 2. Dogfood run 1 measured why the distinction matters: a malformed
+# invocation exiting 2 is indistinguishable from a gate that COULD NOT RUN, and several paths are
+# documented to degrade on 2 — so a caller with a typo could conclude preflight is unavailable and
+# spawn the agent anyway. A usage error and a broken environment are different facts.
+assert_exit 64 "--ticket is required, and a malformed call is EX_USAGE, not cannot-evaluate" \
   node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 assert_exit 1 "a ticket outside the scheduler's ready set is refused, even with every other check passing" \
   node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH" --ticket NOT-IN-PLAN --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
@@ -6345,6 +6349,40 @@ node "$HERE/project-profile.mjs" doctor --root "$FCPP" 2>&1 | grep -q "ENVIRONME
 # Re-running init would mint a new project_id and orphan every artifact naming the old one.
 assert_exit 1 "re-running init is refused so a project_id cannot silently change" \
   node "$HERE/project-profile.mjs" init --root "$FCPP"
+
+# --- dogfood run 1: three defects in the path between a ticket and an agent --------------------
+# None of these was visible to 1045 assertions or twelve green invariants. All three were found by
+# trying to drive the studio's own commands in sequence.
+
+# DF1-002. dispatch-preflight disclosed its contract ONE ARGUMENT AT A TIME, each refusal exit 2.
+# Eleven invocations to dispatch one ticket. The dangerous half is the exit code, not the friction:
+# 2 means CANNOT EVALUATE, and callers are documented to degrade on it — so a typo could read as
+# "preflight is unavailable on this host" and the agent gets spawned anyway.
+node "$HERE/dispatch-preflight.mjs" >/dev/null 2>&1; DF_EXIT=$?
+if [ "$DF_EXIT" = "64" ]; then ok "a malformed dispatch-preflight call is EX_USAGE (64), never cannot-evaluate (2)"
+else bad "a malformed dispatch-preflight call is EX_USAGE (64), never cannot-evaluate (2)" "exit $DF_EXIT"; fi
+DF_OUT=$(node "$HERE/dispatch-preflight.mjs" 2>&1)
+DF_N=$(printf '%s' "$DF_OUT" | grep -o -- '--[a-z]*' | head -20 | sort -u | wc -l | tr -d ' ')
+if [ "$DF_N" -ge 10 ]; then ok "...and names EVERY missing argument in one pass, not one per attempt"
+else bad "...and names EVERY missing argument in one pass, not one per attempt" "named $DF_N"; fi
+printf '%s' "$DF_OUT" | grep -q "Do not degrade" \
+  && ok "...and tells the caller explicitly not to degrade on this code" \
+  || bad "...and tells the caller explicitly not to degrade on this code"
+
+# DF1-005. capability-check resolved allowed_paths against the MANIFEST'S OWN DIRECTORY when no
+# root was declared, so a manifest granting `scripts` refused `scripts/lib/args.mjs` as
+# "../../scripts/lib/args.mjs". It fails in both directions: observed refusing legitimate work, and
+# a manifest written against the other assumption would GRANT paths nobody meant to grant — in the
+# gate that decides what an agent may write. The audit called this P0-04; this is it, live.
+FCM="$TMP/fc-caproot"; rm -rf "$FCM"; mkdir -p "$FCM/docs/team"
+printf '{"schema":"capability-manifest/v1","roles":[{"role":"ios-developer","operations":["write"],"allowed_paths":["scripts"]}]}\n' \
+  > "$FCM/docs/team/capabilities.json"
+assert_exit 2 "a capability manifest declaring no root is CANNOT EVALUATE, not a silent guess" \
+  node "$HERE/capability-check.mjs" --manifest "$FCM/docs/team/capabilities.json" --role ios-developer --operation write --path scripts/lib/args.mjs
+printf '{"schema":"capability-manifest/v1","root":"../..","roles":[{"role":"ios-developer","operations":["write"],"allowed_paths":["scripts"]}]}\n' \
+  > "$FCM/docs/team/capabilities.json"
+assert_exit 0 "...and resolves correctly once the root is declared" \
+  node "$HERE/capability-check.mjs" --manifest "$FCM/docs/team/capabilities.json" --role ios-developer --operation write --path scripts/lib/args.mjs
 
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER

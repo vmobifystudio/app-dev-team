@@ -1,4 +1,38 @@
 {
   "schema": "capability-manifest/v1",
-  "roles": []
+  "roles": [
+    {
+      "role": "ios-developer",
+      "operations": [
+        "read",
+        "write"
+      ],
+      "allowed_paths": [
+        "scripts",
+        "docs"
+      ]
+    },
+    {
+      "role": "android-developer",
+      "operations": [
+        "read",
+        "write"
+      ],
+      "allowed_paths": [
+        "scripts",
+        "docs"
+      ]
+    },
+    {
+      "role": "code-reviewer",
+      "operations": [
+        "read"
+      ],
+      "allowed_paths": [
+        "scripts",
+        "docs"
+      ]
+    }
+  ],
+  "root": "../.."
 }
