@@ -5875,6 +5875,74 @@ rm -f "$VC/docs/60-releases.md"
 assert_exit 1 "policy checker blocks missing required policy evidence" \
   node "$HERE/policy-check.mjs" "$VC"
 
+section "foundation invariants (I-01..I-12)"
+
+# THE BOARD UNDER CONCURRENCY. Twelve parallel `add` calls on a clean repo used to commit two or
+# three events — nine or ten tickets lost with no error — and left the hash chain broken, after
+# which `verify` told the operator to go find what had written to the file directly. The studio's
+# own CLI had. PROVEN BY: removing the `withFileLock` wrapper from board.mjs's dispatch and
+# re-running this block, which drops to 4/12 with a broken chain.
+FCC="$TMP/fc-concurrent"; rm -rf "$FCC"; mkdir -p "$FCC"; ( cd "$FCC" && git init -q . )
+( cd "$FCC" && for i in 1 2 3 4 5 6 7 8 9 10 11 12; do \
+    node "$HERE/board.mjs" add "C-0$i" --title "t$i" --owner ios-developer >/dev/null 2>&1 & \
+  done; wait )
+FCC_LINES=$(wc -l < "$FCC/docs/31-board-events.jsonl" 2>/dev/null | tr -d ' ')
+if [ "$FCC_LINES" = "12" ]; then ok "twelve concurrent board writers commit twelve events, none lost"
+else bad "twelve concurrent board writers commit twelve events, none lost" "got $FCC_LINES"; fi
+assert_exit 0 "...and the audit chain survives concurrent appends" \
+  node "$HERE/board.mjs" verify --log "$FCC/docs/31-board-events.jsonl" --board "$FCC/docs/31-board.md"
+
+# A RETRY AFTER A TIMEOUT MUST NOT DUPLICATE AN EFFECT. Re-running a command is the first thing
+# anyone does after an ambiguous failure.
+FCI="$TMP/fc-idem"; rm -rf "$FCI"; mkdir -p "$FCI"; ( cd "$FCI" && git init -q . )
+bm "$FCI" add I-001 --title x --owner ios-developer >/dev/null 2>&1
+bm "$FCI" move I-001 claimed --by ios-developer --idempotency-key k1 >/dev/null 2>&1
+assert_exit 0 "a replayed transition with the same idempotency key reports success" \
+  bm "$FCI" move I-001 claimed --by ios-developer --idempotency-key k1
+FCI_CLAIMS=$(grep -c '"event":"claimed"' "$FCI/docs/31-board-events.jsonl" 2>/dev/null | tr -d ' ')
+if [ "$FCI_CLAIMS" = "1" ]; then ok "...and commits exactly once"
+else bad "...and commits exactly once" "got $FCI_CLAIMS claimed events"; fi
+
+# THE LOG IS AUTHORITATIVE. project.mjs used to read the generated Markdown FIRST, so editing one
+# cell to a LEGAL status and a REAL role made /app-status, the dashboard and the control room all
+# report a state the hash-chained log contradicted — while board-doctor said "Board is coherent.
+# Safe to spawn." and `verify` said "AUDIT CHAIN: intact". Both were telling the truth. Nothing
+# consulted the chain for the state anyone read.
+FCV="$TMP/fc-view"; rm -rf "$FCV"; mkdir -p "$FCV"; ( cd "$FCV" && git init -q . )
+bm "$FCV" add V-001 --title "real work" --owner ios-developer >/dev/null 2>&1
+sed -e 's/| ios-developer | — | todo |/| android-developer | — | in_progress |/' \
+  "$FCV/docs/31-board.md" > "$FCV/docs/31-board.md.tmp" && mv "$FCV/docs/31-board.md.tmp" "$FCV/docs/31-board.md"
+FCV_SEEN=$(cd "$FCV" && node -e '
+import("'"$HERE"'/lib/project.mjs").then((m) => {
+  const r = m.buildRows(m.readSource(process.cwd(), m.REL.board), m.loadLog(m.readSource(process.cwd(), m.REL.log)));
+  process.stdout.write(r.rows.map((x) => x.status + "/" + x.owner).join(","));
+});' 2>/dev/null)
+if [ "$FCV_SEEN" = "todo/ios-developer" ]; then ok "a hand-edited board view cannot change what the read layer reports"
+else bad "a hand-edited board view cannot change what the read layer reports" "read layer said $FCV_SEEN"; fi
+
+# ...and the discarded edit is SAID OUT LOUD. Silently ignoring it means someone wrote something
+# down and the system threw it away. The first version of this check set process.exitCode, which
+# main()'s process.exit() overrode — so it printed the warning and still exited 0 and still
+# announced "Safe to spawn" three lines below its own finding.
+assert_exit 1 "...and board-doctor refuses a board whose view contradicts the log" \
+  node "$HERE/board-doctor.mjs" "$FCV/docs/31-board.md"
+bm "$FCV" render >/dev/null 2>&1
+assert_exit 0 "...and stops complaining once the view is regenerated" \
+  node "$HERE/board-doctor.mjs" "$FCV/docs/31-board.md"
+
+# A ROW THE LOG HAS NEVER HEARD OF IS NOT A DIVERGENCE. That is a half-migrated legacy board, and
+# blocking on it would fire on projects that have done nothing wrong. Contradiction blocks; absence
+# does not. Caught when this check failed the ship-gate chain fixture, which pairs a shippable
+# board with an unrelated event log.
+FCL="$TMP/fc-legacy"; rm -rf "$FCL"; mkdir -p "$FCL/docs"
+cp "$FIX/ship-clear/docs/31-board.md" "$FCL/docs/31-board.md" 2>/dev/null
+printf '%s\n' '{"ts":"2026-08-04T00:00:00.000Z","ticket":"ZZZ-999","event":"created","by":"tech-manager","detail":{"title":"unrelated"},"provenance":"cli","hash":"x"}' > "$FCL/docs/31-board-events.jsonl"
+node "$HERE/board-doctor.mjs" "$FCL/docs/31-board.md" >/dev/null 2>&1
+FCL_EXIT=$?
+if [ "$FCL_EXIT" != "1" ] || ! node "$HERE/board-doctor.mjs" "$FCL/docs/31-board.md" 2>&1 | grep -q "DIVERGES"; then
+  ok "a board row absent from the log is not reported as divergence"
+else bad "a board row absent from the log is not reported as divergence" "reported DIVERGES"; fi
+
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
 # conflicted file untouched. A broken agent file reached the base branch and was found two merges

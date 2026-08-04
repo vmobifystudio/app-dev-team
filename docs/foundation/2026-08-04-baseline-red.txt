@@ -1,0 +1,56 @@
+FOUNDATION CONFORMANCE — I-01..I-12
+
+  FAIL  I-01  One project boundary
+        no project boundary is asserted: nested repo silently created its own root (exit 0)
+  FAIL  I-02  One workflow truth
+        the read layer reports the hand-edited VIEW (android-developer/in_progress) while the log says ios-developer/todo
+  FAIL  I-03  Atomic admission
+        2/12 events survived 12 concurrent writers; chain BROKEN — 10 silently lost
+  FAIL  I-04  Authenticated authority
+        `--by` is an unauthenticated string: no actor/v1, attestation or signature check exists anywhere in scripts/lib
+  FAIL  I-05  Complete work identity
+        approval binds a single commit (d9ddce2): a be36e1a..d9ddce2 branch is reviewed as its last commit only
+  FAIL  I-06  Candidate-bound evidence
+        evidence existence is checked but no digest is captured at evaluation — a mutable path can still stand in for durable proof
+  FAIL  I-07  Enforced risk route
+        risk routing is advice on stdout: no policy-decision object is consumed at the transition it governs
+  FAIL  I-08  Bidirectional scope coverage
+        trace follows links forward only: R-002 is in scope, unimplemented, and unreported
+  FAIL  I-09  Criterion-level proof
+        no criterion→evidence mapping: a generic green test stands in for criterion proof
+  FAIL  I-10  Durable recovery
+        replay produced 1 event(s) and exit 1 — retry is not idempotent
+  FAIL  I-11  One readiness reducer
+        no single readiness reducer: CLI, dashboard and control-room each compute their own picture
+  PASS  I-12  Human-only publication
+        no executable path can submit or publish to a store
+
+  1/12 invariants hold, 11 failing
+
+  The foundation is NOT ESTABLISHED. Report these counts, never an averaged score:
+  one failed critical invariant blocks a "trustworthy autonomous team" claim regardless
+  of how many documentation capabilities pass.
+
+────────────────────────────────────────────────────────────────────────────
+HOW THIS BASELINE WAS PRODUCED, INCLUDING THE PART THAT WENT WRONG.
+
+The first run of this suite reported 4/12. Three of those four PASSes were false:
+
+  I-05  grepped approval-check.mjs for /merge[_-]?base|candidate_id/ and matched a CODE COMMENT
+        plus an unrelated ancestor test.
+  I-08  matched the word "reverse" inside a comment in trace.mjs.
+  I-11  matched exactly one file — foundation-conformance.mjs ITSELF.
+  I-10  observed one event after a duplicate submission and called it idempotency. It was the
+        state machine refusing an illegal second claim. board.mjs has no idempotency support.
+
+I-12 additionally reported the constitutional no-auto-publish constraint as VIOLATED, because the
+checker names the forbidden commands in order to forbid them and then matched itself.
+
+This is the same defect that broke the eval-manifest staleness check last session: a regex cannot
+tell an ASSERTION from a CITATION. Every one of these was rewritten to run the system and observe
+what it does, rather than read what its source says about itself. The remaining static checks
+exclude self.
+
+The lesson generalises past this file. A conformance suite is the one place a false PASS is worst,
+because everything downstream is calibrated against it — and a suite that grades itself by grepping
+its own repository will always find what it is looking for.

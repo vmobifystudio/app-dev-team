@@ -98,7 +98,42 @@ function buildRows(boardSource, log) {
   let capabilities = { hasReviewColumns: false, hasLedger: false };
   let ledger = [];
 
-  if (boardSource.ok) {
+  // THE LOG IS THE SOURCE OF TRUTH. THE MARKDOWN IS A PICTURE OF IT.
+  //
+  // This function used to read `docs/31-board.md` FIRST and consult the hash-chained event log only
+  // when the Markdown had no rows. Every consumer of this layer — /app-status, studio-dashboard,
+  // control-room — therefore trusted a generated, hand-editable table over the authoritative log.
+  //
+  // Reproduced: editing one Markdown cell to a LEGAL status and a REAL role made this layer report
+  // `android-developer/in_progress` while the log said `ios-developer/todo`, and BOTH integrity
+  // checks stayed green — board-doctor printed "Board is coherent. Safe to spawn." and
+  // `board.mjs verify` printed "AUDIT CHAIN: intact". Neither was lying: the chain WAS intact.
+  // Nothing consulted it for the state anyone actually read.
+  //
+  // That is FC-002 in the crown jewel — a rule that cannot fail. The whole event-sourcing effort
+  // was bypassable with a text editor, not because the chain was weak but because it was ignored.
+  if (log.ok && log.tickets.size) {
+    from = REL.log;
+    rows = [...log.tickets.values()].map((t) => ({
+      id: normalizeId(t.id),
+      title: t.meta.title || '',
+      feature: t.meta.feature || '',
+      owner: t.owner || '',
+      reviewer: t.reviewer || '',
+      status: t.status,
+      staticOnly: t.verifiedStatic,
+      dependsOn: t.dependsOn.join(', '),
+      notes: t.meta.notes || '',
+      acceptance: t.meta.acceptance || '',
+      spec: t.meta.spec || '',
+    }));
+  }
+
+  // The Markdown is read ONLY when there is no log to read — a legacy or hand-written board that
+  // predates event sourcing, which `board.mjs migrate` exists to convert. That path is deliberately
+  // kept (destructive migration of existing projects is a stop condition), but it is now the
+  // fallback it was always documented to be rather than the silent default.
+  if (!rows.length && boardSource.ok) {
     const parsed = readBoard(boardSource.text);
     if (parsed.board.rows.length) {
       from = REL.board;
@@ -118,23 +153,6 @@ function buildRows(boardSource, log) {
         spec: row.spec || '',
       }));
     }
-  }
-
-  if (!rows.length && log.ok && log.tickets.size) {
-    from = REL.log;
-    rows = [...log.tickets.values()].map((t) => ({
-      id: normalizeId(t.id),
-      title: t.meta.title || '',
-      feature: t.meta.feature || '',
-      owner: t.owner || '',
-      reviewer: t.reviewer || '',
-      status: t.status,
-      staticOnly: t.verifiedStatic,
-      dependsOn: t.dependsOn.join(', '),
-      notes: t.meta.notes || '',
-      acceptance: t.meta.acceptance || '',
-      spec: t.meta.spec || '',
-    }));
   }
 
   const byId = new Map(rows.map((row) => [row.id, row]));
