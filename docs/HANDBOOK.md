@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 52 top-level scripts (+9 shared libs) · 9 knowledge packs · 965 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 52 top-level scripts (+9 shared libs) · 9 knowledge packs · 967 assertions
 
 ---
 
@@ -694,7 +694,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
 | `journey-gate.mjs` | Proves a DECLARED P0 user journey completes — not that a process is alive |
-| `test.sh` | 965 assertions |
+| `test.sh` | 967 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -959,6 +959,27 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   (`journey-result/v1`) and reporting are complete and carry 21 assertions — including that a driver
   reporting PASS with no evidence is UNKNOWN, and that a driver which *crashes* is UNKNOWN rather
   than FAIL, so a broken harness is never mistaken for a broken app (DR4-001).
+- **Dry run 6 — the first measurement of the product-correctness engine, 2026-08-04**
+  (`docs/dry-runs/2026-08-04-dry-run-6-findings.md`; hypotheses committed before the fixture
+  existed). A real `code-reviewer` agent, told nothing about the plants, against five planted product
+  defects of exactly the classes six prior dry runs missed, plus two controls. Result: **8 of 8
+  hypotheses passed, 5 of 5 defects detected, 0 misidentifications.**
+  **And the honest reading is the deflating one, per the hypotheses doc's own rule.** §4b's table
+  *names* those five defect classes and I then planted those five classes, so 5/5 is close to
+  tautological — a reviewer applied a checklist and found the checklist's contents. The evidence that
+  actually counts is the four findings nobody planted: a compound defect where `save()`→`load()`→
+  `persist()` **destroys the entire history on one corrupt byte** (worse than anything planted); the
+  ticket's journey being unreachable at all; a boundary test asserting a value the PRD explicitly
+  calls "not a limit"; and a critique of the fixture itself (no build files, so "tests pass" had no
+  producing step).
+  **The most useful negative result: every planted defect was caught by READING. Not one required
+  execution.** §4b's expensive half — run the round trip, measure on-device — never ran, so this run
+  says nothing about it. §4b's value is the questions it forces, not the device work it mandates.
+  The two things reading genuinely could not settle (the 56dp measurement, the clinical range) were
+  routed to `verification-engineer` unprompted, which is the reviewer/verifier seam behaving as
+  designed. **DR6-01, landed rather than reported:** the reviewer stated its ten unmeasured items
+  beautifully and *nothing verified that it had* — "state what you did not do" with no fixed heading
+  is unfalsifiable, so it is now a literal `## Not checked` heading required even when empty.
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the

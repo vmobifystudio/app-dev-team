@@ -1618,6 +1618,16 @@ tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "4b" \
 tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -qi "measure on-device\|measure, on-device\|on-device anything the spec quantifies" \
   && ok "...including measuring on-device whatever the spec quantifies" \
   || bad "...including measuring on-device whatever the spec quantifies"
+# DR6-01. Dry run 6 measured a reviewer stating its ten unmeasured items unprompted — and measured
+# that NOTHING verified it had. "State what you did not do" with no fixed heading is unfalsifiable:
+# a verdict that omits the section reads exactly like a thorough one. The heading is what makes the
+# gap greppable by a later gate instead of trusted by its absence.
+grep -q '## Not checked' "$HERE/../agents/code-reviewer.md" \
+  && ok "code-reviewer must put unchecked items under a fixed, greppable '## Not checked' heading" \
+  || bad "code-reviewer must put unchecked items under a fixed, greppable '## Not checked' heading"
+tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "even when the list is empty" \
+  && ok "...and writes the heading even when nothing was skipped, so its absence means omission" \
+  || bad "...and writes the heading even when nothing was skipped, so its absence means omission"
 # Mirror test: strip the requirement and prove the assertion above goes red.
 cp "$HERE/../agents/code-reviewer.md" "$TMP/cr-4b.bak"
 sed 's/§4b/SECTION-REMOVED/g' "$TMP/cr-4b.bak" > "$HERE/../agents/code-reviewer.md"
