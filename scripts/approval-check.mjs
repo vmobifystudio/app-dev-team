@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
 
 const die = (code, message) => { process.stderr.write(`approval-check: ${message}\n`); process.exit(code); };
-const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['log', 'policy', 'head']), die });
+const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['log', 'policy', 'head', 'base']), die });
 const logPath = resolve(String(flags.log || 'docs/31-board-events.jsonl'));
 const policyPath = resolve(String(flags.policy || '.studio-policy.json'));
 if (!existsSync(policyPath)) { console.log('APPROVAL CHECK: NOT REQUIRED — no .studio-policy.json'); process.exit(0); }
@@ -33,10 +33,32 @@ for (const event of approvals) {
   if (!detail?.commit) continue;
   if (!gitOk(['cat-file', '-e', `${detail.commit}^{commit}`])) issues.push(`${ticket}: approval commit does not exist: ${detail.commit}`);
   if (flags.head && detail.commit !== flags.head && !gitOk(['merge-base', '--is-ancestor', detail.commit, String(flags.head)])) issues.push(`${ticket}: approval commit ${detail.commit} is not an ancestor of ${flags.head}`);
-  const diff = git(['diff', `${detail.commit}^`, detail.commit, '--binary']);
+  // VERIFY THE CANDIDATE THE APPROVAL NAMED, NOT ITS LAST COMMIT. This recomputed
+  // `${commit}^..${commit}` regardless of what was approved, so a multi-commit branch's approval was
+  // re-verified against one commit — the check agreed with the narrow subject it should have been
+  // catching. Legacy approvals carry no `base`; they are verified the old way AND reported, because
+  // silently accepting them would let the weaker binding persist unnoticed.
+  const base = detail.base || null;
+  if (!base) {
+    issues.push(`${ticket}: approval names no base — it binds the single commit ${detail.commit}, so any earlier commit on the branch is unapproved. Re-bind with --bind (or --base <sha>).`);
+  }
+  const diff = git(['diff', base || `${detail.commit}^`, detail.commit, '--binary']);
   if (diff !== null) {
     const actual = createHash('sha256').update(diff).digest('hex');
-    if (actual !== detail.diff_hash) issues.push(`${ticket}: diff_hash does not match approval commit ${detail.commit}`);
+    if (actual !== detail.diff_hash) issues.push(`${ticket}: diff_hash does not match ${base || `${detail.commit}^`}..${detail.commit} — the approved change is not the change on disk`);
+  }
+  // The file manifest is what makes the blast radius readable. A mismatch means files entered or
+  // left the candidate after it was approved.
+  if (Array.isArray(detail.files) && base) {
+    const now = git(['diff', '--name-only', base, detail.commit]);
+    if (now !== null) {
+      const actual = now.split('\n').filter(Boolean);
+      const added = actual.filter((f) => !detail.files.includes(f));
+      const gone = detail.files.filter((f) => !actual.includes(f));
+      if (added.length || gone.length) {
+        issues.push(`${ticket}: the approved file set no longer matches${added.length ? ` (now also touches: ${added.join(', ')})` : ''}${gone.length ? ` (no longer touches: ${gone.join(', ')})` : ''}`);
+      }
+    }
   }
 }
 if (issues.length) { issues.forEach((issue) => console.error(`approval-check: ${issue}`)); process.exit(1); }

@@ -2401,7 +2401,7 @@ bm "$G" move M-001 done_reported    --by ios-developer >/dev/null 2>&1
 bm "$G" move M-001 verified         --by tech-manager  >/dev/null 2>&1
 bm "$G" move M-001 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
 assert_exit 1 "a merge with no approval at all is refused" bm "$G" move M-001 merged --by tech-manager
-assert_has "$TMP/err" "no \"approved\" by a role other than its owner" "...naming the owner it will not accept"
+assert_has "$TMP/err" "no \"approved\" by a role that did not work on it" "...naming the workers it will not accept an approval from"
 
 # The sharper case, and the one the second broken guard let through: an approval EXISTS, and it is
 # the owner's. Unreachable through the CLI (the previous assertion forbids writing it), so it is
@@ -2415,7 +2415,7 @@ chain_append "$G/docs/31-board-events.jsonl" \
   '{"ts":"2026-07-29T11:00:00Z","ticket":"M-001","event":"approved","by":"ios-developer","detail":"hand-appended","provenance":"cli"}'
 assert_exit 1 "a merge whose only approval is the owner's own is still refused" \
   bm "$G" move M-001 merged --by tech-manager
-assert_has "$TMP/err" "no \"approved\" by a role other than its owner" "...for the owner-approval reason, not the chain"
+assert_has "$TMP/err" "no \"approved\" by a role that did not work on it" "...for the separation reason, not the chain"
 bm "$G" move M-001 approved --by code-reviewer >/dev/null 2>&1
 assert_exit 0 "...and clears once a non-owner has approved" bm "$G" move M-001 merged --by tech-manager
 
@@ -5409,7 +5409,17 @@ assert_exit 0 "board.mjs sees the project's real ticket from inside a linked wor
 # Mirror test: prove this assertion would have caught the bug it fixes, by reverting projectRoot()
 # to the old cwd-only behavior and confirming the same assertion goes red (exits nonzero — "no event
 # log" — because the ledger the worktree's OWN cwd resolves to was never populated by `git worktree`).
-sed -i.bak "s/resolve(projectRoot(), DEFAULT_LOG)/resolve(process.cwd(), DEFAULT_LOG)/; s/resolve(projectRoot(), DEFAULT_BOARD)/resolve(process.cwd(), DEFAULT_BOARD)/" "$BD"
+# The pattern is `projectRoot(flags)` — it took an argument when the shared root resolver landed.
+# This sed used to spell it `projectRoot()`, and when the signature changed the substitution simply
+# MATCHED NOTHING: the mirror reverted nothing, the assertion ran against the fixed code, and it
+# failed for the one reason a mirror test must never fail — the revert did not happen. A mirror
+# test that silently stops reverting is a rule that cannot fail, which is the exact defect class
+# mirror tests exist to catch. Kept as a sed for locality, but any future rename of this function
+# must update the pattern here; the assertion below is what tells you if you forgot.
+sed -i.bak "s/resolve(projectRoot(flags), DEFAULT_LOG)/resolve(process.cwd(), DEFAULT_LOG)/; s/resolve(projectRoot(flags), DEFAULT_BOARD)/resolve(process.cwd(), DEFAULT_BOARD)/" "$BD"
+grep -q "resolve(process.cwd(), DEFAULT_LOG)" "$BD" \
+  && ok "mirror test: the revert actually applied (the sed pattern still matches)" \
+  || bad "mirror test: the revert actually applied (the sed pattern still matches)" "projectRoot() was renamed; update the sed above"
 assert_exit 2 "mirror test: reverting projectRoot() reproduces the fork (ticket unreachable from the worktree)" \
   bash -c "cd '$WTB/.agent-wt/WT-001' && node '$BD' show WT-001"
 mv "$BD.bak" "$BD"
@@ -5570,7 +5580,11 @@ assert_exit 0 "dispatch-preflight composes all spawn controls" node "$HERE/dispa
 # --- Global plugin enhancement plan (2026-08-03), P0.2's narrow first slice: dispatch-preflight ran
 # every check EXCEPT whether the requested ticket was actually admissible — a caller with a valid
 # context/capability/risk set but a ticket the scheduler had not marked ready still got a CLEAR.
-assert_exit 2 "--ticket is required, not optional" \
+# Exit 64 (EX_USAGE), not 2. Dogfood run 1 measured why the distinction matters: a malformed
+# invocation exiting 2 is indistinguishable from a gate that COULD NOT RUN, and several paths are
+# documented to degrade on 2 — so a caller with a typo could conclude preflight is unavailable and
+# spawn the agent anyway. A usage error and a broken environment are different facts.
+assert_exit 64 "--ticket is required, and a malformed call is EX_USAGE, not cannot-evaluate" \
   node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH" --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 assert_exit 1 "a ticket outside the scheduler's ready set is refused, even with every other check passing" \
   node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH" --ticket NOT-IN-PLAN --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
@@ -5875,7 +5889,7 @@ rm -f "$VC/docs/60-releases.md"
 assert_exit 1 "policy checker blocks missing required policy evidence" \
   node "$HERE/policy-check.mjs" "$VC"
 
-section "foundation invariants (I-01..I-12)"
+# --- foundation invariants (I-01..I-12) ------------------------------------------------------
 
 # THE BOARD UNDER CONCURRENCY. Twelve parallel `add` calls on a clean repo used to commit two or
 # three events — nine or ten tickets lost with no error — and left the hash chain broken, after
@@ -5942,6 +5956,665 @@ FCL_EXIT=$?
 if [ "$FCL_EXIT" != "1" ] || ! node "$HERE/board-doctor.mjs" "$FCL/docs/31-board.md" 2>&1 | grep -q "DIVERGES"; then
   ok "a board row absent from the log is not reported as divergence"
 else bad "a board row absent from the log is not reported as divergence" "reported DIVERGES"; fi
+
+# --- F5: a git boundary is not a project boundary --------------------------------------------
+# A studio project containing a second git repo (vendored dep, sample app, fixture) is ordinary.
+# `--git-common-dir` answers "nearest git repo", so a command run inside the nested one used to
+# create a SECOND, empty board there and report success — work landing in a project nobody watches.
+# A write to the wrong repository is the one failure no downstream gate can undo.
+FRN="$TMP/fc-nested"; rm -rf "$FRN"; mkdir -p "$FRN"; ( cd "$FRN" && git init -q . )
+bm "$FRN" add O-001 --title outer --owner ios-developer >/dev/null 2>&1
+mkdir -p "$FRN/vendor/inner" && ( cd "$FRN/vendor/inner" && git init -q . )
+assert_exit 2 "a command inside a nested git repo refuses rather than guessing which project it means" \
+  bash -c "cd '$FRN/vendor/inner' && node '$BD' add I-001 --title inner --owner ios-developer"
+[ ! -f "$FRN/vendor/inner/docs/31-board-events.jsonl" ] \
+  && ok "...and creates no phantom second project inside the nested repo" \
+  || bad "...and creates no phantom second project inside the nested repo"
+node "$BD" add N-002 --title x --owner ios-developer --project-root "$FRN" >/dev/null 2>&1
+NR_EXIT=$?
+if [ "$NR_EXIT" = "0" ]; then ok "...and --project-root resolves the ambiguity the refusal names"
+else bad "...and --project-root resolves the ambiguity the refusal names" "exit $NR_EXIT"; fi
+
+# --- F4: every append-only writer is serialized, not just the board --------------------------
+# FC-001 prophylaxis. The board's lock does nothing for the incident ledger or the memory ledger,
+# which carry the identical read-tip-then-append shape. Memory in particular is written by parallel
+# agents at the end of a wave — the moment several writers are most likely to collide.
+FCW="$TMP/fc-writers"; rm -rf "$FCW"; mkdir -p "$FCW/docs/team"
+( cd "$FCW" && for i in 1 2 3 4 5 6 7 8; do \
+    node "$HERE/incident-ledger.mjs" open --severity sev3 --title "t$i" --owner tech-manager \
+      --ledger "$FCW/docs/team/incidents.jsonl" >/dev/null 2>&1 & \
+  done; wait )
+FCW_N=$(wc -l < "$FCW/docs/team/incidents.jsonl" 2>/dev/null | tr -d ' ')
+if [ "$FCW_N" = "8" ]; then ok "eight concurrent incident-ledger writers commit eight records"
+else bad "eight concurrent incident-ledger writers commit eight records" "got $FCW_N"; fi
+assert_exit 0 "...and the incident chain verifies" \
+  node "$HERE/incident-ledger.mjs" verify --ledger "$FCW/docs/team/incidents.jsonl"
+
+# --- F12: an approval names the whole candidate, not its last commit ---------------------------
+# `--bind` diffed `${commit}^..${commit}` — literally one commit. A three-commit branch was recorded
+# as approved on the strength of the third commit alone: everything upstream could change under an
+# approval that still verified clean. Same mistake as binding to HEAD while the tools consume the
+# working tree, one level up — precise about a subject that was the wrong subject.
+FCB="$TMP/fc-candidate"; rm -rf "$FCB"; mkdir -p "$FCB"
+( cd "$FCB" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo base > a.txt && git add -A && git commit -qm base \
+  && git checkout -q -b feat/x \
+  && echo one > f1.txt && git add -A && git commit -qm c1 \
+  && echo two > f2.txt && git add -A && git commit -qm c2 \
+  && echo three > f3.txt && git add -A && git commit -qm c3 \
+  && echo ev > ev.txt && echo ctx > ctx.txt )
+bm "$FCB" add T-001 --title x --owner ios-developer >/dev/null 2>&1
+for E in claimed done_reported; do bm "$FCB" move T-001 $E --by ios-developer >/dev/null 2>&1; done
+bm "$FCB" move T-001 verified --by verification-engineer >/dev/null 2>&1
+bm "$FCB" move T-001 review_requested --by ios-developer >/dev/null 2>&1
+bm "$FCB" move T-001 started --by code-reviewer >/dev/null 2>&1
+( cd "$FCB" && node "$BD" move T-001 approved --by code-reviewer --bind --evidence ev.txt --context ctx.txt ) >/dev/null 2>&1
+if grep -q '"base_source":"merge-base with main"' "$FCB/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "an approval binds base..head, resolved from the integration branch"
+else bad "an approval binds base..head, resolved from the integration branch"; fi
+# All THREE commits' files, not just the tip's. This is the assertion that would have caught it.
+if grep -q '"files":\["f1.txt","f2.txt","f3.txt"\]' "$FCB/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "...and records every file the branch touches, not only the last commit's"
+else bad "...and records every file the branch touches, not only the last commit's" \
+  "$(grep -o '"files":\[[^]]*\]' "$FCB/docs/31-board-events.jsonl" | tail -1)"; fi
+
+# --- F16: the reverse edge --------------------------------------------------------------------
+# Every trace check walks FORWARD from a ticket. A requirement nothing implements has no ticket to
+# walk forward from, so it is invisible to all of them — and reaches release having never been
+# built. defect-hunting section 4b at scope level: following the value forward proves the pointer is
+# valid; only following it BACK proves nothing was dropped.
+FCR="$TMP/fc-reverse"; rm -rf "$FCR"; mkdir -p "$FCR/docs"; ( cd "$FCR" && git init -q . )
+printf '# PRD\n\n- [F-001] the user can save a reading.\n- [F-002] the user can export their history.\n' \
+  > "$FCR/docs/10-prd.md"
+bm "$FCR" add T-001 --title "save a reading" --owner ios-developer --feature F-001 >/dev/null 2>&1
+node "$HERE/trace.mjs" --project-root "$FCR" > "$TMP/fc-reverse.out" 2>&1 || true
+if grep -q "requirement_not_implemented" "$TMP/fc-reverse.out" && grep -q "F-002" "$TMP/fc-reverse.out"; then
+  ok "an in-scope requirement that no ticket implements is reported"
+else bad "an in-scope requirement that no ticket implements is reported"; fi
+# ...but an explicit disposition is not a defect. Silence is the problem, not a stated decision.
+printf '# PRD\n\n- [F-001] the user can save a reading.\n- [F-002] the user can export their history. (disposition: deferred, by: cpo)\n' \
+  > "$FCR/docs/10-prd.md"
+node "$HERE/trace.mjs" --project-root "$FCR" > "$TMP/fc-reverse2.out" 2>&1 || true
+if grep -q "requirement_not_implemented" "$TMP/fc-reverse2.out"; then
+  bad "...and an explicitly deferred requirement is not reported"
+else ok "...and an explicitly deferred requirement is not reported"; fi
+
+# --- F14/F15: evidence is content-addressed and subject-bound ---------------------------------
+# The existence check closed "no artifact". It cannot close "a DIFFERENT artifact wearing the same
+# name": a path is mutable, so the screenshot a PASS cites can be overwritten by the next run, by
+# another journey, or by hand, and the verdict keeps pointing at it as though nothing happened.
+# Only a digest taken AT EVALUATION TIME can tell those apart.
+FCE="$TMP/fc-evidence"; rm -rf "$FCE"; mkdir -p "$FCE/docs/team/journeys" "$FCE/artifacts"
+( cd "$FCE" && git init -q -b main . && git config user.email t@t.com && git config user.name t )
+cat > "$FCE/docs/team/journeys/j1.json" <<'JJ'
+{"schema":"journey/v1","id":"J-001","title":"log a reading","steps":[
+ {"action":"launch"},{"action":"enter","id":"value","value":"137"},{"action":"tap","id":"save"},
+ {"assert":"value_equals","id":"latest","value":"137"}]}
+JJ
+printf 'REAL SCREENSHOT BYTES\n' > "$FCE/artifacts/j1.png"
+printf '#!/bin/sh\necho %s\n' "'"'{"schema":"journey-result/v1","journey_id":"J-001","result":"PASS","evidence":["artifacts/j1.png"]}'"'" > "$FCE/driver.sh"
+chmod +x "$FCE/driver.sh"
+( cd "$FCE" && git add -A && git commit -qm init ) >/dev/null 2>&1
+assert_exit 0 "journey-gate passes with real evidence and records its digest" \
+  node "$HERE/journey-gate.mjs" --root "$FCE" --driver "$FCE/driver.sh"
+if grep -q '"sha256"' "$FCE/docs/team/journey-result.json" 2>/dev/null; then
+  ok "...and the gate result is a candidate-bound gate-result/v1 with evidence digests"
+else bad "...and the gate result is a candidate-bound gate-result/v1 with evidence digests"; fi
+assert_exit 0 "evidence-check reports the verdict CURRENT while nothing has moved" \
+  node "$HERE/evidence-check.mjs" --root "$FCE"
+# THE ASSERTION THAT MATTERS. Same path, same name, still non-empty — the existence check waves it
+# through. Only the recorded digest shows the bytes are gone.
+printf "A DIFFERENT RUN'S SCREENSHOT\n" > "$FCE/artifacts/j1.png"
+assert_exit 1 "...and STALE once the cited artifact is overwritten with different bytes" \
+  node "$HERE/evidence-check.mjs" --root "$FCE"
+node "$HERE/evidence-check.mjs" --root "$FCE" 2>&1 | grep -q "contents changed" \
+  && ok "...naming the digest mismatch, not just 'something changed'" \
+  || bad "...naming the digest mismatch, not just 'something changed'"
+# The subject half: the evidence is untouched, but the candidate moved on.
+printf 'REAL SCREENSHOT BYTES\n' > "$FCE/artifacts/j1.png"
+( cd "$FCE" && echo x > newfile.txt && git add -A && git commit -qm second ) >/dev/null 2>&1
+assert_exit 1 "...and STALE when the evidence is intact but the candidate moved" \
+  node "$HERE/evidence-check.mjs" --root "$FCE"
+node "$HERE/evidence-check.mjs" --root "$FCE" 2>&1 | grep -q "no longer exists\|candidate that no longer exists" \
+  && ok "...naming the commit it was recorded against" \
+  || bad "...naming the commit it was recorded against"
+# STALE IS NOT FAIL. The distinction is the whole point: nothing here says the product is broken.
+node "$HERE/evidence-check.mjs" --root "$FCE" 2>&1 | grep -q "nothing here says the product is broken" \
+  && ok "...and says plainly that STALE is not a failure of the product" \
+  || bad "...and says plainly that STALE is not a failure of the product"
+
+# --- code-reviewer findings on the foundation series (all eight reproduced first) --------------
+
+# B1. THE WORST DEFECT IN THE SERIES, and it was in the fix rather than the thing being fixed. The
+# idempotency guard compared the KEY ALONE, so a key reused on a different ticket printed "already
+# applied", exited 0, and DISCARDED A REAL TRANSITION. An orchestrator retrying a wave with one
+# per-wave key — the obvious use, and the reason the flag exists — would have dropped every
+# transition after the first, silently. A dedup guard that swallows work is worse than none: the
+# duplicate it prevents is visible, the loss it causes is not.
+FCK="$TMP/fc-idemkey"; rm -rf "$FCK"; mkdir -p "$FCK"; ( cd "$FCK" && git init -q . )
+bm "$FCK" add APP-001 --title a --owner ios-developer >/dev/null 2>&1
+bm "$FCK" add APP-002 --title b --owner ios-developer >/dev/null 2>&1
+bm "$FCK" move APP-001 claimed --by ios-developer --idempotency-key RETRY-1 >/dev/null 2>&1
+assert_exit 2 "an idempotency key reused on a DIFFERENT ticket is refused, never treated as a duplicate" \
+  bm "$FCK" move APP-002 claimed --by ios-developer --idempotency-key RETRY-1
+bm "$FCK" show APP-002 2>/dev/null | grep -q "todo" \
+  && ok "...and the refused ticket is untouched rather than silently skipped" \
+  || bad "...and the refused ticket is untouched rather than silently skipped"
+assert_exit 0 "...while a genuine retry (same ticket, same event, same key) still reports success" \
+  bm "$FCK" move APP-001 claimed --by ios-developer --idempotency-key RETRY-1
+FCK_N=$(grep -c '"event":"claimed"' "$FCK/docs/31-board-events.jsonl" 2>/dev/null | tr -d ' ')
+if [ "$FCK_N" = "1" ]; then ok "...committing exactly once"; else bad "...committing exactly once" "got $FCK_N"; fi
+
+# B2. `assign` sat inside the lock and inside the dedup check but never forwarded the key to
+# cmdMove, so no `assigned` event carried one and every retry appended a second. FC-001 in the same
+# file as the comment claiming the FC-001 sweep was complete — it covered `created` and `move` and
+# stopped one caller short. I-10 could not see it because I-10 exercises `move`.
+bm "$FCK" assign APP-001 --to ios-developer --idempotency-key K-ASSIGN >/dev/null 2>&1
+bm "$FCK" assign APP-001 --to ios-developer --idempotency-key K-ASSIGN >/dev/null 2>&1
+FCK_A=$(grep -c '"event":"assigned"' "$FCK/docs/31-board-events.jsonl" 2>/dev/null | tr -d ' ')
+if [ "$FCK_A" = "1" ]; then ok "assign honours the idempotency key it accepts"
+else bad "assign honours the idempotency key it accepts" "appended $FCK_A assigned events"; fi
+
+# B3. A REGRESSION SHIPPED BEHIND A COMMENT ASSERTING THE OPPOSITE. The board files are TRACKED, so
+# `git worktree add` checks them out and the worktree becomes a marker directory nested inside a
+# marker directory — ambiguous, exit 2. skills/agent-isolation makes a worktree MANDATORY for every
+# writing agent, so this refused the studio's primary path on every board command.
+FCW2="$TMP/fc-worktree"; rm -rf "$FCW2"; mkdir -p "$FCW2"
+( cd "$FCW2" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && git commit -q --allow-empty -m init )
+bm "$FCW2" add APP-001 --title x --owner ios-developer >/dev/null 2>&1
+( cd "$FCW2" && git add -A && git commit -qm board && git worktree add -q .agent-wt/APP-001 -b feat/APP-001 ) >/dev/null 2>&1
+assert_exit 0 "a board command from inside a linked agent worktree resolves to the one project" \
+  bash -c "cd '$FCW2/.agent-wt/APP-001' && node '$BD' move APP-001 claimed --by ios-developer"
+if grep -q '"event":"claimed"' "$FCW2/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "...and the write lands in the project log, not a fork inside the worktree"
+else bad "...and the write lands in the project log, not a fork inside the worktree"; fi
+
+# B6. A LOCK THAT HANDS THE CRITICAL SECTION TO SOMEONE ELSE is worse than no lock. Staleness was
+# judged by mtime with a 10-second cutoff justified by an assertion nobody executed — but the locked
+# section contains `git diff --binary` over a branch, a full chain verify and a board render. A live
+# 14-second holder had its lock unlinked by a waiter, both ran the critical section, and the first
+# one's `finally` deleted the second's lock. Liveness is now asked directly, via the holder's pid.
+FCL2="$TMP/fc-lock"; rm -rf "$FCL2"; mkdir -p "$FCL2"
+cat > "$FCL2/hold.mjs" <<MJS
+import { withFileLock } from '$HERE/lib/atomic.mjs';
+import { appendFileSync } from 'node:fs';
+const [name, ms] = process.argv.slice(2);
+withFileLock('$FCL2/target.log', () => {
+  const end = Date.now() + Number(ms);
+  while (Date.now() < end) { /* hold */ }
+  appendFileSync('$FCL2/target.log', name + '\n');
+}, { timeoutMs: 30000 });
+MJS
+( node "$FCL2/hold.mjs" A 12000 & sleep 1; node "$FCL2/hold.mjs" B 200; wait ) >/dev/null 2>&1
+if [ "$(tr -d '\n' < "$FCL2/target.log" 2>/dev/null)" = "AB" ]; then
+  ok "a slow lock holder is waited for, not reaped while it is still running"
+else bad "a slow lock holder is waited for, not reaped while it is still running" \
+  "order was $(tr -d '\n' < "$FCL2/target.log" 2>/dev/null)"; fi
+
+# B7. THE ROUND TRIP NOBODY RAN. board.mjs hashed the raw diff; approval-check hashed the trimmed
+# one; a diff always ends in a newline, so the two could never agree and a correctly bound approval
+# was reported as tampered with. Pre-existing, and it survived a commit dedicated to this mechanism
+# because the new test asserted on the recorded JSON instead of running the verifier. Section 4b:
+# put the collection site and the verification site next to each other.
+printf '{"requireApprovalBinding":true}\n' > "$FCB/.studio-policy.json"
+assert_exit 0 "an approval the CLI just bound re-verifies clean (bind -> approval-check round trip)" \
+  bash -c "cd '$FCB' && node '$HERE/approval-check.mjs' --log '$FCB/docs/31-board-events.jsonl' --policy '$FCB/.studio-policy.json'"
+
+# B8. A RULE SATISFIED BY PROSE ABOUT THE THING. The disposition escape matched free text, so
+# ordinary requirement wording — "invitations were REJECTED", "NOT IN V1 currency format" — exempted
+# in-scope, unimplemented requirements from the very check that exists to find them. Third time in
+# two days: prose is not checkable; a field is.
+FCD="$TMP/fc-disposition"; rm -rf "$FCD"; mkdir -p "$FCD/docs"; ( cd "$FCD" && git init -q . )
+printf '# PRD\n\n- [F-001] the user can save a reading.\n- [F-002] the user can see which invitations were rejected.\n- [F-003] the payment sheet shows a card that is not in v1 currency format.\n- [F-004] bulk import. (disposition: deferred, by: cpo)\n' > "$FCD/docs/10-prd.md"
+bm "$FCD" add T-001 --title x --owner ios-developer --feature F-001 >/dev/null 2>&1
+node "$HERE/trace.mjs" --project-root "$FCD" > "$TMP/fc-disp.out" 2>&1 || true
+if grep -q "F-002" "$TMP/fc-disp.out" && grep -q "F-003" "$TMP/fc-disp.out"; then
+  ok "requirement prose containing 'rejected' or 'not in v1' does not exempt it from the reverse check"
+else bad "requirement prose containing 'rejected' or 'not in v1' does not exempt it from the reverse check"; fi
+if grep "requirement_not_implemented" "$TMP/fc-disp.out" | grep -q "F-004"; then
+  bad "...while a structured disposition naming the deciding role does exempt it"
+else ok "...while a structured disposition naming the deciding role does exempt it"; fi
+
+# --- F11: --by is a claim that must be proven, not a spelling ---------------------------------
+# Every consequential event accepted `--by <role>`: an unauthenticated string. Separation between
+# role names was enforced and entitlement to either name never was, so one process could supply
+# `ios-developer` for the work and `code-reviewer` for the approval, satisfy every rule, and leave
+# no artifact recording that both came from the same place.
+FCA="$TMP/fc-actor"; rm -rf "$FCA"; mkdir -p "$FCA/docs/team"; ( cd "$FCA" && git init -q . )
+printf '{"requireAttestedActors": true}\n' > "$FCA/.studio-policy.json"
+printf '{"actors":{"dev-1":{"roles":["ios-developer"],"secret":"s-dev"}}}\n' > "$FCA/docs/team/actors.json"
+# Args go through process.argv, NOT through shell interpolation into the script body: the first
+# version spliced "\$1" into the -e string, so node received the literal characters rather than the
+# argument, minted a token for actor "" role "", and every attested assertion below failed. The
+# helper looked plausible and was measuring nothing.
+mint_tok() { node -e "
+import('$HERE/lib/actor.mjs').then((m) => {
+  const [id, role, ticket, event] = process.argv.slice(1);
+  const r = m.mintToken({ root: '$FCA', actorId: id, role, ticket, event, ts: '' });
+  process.stdout.write(r.ok ? r.token : '');
+});" "$1" "$2" "$3" "$4"; }
+assert_exit 1 "under requireAttestedActors, a bare --by is refused" \
+  bm "$FCA" add T-001 --title x --owner ios-developer --by tech-manager
+# THE SELF-APPROVAL BYPASS IN ITS PUREST FORM: a real actor, a real token, a role it was never granted.
+TOK_BAD=$(mint_tok dev-1 code-reviewer T-001 created)
+assert_exit 1 "...and a registered actor cannot assert a role it was never granted" \
+  bm "$FCA" add T-001 --title x --owner ios-developer --by code-reviewer --actor dev-1 --actor-token "$TOK_BAD"
+TOK_OK=$(mint_tok dev-1 ios-developer T-001 created)
+assert_exit 0 "...while a correctly attested actor proceeds (a gate, not a wall)" \
+  bm "$FCA" add T-001 --title x --owner ios-developer --by ios-developer --actor dev-1 --actor-token "$TOK_OK"
+# Replay: the signature covers the whole assertion, so a token minted for one event cannot be
+# reused on another. Signing only the role would make every captured token universal.
+assert_exit 1 "...and a token minted for one event does not authorise a different one" \
+  bm "$FCA" move T-001 claimed --by ios-developer --actor dev-1 --actor-token "$TOK_OK"
+if grep -q '"mode":"attested"' "$FCA/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "...and the event records WHICH regime produced it"
+else bad "...and the event records WHICH regime produced it"; fi
+# The default is unchanged, but no longer silent: an unproven role is permanently marked as such,
+# so turning attestation on tomorrow cannot retroactively launder yesterday's assertions.
+FCA2="$TMP/fc-actor-local"; rm -rf "$FCA2"; mkdir -p "$FCA2"; ( cd "$FCA2" && git init -q . )
+bm "$FCA2" add T-001 --title x --owner ios-developer --by tech-manager >/dev/null 2>&1
+if grep -q '"mode":"insecure-local"' "$FCA2/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "the default regime still works and stamps every event insecure-local"
+else bad "the default regime still works and stamps every event insecure-local"; fi
+
+# --- F13: the risk route is a precondition, not advice on stdout -------------------------------
+# risk-router has always computed which specialist roles a blast radius requires. board.mjs read
+# `.risk` and threw the rest away, so the requirement was derived and discarded in the same breath.
+# A critical-risk billing change could merge on one generic code review, and every gate reported
+# CLEAR because every gate was asking a different question.
+FCP="$TMP/fc-policy"; rm -rf "$FCP"; mkdir -p "$FCP/docs/team"; ( cd "$FCP" && git init -q . )
+cat > "$FCP/docs/team/risk-policy.json" <<'RP'
+{"schema":"risk-policy/v1","default":{"risk":"low","model":"sonnet","approvals":[],"required_evidence":[]},
+ "rules":[{"match":{"path":"**/billing/**"},"risk":"critical","model":"opus",
+           "approvals":["code-reviewer","security-reviewer"],"required_evidence":["threat-model"]}]}
+RP
+bm "$FCP" add PAY-001 --title "billing change" --owner ios-developer \
+  --file "src/billing/Checkout.swift" --invariant "totals never negative" >/dev/null 2>&1
+if grep -q '"required_approvals":\["code-reviewer","security-reviewer"\]' "$FCP/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "the whole policy decision is stored on the ticket, not just its risk tier"
+else bad "the whole policy decision is stored on the ticket, not just its risk tier"; fi
+for E in "claimed ios-developer" "done_reported ios-developer"; do
+  set -- $E; bm "$FCP" move PAY-001 "$1" --by "$2" >/dev/null 2>&1; done
+bm "$FCP" move PAY-001 verified --by verification-engineer >/dev/null 2>&1
+bm "$FCP" move PAY-001 review_requested --by ios-developer >/dev/null 2>&1
+bm "$FCP" move PAY-001 started --by code-reviewer >/dev/null 2>&1
+bm "$FCP" move PAY-001 approved --by code-reviewer >/dev/null 2>&1
+assert_exit 1 "a critical-risk change cannot merge without the specialist its risk route demands" \
+  bm "$FCP" move PAY-001 merged --by tech-manager
+bm "$FCP" move PAY-001 merged --by tech-manager 2>&1 | grep -q "security-reviewer" \
+  && ok "...naming the missing specialist, not a generic refusal" \
+  || bad "...naming the missing specialist, not a generic refusal"
+bm "$FCP" move PAY-001 approved --by security-reviewer >/dev/null 2>&1
+assert_exit 0 "...and merges once every required approval is recorded" \
+  bm "$FCP" move PAY-001 merged --by tech-manager
+
+# --- F18: one readiness reducer, projected by every surface (I-11) ----------------------------
+# /app-status, studio-dashboard and control-room each assembled their own picture of "where is this
+# release". Three readers, three sets of judgement calls, no rule saying they must agree — so a
+# founder reading the dashboard and an agent reading the CLI could act on different beliefs, both
+# sincerely, with nothing to reconcile them.
+FCRD="$TMP/fc-readiness"; rm -rf "$FCRD"; mkdir -p "$FCRD/docs/team"
+( cd "$FCRD" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm c1 )
+printf '{"schema":"gate-result/v1","gate":"journey-gate","subject":{"head":"deadbeef","dirty":false},"result":"PASS","journeys":[]}\n' \
+  > "$FCRD/docs/team/journey-result.json"
+# A PASS recorded for a DIFFERENT commit must read STALE, never PASS. Reading it as PASS is how a
+# release goes out on a verdict about something else entirely.
+assert_exit 1 "a gate result recorded for another candidate reads STALE, not PASS" \
+  node "$HERE/readiness.mjs" --root "$FCRD"
+node "$HERE/readiness.mjs" --root "$FCRD" 2>&1 | grep -q "STALE is not a failure" \
+  && ok "...and says plainly that STALE is not a product failure" \
+  || bad "...and says plainly that STALE is not a product failure"
+# The CLI and the shared reducer must emit the same verdict — that is the whole point of one reducer.
+RD_CLI=$(node "$HERE/readiness.mjs" --root "$FCRD" --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).verdict)}catch{process.stdout.write("PARSE-FAIL")}})')
+RD_LIB=$(node -e "import('$HERE/lib/readiness.mjs').then(m=>process.stdout.write(m.reduceReadiness('$FCRD').verdict))" 2>/dev/null)
+if [ "$RD_CLI" = "$RD_LIB" ] && [ "$RD_CLI" = "STALE" ]; then
+  ok "the CLI and the shared reducer report the same verdict"
+else bad "the CLI and the shared reducer report the same verdict" "cli=$RD_CLI lib=$RD_LIB"; fi
+
+# --- I-09: a criterion names its own proof -----------------------------------------------------
+# verify-done runs the suite; qa_passed records that QA exercised the ticket. Neither says anything
+# about a SPECIFIC criterion, so a green suite can coexist with the one behaviour the founder asked
+# for never having been exercised.
+FCC2="$TMP/fc-criterion"; rm -rf "$FCC2"; mkdir -p "$FCC2/docs/team" "$FCC2/artifacts"
+printf 'screenshot bytes\n' > "$FCC2/artifacts/ac1.png"
+CH=$(node -e "const c=require('crypto'),f=require('fs');process.stdout.write(c.createHash('sha256').update(f.readFileSync('$FCC2/artifacts/ac1.png')).digest('hex'))")
+cat > "$FCC2/docs/team/criteria.json" <<CJ
+{"schema":"criteria/v1","criteria":[
+ {"id":"AC-001","ticket":"T-001","text":"a saved reading survives a restart",
+  "evidence":[{"path":"artifacts/ac1.png","sha256":"$CH"}]}]}
+CJ
+assert_exit 0 "a criterion backed by matching evidence is proven" \
+  node "$HERE/criterion-check.mjs" --root "$FCC2"
+# Same path, same name, still non-empty — only the digest can tell it is a different artifact.
+printf "a DIFFERENT run\n" > "$FCC2/artifacts/ac1.png"
+assert_exit 1 "...and becomes UNPROVEN when its evidence is overwritten with different bytes" \
+  node "$HERE/criterion-check.mjs" --root "$FCC2"
+# A criterion with no evidence is UNPROVEN, not trivially satisfied.
+printf '{"schema":"criteria/v1","criteria":[{"id":"AC-002","ticket":"T-001","text":"reachable","evidence":[]}]}\n' \
+  > "$FCC2/docs/team/criteria.json"
+assert_exit 1 "a criterion naming no evidence is unproven, not trivially satisfied" \
+  node "$HERE/criterion-check.mjs" --root "$FCC2"
+# No registry at all is CANNOT EVALUATE, never CLEAR — an absent contract must not read as a passing one.
+FCC3="$TMP/fc-criterion-none"; rm -rf "$FCC3"; mkdir -p "$FCC3"
+assert_exit 2 "no criteria registry is CANNOT EVALUATE, never a pass" \
+  node "$HERE/criterion-check.mjs" --root "$FCC3"
+
+# --- F20: the sanctioned correction path (and why it had to ship WITH the hand-edit ban) --------
+# There was no legal way to fix a typo in a ticket field, so agents edited docs/31-board.md — the
+# behaviour the log-authoritative change made illegal. Closing an escape hatch without providing the
+# sanctioned route relocates the pressure rather than removing it, and the next hatch is usually
+# less visible than the one you shut.
+FCO="$TMP/fc-correct"; rm -rf "$FCO"; mkdir -p "$FCO"; ( cd "$FCO" && git init -q . )
+bm "$FCO" add T-001 --title "Widgit expoort" --owner ios-developer >/dev/null 2>&1
+assert_exit 0 "a ticket's metadata can be corrected through the CLI" \
+  bm "$FCO" move T-001 corrected --by tech-manager --detail '{"title":"Widget export"}'
+# THE ASSERTION THAT WAS MISSING, AND WHY THE DEFECT SURVIVED. The two checks around this one —
+# "the correction is accepted" (exit 0) and "a correction cannot move status" — are BOTH TRUE WHEN
+# NOTHING HAPPENS. They passed against a complete no-op for the whole life of the feature: `--detail`
+# arrives from the CLI as a STRING, the reducer tested `typeof detail === "object"`, and every
+# correction made through the command line was silently discarded. Found by dogfood run 2, not by
+# this suite. A test that cannot distinguish "it worked" from "it did nothing" is a rule that cannot
+# fail — written, in this case, by someone who had spent the day removing them.
+if bm "$FCO" show T-001 --json 2>/dev/null | grep -q "Widget export"; then
+  ok "...and the corrected value is actually READ BACK (not silently discarded)"
+else bad "...and the corrected value is actually READ BACK (not silently discarded)"; fi
+# A correction must NEVER move status, or it becomes a universal bypass of the state machine.
+bm "$FCO" move T-001 corrected --by tech-manager --detail '{"status":"done","title":"x"}' >/dev/null 2>&1
+if bm "$FCO" show T-001 2>/dev/null | grep -q "todo"; then
+  ok "...but a correction cannot move a ticket's status"
+else bad "...but a correction cannot move a ticket's status"; fi
+# Append, not rewrite: the original wording stays in history.
+if grep -q "Widgit expoort" "$FCO/docs/31-board-events.jsonl"; then
+  ok "...and the original value remains in history (append, never rewrite)"
+else bad "...and the original value remains in history (append, never rewrite)"; fi
+
+# --- F19: two agents must not be dispatched into the same files --------------------------------
+# eval/shared-file-collision has been a golden fixture for this with no detector. Deliberately AFTER
+# the atomic kernel: contention control on a racy append would be a lock built on sand.
+FCT="$TMP/fc-contend"; rm -rf "$FCT"; mkdir -p "$FCT"; ( cd "$FCT" && git init -q . )
+bm "$FCT" add A-001 --title a --owner ios-developer --file "src/Checkout.swift,src/Cart.swift" >/dev/null 2>&1
+bm "$FCT" add B-002 --title b --owner android-developer --file "src/Cart.swift" >/dev/null 2>&1
+bm "$FCT" add C-003 --title c --owner ios-developer --file "src/Profile.swift" >/dev/null 2>&1
+bm "$FCT" add D-004 --title d --owner ios-developer >/dev/null 2>&1
+bm "$FCT" move A-001 claimed --by ios-developer >/dev/null 2>&1
+assert_exit 1 "dispatching into files an in-flight ticket already holds is refused" \
+  node "$HERE/contention-check.mjs" --log "$FCT/docs/31-board-events.jsonl" --ticket B-002
+assert_exit 0 "...while disjoint work is clear" \
+  node "$HERE/contention-check.mjs" --log "$FCT/docs/31-board-events.jsonl" --ticket C-003
+assert_exit 2 "...and a ticket declaring no files is CANNOT EVALUATE, never a clearance" \
+  node "$HERE/contention-check.mjs" --log "$FCT/docs/31-board-events.jsonl" --ticket D-004
+
+# --- dogfood run 1: three defects in the path between a ticket and an agent --------------------
+# None of these was visible to 1045 assertions or twelve green invariants. All three were found by
+# trying to drive the studio's own commands in sequence.
+
+# DF1-002. dispatch-preflight disclosed its contract ONE ARGUMENT AT A TIME, each refusal exit 2.
+# Eleven invocations to dispatch one ticket. The dangerous half is the exit code, not the friction:
+# 2 means CANNOT EVALUATE, and callers are documented to degrade on it — so a typo could read as
+# "preflight is unavailable on this host" and the agent gets spawned anyway.
+node "$HERE/dispatch-preflight.mjs" >/dev/null 2>&1; DF_EXIT=$?
+if [ "$DF_EXIT" = "64" ]; then ok "a malformed dispatch-preflight call is EX_USAGE (64), never cannot-evaluate (2)"
+else bad "a malformed dispatch-preflight call is EX_USAGE (64), never cannot-evaluate (2)" "exit $DF_EXIT"; fi
+DF_OUT=$(node "$HERE/dispatch-preflight.mjs" 2>&1)
+DF_N=$(printf '%s' "$DF_OUT" | grep -o -- '--[a-z]*' | head -20 | sort -u | wc -l | tr -d ' ')
+if [ "$DF_N" -ge 10 ]; then ok "...and names EVERY missing argument in one pass, not one per attempt"
+else bad "...and names EVERY missing argument in one pass, not one per attempt" "named $DF_N"; fi
+printf '%s' "$DF_OUT" | grep -q "Do not degrade" \
+  && ok "...and tells the caller explicitly not to degrade on this code" \
+  || bad "...and tells the caller explicitly not to degrade on this code"
+
+# DF1-005. capability-check resolved allowed_paths against the MANIFEST'S OWN DIRECTORY when no
+# root was declared, so a manifest granting `scripts` refused `scripts/lib/args.mjs` as
+# "../../scripts/lib/args.mjs". It fails in both directions: observed refusing legitimate work, and
+# a manifest written against the other assumption would GRANT paths nobody meant to grant — in the
+# gate that decides what an agent may write. The audit called this P0-04; this is it, live.
+FCM="$TMP/fc-caproot"; rm -rf "$FCM"; mkdir -p "$FCM/docs/team"
+printf '{"schema":"capability-manifest/v1","roles":[{"role":"ios-developer","operations":["write"],"allowed_paths":["scripts"]}]}\n' \
+  > "$FCM/docs/team/capabilities.json"
+assert_exit 2 "a capability manifest declaring no root is CANNOT EVALUATE, not a silent guess" \
+  node "$HERE/capability-check.mjs" --manifest "$FCM/docs/team/capabilities.json" --role ios-developer --operation write --path scripts/lib/args.mjs
+printf '{"schema":"capability-manifest/v1","root":"../..","roles":[{"role":"ios-developer","operations":["write"],"allowed_paths":["scripts"]}]}\n' \
+  > "$FCM/docs/team/capabilities.json"
+assert_exit 0 "...and resolves correctly once the root is declared" \
+  node "$HERE/capability-check.mjs" --manifest "$FCM/docs/team/capabilities.json" --role ios-developer --operation write --path scripts/lib/args.mjs
+
+# --- dogfood run 2: the scheduler was a second writable truth --------------------------------
+# The board held two tickets, one claimed and in progress. docs/team/schedule.json held "tasks": [].
+# dispatch-preflight believed the SCHEDULER and refused to dispatch a ticket the board said was
+# already being worked. The audit called multiple writable truths the central architectural defect;
+# this is that defect deciding whether work can start at all.
+FCS="$TMP/fc-sched"; rm -rf "$FCS"; mkdir -p "$FCS/docs/team"; ( cd "$FCS" && git init -q . )
+bm "$FCS" add SCH-001 --title a --owner ios-developer >/dev/null 2>&1
+bm "$FCS" add SCH-002 --title b --owner android-developer >/dev/null 2>&1
+bm "$FCS" move SCH-001 claimed --by ios-developer >/dev/null 2>&1
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[]}\n' > "$FCS/docs/team/schedule.json"
+SCH_OUT=$(node "$HERE/scheduler.mjs" --plan "$FCS/docs/team/schedule.json" --log "$FCS/docs/31-board-events.jsonl" 2>&1)
+if printf '%s' "$SCH_OUT" | grep -q "SCH-002"; then
+  ok "the scheduler derives its task set from the board, not from a hand-maintained file"
+else bad "the scheduler derives its task set from the board, not from a hand-maintained file" "$SCH_OUT"; fi
+# A ticket already in flight must NOT be offered as ready — that is what "running" means.
+if printf '%s' "$SCH_OUT" | grep -A3 '"ready"' | grep -q "SCH-001"; then
+  bad "...and a ticket already in flight is not offered as ready"
+else ok "...and a ticket already in flight is not offered as ready"; fi
+# Scheduling a ticket the board has never heard of is a stated error, not a silent extra.
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[{"id":"GHOST-9","owner":"ios-developer","status":"pending"}]}\n' \
+  > "$FCS/docs/team/schedule.json"
+assert_exit 1 "...and a plan naming a ticket the board does not have is refused" \
+  node "$HERE/scheduler.mjs" --plan "$FCS/docs/team/schedule.json" --log "$FCS/docs/31-board-events.jsonl"
+
+# Corrections must be able to NARROW a file set, or the studio's own remedy for a contention refusal
+# is unreachable. Append-only history plus a union made the set monotonic: it could only grow, so
+# following contention-check's advice could never satisfy contention-check.
+FCN="$TMP/fc-narrow"; rm -rf "$FCN"; mkdir -p "$FCN"; ( cd "$FCN" && git init -q . )
+bm "$FCN" add N-001 --title a --owner ios-developer --file "src/A.swift,src/B.swift" >/dev/null 2>&1
+bm "$FCN" add N-002 --title b --owner android-developer --file "src/B.swift" >/dev/null 2>&1
+bm "$FCN" move N-001 claimed --by ios-developer >/dev/null 2>&1
+assert_exit 1 "an overlapping ticket is refused before the correction" \
+  node "$HERE/contention-check.mjs" --log "$FCN/docs/31-board-events.jsonl" --ticket N-002
+bm "$FCN" move N-002 corrected --by tech-manager --detail '{"files":["src/C.swift"]}' >/dev/null 2>&1
+assert_exit 0 "...and clears once the file set is NARROWED by a correction" \
+  node "$HERE/contention-check.mjs" --log "$FCN/docs/31-board-events.jsonl" --ticket N-002
+
+# --- F9: every board event carries its own identity and states its shape ------------------------
+# Stamped at the append boundary, not per call site: a field every writer must remember is a field
+# some writer will forget — `assign` dropped the idempotency key exactly that way.
+FCE2="$TMP/fc-envelope"; rm -rf "$FCE2"; mkdir -p "$FCE2"; ( cd "$FCE2" && git init -q . )
+bm "$FCE2" add E-001 --title x --owner ios-developer >/dev/null 2>&1
+if grep -q '"schema":"board-event/v1"' "$FCE2/docs/31-board-events.jsonl" && grep -q '"event_id"' "$FCE2/docs/31-board-events.jsonl"; then
+  ok "every board event states its schema and carries an event_id"
+else bad "every board event states its schema and carries an event_id"; fi
+
+# --- security review: five S1 bypasses, every one reproduced before it was fixed --------------
+# The unifying finding, worth keeping in front of anyone reading this block: EACH NEW GATE TRUSTED
+# AN UNAUTHENTICATED INPUT INSIDE THE AGENT'S OWN WRITE SCOPE — the policy file, the log path, the
+# registry, the lockfile, the owner cell. Every one was defended in a docstring that argued for
+# exactly the right principle and then read the value from a place the adversary controls.
+SEC="$TMP/sec-s1"; rm -rf "$SEC"; mkdir -p "$SEC/docs/team"; ( cd "$SEC" && git init -q . )
+printf '{"requireAttestedActors": true}\n' > "$SEC/.studio-policy.json"
+printf '{"actors":{"a":{"roles":["ios-developer"],"secret":"s"}}}\n' > "$SEC/docs/team/actors.json"
+
+# S1-1. Attestation FAILED OPEN. A bare try/catch meant deleting the policy — or writing one byte of
+# invalid JSON into it — silently downgraded the regime to insecure-local. Every other reader in
+# this codebase treats an unreadable input as CANNOT EVALUATE; the identity gate was the exception.
+assert_exit 1 "with attestation on and no token, the append is refused" \
+  bm "$SEC" add T-1 --title x --owner ios-developer --by ios-developer
+printf 'not json at all\n' > "$SEC/.studio-policy.json"
+assert_exit 2 "...and a CORRUPT policy is cannot-evaluate, never a silent downgrade to insecure-local" \
+  bm "$SEC" add T-2 --title x --owner ios-developer --by ios-developer
+
+# S1-2. `--log` chose which policy and which registry governed the append: stampActor derived its
+# security root as dirname(dirname(paths.log)) rather than from the resolver. With a symlink, an
+# unattested event landed in the REAL chain while attestation was on. root.mjs exists to answer
+# "which project is this, authoritatively" and was not on this path at all.
+printf '{"requireAttestedActors": true}\n' > "$SEC/.studio-policy.json"
+mkdir -p "$SEC/sneaky/docs" && printf '{}\n' > "$SEC/sneaky/.studio-policy.json"
+ln -sf "$SEC/docs/31-board-events.jsonl" "$SEC/sneaky/docs/31-board-events.jsonl"
+assert_exit 1 "redirecting --log at a decoy policy does not choose a weaker regime" \
+  bash -c "cd '$SEC' && node '$BD' add T-3 --title x --owner ios-developer --by ios-developer --log '$SEC/sneaky/docs/31-board-events.jsonl'"
+
+# S1-5. Separation was checked against the MUTABLE owner cell. One actor walked through it by
+# rewriting owner and re-approving. `corrected` was not the hole — `assigned` does the same thing,
+# has no capability check, and predates all of this, so fixing only `corrected` would have fixed
+# NOTHING while looking like a fix. Separation is now measured against who did the work, which is
+# written in an append-only log and cannot be rewritten.
+SEP="$TMP/sec-sep"; rm -rf "$SEP"; mkdir -p "$SEP"; ( cd "$SEP" && git init -q . )
+bm "$SEP" add APP-7 --title x --owner tech-lead >/dev/null 2>&1
+bm "$SEP" move APP-7 claimed --by tech-lead >/dev/null 2>&1
+bm "$SEP" move APP-7 done_reported --by tech-lead >/dev/null 2>&1
+bm "$SEP" move APP-7 verified --by verification-engineer >/dev/null 2>&1
+bm "$SEP" move APP-7 review_requested --by tech-lead >/dev/null 2>&1
+bm "$SEP" move APP-7 started --by tech-lead >/dev/null 2>&1
+assert_exit 1 "a role cannot approve work it did" \
+  bm "$SEP" move APP-7 approved --by tech-lead
+bm "$SEP" move APP-7 corrected --by tech-lead --detail '{"owner":"ghost"}' >/dev/null 2>&1
+assert_exit 1 "...and rewriting owner via corrected does not buy an approval" \
+  bm "$SEP" move APP-7 approved --by tech-lead
+bm "$SEP" move APP-7 assigned --by tech-lead --to ghost2 >/dev/null 2>&1
+assert_exit 1 "...nor via assigned, which has no capability check and predates the corrected event" \
+  bm "$SEP" move APP-7 approved --by tech-lead
+assert_exit 0 "...while a role that did NOT work on it still approves normally" \
+  bm "$SEP" move APP-7 approved --by code-reviewer
+
+# S1-4. The lock reaped on kill(pid,0), and the pid came from a file any writer can overwrite. A
+# forged dead pid walked a second process into the critical section while the holder was inside —
+# producing the exact hash-chain fork the primitive exists to prevent. Reaping now needs BOTH a dead
+# holder AND an age past any plausible critical section: a forged pid must still wait out the floor.
+LK="$TMP/sec-lock"; rm -rf "$LK"; mkdir -p "$LK"
+cat > "$LK/hold.mjs" <<MJS
+import { withFileLock } from '$HERE/lib/atomic.mjs';
+import { appendFileSync } from 'node:fs';
+const [n, ms] = process.argv.slice(2);
+withFileLock('$LK/t.log', () => { const e = Date.now() + Number(ms); while (Date.now() < e) {} appendFileSync('$LK/t.log', n + '\n'); }, { timeoutMs: 40000 });
+MJS
+( node "$LK/hold.mjs" A 9000 & sleep 1; echo "999999" > "$LK/t.log.lock" 2>/dev/null; node "$LK/hold.mjs" B 200; wait ) >/dev/null 2>&1
+if [ "$(tr -d '\n' < "$LK/t.log" 2>/dev/null)" = "AB" ]; then
+  ok "a forged pid in the lockfile cannot hijack a live holder's critical section"
+else bad "a forged pid in the lockfile cannot hijack a live holder's critical section" \
+  "order was $(tr -d '\n' < "$LK/t.log" 2>/dev/null)"; fi
+
+# S1-3. The secrets are plaintext in the tree agents read, so an agent that reads them can mint any
+# role in them. That is not fixed by code — it is bounded by saying so. deny_all makes the intent
+# checkable, and it ships WITH its enforcement: the first draft added the field and nothing read it,
+# which is the decoration-shaped-like-a-control defect this session spent the day removing.
+CAP2="$TMP/sec-cap"; rm -rf "$CAP2"; mkdir -p "$CAP2/docs/team"
+printf '{"schema":"capability-manifest/v1","root":"../..","deny_all":["docs/team/actors.json"],"roles":[{"role":"ios-developer","operations":["read","write"],"allowed_paths":["docs","scripts"]}]}\n' \
+  > "$CAP2/docs/team/capabilities.json"
+assert_exit 1 "deny_all keeps the secret store out of every role, including ones added later" \
+  node "$HERE/capability-check.mjs" --manifest "$CAP2/docs/team/capabilities.json" --role ios-developer --operation read --path docs/team/actors.json
+assert_exit 0 "...without denying ordinary work" \
+  node "$HERE/capability-check.mjs" --manifest "$CAP2/docs/team/capabilities.json" --role ios-developer --operation write --path docs/10-prd.md
+grep -q "the caller can read the key" "$HERE/lib/actor.mjs" \
+  && ok "...and actor.mjs states the bound it originally overclaimed past" \
+  || bad "...and actor.mjs states the bound it originally overclaimed past"
+
+# --- code review: three regressions I introduced today, and the twin I missed ------------------
+# The reviewer's closing line is the one worth keeping: every abstraction in that commit was built
+# to end a defect class, and each reproduced that class inside itself.
+
+# B3. The scheduler emitted `depends_on`; every consumer in the same file reads `depends`. ALL
+# board-derived dependency ordering was silently dropped, and dispatch-preflight gates every spawn
+# on the resulting ready set — so an agent could be sent at a ticket whose dependency was unmet.
+# It worked before the change: a regression, not a gap.
+FCB3="$TMP/fc-b3"; rm -rf "$FCB3"; mkdir -p "$FCB3/docs/team"; ( cd "$FCB3" && git init -q . )
+bm "$FCB3" add T-001 --title a --owner ios-developer >/dev/null 2>&1
+bm "$FCB3" add T-002 --title b --owner ios-developer --depends T-001 >/dev/null 2>&1
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[]}\n' > "$FCB3/docs/team/schedule.json"
+B3_OUT=$(node "$HERE/scheduler.mjs" --plan "$FCB3/docs/team/schedule.json" --log "$FCB3/docs/31-board-events.jsonl" 2>&1)
+if printf '%s' "$B3_OUT" | grep -A4 '"ready"' | grep -q "T-002"; then
+  bad "a ticket whose dependency is unmet is not offered as ready"
+else ok "a ticket whose dependency is unmet is not offered as ready"; fi
+
+# B4. The plan's hand-written `status` still beat the board. The unification landed for the SET of
+# tasks and stopped before the STATE of tasks — the second-truth defect, half-removed, in the commit
+# claiming to remove it. Only scheduling PREFERENCES are the plan's to state.
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[{"id":"T-001","status":"complete"}]}\n' \
+  > "$FCB3/docs/team/schedule.json"
+B4_OUT=$(node "$HERE/scheduler.mjs" --plan "$FCB3/docs/team/schedule.json" --log "$FCB3/docs/31-board-events.jsonl" 2>&1)
+if printf '%s' "$B4_OUT" | grep -A4 '"ready"' | grep -q "T-001"; then
+  ok "a stale status in the plan cannot override the board"
+else bad "a stale status in the plan cannot override the board"; fi
+
+# B5. `done` was filtered out of the derived set, which was two bugs in one line: a COMPLETED
+# dependency read as a MISSING one, and the phantom check reported a legitimately finished ticket as
+# one the board had never heard of — halting ALL dispatch with an untrue message and an impossible
+# remedy ("create the ticket"). It would have fired on the first completed ticket of the first real
+# project. The cause was deciding what is SCHEDULABLE while building the set of what EXISTS.
+FCB5="$TMP/fc-b5"; rm -rf "$FCB5"; mkdir -p "$FCB5/docs/team"; ( cd "$FCB5" && git init -q . )
+bm "$FCB5" add T-001 --title a --owner ios-developer >/dev/null 2>&1
+bm "$FCB5" add T-002 --title b --owner ios-developer --depends T-001 >/dev/null 2>&1
+for E in claimed done_reported; do bm "$FCB5" move T-001 $E --by ios-developer >/dev/null 2>&1; done
+bm "$FCB5" move T-001 verified --by verification-engineer >/dev/null 2>&1
+bm "$FCB5" move T-001 review_requested --by ios-developer >/dev/null 2>&1
+bm "$FCB5" move T-001 started --by code-reviewer >/dev/null 2>&1
+bm "$FCB5" move T-001 approved --by code-reviewer >/dev/null 2>&1
+bm "$FCB5" move T-001 merged --by tech-manager >/dev/null 2>&1
+bm "$FCB5" move T-001 qa_passed --by qa-engineer >/dev/null 2>&1
+bm "$FCB5" move T-001 closed --by tech-manager >/dev/null 2>&1
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[{"id":"T-001"},{"id":"T-002"}]}\n' \
+  > "$FCB5/docs/team/schedule.json"
+assert_exit 0 "one completed ticket does not halt every dispatch" \
+  node "$HERE/scheduler.mjs" --plan "$FCB5/docs/team/schedule.json" --log "$FCB5/docs/31-board-events.jsonl"
+B5_OUT=$(node "$HERE/scheduler.mjs" --plan "$FCB5/docs/team/schedule.json" --log "$FCB5/docs/31-board-events.jsonl" 2>&1)
+if printf '%s' "$B5_OUT" | grep -A4 '"ready"' | grep -q "T-002"; then
+  ok "...and a COMPLETED dependency satisfies its dependents rather than reading as missing"
+else bad "...and a COMPLETED dependency satisfies its dependents rather than reading as missing"; fi
+
+# B2. `assigned` carried the identical string/object detail bug `corrected` had just been fixed for,
+# three lines away in the same switch — so `--detail '{"to":"x"}'` wrote the whole JSON STRING into
+# the owner cell. FC-001 at its shortest range yet: I fixed the case I had written and did not look
+# at its neighbour.
+FCB2="$TMP/fc-b2"; rm -rf "$FCB2"; mkdir -p "$FCB2"; ( cd "$FCB2" && git init -q . )
+bm "$FCB2" add A-001 --title x --owner tech-manager >/dev/null 2>&1
+bm "$FCB2" move A-001 assigned --by tech-manager --detail '{"to":"ios-developer"}' >/dev/null 2>&1
+if bm "$FCB2" show A-001 2>/dev/null | grep -q "owner=ios-developer"; then
+  ok "assigned parses a JSON detail rather than writing the raw string into the owner cell"
+else bad "assigned parses a JSON detail rather than writing the raw string into the owner cell" \
+  "$(bm "$FCB2" show A-001 2>/dev/null | head -1)"; fi
+
+# B8. The requesting ticket's empty file set was already CANNOT EVALUATE; the same reasoning was not
+# applied to the tickets being compared AGAINST. So emptying an IN-FLIGHT ticket's files produced an
+# affirmative CLEAR for everyone else while its agent kept editing them — a bypass button for a
+# contention refusal, reachable through the sanctioned correction path.
+FCB8="$TMP/fc-b8"; rm -rf "$FCB8"; mkdir -p "$FCB8"; ( cd "$FCB8" && git init -q . )
+bm "$FCB8" add N-001 --title a --owner ios-developer --file "src/Shared.swift" >/dev/null 2>&1
+bm "$FCB8" add N-002 --title b --owner android-developer --file "src/Shared.swift" >/dev/null 2>&1
+bm "$FCB8" move N-001 claimed --by ios-developer >/dev/null 2>&1
+assert_exit 1 "overlapping in-flight work is refused" \
+  node "$HERE/contention-check.mjs" --log "$FCB8/docs/31-board-events.jsonl" --ticket N-002
+bm "$FCB8" move N-001 corrected --by tech-manager --detail '{"files":[]}' >/dev/null 2>&1
+assert_exit 2 "...and emptying the IN-FLIGHT ticket's files is CANNOT EVALUATE, never a clearance" \
+  node "$HERE/contention-check.mjs" --log "$FCB8/docs/31-board-events.jsonl" --ticket N-002
+
+# --- S1-3, actually fixed rather than documented ------------------------------------------------
+# The first response to "the secrets are in the tree agents read" was to say so honestly in the
+# docstring. That was necessary and not sufficient: a stated caveat is not a boundary. The secret
+# now comes from the SPAWNER'S ENVIRONMENT first — STUDIO_ACTOR_SECRET_<ACTOR_ID> — which the agent
+# has no tool to read. The registry field remains as a local-operator fallback, and every event
+# records which store signed it, so the two regimes are distinguishable forever rather than inferred.
+FCS3="$TMP/fc-secret"; rm -rf "$FCS3"; mkdir -p "$FCS3/docs/team"; ( cd "$FCS3" && git init -q . )
+printf '{"requireAttestedActors": true}\n' > "$FCS3/.studio-policy.json"
+# A registry with NO secret field at all — the whole point is that it need not carry one.
+printf '{"actors":{"dev-1":{"roles":["ios-developer"]}}}\n' > "$FCS3/docs/team/actors.json"
+assert_exit 2 "with no secret in the environment or the registry, attestation is CANNOT EVALUATE" \
+  bm "$FCS3" add T-1 --title x --owner ios-developer --by ios-developer --actor dev-1 --actor-token bogus
+S3_TOK=$(STUDIO_ACTOR_SECRET_DEV_1=env-only-secret node -e "
+import('$HERE/lib/actor.mjs').then((m) => {
+  const r = m.mintToken({ root: '$FCS3', actorId: 'dev-1', role: 'ios-developer', ticket: 'T-1', event: 'created', ts: '' });
+  process.stdout.write(r.ok ? r.token : 'NONE');
+});")
+( cd "$FCS3" && STUDIO_ACTOR_SECRET_DEV_1=env-only-secret node "$BD" add T-1 --title x --owner ios-developer \
+    --by ios-developer --actor dev-1 --actor-token "$S3_TOK" ) >/dev/null 2>&1
+S3_EXIT=$?
+if [ "$S3_EXIT" = "0" ]; then ok "...and a secret held only in the spawner's environment signs correctly"
+else bad "...and a secret held only in the spawner's environment signs correctly" "exit $S3_EXIT"; fi
+if grep -q '"key_source":"env"' "$FCS3/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "...recording WHICH key store signed it, so a file-signed era is never mistaken for a proven one"
+else bad "...recording WHICH key store signed it, so a file-signed era is never mistaken for a proven one"; fi
+if grep -rq "env-only-secret" "$FCS3/docs" 2>/dev/null; then
+  bad "...and the secret never appears anywhere in the tree the agent reads"
+else ok "...and the secret never appears anywhere in the tree the agent reads"; fi
 
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER

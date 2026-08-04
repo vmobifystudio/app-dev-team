@@ -27,6 +27,19 @@ import { checkCapability } from './capabilities.mjs';
 
 const EVENTS = new Set([
   'created',
+  // `corrected` is the SANCTIONED way to fix a ticket's metadata — a typo in a title, a wrong
+  // owner, a feature ID that names the wrong requirement.
+  //
+  // IT EXISTS BECAUSE ITS ABSENCE CAUSED A WORSE PROBLEM. There was no legal way to correct a
+  // field, so agents edited docs/31-board.md directly — which is precisely the behaviour the
+  // log-authoritative change made illegal. Closing an escape hatch without providing the sanctioned
+  // route does not remove the pressure; it relocates it, and the next hatch is usually less visible
+  // than the one you shut. The two have to ship together.
+  //
+  // A correction is an APPEND like everything else: the original event stays, the correction states
+  // what changed and why, and history shows both. Nothing is rewritten, so the chain still proves
+  // what it always proved.
+  'corrected',
   'claimed',
   'assigned',
   'done_reported',
@@ -67,11 +80,15 @@ const key = (id) => String(id ?? '').toUpperCase();
 
 /** What may legally happen next, keyed by derived status. Anything absent is refused. */
 function legalEvents(state) {
+  // `corrected` is legal from EVERY state, including terminal ones. A typo in a closed ticket's
+  // title is still a typo, and refusing to fix it is what sends someone to the Markdown. It cannot
+  // move a ticket (see the reducer), so allowing it everywhere costs no safety.
+  const withCorrection = (events) => [...events, 'corrected'];
   switch (state.status) {
     case 'todo':
-      return ['claimed', 'assigned', 'blocked'];
+      return withCorrection(['claimed', 'assigned', 'blocked']);
     case 'in_progress':
-      if (state.verifyPending) return ['verified', 'verified_static', 'rejected', 'blocked', 'assigned'];
+      if (state.verifyPending) return withCorrection(['verified', 'verified_static', 'rejected', 'blocked', 'assigned']);
       // `review_requested` is listed whether or not a verification is on record. This function
       // answers "what does the STATUS allow"; whether the DONE was actually checked is a
       // PRECONDITION, and it is enforced below with a reason worth reading.
@@ -82,9 +99,9 @@ function legalEvents(state) {
       // legal list were dead code. Two checks for one rule, one of which could never run.
       // mutate.sh found it: M09 was the single surviving mutation of sixteen, because breaking a
       // guard nothing reaches breaks no assertion.
-      return ['review_requested', 'done_reported', 'blocked', 'assigned'];
+      return withCorrection(['review_requested', 'done_reported', 'blocked', 'assigned']);
     case 'review':
-      return ['started', 'approved', 'changes', 'merged', 'blocked', 'assigned'];
+      return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned']);
     case 'qa':
       // `verified` is legal here so a ticket merged on a STATIC verification can be upgraded once
       // the executable suite finally runs. Without that there is no path from `qa (static only)` to
@@ -93,11 +110,11 @@ function legalEvents(state) {
         ? ['closed', 'verified', 'qa_failed', 'blocked']
         : ['qa_passed', 'verified', 'qa_failed', 'blocked'];
     case 'done':
-      return [];
+      return withCorrection([]);
     case 'blocked':
-      return ['unblocked'];
+      return withCorrection(['unblocked']);
     default:
-      return [];
+      return withCorrection([]);
   }
 }
 
@@ -295,9 +312,55 @@ function reduce(events) {
     state.events.push(event);
 
     switch (name) {
-      case 'assigned':
-        state.owner = (typeof detail === 'object' ? detail.to : detail) || by || state.owner;
+      // A correction changes METADATA, never STATUS. Letting it move a ticket would make it a
+      // universal bypass of the whole state machine — every guard in this file could be sidestepped
+      // by "correcting" a row into `done`. Only the descriptive fields are writable.
+      case 'corrected': {
+        // `--detail` ARRIVES AS A STRING FROM THE CLI. cmdMove only keeps an object when the caller
+        // is in-process; a shell invocation passes JSON text, so `typeof detail === 'object'` was
+        // false for every correction ever made through the command line and the whole case body was
+        // skipped in silence.
+        //
+        // MY OWN TEST COULD NOT SEE IT. It asserted "the correction is accepted" (exit 0 — true, the
+        // event appended) and "a correction cannot move status" (also true when NOTHING happens).
+        // Both assertions pass against a no-op. That is a rule that cannot fail, written by someone
+        // who had just spent the day removing them. Found by dogfood run 2, when a corrected file
+        // set had no effect on contention.
+        let parsed = detail;
+        if (typeof parsed === 'string' && parsed.trim().startsWith('{')) {
+          try { parsed = JSON.parse(parsed); } catch { parsed = null; }
+        }
+        const fields = (typeof parsed === 'object' && parsed) || {};
+        for (const f of ['title', 'feature', 'acceptance', 'spec', 'notes', 'estimate']) {
+          if (typeof fields[f] === 'string') state.meta[f] = fields[f];
+        }
+        // `files` IS CORRECTABLE, and leaving it out was FC-001 in the correction path itself.
+        //
+        // Dogfood run 2: contention refused a dispatch and advised "split the work so the file sets
+        // are disjoint" — and `corrected` could not change `files`, so the studio's own remedy was
+        // unreachable through the studio's own sanctioned route. The escape hatch was closed, the
+        // replacement was built, and the replacement did not cover the field the workflow actually
+        // needed. The list of correctable fields was the list I thought of, not the list the work
+        // requires.
+        if (Array.isArray(fields.files)) state.meta.files = fields.files.map(String);
+        // `owner` is corrigible because a mis-assigned ticket is a real and common mistake, and
+        // leaving it wrong forces the hand-edit this event exists to replace.
+        if (typeof fields.owner === 'string' && fields.owner) state.owner = fields.owner;
         break;
+      }
+      case 'assigned': {
+        // THE SAME STRING/OBJECT BUG `corrected` WAS JUST FIXED FOR, THREE LINES AWAY, IN THE SAME
+        // SWITCH. `--detail '{"to":"x"}'` arrives from the CLI as text, so `typeof detail ===
+        // 'object'` was false and the whole JSON string became the owner — the reducer wrote
+        // `owner: '{"to":"ios-developer"}'`. FC-001 at its shortest range yet: I fixed the case I
+        // had written and did not look at its neighbour.
+        let parsed = detail;
+        if (typeof parsed === 'string' && parsed.trim().startsWith('{')) {
+          try { parsed = JSON.parse(parsed); } catch { parsed = detail; }
+        }
+        state.owner = (typeof parsed === 'object' && parsed ? parsed.to : parsed) || by || state.owner;
+        break;
+      }
       case 'claimed':
         state.status = 'in_progress';
         state.owner = by || state.owner;
@@ -391,6 +454,42 @@ function validate(tickets, candidate) {
   return checkCapability(tickets.get(key(candidate.ticket)), candidate, legalEvents(tickets.get(key(candidate.ticket)) || { status: 'todo' }));
 }
 
+/**
+ * Everyone who actually DID work on this ticket.
+ *
+ * SEPARATION MUST BE CHECKED AGAINST HISTORY, NOT AGAINST A MUTABLE CELL. It compared `by` against
+ * `state.owner` — and `owner` is rewritten by `assigned` and by `corrected`, both of which any role
+ * may append. The security reviewer walked straight through it with ONE actor:
+ *
+ *     tech-lead approves own ticket        -> refused, "a role does not gate its own work"
+ *     tech-lead corrects owner to "ghost"  -> accepted
+ *     tech-lead approves the same ticket   -> ACCEPTED
+ *     merged                               -> ACCEPTED
+ *
+ * And `corrected` was not the hole. The identical escalation works through `assigned`, which is a
+ * work event with no capability check and predates all of this — so fixing only `corrected` would
+ * have fixed nothing while looking like a fix. FC-001 in the reasoning rather than the code: I went
+ * after the mechanism I had just written instead of the property being violated.
+ *
+ * The property is: THE ROLE THAT DID THE WORK MAY NOT BE THE ROLE THAT CLEARS IT. Who did the work
+ * is written in the log — `claimed`, `started`, `done_reported` — and nothing can rewrite it,
+ * because the log is append-only. So that is what separation is measured against.
+ */
+function workedOn(state) {
+  // `started` IS NOT WORK — it is the REVIEWER opening the review (`case 'started'` sets
+  // state.reviewer). Including it made every reviewer an author of the thing they were reviewing,
+  // so the fix for the separation bypass refused every legitimate approval in the suite. Twelve
+  // assertions went red at once, which is the only reason it was caught before it shipped: a
+  // narrower fix would have passed and quietly broken the review path in the field.
+  const WORK = new Set(['claimed', 'done_reported']);
+  const who = new Set();
+  if (state.owner) who.add(state.owner);
+  for (const e of state.events || []) {
+    if (WORK.has(e.event) && e.by) who.add(e.by);
+  }
+  return who;
+}
+
 function validateTransition(tickets, candidate) {
   const { ticket: id, event: name, by } = candidate;
 
@@ -459,23 +558,52 @@ function validateTransition(tickets, candidate) {
         };
       }
       return { ok: true };
-    case 'approved':
-      if (by && by === state.owner) {
+    case 'approved': {
+      const workers = workedOn(state);
+      if (by && workers.has(by)) {
         return {
           ok: false,
-          reason: `${by} owns ${id} — a role does not gate its own work`,
+          reason: `${by} worked on ${id} (owner or an author of claimed/started/done_reported) — a role does not gate its own work`,
           legal: legal.filter((e) => e !== 'approved'),
         };
       }
       return { ok: true };
+    }
     case 'merged': {
-      const external = state.approvals.filter((a) => a.by && a.by !== state.owner);
+      const workers = workedOn(state);
+      const external = state.approvals.filter((a) => a.by && !workers.has(a.by));
       if (!external.length) {
         return {
           ok: false,
-          reason: `${id} has no "approved" by a role other than its owner (${state.owner || 'unset'})`,
+          reason: `${id} has no "approved" by a role that did not work on it (workers: ${[...workers].join(', ') || 'unset'})`,
           legal: legal.filter((e) => e !== 'merged'),
         };
+      }
+      // THE POLICY DECISION IS ENFORCED HERE, AT THE MUTATION IT GOVERNS.
+      //
+      // risk-router has always computed `approvals` — which specialist roles a given blast radius
+      // requires — and until now that list was printed and discarded. Ticket creation kept the
+      // tier; nothing ever checked the roster it demanded. So a `critical`-risk change touching
+      // billing or auth could merge on one generic code-review, exactly as a trivial one does, and
+      // every gate reported CLEAR because every gate was asking a different question.
+      //
+      // `merged` is the right place: it is the last point before the change is in the trunk, and
+      // it is where the existing separation rule already lives, so the two authority checks are
+      // read together instead of drifting apart.
+      const required = state.meta?.policy_decision?.required_approvals || [];
+      if (required.length) {
+        const have = new Set(state.approvals.map((a) => a.by).filter(Boolean));
+        const missing = required.filter((role) => !have.has(role));
+        if (missing.length) {
+          return {
+            ok: false,
+            reason:
+              `${id} is risk "${state.meta.policy_decision.risk}" and its policy decision requires approval from ` +
+              `${required.join(', ')} — missing: ${missing.join(', ')}. ` +
+              'A specialist requirement that only prints to stdout is advice; this one is a precondition.',
+            legal: legal.filter((e) => e !== 'merged'),
+          };
+        }
       }
       return { ok: true };
     }

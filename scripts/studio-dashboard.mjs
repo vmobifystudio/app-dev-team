@@ -50,6 +50,7 @@
  */
 
 import { createServer } from 'node:http';
+import { reduceReadiness } from './lib/readiness.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, watch, readdirSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
@@ -640,6 +641,11 @@ function assembleStateRaw(root, { actions = true } = {}) {
   ];
 
   return {
+    // THE READINESS PICTURE IS NOT COMPUTED HERE. It comes from the one reducer every surface
+    // shares, so the dashboard cannot drift from the CLI. Three readers each forming their own
+    // judgement is how a founder and an agent act on different beliefs, both sincerely, with
+    // nothing to reconcile them.
+    readiness: reduceReadiness(root),
     generatedAt: new Date().toISOString(),
     project: root,
     readFrom: from,

@@ -125,7 +125,7 @@ M03@@scripts/ship-gate.sh@@grep -nE '(\|\|[[:space:]]*(true|:)([[:space:]]|$))|c
 M04@@scripts/board-doctor.mjs@@(reviewChecksBlock ? anomalies : warnings).push(item)@@warnings.push(item)@@emits done_without_review
 M05@@scripts/board-doctor.mjs@@effectiveCycles > MAX_REVIEW_CYCLES && ACTIVE_STATUS.has(row.status)@@effectiveCycles >= MAX_REVIEW_CYCLES && ACTIVE_STATUS.has(row.status)@@Cycles = 2 in review is the budget spent, not a breach
 M06@@scripts/lib/board.mjs@@/[A-Za-z]+-\d+(?:-[A-Za-z]+)?/g@@/[A-Za-z]+-\d+/g@@suffixed ticket ids parse whole (BUG-NNN-fix)
-M07@@scripts/lib/events.mjs@@if (by && by === state.owner) {@@if (false) {@@the ticket's owner approving their own ticket is refused
+M07@@scripts/lib/events.mjs@@if (by && workers.has(by)) {@@if (false) {@@a role approving work it did is refused
 M08@@scripts/lib/events.mjs@@if (!external.length) {@@if (false) {@@a merge with no approval at all is refused
 M09@@scripts/lib/events.mjs@@if (!state.verified) {@@if (false) {@@review_requested on a DONE with no verify-done result is refused
 M10@@scripts/integration-branch.sh@@integration branch is not recoverable by a later fix. Create the branch, or fix the doc."@@integration branch is not recoverable by a later fix."; echo "$FALLBACK"; exit 0@@a declared branch that does not exist is exit 2, never a fallback

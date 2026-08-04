@@ -7,7 +7,34 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
 const die = (code, message) => { process.stderr.write(`dispatch-preflight: ${message}\n`); process.exit(code); };
 const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root', 'context', 'schedule', 'capability', 'risk', 'role', 'operation', 'path', 'file', 'change', 'ticket']), die });
-for (const name of ['root', 'context', 'schedule', 'capability', 'risk', 'role', 'operation', 'path', 'file', 'ticket']) if (!flags[name]) die(2, `--${name} is required`);
+/**
+ * ALL MISSING ARGUMENTS AT ONCE, AND A USAGE ERROR IS NOT A CANNOT-EVALUATE.
+ *
+ * This was a loop that `die`d on the FIRST missing flag with exit 2. Measured in dogfood run 1:
+ * dispatching ONE ticket took ELEVEN consecutive invocations, each disclosing exactly one more
+ * required argument. I had the whole repository open and it still took eleven tries; an agent with
+ * a retry budget would exhaust it, having learned nothing — each refusal names one flag and hides
+ * the other nine.
+ *
+ * The dangerous half is the EXIT CODE, not the friction. In this studio's contract 2 means CANNOT
+ * EVALUATE — the gate could not run — and several paths are documented to record that and DEGRADE.
+ * So a malformed invocation was indistinguishable from a broken host, and the failure mode was not
+ * "the orchestrator gets stuck": it was an orchestrator concluding preflight is unavailable and
+ * SPAWNING THE AGENT ANYWAY. DR4-001, inside the gate that authorises every spawn.
+ *
+ * Exit 64 is `EX_USAGE` from sysexits.h — the Unix convention for "your command line is wrong",
+ * distinct from both "blocked" and "could not evaluate". A caller that degrades on 2 must not
+ * degrade on this.
+ */
+const REQUIRED = ['root', 'context', 'schedule', 'capability', 'risk', 'role', 'operation', 'path', 'file', 'ticket'];
+const missing = REQUIRED.filter((name) => !flags[name]);
+if (missing.length) {
+  die(64,
+    `missing required argument(s): ${missing.map((m) => `--${m}`).join(' ')}\n` +
+    `  usage: dispatch-preflight.mjs ${REQUIRED.map((r) => `--${r} <value>`).join(' ')} [--change <kind>]\n` +
+    '  This is a malformed invocation (exit 64), NOT a gate that could not evaluate (exit 2).\n' +
+    '  Do not degrade or proceed without preflight on this exit code — fix the call.');
+}
 const root = resolve(String(flags.root)); const here = dirname(fileURLToPath(import.meta.url));
 function run(script, args) {
   try { return execFileSync(process.execPath, [resolve(here, script), ...args], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
@@ -17,6 +44,32 @@ const context = run('context-manifest.mjs', ['verify', '--root', root, '--manife
 const schedule = run('scheduler.mjs', ['--plan', resolve(root, String(flags.schedule))]);
 const capability = run('capability-check.mjs', ['--manifest', resolve(root, String(flags.capability)), '--role', String(flags.role), '--operation', String(flags.operation), '--path', resolve(root, String(flags.path))]);
 const risk = run('risk-router.mjs', ['--policy', resolve(root, String(flags.risk)), '--file', String(flags.file), '--change', String(flags.change || '')]);
+
+// CONTENTION IS COMPOSED HERE, because a detector nobody calls is FC-002 with extra steps.
+//
+// `contention-check.mjs` was written, tested and mirror-tested, and NOTHING INVOKED IT — measured
+// in dogfood run 1, where two tickets declaring the same file would both have been dispatched.
+// The PR that added it said so in its own "Not checked" section; a real run is what turned that
+// admission into a fix.
+//
+// Exit 2 (the ticket declares no files, so overlap is unknowable) is deliberately NOT fatal here:
+// it is reported and dispatch continues, because most tickets legitimately predate `--file` and
+// blocking them would make the studio unusable to buy a guarantee it cannot offer anyway. What it
+// must never do is print CLEAR — and it does not; it says CANNOT EVALUATE in its own words.
+let contention = '';
+try {
+  contention = execFileSync(process.execPath, [
+    resolve(here, 'contention-check.mjs'),
+    '--log', resolve(root, 'docs/31-board-events.jsonl'),
+    '--ticket', String(flags.ticket),
+  ], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+} catch (error) {
+  const output = `${error.stdout || ''}${error.stderr || ''}`.trim();
+  if (error.status === 1) {
+    die(1, `contention-check refused this dispatch:\n${output}`);
+  }
+  contention = output || 'CONTENTION: CANNOT EVALUATE';
+}
 
 // Global plugin enhancement plan (2026-08-03), P0.2's narrow first slice: this gate ran every check
 // EXCEPT the one that answers "is the requested ticket actually admissible right now" — a caller

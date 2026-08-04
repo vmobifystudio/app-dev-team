@@ -1,0 +1,28 @@
+FOUNDATION CONFORMANCE — I-01..I-12
+
+  PASS  I-01  One project boundary
+        nested root refused as CANNOT EVALUATE with candidates named
+  PASS  I-02  One workflow truth
+        the read layer reports the log, not the hand-edited view
+  PASS  I-03  Atomic admission
+        12/12 concurrent admissions committed, chain intact
+  PASS  I-04  Authenticated authority
+        a role must be granted to an actor and proven per-assertion; the regime is stamped on the event
+  PASS  I-05  Complete work identity
+        an approval binds base..head, covers every commit, and re-verifies clean
+  PASS  I-06  Candidate-bound evidence
+        evidence is content-addressed and invalidates as STALE
+  PASS  I-07  Enforced risk route
+        the risk route's required approvals are a precondition of the mutation they govern
+  PASS  I-08  Bidirectional scope coverage
+        an in-scope requirement that nothing implements is a named finding
+  PASS  I-09  Criterion-level proof
+        each criterion names its own evidence, matched by digest; a gap or a changed artifact blocks
+  PASS  I-10  Durable recovery
+        a replayed transition commits exactly once and reports success
+  PASS  I-11  One readiness reducer
+        CLI and dashboard project one reducer; a verdict about another candidate reads STALE
+  PASS  I-12  Human-only publication
+        no executable path can submit or publish to a store
+
+  12/12 invariants hold

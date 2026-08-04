@@ -43,10 +43,12 @@ import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } fr
 import { resolve, dirname } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { withFileLock } from './lib/atomic.mjs';
+import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
+import { resolveActor } from './lib/actor.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
 import {
@@ -82,13 +84,21 @@ const DEFAULT_BOARD = 'docs/31-board.md';
  * uses this: an operator who explicitly passes `--log`/`--board` is making a deliberate choice and
  * that still resolves against cwd, unchanged.
  */
-function projectRoot() {
-  try {
-    const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
-    return dirname(common);
-  } catch {
-    return process.cwd();
-  }
+/**
+ * ...and the git-based answer above was still not enough, because A GIT BOUNDARY IS NOT A PROJECT
+ * BOUNDARY. `--git-common-dir` answers "the nearest git repository", so a command run inside a git
+ * repo NESTED in a studio project (a vendored dependency, a sample app, a fixture) resolved to that
+ * inner repo and silently created a SECOND, empty board there, reporting success. The work went to
+ * a project nobody was watching — and unlike every other defect in this codebase, a write that
+ * lands in the wrong repository cannot be undone by any gate downstream of it.
+ *
+ * Resolution now goes through the one shared resolver, which answers CANNOT EVALUATE with both
+ * candidates named rather than picking silently.
+ */
+function projectRoot(flags = {}) {
+  const result = resolveProjectRoot({ explicit: typeof flags['project-root'] === 'string' ? flags['project-root'] : '' });
+  if (!result.ok) die(2, explainRootFailure(result));
+  return result.root;
 }
 
 const die = (code, message) => {
@@ -116,7 +126,7 @@ function resolveId(tickets, id) {
 const VALUE_FLAGS = new Set([
   'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
-  'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key',
+  'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root', 'base', 'actor', 'actor-token',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
@@ -212,12 +222,36 @@ function loadLog(logPath, { required = true } = {}) {
  * most common thing an agent or operator does after an ambiguous failure, and until now the board
  * had no way to tell a retry from a second, genuinely-intended transition.
  */
-function alreadyApplied(logPath, key) {
+/**
+ * Has THIS transition — this ticket, this event, this key — already been committed?
+ *
+ * ALL THREE PARTS MATTER, and the first version of this compared only the key. A bare global string
+ * meant that `move APP-002 claimed --idempotency-key RETRY-1`, after APP-001 had used RETRY-1,
+ * printed "already applied" and exited 0 with APP-002 NEVER MOVED and nothing written.
+ *
+ * That is the single worst outcome available to this codebase: a real transition silently discarded
+ * and reported as success. An orchestrator retrying a wave with one per-wave key — the obvious
+ * thing to do, and the reason the flag exists — would have dropped every transition after the
+ * first, and the board would have looked fine.
+ *
+ * A dedup guard that swallows work is strictly worse than no dedup guard, because the duplicate it
+ * was preventing is visible and the loss it causes is not. Found by the code-reviewer, reproduced
+ * on two tickets.
+ *
+ * Returns 'duplicate' (same ticket, same event — a genuine retry), 'collision' (the key was used
+ * for something ELSE, which is a caller bug and must never be treated as success), or false.
+ */
+function idempotencyState(logPath, key, ticket, eventName) {
   if (!key) return false;
   if (!existsSync(logPath)) return false;
-  return readFileSync(logPath, 'utf8')
-    .split('\n').filter(Boolean)
-    .some((line) => { try { return JSON.parse(line).idempotency_key === key; } catch { return false; } });
+  for (const line of readFileSync(logPath, 'utf8').split('\n').filter(Boolean)) {
+    let e;
+    try { e = JSON.parse(line); } catch { continue; }
+    if (e.idempotency_key !== key) continue;
+    if (key && e.ticket === ticket && e.event === eventName) return 'duplicate';
+    return 'collision';
+  }
+  return false;
 }
 
 function append(logPath, event) {
@@ -246,8 +280,85 @@ function append(logPath, event) {
   // `not valid JSON`. `verifyChain` above tolerates a missing trailing newline when reading (each
   // line is `trim()`-checked), so this went unnoticed until the log was read again. Reported by
   // codex.
+  // THE ENVELOPE. Every event carries its own identity and the version of the shape it was written
+  // in, stamped in ONE place so no writer can omit them.
+  //
+  // `event_id` makes an event referenceable — causation ("this happened because of that") is
+  // unstateable without it, and a log where nothing can be pointed at is a log you can only read
+  // forwards. `schema` makes the shape self-describing: every reader currently infers the shape from
+  // context, which is precisely how `routes` came to pass for `rules` elsewhere in this repo.
+  //
+  // Added at the append boundary rather than at each call site, because a field every writer must
+  // remember is a field some writer will forget — the lesson of `assign` dropping the idempotency
+  // key three commits ago.
+  const enveloped = {
+    schema: 'board-event/v1',
+    event_id: randomUUID(),
+    ...event,
+  };
   const sep = existing && !existing.endsWith('\n') ? '\n' : '';
-  appendFileSync(logPath, `${sep}${JSON.stringify({ ...event, hash: chainHash(chain.tip, event) })}\n`);
+  appendFileSync(logPath, `${sep}${JSON.stringify({ ...enveloped, hash: chainHash(chain.tip, enveloped) })}\n`);
+}
+
+/**
+ * Resolve and stamp the actor/v1 envelope for an event.
+ *
+ * WHY THIS IS ON EVERY EVENT AND NOT JUST APPROVALS. Authority matters wherever a role is claimed:
+ * who reported done, who verified, who unblocked. Stamping only the approval would leave the rest
+ * of the chain as anonymous as before, and the chain is what an approval is an approval OF.
+ *
+ * Under the default (insecure-local) this never refuses — it records `mode: "insecure-local"`, a
+ * durable admission that the role was asserted rather than proven. Under
+ * `requireAttestedActors: true` an unproven role is refused outright.
+ */
+function stampActor(paths, flags, ticket, eventName) {
+  // THE SECURITY ROOT COMES FROM THE RESOLVER, NOT FROM THE CALLER'S --log.
+  //
+  // This was `dirname(dirname(paths.log))`. `--log` is a caller-supplied path, so the caller chose
+  // which .studio-policy.json and which actors.json governed their own append. Reproduced by the
+  // security reviewer: a symlink pointing a decoy directory's log at the REAL log let an unattested
+  // event into the real chain while attestation was on and the registry was intact. `root.mjs`
+  // exists precisely to answer "which project is this, authoritatively" — and it was not on this
+  // path at all.
+  const resolved = resolveProjectRoot({});
+  if (!resolved.ok) die(2, explainRootFailure(resolved));
+  const root = resolved.root;
+
+  // AND THE POLICY READ FAILS CLOSED.
+  //
+  // This was a bare try/catch that fell through to `insecure-local`. So deleting the policy file,
+  // or writing one byte of invalid JSON into it, SILENTLY DOWNGRADED THE SECURITY REGIME — all
+  // three reproduced. Every other reader in this codebase treats an unreadable input as CANNOT
+  // EVALUATE and refuses; actor.mjs argues for exactly that one layer down, about the registry.
+  // The identity gate was the one place a corrupt config was a downgrade instead of a refusal.
+  const policyPath = resolve(root, '.studio-policy.json');
+  let requireAttested = false;
+  if (existsSync(policyPath)) {
+    let policy;
+    try { policy = JSON.parse(readFileSync(policyPath, 'utf8')); }
+    catch (e) {
+      die(2, `.studio-policy.json exists but is unreadable (${e.message}).\n` +
+             '  Refusing rather than assuming the permissive default: an unparseable policy must not\n' +
+             '  be able to turn attestation off. Fix the file, or delete it deliberately.');
+    }
+    requireAttested = policy.requireAttestedActors === true;
+  }
+  const result = resolveActor({
+    root,
+    role: String(flags.by || ''),
+    ticket,
+    event: eventName,
+    ts: '',
+    token: typeof flags['actor-token'] === 'string' ? flags['actor-token'] : '',
+    actorId: typeof flags.actor === 'string' ? flags.actor : '',
+    requireAttested,
+  });
+  if (!result.ok) {
+    die(result.code, `refusing ${eventName} on ${ticket}: ${result.reason}\n` +
+      '  requireAttestedActors is on, so a role must be GRANTED to an actor in docs/team/actors.json\n' +
+      '  and proven with a token, not merely spelled correctly in --by.');
+  }
+  return result.actor;
 }
 
 function writeView(boardPath, tickets) {
@@ -311,7 +422,28 @@ function deriveRisk(flags, paths) {
   if (result.status !== 0) {
     die(1, `--file was supplied but risk-router.mjs could not classify it against ${policyPath} — fix the policy, or drop --file if this ticket genuinely has none:\n${`${result.stdout || ''}${result.stderr || ''}`.trim()}`);
   }
-  try { return JSON.parse(result.stdout).risk || null; }
+  // THE WHOLE DECISION IS KEPT, NOT JUST THE TIER.
+  //
+  // This used to read `.risk` and throw the rest away — so `approvals` and `required_evidence`,
+  // the two fields that say what the tier actually DEMANDS, were computed and discarded at the
+  // moment they were derived. The router printed advice; the mutation it governs never saw it.
+  //
+  // That is the general pattern the audit named: tools emit advice while other tools make
+  // decisions. A policy decision has to be a durable object CONSUMED by the mutation it governs,
+  // not console output the caller is trusted to remember. FC-001 restated at the architecture
+  // level, which is why a recommendation-shaped mechanism keeps failing to bind.
+  try {
+    const route = JSON.parse(result.stdout);
+    return {
+      schema: 'policy-decision/v1',
+      risk: route.risk || null,
+      model: route.model || null,
+      required_approvals: route.approvals || [],
+      required_evidence: route.required_evidence || [],
+      decided_at: new Date().toISOString(),
+      policy: 'docs/team/risk-policy.json',
+    };
+  }
   catch (e) { die(1, `risk-router.mjs produced unparseable output for ${policyPath}: ${e.message}`); }
 }
 
@@ -341,7 +473,17 @@ function cmdAdd(id, flags, paths, idempotencyKey = '') {
       ? String(flags.invariant).split(';').map((s) => scrub('--invariant', s.trim())).filter(Boolean)
       : [],
     rollback: scrub('--rollback', flags.rollback || ''),
-    risk: deriveRisk(flags, paths),
+    // The file set is RECORDED, not just used to derive a risk tier and discarded. Contention
+    // control needs to know what work touches what, and a value consumed once at creation and
+    // thrown away cannot answer that later.
+    files: flags.file ? String(flags.file).split(',').map((f) => f.trim()).filter(Boolean) : [],
+    ...(() => {
+      const decision = deriveRisk(flags, paths);
+      // `risk` stays a bare string: board-render, events.mjs's review_requested guard and the
+      // dashboards all read it, and changing its shape here would be the fix that breaks four
+      // consumers to serve one. The decision rides alongside it.
+      return decision ? { risk: decision.risk, policy_decision: decision } : { risk: null };
+    })(),
   };
   const event = {
     ts: new Date().toISOString(),
@@ -350,6 +492,7 @@ function cmdAdd(id, flags, paths, idempotencyKey = '') {
     by: flags.by || 'tech-manager',
     detail,
     provenance: 'cli',
+    actor: stampActor(paths, flags, normalizeId(id), 'created'),
     ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
   };
 
@@ -453,9 +596,49 @@ function bindApprovalEvidence(flags) {
     try { commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); }
     catch { return { ok: false, code: 2, reason: 'cannot resolve HEAD — is this a git repository, and if not run from inside the reviewed worktree, pass --commit <sha>?' }; }
   }
+  // THE APPROVAL'S SUBJECT IS THE WHOLE CANDIDATE, NOT ONE COMMIT.
+  //
+  // This used to diff `${commit}^..${commit}` — literally the last commit. A three-commit branch
+  // was therefore approved on the strength of the third commit alone: the reviewer may well have
+  // read the whole branch, but what got RECORDED, hashed and later verified covered a third of it.
+  // Everything upstream could change under an approval that still verified clean.
+  //
+  // That is the same mistake as binding to HEAD while the tools consume the working tree, one level
+  // up: precise about a subject that was the wrong subject.
+  //
+  // The base is the merge-base with the integration branch — the point the work diverged — so the
+  // candidate is every commit the branch adds. `--base` overrides it. When no integration branch is
+  // resolvable we fall back to `${commit}^` and SAY SO in the recorded detail, rather than silently
+  // narrowing the subject back to one commit.
+  let base = typeof flags.base === 'string' ? flags.base : '';
+  let baseSource = 'explicit --base';
+  if (!base) {
+    for (const ref of ['main', 'master', 'origin/main', 'origin/master']) {
+      try {
+        const mb = execFileSync('git', ['merge-base', ref, commit], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        if (mb && mb !== commit) { base = mb; baseSource = `merge-base with ${ref}`; break; }
+      } catch { /* ref does not exist here */ }
+    }
+  }
+  if (!base) {
+    try { base = execFileSync('git', ['rev-parse', `${commit}^`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); baseSource = 'single-commit fallback (no integration branch found)'; }
+    catch { return { ok: false, code: 2, reason: `cannot resolve a base for ${commit} — it has no parent and no integration branch was found. Pass --base <sha>.` }; }
+  }
   let diff;
-  try { diff = execFileSync('git', ['diff', `${commit}^`, commit, '--binary'], { encoding: 'utf8' }); }
-  catch { return { ok: false, code: 2, reason: `cannot diff ${commit}^..${commit} — does HEAD have a parent commit?` }; }
+  // `.trim()` ON BOTH SIDES, DELIBERATELY. This hashed the RAW git output while approval-check's
+  // `git()` helper trimmed before hashing, and a diff always ends in a newline — so the two hashes
+  // could never agree and a correctly bound approval was reported as "not the change on disk".
+  // The gate accused clean work of tampering, which teaches everyone to ignore it: FC-002 by
+  // erosion rather than by design. Pre-existing on main; found because the reviewer ran the round
+  // trip instead of reading either side alone.
+  try { diff = execFileSync('git', ['diff', base, commit, '--binary'], { encoding: 'utf8' }).trim(); }
+  catch { return { ok: false, code: 2, reason: `cannot diff ${base}..${commit}` }; }
+  // The changed-file manifest is recorded alongside the diff hash. The hash proves the content did
+  // not change; the manifest is what a human or a policy check can actually read to see the blast
+  // radius of what was approved.
+  let files = [];
+  try { files = execFileSync('git', ['diff', '--name-only', base, commit], { encoding: 'utf8' }).split('\n').filter(Boolean); }
+  catch { /* recorded as empty; the diff hash is still authoritative */ }
   if (!flags.evidence) return { ok: false, reason: '--bind requires --evidence <path to the evidence the review used>' };
   if (!flags.context) return { ok: false, reason: '--bind requires --context <path to the context the review used>' };
   const evidencePath = resolve(process.cwd(), String(flags.evidence));
@@ -466,6 +649,9 @@ function bindApprovalEvidence(flags) {
     ok: true,
     detail: {
       commit,
+      base,
+      base_source: baseSource,
+      files,
       diff_hash: createHash('sha256').update(diff).digest('hex'),
       evidence_hash: createHash('sha256').update(readFileSync(evidencePath)).digest('hex'),
       context_snapshot: createHash('sha256').update(readFileSync(contextPath)).digest('hex'),
@@ -486,6 +672,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     by: flags.by || '',
     detail: typeof flags.detail === 'object' ? flags.detail : scrub('--detail', flags.detail || ''),
     provenance: 'cli',
+    actor: stampActor(paths, flags, ticket, name),
     // Stamped here as well as in `cmdAdd`. The first version of this fix stamped the key on
     // `created` only, so `alreadyApplied` could never find it for a `move` — the dedup guard ran,
     // found nothing, and the retry fell through to the state machine. FC-001 inside the fix for
@@ -561,9 +748,14 @@ function reportCascade(tickets, id) {
   );
 }
 
-function cmdAssign(id, flags, paths) {
+// The key is FORWARDED. `assign` sat inside the lock and inside the dedup check but dropped the
+// key on its way to cmdMove, so no `assigned` event ever carried one and every retry appended a
+// second event. FC-001 in the same file as the comment claiming the FC-001 sweep was finished: the
+// sweep covered `created` and `move` and stopped one caller short. I-10 could not see it because
+// I-10 exercises `move`.
+function cmdAssign(id, flags, paths, idempotencyKey = '') {
   if (!id || !flags.to) die(1, 'assign needs a ticket and a role: board.mjs assign APP-001 --to ios-developer');
-  return cmdMove(id, 'assigned', { ...flags, detail: { to: flags.to } }, paths);
+  return cmdMove(id, 'assigned', { ...flags, detail: { to: flags.to } }, paths, idempotencyKey);
 }
 
 function cmdShow(id, flags, paths) {
@@ -851,8 +1043,8 @@ function main() {
   const { flags, positional } = parseArgs(process.argv.slice(2));
   const [command, ...rest] = positional;
   const paths = {
-    log: typeof flags.log === 'string' ? resolve(process.cwd(), flags.log) : resolve(projectRoot(), DEFAULT_LOG),
-    board: typeof flags.board === 'string' ? resolve(process.cwd(), flags.board) : resolve(projectRoot(), DEFAULT_BOARD),
+    log: typeof flags.log === 'string' ? resolve(process.cwd(), flags.log) : resolve(projectRoot(flags), DEFAULT_LOG),
+    board: typeof flags.board === 'string' ? resolve(process.cwd(), flags.board) : resolve(projectRoot(flags), DEFAULT_BOARD),
   };
 
   // EVERY MUTATING COMMAND RUNS UNDER ONE LOCK, HELD ACROSS THE WHOLE READ-DECIDE-APPEND.
@@ -876,11 +1068,27 @@ function main() {
       // same key could both find "not yet applied" and both commit — the very race the lock exists
       // to close, reintroduced by the deduplication meant to prevent duplicates.
       const key = typeof flags['idempotency-key'] === 'string' ? flags['idempotency-key'] : '';
-      if (key && alreadyApplied(paths.log, key)) {
-        // Exit 0, not an error: the caller asked for a state that now holds. A retry after an
-        // ambiguous timeout must be able to report success without committing a second effect.
-        process.stdout.write(`already applied (idempotency-key ${key}) — nothing appended\n`);
-        return undefined;
+      if (key) {
+        // The subject of the retry must be named, or the guard cannot tell a repeat from a
+        // different piece of work. `assign` is `assigned` under the hood — spelled out here so the
+        // key is scoped to the event actually appended.
+        const subject = normalizeId(rest[0] || '');
+        const eventName = command === 'add' ? 'created' : command === 'assign' ? 'assigned' : String(rest[1] || '');
+        const state = idempotencyState(paths.log, key, subject, eventName);
+        if (state === 'duplicate') {
+          // Exit 0: the caller asked for a state that now holds. A retry after an ambiguous timeout
+          // must report success without committing a second effect.
+          process.stdout.write(`already applied (idempotency-key ${key} on ${subject} ${eventName}) — nothing appended\n`);
+          return undefined;
+        }
+        if (state === 'collision') {
+          // NEVER exit 0 here. This key was used for DIFFERENT work, so treating it as a duplicate
+          // would discard a real transition and call it success — the defect this branch exists to
+          // prevent. Exit 2: cannot evaluate, because the caller's intent is genuinely unknowable.
+          die(2, `idempotency-key ${key} was already used for a DIFFERENT transition.\n` +
+                 `  Refusing: treating this as a duplicate would silently discard ${subject} ${eventName}.\n` +
+                 '  Use a key unique to the transition (for example "<ticket>-<event>-<attempt>").');
+        }
       }
       return dispatch(command, rest, flags, paths, key);
     }, { die });
@@ -895,7 +1103,7 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
     case 'move':
       return cmdMove(rest[0], rest[1], flags, paths, idempotencyKey);
     case 'assign':
-      return cmdAssign(rest[0], flags, paths);
+      return cmdAssign(rest[0], flags, paths, idempotencyKey);
     case 'show':
       return cmdShow(rest[0], flags, paths);
     case 'render':

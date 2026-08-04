@@ -4,6 +4,7 @@
  * reject, supersede, or contradict one. Memory is never silently learned from arbitrary output.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { withFileLock } from './lib/atomic.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
@@ -23,11 +24,16 @@ function records() {
   });
 }
 function required(name) { if (!flags[name] || flags[name] === true) die(2, `--${name} needs a value`); return String(flags[name]); }
+// Serialized like every other append-only log in the studio. Memory is written by parallel agents
+// at the end of a wave — the one moment several writers are most likely to hit the same file at
+// once — so this is not a theoretical race here.
 function append(event, fields) {
-  const all = records(); const previous = all.at(-1)?.hash || '';
-  const record = { schema: 'memory-ledger/v1', ts: new Date().toISOString(), event, ...fields, prev_hash: previous };
-  record.hash = createHash('sha256').update(`${previous}\n${JSON.stringify({ ...record, hash: undefined })}`).digest('hex');
-  mkdirSync(dirname(path), { recursive: true }); appendFileSync(path, `${JSON.stringify(record)}\n`); console.log(JSON.stringify(record));
+  return withFileLock(path, () => {
+    const all = records(); const previous = all.at(-1)?.hash || '';
+    const record = { schema: 'memory-ledger/v1', ts: new Date().toISOString(), event, ...fields, prev_hash: previous };
+    record.hash = createHash('sha256').update(`${previous}\n${JSON.stringify({ ...record, hash: undefined })}`).digest('hex');
+    mkdirSync(dirname(path), { recursive: true }); appendFileSync(path, `${JSON.stringify(record)}\n`); console.log(JSON.stringify(record));
+  }, { die });
 }
 if (!command) die(2, 'usage: propose|review|list|retrieve|verify');
 const all = records();
