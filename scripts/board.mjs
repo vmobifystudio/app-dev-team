@@ -125,7 +125,7 @@ function resolveId(tickets, id) {
 const VALUE_FLAGS = new Set([
   'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
-  'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root',
+  'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root', 'base',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
@@ -462,9 +462,43 @@ function bindApprovalEvidence(flags) {
     try { commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); }
     catch { return { ok: false, code: 2, reason: 'cannot resolve HEAD — is this a git repository, and if not run from inside the reviewed worktree, pass --commit <sha>?' }; }
   }
+  // THE APPROVAL'S SUBJECT IS THE WHOLE CANDIDATE, NOT ONE COMMIT.
+  //
+  // This used to diff `${commit}^..${commit}` — literally the last commit. A three-commit branch
+  // was therefore approved on the strength of the third commit alone: the reviewer may well have
+  // read the whole branch, but what got RECORDED, hashed and later verified covered a third of it.
+  // Everything upstream could change under an approval that still verified clean.
+  //
+  // That is the same mistake as binding to HEAD while the tools consume the working tree, one level
+  // up: precise about a subject that was the wrong subject.
+  //
+  // The base is the merge-base with the integration branch — the point the work diverged — so the
+  // candidate is every commit the branch adds. `--base` overrides it. When no integration branch is
+  // resolvable we fall back to `${commit}^` and SAY SO in the recorded detail, rather than silently
+  // narrowing the subject back to one commit.
+  let base = typeof flags.base === 'string' ? flags.base : '';
+  let baseSource = 'explicit --base';
+  if (!base) {
+    for (const ref of ['main', 'master', 'origin/main', 'origin/master']) {
+      try {
+        const mb = execFileSync('git', ['merge-base', ref, commit], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        if (mb && mb !== commit) { base = mb; baseSource = `merge-base with ${ref}`; break; }
+      } catch { /* ref does not exist here */ }
+    }
+  }
+  if (!base) {
+    try { base = execFileSync('git', ['rev-parse', `${commit}^`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); baseSource = 'single-commit fallback (no integration branch found)'; }
+    catch { return { ok: false, code: 2, reason: `cannot resolve a base for ${commit} — it has no parent and no integration branch was found. Pass --base <sha>.` }; }
+  }
   let diff;
-  try { diff = execFileSync('git', ['diff', `${commit}^`, commit, '--binary'], { encoding: 'utf8' }); }
-  catch { return { ok: false, code: 2, reason: `cannot diff ${commit}^..${commit} — does HEAD have a parent commit?` }; }
+  try { diff = execFileSync('git', ['diff', base, commit, '--binary'], { encoding: 'utf8' }); }
+  catch { return { ok: false, code: 2, reason: `cannot diff ${base}..${commit}` }; }
+  // The changed-file manifest is recorded alongside the diff hash. The hash proves the content did
+  // not change; the manifest is what a human or a policy check can actually read to see the blast
+  // radius of what was approved.
+  let files = [];
+  try { files = execFileSync('git', ['diff', '--name-only', base, commit], { encoding: 'utf8' }).split('\n').filter(Boolean); }
+  catch { /* recorded as empty; the diff hash is still authoritative */ }
   if (!flags.evidence) return { ok: false, reason: '--bind requires --evidence <path to the evidence the review used>' };
   if (!flags.context) return { ok: false, reason: '--bind requires --context <path to the context the review used>' };
   const evidencePath = resolve(process.cwd(), String(flags.evidence));
@@ -475,6 +509,9 @@ function bindApprovalEvidence(flags) {
     ok: true,
     detail: {
       commit,
+      base,
+      base_source: baseSource,
+      files,
       diff_hash: createHash('sha256').update(diff).digest('hex'),
       evidence_hash: createHash('sha256').update(readFileSync(evidencePath)).digest('hex'),
       context_snapshot: createHash('sha256').update(readFileSync(contextPath)).digest('hex'),

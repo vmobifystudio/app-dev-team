@@ -254,6 +254,34 @@ if (ONLY === 'all' || ONLY === 'trace') {
       }
     }
 
+    // THE REVERSE EDGE. Every check above walks the graph FORWARD — this ticket names a
+    // requirement, that requirement has a criterion, that criterion has a test. Walking forward
+    // proves nothing about coverage: it can only report on things that already have a ticket. A
+    // requirement that is in scope and that NOTHING implements is invisible to all of it, because
+    // there is no ticket from which to start walking.
+    //
+    // This is defect-hunting §4b at scope level. Following the value forward proves the pointer is
+    // valid; only following it BACK proves nothing was dropped. Where is scope written, where is it
+    // read, and are they the same set?
+    //
+    // Silence is not a defer. A requirement may be implemented, explicitly deferred, or explicitly
+    // rejected — the last two by a role with the authority to make that call (docs/03-decision-rights.md).
+    // What it may not be is unmentioned, because unmentioned is indistinguishable from forgotten,
+    // and forgotten is exactly what the founder finds out about at release.
+    const implemented = new Set(tickets.map(featureOf).filter(Boolean));
+    const DISPOSED = /\b(deferred|out of scope|rejected|won'?t (do|build|ship)|not in v1|descoped)\b/i;
+    for (const req of byKind('requirement')) {
+      if (implemented.has(req.id)) continue;
+      const line = (req.text || '') + ' ' + (req.note || '');
+      if (DISPOSED.test(line)) continue; // explicitly disposed of, in writing
+      add('requirement_not_implemented', `${req.file}:${req.line}`,
+        `${req.id} is declared in scope and no board row implements it. Every forward check passes — ` +
+        'there is simply no ticket to walk forward FROM, so the requirement is invisible to all of them. ' +
+        'This is how a promised feature reaches release having never been built.',
+        `Add a ticket whose Feature cell is ${req.id}, or record the disposition in the requirement line ` +
+        '(deferred / out of scope / rejected) with the role that decided it.');
+    }
+
     const boardText = tickets.map((r) => Object.values(r).join(' ')).join('\n');
     for (const design of byKind('design')) {
       if (!new RegExp(`\\b${design.id}\\b`).test(boardText)) {
