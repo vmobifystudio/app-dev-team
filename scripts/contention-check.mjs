@@ -42,11 +42,29 @@ try { tickets = reduce(parseEventLog(readFileSync(logPath, 'utf8')).events).tick
 catch (e) { die(2, `cannot read the event log: ${e.message}`); }
 
 /** Files a ticket touches: whatever it declared at creation, plus whatever its approval recorded. */
+/**
+ * Files a ticket touches, taken from the REDUCED state.
+ *
+ * The first version unioned `meta.files` with `detail.files` from every event in the ticket's
+ * history. On an append-only log that makes the set MONOTONIC: it can only ever grow. Measured in
+ * dogfood run 2 — contention refused a dispatch and advised "split the work so the file sets are
+ * disjoint"; the ticket was corrected to a disjoint set; contention refused it again, because the
+ * original, wider set was still in history and the union kept honouring it. The tool's own remedy
+ * could not be carried out by following the tool's own advice.
+ *
+ * Append-only history plus naive aggregation equals a state that cannot be narrowed. The reducer
+ * already answers "what is true NOW" — asking it, rather than re-deriving from raw events, is both
+ * correct and the reason the reducer exists.
+ *
+ * Approval file manifests are still unioned in, because those record what a candidate ACTUALLY
+ * touched rather than what it intended to, and an approval is not something a correction may narrow.
+ */
 function filesOf(state) {
   const out = new Set();
   const declared = state?.meta?.files;
   if (Array.isArray(declared)) declared.forEach((f) => out.add(String(f)));
   for (const e of state?.events || []) {
+    if (e.event !== 'approved') continue;
     const d = typeof e.detail === 'object' ? e.detail : null;
     if (Array.isArray(d?.files)) d.files.forEach((f) => out.add(String(f)));
   }

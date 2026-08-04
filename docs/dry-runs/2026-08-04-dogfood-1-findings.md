@@ -176,3 +176,95 @@ the dogfooding argument predicted.
 
 Re-run. The three fixes above were all in the path between a ticket and an agent, and none of them
 was visible to 1045 assertions or twelve green invariants.
+
+---
+
+# Dogfood run 2 — the three blockers were gone, and five more were behind them
+
+The DF1 fixes worked: dispatch now takes one invocation, contention is composed in, capability roots
+are declared. The run got further and stopped again, still without spawning an agent.
+
+## DF2-001 — the scheduler was a second writable truth (the audit's central defect, live)
+
+The board held two tickets, one claimed and in progress. `docs/team/schedule.json` held
+`"tasks": []`. `dispatch-preflight` believed the SCHEDULER:
+
+```
+dispatch-preflight: ticket STUDIO-001 is not in the scheduler's ready set — ready: [none]
+```
+
+Two writable truths, disagreeing, with the less-informed one deciding whether work can start at all.
+The plan is now DERIVED from the board; the hand-written file supplies per-task overrides only, and a
+plan naming tickets the board has never heard of is a stated error rather than a silent extra.
+
+## DF2-002 — there are two lifecycle vocabularies, and the audit said there was one
+
+The scheduler validates `pending|running|complete|blocked`. The board speaks
+`todo|in_progress|review|qa|done|blocked`. The audit stated the lifecycle vocabulary was already
+single and clean. It is not — and the second one was invisible because nothing had ever fed board
+state into the scheduler.
+
+Mapped at the boundary rather than unified, deliberately: rewriting a working component to serve a
+new caller is the larger change, and the mapping is now the ONE place the two vocabularies meet, so
+a future unification has a single site to delete.
+
+## DF2-003 — the correction path could not correct the field the workflow needed
+
+`contention-check` refuses and advises "split the work so the file sets are disjoint". `corrected`
+could not change `files`. The escape hatch was closed, the sanctioned replacement was built, and the
+replacement did not cover the one field the remedy required. The list of correctable fields was the
+list I thought of, not the list the work demands.
+
+## DF2-004 — append-only history plus a union made corrections one-way
+
+`filesOf` unioned `meta.files` with `detail.files` from every event in a ticket's history. On an
+append-only log that set is MONOTONIC — it can only grow. So a ticket corrected to a disjoint file
+set was still refused, because the original wider set remained in history. Following the tool's own
+advice could never satisfy the tool.
+
+Now taken from the REDUCED state, which is what the reducer exists to answer. Approval manifests are
+still unioned, because those record what a candidate ACTUALLY touched and a correction may not
+narrow an approval.
+
+## DF2-005 — corrections never worked through the CLI, and my test could not tell
+
+`--detail '{"files":[...]}'` arrives from the command line as a STRING. The reducer tested
+`typeof detail === 'object'`, so every correction ever made through the CLI was silently discarded.
+
+**The test I wrote for it passed against a complete no-op.** It asserted "the correction is accepted"
+(exit 0 — true, the event appended) and "a correction cannot move status" (also true when nothing
+happens). Both hold for a function that does nothing at all.
+
+That is a rule that cannot fail, written on the day spent removing them, by someone who had just
+described the failure mode twice in commit messages. The suite could not find it; running the thing
+could. The missing assertion — now present — is simply: **read the value back.**
+
+## Observed working, unprompted
+
+The context manifest went STALE on a real HEAD change mid-run, refusing a dispatch built against an
+older commit. I-06 firing outside its own fixture, on work nobody staged for it.
+
+## Hypotheses after two runs
+
+| # | Hypothesis | Result |
+|---|---|---|
+| H1 | contention fires or proves unwired | CONFIRMED unwired, then fixed and now enforced |
+| H2 | worktree isolation holds under load | **STILL NOT REACHED** |
+| H3 | every event stamped `insecure-local` | CONFIRMED — zero attested events across both runs |
+| H4 | at least one non-cosmetic REQUEST CHANGES | **STILL NOT REACHED** |
+| H5 | board survives with an intact chain | HELD across both runs |
+| H6 | off-domain cost visible | **STILL NOT REACHED** |
+
+Two runs, nine findings, and no agent has been spawned yet. Every one of the nine lives in the seam
+BETWEEN components rather than inside any of them, which is precisely why 1056 assertions and twelve
+green invariants could not see them: each component is correct, and the studio is assembled from
+them incorrectly.
+
+## What is now genuinely proven about orchestration
+
+- A ticket can reach a CLEAR dispatch decision in one invocation.
+- Contention refuses overlapping work and clears once the work is genuinely split.
+- The scheduler and the board agree, because one is derived from the other.
+- A correction can narrow scope and is read back.
+
+None of that was true this morning, and none of it was measurable without running it.

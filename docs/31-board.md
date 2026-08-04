@@ -5,7 +5,7 @@
      Mutate the board with `node scripts/board.mjs move <ID> <event> --by <role>`;
      a hand edit is silently overwritten by the next render and is invisible to every rule. -->
 
-Generated 2026-08-04T11:21:02.898Z from 2 ticket(s).
+Generated 2026-08-04T12:39:04.443Z from 2 ticket(s).
 
 | ID | Feature | Title | Owner | Reviewer | Status | Cycles | Depends on | Estimate | Spec | Acceptance | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|

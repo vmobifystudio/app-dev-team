@@ -316,10 +316,33 @@ function reduce(events) {
       // universal bypass of the whole state machine — every guard in this file could be sidestepped
       // by "correcting" a row into `done`. Only the descriptive fields are writable.
       case 'corrected': {
-        const fields = (typeof detail === 'object' && detail) || {};
+        // `--detail` ARRIVES AS A STRING FROM THE CLI. cmdMove only keeps an object when the caller
+        // is in-process; a shell invocation passes JSON text, so `typeof detail === 'object'` was
+        // false for every correction ever made through the command line and the whole case body was
+        // skipped in silence.
+        //
+        // MY OWN TEST COULD NOT SEE IT. It asserted "the correction is accepted" (exit 0 — true, the
+        // event appended) and "a correction cannot move status" (also true when NOTHING happens).
+        // Both assertions pass against a no-op. That is a rule that cannot fail, written by someone
+        // who had just spent the day removing them. Found by dogfood run 2, when a corrected file
+        // set had no effect on contention.
+        let parsed = detail;
+        if (typeof parsed === 'string' && parsed.trim().startsWith('{')) {
+          try { parsed = JSON.parse(parsed); } catch { parsed = null; }
+        }
+        const fields = (typeof parsed === 'object' && parsed) || {};
         for (const f of ['title', 'feature', 'acceptance', 'spec', 'notes', 'estimate']) {
           if (typeof fields[f] === 'string') state.meta[f] = fields[f];
         }
+        // `files` IS CORRECTABLE, and leaving it out was FC-001 in the correction path itself.
+        //
+        // Dogfood run 2: contention refused a dispatch and advised "split the work so the file sets
+        // are disjoint" — and `corrected` could not change `files`, so the studio's own remedy was
+        // unreachable through the studio's own sanctioned route. The escape hatch was closed, the
+        // replacement was built, and the replacement did not cover the field the workflow actually
+        // needed. The list of correctable fields was the list I thought of, not the list the work
+        // requires.
+        if (Array.isArray(fields.files)) state.meta.files = fields.files.map(String);
         // `owner` is corrigible because a mis-assigned ticket is a real and common mistake, and
         // leaving it wrong forces the hand-edit this event exists to replace.
         if (typeof fields.owner === 'string' && fields.owner) state.owner = fields.owner;

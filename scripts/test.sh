@@ -6310,6 +6310,16 @@ FCO="$TMP/fc-correct"; rm -rf "$FCO"; mkdir -p "$FCO"; ( cd "$FCO" && git init -
 bm "$FCO" add T-001 --title "Widgit expoort" --owner ios-developer >/dev/null 2>&1
 assert_exit 0 "a ticket's metadata can be corrected through the CLI" \
   bm "$FCO" move T-001 corrected --by tech-manager --detail '{"title":"Widget export"}'
+# THE ASSERTION THAT WAS MISSING, AND WHY THE DEFECT SURVIVED. The two checks around this one —
+# "the correction is accepted" (exit 0) and "a correction cannot move status" — are BOTH TRUE WHEN
+# NOTHING HAPPENS. They passed against a complete no-op for the whole life of the feature: `--detail`
+# arrives from the CLI as a STRING, the reducer tested `typeof detail === "object"`, and every
+# correction made through the command line was silently discarded. Found by dogfood run 2, not by
+# this suite. A test that cannot distinguish "it worked" from "it did nothing" is a rule that cannot
+# fail — written, in this case, by someone who had spent the day removing them.
+if bm "$FCO" show T-001 --json 2>/dev/null | grep -q "Widget export"; then
+  ok "...and the corrected value is actually READ BACK (not silently discarded)"
+else bad "...and the corrected value is actually READ BACK (not silently discarded)"; fi
 # A correction must NEVER move status, or it becomes a universal bypass of the state machine.
 bm "$FCO" move T-001 corrected --by tech-manager --detail '{"status":"done","title":"x"}' >/dev/null 2>&1
 if bm "$FCO" show T-001 2>/dev/null | grep -q "todo"; then
@@ -6383,6 +6393,43 @@ printf '{"schema":"capability-manifest/v1","root":"../..","roles":[{"role":"ios-
   > "$FCM/docs/team/capabilities.json"
 assert_exit 0 "...and resolves correctly once the root is declared" \
   node "$HERE/capability-check.mjs" --manifest "$FCM/docs/team/capabilities.json" --role ios-developer --operation write --path scripts/lib/args.mjs
+
+# --- dogfood run 2: the scheduler was a second writable truth --------------------------------
+# The board held two tickets, one claimed and in progress. docs/team/schedule.json held "tasks": [].
+# dispatch-preflight believed the SCHEDULER and refused to dispatch a ticket the board said was
+# already being worked. The audit called multiple writable truths the central architectural defect;
+# this is that defect deciding whether work can start at all.
+FCS="$TMP/fc-sched"; rm -rf "$FCS"; mkdir -p "$FCS/docs/team"; ( cd "$FCS" && git init -q . )
+bm "$FCS" add SCH-001 --title a --owner ios-developer >/dev/null 2>&1
+bm "$FCS" add SCH-002 --title b --owner android-developer >/dev/null 2>&1
+bm "$FCS" move SCH-001 claimed --by ios-developer >/dev/null 2>&1
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[]}\n' > "$FCS/docs/team/schedule.json"
+SCH_OUT=$(node "$HERE/scheduler.mjs" --plan "$FCS/docs/team/schedule.json" --log "$FCS/docs/31-board-events.jsonl" 2>&1)
+if printf '%s' "$SCH_OUT" | grep -q "SCH-002"; then
+  ok "the scheduler derives its task set from the board, not from a hand-maintained file"
+else bad "the scheduler derives its task set from the board, not from a hand-maintained file" "$SCH_OUT"; fi
+# A ticket already in flight must NOT be offered as ready — that is what "running" means.
+if printf '%s' "$SCH_OUT" | grep -A3 '"ready"' | grep -q "SCH-001"; then
+  bad "...and a ticket already in flight is not offered as ready"
+else ok "...and a ticket already in flight is not offered as ready"; fi
+# Scheduling a ticket the board has never heard of is a stated error, not a silent extra.
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[{"id":"GHOST-9","owner":"ios-developer","status":"pending"}]}\n' \
+  > "$FCS/docs/team/schedule.json"
+assert_exit 1 "...and a plan naming a ticket the board does not have is refused" \
+  node "$HERE/scheduler.mjs" --plan "$FCS/docs/team/schedule.json" --log "$FCS/docs/31-board-events.jsonl"
+
+# Corrections must be able to NARROW a file set, or the studio's own remedy for a contention refusal
+# is unreachable. Append-only history plus a union made the set monotonic: it could only grow, so
+# following contention-check's advice could never satisfy contention-check.
+FCN="$TMP/fc-narrow"; rm -rf "$FCN"; mkdir -p "$FCN"; ( cd "$FCN" && git init -q . )
+bm "$FCN" add N-001 --title a --owner ios-developer --file "src/A.swift,src/B.swift" >/dev/null 2>&1
+bm "$FCN" add N-002 --title b --owner android-developer --file "src/B.swift" >/dev/null 2>&1
+bm "$FCN" move N-001 claimed --by ios-developer >/dev/null 2>&1
+assert_exit 1 "an overlapping ticket is refused before the correction" \
+  node "$HERE/contention-check.mjs" --log "$FCN/docs/31-board-events.jsonl" --ticket N-002
+bm "$FCN" move N-002 corrected --by tech-manager --detail '{"files":["src/C.swift"]}' >/dev/null 2>&1
+assert_exit 0 "...and clears once the file set is NARROWED by a correction" \
+  node "$HERE/contention-check.mjs" --log "$FCN/docs/31-board-events.jsonl" --ticket N-002
 
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER

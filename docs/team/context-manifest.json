@@ -1,7 +1,7 @@
 {
   "schema": "context-manifest/v2",
-  "snapshot_id": "CTX-ab60c91837f6f528",
-  "generated_at": "2026-08-04T11:26:43.179Z",
+  "snapshot_id": "CTX-3255fbdca4d1ca2f",
+  "generated_at": "2026-08-04T12:38:07.532Z",
   "root": "/Users/amolpomane/Documents/Mobify Studio Apps/app-dev-team",
   "ticket": "STUDIO-002",
   "role": "android-developer",
@@ -16,7 +16,7 @@
     "ea97a05ef4089c95"
   ],
   "git": {
-    "head": "8fe632ac88b0b13805abc88bc5aec40b404f0c38",
+    "head": "84259a5049f674cba5e1f3d8ab1ec353e9e39afd",
     "branch": "feat/f18-f21-remaining-kernel"
   },
   "sources": [
@@ -25,7 +25,7 @@
       "layer": "ticket",
       "precedence": 3,
       "path": "docs/31-board.md",
-      "sha256": "eee7d6c0405f2dba242fbb343feb1e4671a1efe9a64f214ae9305ef08f7d4ab5",
+      "sha256": "0193de6a486389fc5096950feeb91a8f70ed6024c12d8d359815911931930a9e",
       "bytes": 1323,
       "reason": "declared source"
     }
