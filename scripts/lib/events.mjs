@@ -27,6 +27,19 @@ import { checkCapability } from './capabilities.mjs';
 
 const EVENTS = new Set([
   'created',
+  // `corrected` is the SANCTIONED way to fix a ticket's metadata — a typo in a title, a wrong
+  // owner, a feature ID that names the wrong requirement.
+  //
+  // IT EXISTS BECAUSE ITS ABSENCE CAUSED A WORSE PROBLEM. There was no legal way to correct a
+  // field, so agents edited docs/31-board.md directly — which is precisely the behaviour the
+  // log-authoritative change made illegal. Closing an escape hatch without providing the sanctioned
+  // route does not remove the pressure; it relocates it, and the next hatch is usually less visible
+  // than the one you shut. The two have to ship together.
+  //
+  // A correction is an APPEND like everything else: the original event stays, the correction states
+  // what changed and why, and history shows both. Nothing is rewritten, so the chain still proves
+  // what it always proved.
+  'corrected',
   'claimed',
   'assigned',
   'done_reported',
@@ -67,11 +80,15 @@ const key = (id) => String(id ?? '').toUpperCase();
 
 /** What may legally happen next, keyed by derived status. Anything absent is refused. */
 function legalEvents(state) {
+  // `corrected` is legal from EVERY state, including terminal ones. A typo in a closed ticket's
+  // title is still a typo, and refusing to fix it is what sends someone to the Markdown. It cannot
+  // move a ticket (see the reducer), so allowing it everywhere costs no safety.
+  const withCorrection = (events) => [...events, 'corrected'];
   switch (state.status) {
     case 'todo':
-      return ['claimed', 'assigned', 'blocked'];
+      return withCorrection(['claimed', 'assigned', 'blocked']);
     case 'in_progress':
-      if (state.verifyPending) return ['verified', 'verified_static', 'rejected', 'blocked', 'assigned'];
+      if (state.verifyPending) return withCorrection(['verified', 'verified_static', 'rejected', 'blocked', 'assigned']);
       // `review_requested` is listed whether or not a verification is on record. This function
       // answers "what does the STATUS allow"; whether the DONE was actually checked is a
       // PRECONDITION, and it is enforced below with a reason worth reading.
@@ -82,9 +99,9 @@ function legalEvents(state) {
       // legal list were dead code. Two checks for one rule, one of which could never run.
       // mutate.sh found it: M09 was the single surviving mutation of sixteen, because breaking a
       // guard nothing reaches breaks no assertion.
-      return ['review_requested', 'done_reported', 'blocked', 'assigned'];
+      return withCorrection(['review_requested', 'done_reported', 'blocked', 'assigned']);
     case 'review':
-      return ['started', 'approved', 'changes', 'merged', 'blocked', 'assigned'];
+      return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned']);
     case 'qa':
       // `verified` is legal here so a ticket merged on a STATIC verification can be upgraded once
       // the executable suite finally runs. Without that there is no path from `qa (static only)` to
@@ -93,11 +110,11 @@ function legalEvents(state) {
         ? ['closed', 'verified', 'qa_failed', 'blocked']
         : ['qa_passed', 'verified', 'qa_failed', 'blocked'];
     case 'done':
-      return [];
+      return withCorrection([]);
     case 'blocked':
-      return ['unblocked'];
+      return withCorrection(['unblocked']);
     default:
-      return [];
+      return withCorrection([]);
   }
 }
 
@@ -295,6 +312,19 @@ function reduce(events) {
     state.events.push(event);
 
     switch (name) {
+      // A correction changes METADATA, never STATUS. Letting it move a ticket would make it a
+      // universal bypass of the whole state machine — every guard in this file could be sidestepped
+      // by "correcting" a row into `done`. Only the descriptive fields are writable.
+      case 'corrected': {
+        const fields = (typeof detail === 'object' && detail) || {};
+        for (const f of ['title', 'feature', 'acceptance', 'spec', 'notes', 'estimate']) {
+          if (typeof fields[f] === 'string') state.meta[f] = fields[f];
+        }
+        // `owner` is corrigible because a mis-assigned ticket is a real and common mistake, and
+        // leaving it wrong forces the hand-edit this event exists to replace.
+        if (typeof fields.owner === 'string' && fields.owner) state.owner = fields.owner;
+        break;
+      }
       case 'assigned':
         state.owner = (typeof detail === 'object' ? detail.to : detail) || by || state.owner;
         break;

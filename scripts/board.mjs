@@ -430,6 +430,10 @@ function cmdAdd(id, flags, paths, idempotencyKey = '') {
       ? String(flags.invariant).split(';').map((s) => scrub('--invariant', s.trim())).filter(Boolean)
       : [],
     rollback: scrub('--rollback', flags.rollback || ''),
+    // The file set is RECORDED, not just used to derive a risk tier and discarded. Contention
+    // control needs to know what work touches what, and a value consumed once at creation and
+    // thrown away cannot answer that later.
+    files: flags.file ? String(flags.file).split(',').map((f) => f.trim()).filter(Boolean) : [],
     ...(() => {
       const decision = deriveRisk(flags, paths);
       // `risk` stays a bare string: board-render, events.mjs's review_requested guard and the

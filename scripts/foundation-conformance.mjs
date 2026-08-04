@@ -320,12 +320,37 @@ invariant('I-08', 'Bidirectional scope coverage', true, () => sandbox((dir) => {
 // ---------------------------------------------------------------------------------------------
 // I-09  Criterion-level proof
 // ---------------------------------------------------------------------------------------------
-invariant('I-09', 'Criterion-level proof', true, () => {
-  const hit = run('grep', ['-rlE', 'criterion[_-]?evidence|evidence[_-]?registry', join(ROOT, 'scripts')], ROOT);
-  return hit.code === 0
-    ? { state: 'PASS', detail: 'each acceptance criterion maps to required evidence' }
-    : { state: 'FAIL', detail: 'no criterion→evidence mapping: a generic green test stands in for criterion proof' };
-});
+invariant('I-09', 'Criterion-level proof', true, () => sandbox((dir) => {
+  // Behavioural: a generic green suite must NOT stand in for a specific criterion. That
+  // substitution is how a feature ships having satisfied its own interpretation and nothing else.
+  mkdirSync(join(dir, 'docs/team'), { recursive: true });
+  mkdirSync(join(dir, 'artifacts'), { recursive: true });
+  writeFileSync(join(dir, 'artifacts/ac1.png'), 'screenshot bytes\n');
+  const digest = run('node', ['-e',
+    "const c=require('crypto'),f=require('fs');process.stdout.write(c.createHash('sha256').update(f.readFileSync('artifacts/ac1.png')).digest('hex'))"], dir).out.trim();
+  writeFileSync(join(dir, 'docs/team/criteria.json'), JSON.stringify({
+    schema: 'criteria/v1',
+    criteria: [
+      { id: 'AC-001', ticket: 'T-001', text: 'a saved reading survives a restart', evidence: [{ path: 'artifacts/ac1.png', sha256: digest }] },
+      { id: 'AC-002', ticket: 'T-001', text: 'the export button is reachable', evidence: [] },
+    ],
+  }));
+  const cc = join(ROOT, 'scripts/criterion-check.mjs');
+  // AC-002 has no evidence at all. "Trivially satisfied" is the wrong reading — it is UNPROVEN.
+  const withGap = run('node', [cc, '--root', dir], dir);
+  if (withGap.code === 0) return { state: 'FAIL', detail: 'a criterion naming no evidence was reported as satisfied' };
+  // ...and evidence that exists but no longer matches its digest is STALE, not proof.
+  writeFileSync(join(dir, 'docs/team/criteria.json'), JSON.stringify({
+    schema: 'criteria/v1',
+    criteria: [{ id: 'AC-001', ticket: 'T-001', text: 'x', evidence: [{ path: 'artifacts/ac1.png', sha256: digest }] }],
+  }));
+  const clean = run('node', [cc, '--root', dir], dir);
+  if (clean.code !== 0) return { state: 'FAIL', detail: `a fully proven criterion was still reported unproven: ${clean.out.trim().split('\n')[1] || ''}` };
+  writeFileSync(join(dir, 'artifacts/ac1.png'), 'a DIFFERENT run\n');
+  const moved = run('node', [cc, '--root', dir], dir);
+  if (moved.code === 0) return { state: 'FAIL', detail: 'the criterion stayed proven after its evidence was overwritten with different bytes' };
+  return { state: 'PASS', detail: 'each criterion names its own evidence, matched by digest; a gap or a changed artifact blocks' };
+}));
 
 // ---------------------------------------------------------------------------------------------
 // I-10  Durable recovery
@@ -350,14 +375,39 @@ invariant('I-10', 'Durable recovery', true, () => sandbox((dir) => {
 // ---------------------------------------------------------------------------------------------
 // I-11  One readiness reducer
 // ---------------------------------------------------------------------------------------------
-invariant('I-11', 'One readiness reducer', true, () => {
-  // The grep version of this check matched exactly one file — ITSELF — and reported PASS. Any
-  // check whose only evidence is its own source text is measuring nothing. Exclude self.
-  const hit = run('grep', ['-rlE', '--exclude=foundation-conformance.mjs', 'readiness[_-]?reduce|reduceReadiness', join(ROOT, 'scripts')], ROOT);
-  return hit.code === 0
-    ? { state: 'PASS', detail: `one readiness reducer, consumed by: ${hit.out.trim().split('\n').length} surface(s)` }
-    : { state: 'FAIL', detail: 'no single readiness reducer: CLI, dashboard and control-room each compute their own picture' };
-});
+invariant('I-11', 'One readiness reducer', true, () => sandbox((dir) => {
+  // Behavioural. The grep version matched only its own source file and reported PASS — the same
+  // trap that flattered I-05 and I-06. What matters is that two SURFACES agree, so this asks both.
+  run('git', ['config', 'user.email', 't@t'], dir); run('git', ['config', 'user.name', 't'], dir);
+  mkdirSync(join(dir, 'docs/team'), { recursive: true });
+  writeFileSync(join(dir, 'docs/team/journey-result.json'), JSON.stringify({
+    schema: 'gate-result/v1', gate: 'journey-gate', subject: { head: 'deadbeef', dirty: false },
+    result: 'PASS', journeys: [],
+  }));
+  writeFileSync(join(dir, 'a.txt'), 'x\n');
+  run('git', ['add', '-A'], dir); run('git', ['commit', '-qm', 'c1'], dir);
+
+  const cli = run('node', [join(ROOT, 'scripts/readiness.mjs'), '--root', dir, '--json'], dir);
+  let fromCli;
+  try { fromCli = JSON.parse(cli.out); } catch { return { state: 'FAIL', detail: 'the readiness CLI did not emit parseable state' }; }
+
+  // The dashboard's assembled state must carry the SAME object, not its own recomputation.
+  const dash = run('node', ['-e',
+    `import(${JSON.stringify(join(ROOT, 'scripts/lib/readiness.mjs'))}).then((m) => ` +
+    `process.stdout.write(JSON.stringify(m.reduceReadiness(${JSON.stringify(dir)}))));`], dir);
+  let fromLib;
+  try { fromLib = JSON.parse(dash.out); } catch { return { state: 'FAIL', detail: 'the shared reducer did not emit parseable state' }; }
+
+  if (JSON.stringify(fromCli.gates) !== JSON.stringify(fromLib.gates) || fromCli.verdict !== fromLib.verdict) {
+    return { state: 'FAIL', detail: `the CLI and the shared reducer disagree (${fromCli.verdict} vs ${fromLib.verdict})` };
+  }
+  // The verdict must be STALE here: the recorded subject is not this candidate. If it reported
+  // PASS, a release could go out on a verdict about a different commit entirely.
+  if (fromCli.verdict !== 'STALE') {
+    return { state: 'FAIL', detail: `a gate result recorded for a different commit yielded "${fromCli.verdict}", not STALE` };
+  }
+  return { state: 'PASS', detail: 'CLI and dashboard project one reducer; a verdict about another candidate reads STALE' };
+}));
 
 // ---------------------------------------------------------------------------------------------
 // I-12  Human-only publication

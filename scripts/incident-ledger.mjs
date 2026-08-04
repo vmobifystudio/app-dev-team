@@ -2,11 +2,12 @@
 /** Small append-only incident/release-health record, separate from ticket completion state. */
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { withFileLock } from './lib/atomic.mjs';
+import { resolveActor } from './lib/actor.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
 const die = (code, message) => { process.stderr.write(`incident-ledger: ${message}\n`); process.exit(code); };
-const { flags, positional } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['ledger', 'id', 'severity', 'title', 'owner', 'detail', 'by', 'status', 'evidence']), die });
+const { flags, positional } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['ledger', 'id', 'severity', 'title', 'owner', 'detail', 'by', 'status', 'evidence', 'actor', 'actor-token']), die });
 const command = positional[0]; const path = resolve(String(flags.ledger || 'docs/team/incidents.jsonl'));
 function records() { if (!existsSync(path)) return []; const lines = readFileSync(path, 'utf8').split('\n').filter(Boolean); let previous = ''; return lines.map((line, index) => { let r; try { r = JSON.parse(line); } catch { die(2, `malformed record at line ${index + 1}`); } const expected = createHash('sha256').update(`${previous}\n${JSON.stringify({ ...r, hash: undefined })}`).digest('hex'); if (r.prev_hash !== previous || r.hash !== expected) die(2, `incident chain broken at line ${index + 1}`); previous = r.hash; return r; }); }
 function required(name) { if (!flags[name] || flags[name] === true) die(2, `--${name} needs a value`); return String(flags[name]); }
@@ -14,7 +15,30 @@ function required(name) { if (!flags[name] || flags[name] === true) die(2, `--${
 // one operation: two concurrent `open` calls both reading the same tip is how a hash chain forks,
 // and an incident ledger that forks during an incident is the worst possible moment to lose the
 // record. Same primitive, so there is one lock semantics in the repo rather than four.
-function append(event, fields) { return withFileLock(path, () => { const all = records(); const previous = all.at(-1)?.hash || ''; const r = { schema: 'incident-ledger/v1', ts: new Date().toISOString(), event, ...fields, prev_hash: previous }; r.hash = createHash('sha256').update(`${previous}\n${JSON.stringify({ ...r, hash: undefined })}`).digest('hex'); mkdirSync(dirname(path), { recursive: true }); appendFileSync(path, `${JSON.stringify(r)}\n`); console.log(JSON.stringify(r)); }, { die }); }
+/**
+ * Stamp the actor/v1 envelope, the same way board.mjs does.
+ *
+ * FC-001 SWEEP, DONE DELIBERATELY RATHER THAN LATER. Attestation landed in board.mjs first, and
+ * this repository's defining failure is the fix that reaches one mechanism and stops. An incident
+ * ledger where `--by` is still a free string, sitting next to a board where it is proven, is worse
+ * than neither: it invites the belief that authorship is verified everywhere.
+ */
+function actorFor(event) {
+  const root = dirname(dirname(dirname(path)));
+  let requireAttested = false;
+  try { requireAttested = JSON.parse(readFileSync(resolve(root, '.studio-policy.json'), 'utf8')).requireAttestedActors === true; }
+  catch { /* default regime */ }
+  const r = resolveActor({
+    root, role: String(flags.by || ''), ticket: String(flags.id || ''), event, ts: '',
+    token: typeof flags['actor-token'] === 'string' ? flags['actor-token'] : '',
+    actorId: typeof flags.actor === 'string' ? flags.actor : '',
+    requireAttested,
+  });
+  if (!r.ok) die(r.code, `refusing ${event}: ${r.reason}`);
+  return r.actor;
+}
+
+function append(event, fields) { return withFileLock(path, () => { const all = records(); const previous = all.at(-1)?.hash || ''; const r = { schema: 'incident-ledger/v1', ts: new Date().toISOString(), event, ...fields, actor: actorFor(event), prev_hash: previous }; r.hash = createHash('sha256').update(`${previous}\n${JSON.stringify({ ...r, hash: undefined })}`).digest('hex'); mkdirSync(dirname(path), { recursive: true }); appendFileSync(path, `${JSON.stringify(r)}\n`); console.log(JSON.stringify(r)); }, { die }); }
 if (!command) die(2, 'usage: open|update|resolve|verify');
 const all = records();
 if (command === 'open') { const severity = required('severity'); if (!['sev1', 'sev2', 'sev3', 'sev4'].includes(severity)) die(2, 'severity must be sev1, sev2, sev3, or sev4'); append('opened', { incident_id: String(flags.id || `INC-${randomUUID()}`), severity, title: required('title'), owner: required('owner'), status: 'open', detail: flags.detail || null, by: flags.by || null }); }

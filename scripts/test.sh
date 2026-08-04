@@ -6245,6 +6245,107 @@ bm "$FCP" move PAY-001 approved --by security-reviewer >/dev/null 2>&1
 assert_exit 0 "...and merges once every required approval is recorded" \
   bm "$FCP" move PAY-001 merged --by tech-manager
 
+# --- F18: one readiness reducer, projected by every surface (I-11) ----------------------------
+# /app-status, studio-dashboard and control-room each assembled their own picture of "where is this
+# release". Three readers, three sets of judgement calls, no rule saying they must agree — so a
+# founder reading the dashboard and an agent reading the CLI could act on different beliefs, both
+# sincerely, with nothing to reconcile them.
+FCRD="$TMP/fc-readiness"; rm -rf "$FCRD"; mkdir -p "$FCRD/docs/team"
+( cd "$FCRD" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm c1 )
+printf '{"schema":"gate-result/v1","gate":"journey-gate","subject":{"head":"deadbeef","dirty":false},"result":"PASS","journeys":[]}\n' \
+  > "$FCRD/docs/team/journey-result.json"
+# A PASS recorded for a DIFFERENT commit must read STALE, never PASS. Reading it as PASS is how a
+# release goes out on a verdict about something else entirely.
+assert_exit 1 "a gate result recorded for another candidate reads STALE, not PASS" \
+  node "$HERE/readiness.mjs" --root "$FCRD"
+node "$HERE/readiness.mjs" --root "$FCRD" 2>&1 | grep -q "STALE is not a failure" \
+  && ok "...and says plainly that STALE is not a product failure" \
+  || bad "...and says plainly that STALE is not a product failure"
+# The CLI and the shared reducer must emit the same verdict — that is the whole point of one reducer.
+RD_CLI=$(node "$HERE/readiness.mjs" --root "$FCRD" --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).verdict)}catch{process.stdout.write("PARSE-FAIL")}})')
+RD_LIB=$(node -e "import('$HERE/lib/readiness.mjs').then(m=>process.stdout.write(m.reduceReadiness('$FCRD').verdict))" 2>/dev/null)
+if [ "$RD_CLI" = "$RD_LIB" ] && [ "$RD_CLI" = "STALE" ]; then
+  ok "the CLI and the shared reducer report the same verdict"
+else bad "the CLI and the shared reducer report the same verdict" "cli=$RD_CLI lib=$RD_LIB"; fi
+
+# --- I-09: a criterion names its own proof -----------------------------------------------------
+# verify-done runs the suite; qa_passed records that QA exercised the ticket. Neither says anything
+# about a SPECIFIC criterion, so a green suite can coexist with the one behaviour the founder asked
+# for never having been exercised.
+FCC2="$TMP/fc-criterion"; rm -rf "$FCC2"; mkdir -p "$FCC2/docs/team" "$FCC2/artifacts"
+printf 'screenshot bytes\n' > "$FCC2/artifacts/ac1.png"
+CH=$(node -e "const c=require('crypto'),f=require('fs');process.stdout.write(c.createHash('sha256').update(f.readFileSync('$FCC2/artifacts/ac1.png')).digest('hex'))")
+cat > "$FCC2/docs/team/criteria.json" <<CJ
+{"schema":"criteria/v1","criteria":[
+ {"id":"AC-001","ticket":"T-001","text":"a saved reading survives a restart",
+  "evidence":[{"path":"artifacts/ac1.png","sha256":"$CH"}]}]}
+CJ
+assert_exit 0 "a criterion backed by matching evidence is proven" \
+  node "$HERE/criterion-check.mjs" --root "$FCC2"
+# Same path, same name, still non-empty — only the digest can tell it is a different artifact.
+printf "a DIFFERENT run\n" > "$FCC2/artifacts/ac1.png"
+assert_exit 1 "...and becomes UNPROVEN when its evidence is overwritten with different bytes" \
+  node "$HERE/criterion-check.mjs" --root "$FCC2"
+# A criterion with no evidence is UNPROVEN, not trivially satisfied.
+printf '{"schema":"criteria/v1","criteria":[{"id":"AC-002","ticket":"T-001","text":"reachable","evidence":[]}]}\n' \
+  > "$FCC2/docs/team/criteria.json"
+assert_exit 1 "a criterion naming no evidence is unproven, not trivially satisfied" \
+  node "$HERE/criterion-check.mjs" --root "$FCC2"
+# No registry at all is CANNOT EVALUATE, never CLEAR — an absent contract must not read as a passing one.
+FCC3="$TMP/fc-criterion-none"; rm -rf "$FCC3"; mkdir -p "$FCC3"
+assert_exit 2 "no criteria registry is CANNOT EVALUATE, never a pass" \
+  node "$HERE/criterion-check.mjs" --root "$FCC3"
+
+# --- F20: the sanctioned correction path (and why it had to ship WITH the hand-edit ban) --------
+# There was no legal way to fix a typo in a ticket field, so agents edited docs/31-board.md — the
+# behaviour the log-authoritative change made illegal. Closing an escape hatch without providing the
+# sanctioned route relocates the pressure rather than removing it, and the next hatch is usually
+# less visible than the one you shut.
+FCO="$TMP/fc-correct"; rm -rf "$FCO"; mkdir -p "$FCO"; ( cd "$FCO" && git init -q . )
+bm "$FCO" add T-001 --title "Widgit expoort" --owner ios-developer >/dev/null 2>&1
+assert_exit 0 "a ticket's metadata can be corrected through the CLI" \
+  bm "$FCO" move T-001 corrected --by tech-manager --detail '{"title":"Widget export"}'
+# A correction must NEVER move status, or it becomes a universal bypass of the state machine.
+bm "$FCO" move T-001 corrected --by tech-manager --detail '{"status":"done","title":"x"}' >/dev/null 2>&1
+if bm "$FCO" show T-001 2>/dev/null | grep -q "todo"; then
+  ok "...but a correction cannot move a ticket's status"
+else bad "...but a correction cannot move a ticket's status"; fi
+# Append, not rewrite: the original wording stays in history.
+if grep -q "Widgit expoort" "$FCO/docs/31-board-events.jsonl"; then
+  ok "...and the original value remains in history (append, never rewrite)"
+else bad "...and the original value remains in history (append, never rewrite)"; fi
+
+# --- F19: two agents must not be dispatched into the same files --------------------------------
+# eval/shared-file-collision has been a golden fixture for this with no detector. Deliberately AFTER
+# the atomic kernel: contention control on a racy append would be a lock built on sand.
+FCT="$TMP/fc-contend"; rm -rf "$FCT"; mkdir -p "$FCT"; ( cd "$FCT" && git init -q . )
+bm "$FCT" add A-001 --title a --owner ios-developer --file "src/Checkout.swift,src/Cart.swift" >/dev/null 2>&1
+bm "$FCT" add B-002 --title b --owner android-developer --file "src/Cart.swift" >/dev/null 2>&1
+bm "$FCT" add C-003 --title c --owner ios-developer --file "src/Profile.swift" >/dev/null 2>&1
+bm "$FCT" add D-004 --title d --owner ios-developer >/dev/null 2>&1
+bm "$FCT" move A-001 claimed --by ios-developer >/dev/null 2>&1
+assert_exit 1 "dispatching into files an in-flight ticket already holds is refused" \
+  node "$HERE/contention-check.mjs" --log "$FCT/docs/31-board-events.jsonl" --ticket B-002
+assert_exit 0 "...while disjoint work is clear" \
+  node "$HERE/contention-check.mjs" --log "$FCT/docs/31-board-events.jsonl" --ticket C-003
+assert_exit 2 "...and a ticket declaring no files is CANNOT EVALUATE, never a clearance" \
+  node "$HERE/contention-check.mjs" --log "$FCT/docs/31-board-events.jsonl" --ticket D-004
+
+# --- F6: the toolchain contract (a broken host must never read as a broken app) ----------------
+FCPP="$TMP/fc-profile"; rm -rf "$FCPP"; mkdir -p "$FCPP"
+assert_exit 2 "toolchain doctor with no profile is CANNOT EVALUATE" \
+  node "$HERE/project-profile.mjs" doctor --root "$FCPP"
+node "$HERE/project-profile.mjs" init --root "$FCPP" --build "definitely-not-a-real-binary build" >/dev/null 2>&1
+assert_exit 1 "...and BLOCKED when a declared command is absent on this host" \
+  node "$HERE/project-profile.mjs" doctor --root "$FCPP"
+node "$HERE/project-profile.mjs" doctor --root "$FCPP" 2>&1 | grep -q "ENVIRONMENT fact, not a product fact" \
+  && ok "...saying explicitly that this is an environment fact, not a product fact (DR4-001)" \
+  || bad "...saying explicitly that this is an environment fact, not a product fact (DR4-001)"
+# Re-running init would mint a new project_id and orphan every artifact naming the old one.
+assert_exit 1 "re-running init is refused so a project_id cannot silently change" \
+  node "$HERE/project-profile.mjs" init --root "$FCPP"
+
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
 # conflicted file untouched. A broken agent file reached the base branch and was found two merges
