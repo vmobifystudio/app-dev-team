@@ -734,6 +734,7 @@ const CANONICAL_PATHS = [
   'docs/53-reviews/APP-NNN-cycle-N.md',      // a review verdict
   'docs/team/ship-gate-verdict.json',        // ship-gate.sh --record's last verdict
   'docs/team/memory.jsonl',                  // memory-curator.mjs's proposed/reviewed ledger
+  'docs/team/journeys/README.md',            // the journey-declaration contract journey-gate reads
 ];
 // Structural references that name no artifact: the directories themselves, the glob the standup
 // reads a day's fragments with, and the archive consumed fragments are moved to.

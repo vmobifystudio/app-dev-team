@@ -17,8 +17,8 @@ say-so alone.
 | **0.3** metadata drift + checker blind spot | **FIXED** | plugin.json 29→30; checker now inspects every manifest and rejects the "to a shipped app" overclaim; both mirror-tested |
 | **0.5** stale eval narratives | **FIXED** + made self-detecting | `last_verified_at` on all 16 manifests; a regression forbids the corrected claim from returning; workflow paths must resolve |
 | **4.2** adversarial review institutionalized | **DONE** | `defect-hunting` §4b + required in `code-reviewer.md`, 8 assertions incl. mirror test |
-| **0.2** ship-gate `--head` | **FIXED**, verification in progress | see §1.1 V-2 |
-| **4.1** journey gate | Not started — deferred deliberately, see below | |
+| **0.2** ship-gate `--head` | **FIXED** | non-git root is now a stated UNKNOWN rather than the silent pass omission produced |
+| **4.1** journey gate | **BUILT** (`scripts/journey-gate.mjs`), drivers deliberately not | 21 assertions incl. mirror test; wired into `/app-build` step 5 |
 
 **Two findings the work itself produced, both worth more than the fixes:**
 

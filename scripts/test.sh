@@ -1772,6 +1772,97 @@ grep -q "scripts/portfolio.mjs" "$PCMD" && ok "...and invokes scripts/portfolio.
 
 echo
 # --------------------------------------------------------------------------------------------
+echo "journey-gate (the product-correctness half)"
+# --------------------------------------------------------------------------------------------
+# Six dry runs measured the gates catching every PROCESS defect and ZERO PRODUCT defects. The
+# closest thing that existed, runtime-gate, proves the app built/installed/launched/stayed alive —
+# true, useful, and entirely compatible with a splash screen that does nothing the user asked for.
+# This gate proves a DECLARED JOURNEY completed. Its two load-time refusals are the interesting
+# part: they encode the two ways a journey lies about itself.
+JG="$HERE/journey-gate.mjs"
+jgproj() { d="$TMP/$1"; rm -rf "$d"; mkdir -p "$d/docs/team/journeys"; printf '%s' "$d"; }
+
+# No declaration is CANNOT EVALUATE. Nothing states what the product must do, so nothing was checked.
+JGNONE=$(jgproj jg-none); rm -rf "$JGNONE/docs/team/journeys"
+assert_exit 2 "no journey declarations is CANNOT EVALUATE, never a pass" node "$JG" --root "$JGNONE"
+assert_has "$TMP/out" "NOT a pass" "...and says so in the words an agent reads"
+
+# REFUSAL 1 — liveness theatre. A journey whose only assertion is `screen` re-proves what
+# runtime-gate already proves. Accepting it would let a P0 flow be "covered" by a launch check.
+JGTH=$(jgproj jg-theatre)
+printf '%s\n' '{"schema":"journey/v1","id":"t","priority":"P0","steps":[{"action":"launch"},{"assert":"screen","id":"home"}]}' \
+  > "$JGTH/docs/team/journeys/t.json"
+assert_exit 1 "a journey that only asserts a screen rendered is refused as liveness theatre" node "$JG" --root "$JGTH"
+assert_has "$TMP/err" "runtime-gate already proves" "...and says why, naming the gate it would duplicate"
+
+# REFUSAL 2 — the round trip. A date picker that discards the selection and writes
+# System.currentTimeMillis() PASSES a journey that entered today's date. That defect survived three
+# separate reviews of the same fixture; this is it encoded as a load-time refusal.
+JGTODAY=$(jgproj jg-today)
+printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"%s"},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
+  "$(date +%F)" > "$JGTODAY/docs/team/journeys/r.json"
+assert_exit 1 "a journey entering TODAY's date is refused as indistinguishable from a clock call" node "$JG" --root "$JGTODAY"
+assert_has "$TMP/err" "distinguishable" "...and names the property the value lacks"
+for BAD in '""' '"0"'; do
+  printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"enter","id":"n","value":%s},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
+    "$BAD" > "$JGTODAY/docs/team/journeys/r.json"
+  assert_exit 1 "...as is a journey entering $BAD, indistinguishable from an empty default" node "$JG" --root "$JGTODAY"
+done
+
+# A well-formed journey with no driver is CANNOT EVALUATE and NAMES the journey it did not run —
+# an unrun journey and a passing journey are different facts, which is the whole point of the gate.
+JGOK=$(jgproj jg-ok)
+printf '%s\n' '{"schema":"journey/v1","id":"record-reading","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"1999-01-02"},{"assert":"value_equals","id":"saved","value":"1999-01-02"}]}' \
+  > "$JGOK/docs/team/journeys/ok.json"
+assert_exit 2 "a valid journey with no driver is CANNOT EVALUATE, never a pass" node "$JG" --root "$JGOK"
+assert_has "$TMP/out" "record-reading" "...naming the journey that was not executed"
+assert_has "$TMP/out" "NOT executed" "...and stating plainly that it did not run"
+assert_exit 0 "--list reports declared journeys without running anything" node "$JG" --root "$JGOK" --list
+
+# --- The driver contract. A stub driver is the only way to prove these branches without a device,
+# and each rule below exists because its absence is a known false-pass shape.
+JGDRV="$TMP/jg-drivers"; mkdir -p "$JGDRV"
+mkstub() { printf '#!/bin/sh\n%s\n' "$2" > "$JGDRV/$1"; chmod +x "$JGDRV/$1"; }
+mkstub pass.sh 'echo "{\"schema\":\"journey-result/v1\",\"result\":\"PASS\",\"detail\":\"ok\",\"evidence\":[\"docs/evidence/j.png\"]}"'
+mkstub noev.sh 'echo "{\"schema\":\"journey-result/v1\",\"result\":\"PASS\",\"detail\":\"ok\",\"evidence\":[]}"'
+mkstub fail.sh 'echo "{\"schema\":\"journey-result/v1\",\"result\":\"FAIL\",\"failed_step\":3,\"detail\":\"saved 2026-08-04, expected 1999-01-02\"}"; exit 1'
+mkstub crash.sh 'echo "driver blew up" >&2; exit 9'
+mkstub junk.sh  'echo "not json at all"'
+
+assert_exit 0 "a driver reporting PASS with evidence is a PASS" node "$JG" --root "$JGOK" --driver "$JGDRV/pass.sh"
+# EVIDENCE IS NOT OPTIONAL — the corrected runtime-gate rule, applied here from the start rather
+# than after an audit finds it.
+assert_exit 2 "a driver reporting PASS with NO evidence is UNKNOWN, never a pass" node "$JG" --root "$JGOK" --driver "$JGDRV/noev.sh"
+assert_has "$TMP/out" "no evidence artifact" "...and says the pass could not be inspected"
+assert_exit 1 "a driver reporting FAIL is a FAIL — the product is wrong" node "$JG" --root "$JGOK" --driver "$JGDRV/fail.sh"
+assert_has "$TMP/out" "product is wrong, not the harness" "...and distinguishes that from a broken harness"
+# DR4-001's lesson: a broken harness read as a broken app sends a developer to fix a defect that
+# does not exist. A crashing driver must be UNKNOWN, never FAIL.
+assert_exit 2 "a driver that crashes is UNKNOWN, not FAIL — a broken harness is not a broken app" node "$JG" --root "$JGOK" --driver "$JGDRV/crash.sh"
+assert_exit 2 "a driver emitting unparseable output is UNKNOWN, not a verdict" node "$JG" --root "$JGOK" --driver "$JGDRV/junk.sh"
+assert_exit 2 "a --driver path that does not exist is CANNOT EVALUATE, never a silent pass" node "$JG" --root "$JGOK" --driver "$JGDRV/no-such-driver.sh"
+
+# Mirror test: drop the evidence requirement and prove the assertion above goes red — the rule that
+# cannot fail is the rule this whole suite exists to forbid.
+cp "$JG" "$JG.bak"
+node -e '
+  const fs = require("fs");
+  const p = process.argv[1];
+  let t = fs.readFileSync(p, "utf8");
+  const m = "if (report.result === \x27PASS\x27 && !(Array.isArray(report.evidence) && report.evidence.length)) {";
+  if (!t.includes(m)) { console.error("marker not found"); process.exit(1); }
+  fs.writeFileSync(p, t.replace(m, "if (false) {"));
+' "$JG"
+node "$JG" --root "$JGOK" --driver "$JGDRV/noev.sh" >/dev/null 2>&1
+if [ $? = 0 ]; then
+  ok "mirror test: dropping the evidence rule reproduces a PASS with no evidence"
+else
+  bad "mirror test: dropping the evidence rule should reproduce a PASS with no evidence"
+fi
+mv "$JG.bak" "$JG"
+
+echo
+# --------------------------------------------------------------------------------------------
 echo "runtime-gate"
 # --------------------------------------------------------------------------------------------
 # The single most important property of this gate: there is no path from a check that did not run

@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 51 top-level scripts (+9 shared libs) · 9 knowledge packs · 944 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 52 top-level scripts (+9 shared libs) · 9 knowledge packs · 965 assertions
 
 ---
 
@@ -693,7 +693,8 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
-| `test.sh` | 944 assertions |
+| `journey-gate.mjs` | Proves a DECLARED P0 user journey completes — not that a process is alive |
+| `test.sh` | 965 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -945,9 +946,19 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   that exercised its own stub — every one found by a reviewer who went and looked, or by a human
   afterwards. §4b makes the round trip, the distinguishable test value, the on-device measurement,
   and reintroducing the defect to prove the regression catches it into contract rather than a
-  reviewer's good day. **The journey gate (a runtime PASS must prove a declared P0 journey, not
-  process liveness) is NOT built yet** — §4b raises the floor for review; it does not yet raise it
-  for the runtime gate.
+  reviewer's good day.
+  (6) **`scripts/journey-gate.mjs` — a runtime PASS that means the product WORKS, not that a process
+  is alive.** Journeys are declared in `docs/team/journeys/*.json` (never inferred) and the gate
+  refuses two shapes at load, before anything runs: a journey whose only assertion is `screen`
+  (liveness theatre — it re-proves what `runtime-gate` already proves), and a journey that enters
+  `""`, `"0"` or **today's date** (indistinguishable from an empty default or a clock call — which
+  is precisely why the discarded date picker survived three separate reviews). Wired into
+  `/app-build` step 5 immediately after the runtime gate. **The platform drivers are NOT written**:
+  with no `--driver`, every declared journey is CANNOT EVALUATE and is listed by name, because an
+  unrun journey and a passing journey are different facts. The schema, validation, driver contract
+  (`journey-result/v1`) and reporting are complete and carry 21 assertions — including that a driver
+  reporting PASS with no evidence is UNKNOWN, and that a driver which *crashes* is UNKNOWN rather
+  than FAIL, so a broken harness is never mistaken for a broken app (DR4-001).
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the
