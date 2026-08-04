@@ -46,3 +46,10 @@ fastlane/test_output
 
 # Local dry-run fixture apps (hundreds of MB of scratch builds, never shipped)
 /dry-runs/
+
+# Dogfood-run state. This repo is the PLUGIN, not an app project — a board here is
+# experiment residue, not product. Real projects track these; this one must not.
+docs/31-board-events.jsonl
+docs/31-board.md
+docs/team/context-manifest.json
+docs/team/runs.jsonl
