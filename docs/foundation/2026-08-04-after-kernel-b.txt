@@ -1,0 +1,32 @@
+FOUNDATION CONFORMANCE — I-01..I-12
+
+  PASS  I-01  One project boundary
+        nested root refused as CANNOT EVALUATE with candidates named
+  PASS  I-02  One workflow truth
+        the read layer reports the log, not the hand-edited view
+  PASS  I-03  Atomic admission
+        12/12 concurrent admissions committed, chain intact
+  FAIL  I-04  Authenticated authority
+        `--by` is an unauthenticated string: no actor/v1, attestation or signature check exists anywhere in scripts/lib
+  FAIL  I-05  Complete work identity
+        approval binds a single commit (ce198ff): a bec6df7..ce198ff branch is reviewed as its last commit only
+  FAIL  I-06  Candidate-bound evidence
+        evidence existence is checked but no digest is captured at evaluation — a mutable path can still stand in for durable proof
+  FAIL  I-07  Enforced risk route
+        risk routing is advice on stdout: no policy-decision object is consumed at the transition it governs
+  FAIL  I-08  Bidirectional scope coverage
+        trace follows links forward only: R-002 is in scope, unimplemented, and unreported
+  FAIL  I-09  Criterion-level proof
+        no criterion→evidence mapping: a generic green test stands in for criterion proof
+  PASS  I-10  Durable recovery
+        a replayed transition commits exactly once and reports success
+  FAIL  I-11  One readiness reducer
+        no single readiness reducer: CLI, dashboard and control-room each compute their own picture
+  PASS  I-12  Human-only publication
+        no executable path can submit or publish to a store
+
+  5/12 invariants hold, 7 failing
+
+  The foundation is NOT ESTABLISHED. Report these counts, never an averaged score:
+  one failed critical invariant blocks a "trustworthy autonomous team" claim regardless
+  of how many documentation capabilities pass.

@@ -47,6 +47,7 @@ import { createHash } from 'node:crypto';
 
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { withFileLock } from './lib/atomic.mjs';
+import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
 import {
@@ -82,13 +83,21 @@ const DEFAULT_BOARD = 'docs/31-board.md';
  * uses this: an operator who explicitly passes `--log`/`--board` is making a deliberate choice and
  * that still resolves against cwd, unchanged.
  */
-function projectRoot() {
-  try {
-    const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
-    return dirname(common);
-  } catch {
-    return process.cwd();
-  }
+/**
+ * ...and the git-based answer above was still not enough, because A GIT BOUNDARY IS NOT A PROJECT
+ * BOUNDARY. `--git-common-dir` answers "the nearest git repository", so a command run inside a git
+ * repo NESTED in a studio project (a vendored dependency, a sample app, a fixture) resolved to that
+ * inner repo and silently created a SECOND, empty board there, reporting success. The work went to
+ * a project nobody was watching — and unlike every other defect in this codebase, a write that
+ * lands in the wrong repository cannot be undone by any gate downstream of it.
+ *
+ * Resolution now goes through the one shared resolver, which answers CANNOT EVALUATE with both
+ * candidates named rather than picking silently.
+ */
+function projectRoot(flags = {}) {
+  const result = resolveProjectRoot({ explicit: typeof flags['project-root'] === 'string' ? flags['project-root'] : '' });
+  if (!result.ok) die(2, explainRootFailure(result));
+  return result.root;
 }
 
 const die = (code, message) => {
@@ -116,7 +125,7 @@ function resolveId(tickets, id) {
 const VALUE_FLAGS = new Set([
   'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
-  'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key',
+  'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
@@ -851,8 +860,8 @@ function main() {
   const { flags, positional } = parseArgs(process.argv.slice(2));
   const [command, ...rest] = positional;
   const paths = {
-    log: typeof flags.log === 'string' ? resolve(process.cwd(), flags.log) : resolve(projectRoot(), DEFAULT_LOG),
-    board: typeof flags.board === 'string' ? resolve(process.cwd(), flags.board) : resolve(projectRoot(), DEFAULT_BOARD),
+    log: typeof flags.log === 'string' ? resolve(process.cwd(), flags.log) : resolve(projectRoot(flags), DEFAULT_LOG),
+    board: typeof flags.board === 'string' ? resolve(process.cwd(), flags.board) : resolve(projectRoot(flags), DEFAULT_BOARD),
   };
 
   // EVERY MUTATING COMMAND RUNS UNDER ONE LOCK, HELD ACROSS THE WHOLE READ-DECIDE-APPEND.

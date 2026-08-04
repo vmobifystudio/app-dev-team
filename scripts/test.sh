@@ -5409,7 +5409,17 @@ assert_exit 0 "board.mjs sees the project's real ticket from inside a linked wor
 # Mirror test: prove this assertion would have caught the bug it fixes, by reverting projectRoot()
 # to the old cwd-only behavior and confirming the same assertion goes red (exits nonzero — "no event
 # log" — because the ledger the worktree's OWN cwd resolves to was never populated by `git worktree`).
-sed -i.bak "s/resolve(projectRoot(), DEFAULT_LOG)/resolve(process.cwd(), DEFAULT_LOG)/; s/resolve(projectRoot(), DEFAULT_BOARD)/resolve(process.cwd(), DEFAULT_BOARD)/" "$BD"
+# The pattern is `projectRoot(flags)` — it took an argument when the shared root resolver landed.
+# This sed used to spell it `projectRoot()`, and when the signature changed the substitution simply
+# MATCHED NOTHING: the mirror reverted nothing, the assertion ran against the fixed code, and it
+# failed for the one reason a mirror test must never fail — the revert did not happen. A mirror
+# test that silently stops reverting is a rule that cannot fail, which is the exact defect class
+# mirror tests exist to catch. Kept as a sed for locality, but any future rename of this function
+# must update the pattern here; the assertion below is what tells you if you forgot.
+sed -i.bak "s/resolve(projectRoot(flags), DEFAULT_LOG)/resolve(process.cwd(), DEFAULT_LOG)/; s/resolve(projectRoot(flags), DEFAULT_BOARD)/resolve(process.cwd(), DEFAULT_BOARD)/" "$BD"
+grep -q "resolve(process.cwd(), DEFAULT_LOG)" "$BD" \
+  && ok "mirror test: the revert actually applied (the sed pattern still matches)" \
+  || bad "mirror test: the revert actually applied (the sed pattern still matches)" "projectRoot() was renamed; update the sed above"
 assert_exit 2 "mirror test: reverting projectRoot() reproduces the fork (ticket unreachable from the worktree)" \
   bash -c "cd '$WTB/.agent-wt/WT-001' && node '$BD' show WT-001"
 mv "$BD.bak" "$BD"
@@ -5942,6 +5952,39 @@ FCL_EXIT=$?
 if [ "$FCL_EXIT" != "1" ] || ! node "$HERE/board-doctor.mjs" "$FCL/docs/31-board.md" 2>&1 | grep -q "DIVERGES"; then
   ok "a board row absent from the log is not reported as divergence"
 else bad "a board row absent from the log is not reported as divergence" "reported DIVERGES"; fi
+
+# --- F5: a git boundary is not a project boundary --------------------------------------------
+# A studio project containing a second git repo (vendored dep, sample app, fixture) is ordinary.
+# `--git-common-dir` answers "nearest git repo", so a command run inside the nested one used to
+# create a SECOND, empty board there and report success — work landing in a project nobody watches.
+# A write to the wrong repository is the one failure no downstream gate can undo.
+FRN="$TMP/fc-nested"; rm -rf "$FRN"; mkdir -p "$FRN"; ( cd "$FRN" && git init -q . )
+bm "$FRN" add O-001 --title outer --owner ios-developer >/dev/null 2>&1
+mkdir -p "$FRN/vendor/inner" && ( cd "$FRN/vendor/inner" && git init -q . )
+assert_exit 2 "a command inside a nested git repo refuses rather than guessing which project it means" \
+  bash -c "cd '$FRN/vendor/inner' && node '$BD' add I-001 --title inner --owner ios-developer"
+[ ! -f "$FRN/vendor/inner/docs/31-board-events.jsonl" ] \
+  && ok "...and creates no phantom second project inside the nested repo" \
+  || bad "...and creates no phantom second project inside the nested repo"
+node "$BD" add N-002 --title x --owner ios-developer --project-root "$FRN" >/dev/null 2>&1
+NR_EXIT=$?
+if [ "$NR_EXIT" = "0" ]; then ok "...and --project-root resolves the ambiguity the refusal names"
+else bad "...and --project-root resolves the ambiguity the refusal names" "exit $NR_EXIT"; fi
+
+# --- F4: every append-only writer is serialized, not just the board --------------------------
+# FC-001 prophylaxis. The board's lock does nothing for the incident ledger or the memory ledger,
+# which carry the identical read-tip-then-append shape. Memory in particular is written by parallel
+# agents at the end of a wave — the moment several writers are most likely to collide.
+FCW="$TMP/fc-writers"; rm -rf "$FCW"; mkdir -p "$FCW/docs/team"
+( cd "$FCW" && for i in 1 2 3 4 5 6 7 8; do \
+    node "$HERE/incident-ledger.mjs" open --severity sev3 --title "t$i" --owner tech-manager \
+      --ledger "$FCW/docs/team/incidents.jsonl" >/dev/null 2>&1 & \
+  done; wait )
+FCW_N=$(wc -l < "$FCW/docs/team/incidents.jsonl" 2>/dev/null | tr -d ' ')
+if [ "$FCW_N" = "8" ]; then ok "eight concurrent incident-ledger writers commit eight records"
+else bad "eight concurrent incident-ledger writers commit eight records" "got $FCW_N"; fi
+assert_exit 0 "...and the incident chain verifies" \
+  node "$HERE/incident-ledger.mjs" verify --ledger "$FCW/docs/team/incidents.jsonl"
 
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
