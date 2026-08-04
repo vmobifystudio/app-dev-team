@@ -5986,6 +5986,55 @@ else bad "eight concurrent incident-ledger writers commit eight records" "got $F
 assert_exit 0 "...and the incident chain verifies" \
   node "$HERE/incident-ledger.mjs" verify --ledger "$FCW/docs/team/incidents.jsonl"
 
+# --- F12: an approval names the whole candidate, not its last commit ---------------------------
+# `--bind` diffed `${commit}^..${commit}` — literally one commit. A three-commit branch was recorded
+# as approved on the strength of the third commit alone: everything upstream could change under an
+# approval that still verified clean. Same mistake as binding to HEAD while the tools consume the
+# working tree, one level up — precise about a subject that was the wrong subject.
+FCB="$TMP/fc-candidate"; rm -rf "$FCB"; mkdir -p "$FCB"
+( cd "$FCB" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo base > a.txt && git add -A && git commit -qm base \
+  && git checkout -q -b feat/x \
+  && echo one > f1.txt && git add -A && git commit -qm c1 \
+  && echo two > f2.txt && git add -A && git commit -qm c2 \
+  && echo three > f3.txt && git add -A && git commit -qm c3 \
+  && echo ev > ev.txt && echo ctx > ctx.txt )
+bm "$FCB" add T-001 --title x --owner ios-developer >/dev/null 2>&1
+for E in claimed done_reported; do bm "$FCB" move T-001 $E --by ios-developer >/dev/null 2>&1; done
+bm "$FCB" move T-001 verified --by verification-engineer >/dev/null 2>&1
+bm "$FCB" move T-001 review_requested --by ios-developer >/dev/null 2>&1
+bm "$FCB" move T-001 started --by code-reviewer >/dev/null 2>&1
+( cd "$FCB" && node "$BD" move T-001 approved --by code-reviewer --bind --evidence ev.txt --context ctx.txt ) >/dev/null 2>&1
+if grep -q '"base_source":"merge-base with main"' "$FCB/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "an approval binds base..head, resolved from the integration branch"
+else bad "an approval binds base..head, resolved from the integration branch"; fi
+# All THREE commits' files, not just the tip's. This is the assertion that would have caught it.
+if grep -q '"files":\["f1.txt","f2.txt","f3.txt"\]' "$FCB/docs/31-board-events.jsonl" 2>/dev/null; then
+  ok "...and records every file the branch touches, not only the last commit's"
+else bad "...and records every file the branch touches, not only the last commit's" \
+  "$(grep -o '"files":\[[^]]*\]' "$FCB/docs/31-board-events.jsonl" | tail -1)"; fi
+
+# --- F16: the reverse edge --------------------------------------------------------------------
+# Every trace check walks FORWARD from a ticket. A requirement nothing implements has no ticket to
+# walk forward from, so it is invisible to all of them — and reaches release having never been
+# built. defect-hunting section 4b at scope level: following the value forward proves the pointer is
+# valid; only following it BACK proves nothing was dropped.
+FCR="$TMP/fc-reverse"; rm -rf "$FCR"; mkdir -p "$FCR/docs"; ( cd "$FCR" && git init -q . )
+printf '# PRD\n\n- [F-001] the user can save a reading.\n- [F-002] the user can export their history.\n' \
+  > "$FCR/docs/10-prd.md"
+bm "$FCR" add T-001 --title "save a reading" --owner ios-developer --feature F-001 >/dev/null 2>&1
+node "$HERE/trace.mjs" --project-root "$FCR" > "$TMP/fc-reverse.out" 2>&1 || true
+if grep -q "requirement_not_implemented" "$TMP/fc-reverse.out" && grep -q "F-002" "$TMP/fc-reverse.out"; then
+  ok "an in-scope requirement that no ticket implements is reported"
+else bad "an in-scope requirement that no ticket implements is reported"; fi
+# ...but an explicit disposition is not a defect. Silence is the problem, not a stated decision.
+printf '# PRD\n\n- [F-001] the user can save a reading.\n- [F-002] the user can export their history. (deferred to v2)\n' \
+  > "$FCR/docs/10-prd.md"
+node "$HERE/trace.mjs" --project-root "$FCR" > "$TMP/fc-reverse2.out" 2>&1 || true
+if grep -q "requirement_not_implemented" "$TMP/fc-reverse2.out"; then
+  bad "...and an explicitly deferred requirement is not reported"
+else ok "...and an explicitly deferred requirement is not reported"; fi
+
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
 # conflicted file untouched. A broken agent file reached the base branch and was found two merges

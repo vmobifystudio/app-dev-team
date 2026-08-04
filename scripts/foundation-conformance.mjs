@@ -215,15 +215,19 @@ invariant('I-08', 'Bidirectional scope coverage', true, () => sandbox((dir) => {
   // Behavioural for the same reason as I-05: the grep version PASSed on the word "reverse"
   // appearing inside a code comment in trace.mjs.
   mkdirSync(join(dir, 'docs'), { recursive: true });
+  // Requirements are the `F-` kind and must be DECLARED in brackets — the first draft of this
+  // fixture wrote `R-002`, which trace.mjs classifies as a release, so the check could never have
+  // fired regardless of the code under test. A fixture that cannot express the defect proves
+  // nothing about the detector.
   writeFileSync(join(dir, 'docs/10-prd.md'), [
     '# PRD', '', '## Requirements', '',
-    '- R-001: the user can save a reading. (implemented)',
-    '- R-002: the user can export their history.   <- in scope, NOTHING implements this',
+    '- [F-001] the user can save a reading.',
+    '- [F-002] the user can export their history.',
     '',
   ].join('\n'));
-  board(['add', 'T-001', '--title', 'save a reading', '--owner', 'ios-developer', '--feature', 'R-001'], dir);
+  board(['add', 'T-001', '--title', 'save a reading', '--owner', 'ios-developer', '--feature', 'F-001'], dir);
   const r = run('node', [join(ROOT, 'scripts/trace.mjs')], dir);
-  return /R-002/.test(r.out)
+  return /F-002/.test(r.out) && /requirement_not_implemented/.test(r.out)
     ? { state: 'PASS', detail: 'an in-scope requirement that nothing implements is a named finding' }
     : { state: 'FAIL', detail: 'trace follows links forward only: R-002 is in scope, unimplemented, and unreported' };
 }));
