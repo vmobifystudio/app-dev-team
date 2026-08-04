@@ -471,11 +471,18 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    - Exit `1` → **the wave does not advance**, same as a runtime FAIL. The product is wrong, not
      the harness — the gate distinguishes those, so do not re-spawn a developer against a broken
      driver.
-   - Exit `2` → **CANNOT EVALUATE, which is not a pass.** Either no journey is declared, or no
-     driver is available. Print it under `JOURNEY GATE: CANNOT EVALUATE` and say which. **No
-     journeys declared is a planning gap, not a tooling gap** — `ux-architect`'s screen-and-state
-     inventory already names the ids, so declaring one is cheap and its absence means nobody has
-     written down what this product must do. See `docs/team/journeys/README.md`.
+   - Exit `2` → **CANNOT EVALUATE, which is not a pass.** Print it under
+     `JOURNEY GATE: CANNOT EVALUATE` and say which of the two causes it was:
+     - **No journey declared** → **rows may not move `qa → done` this wave.** This is a planning
+       gap, not a tooling one: `ux-architect`'s screen-and-state inventory already names the ids, so
+       declaring one is cheap, and its absence means nobody has written down what this product must
+       do. Declare it and re-run. Letting the wave advance here is how a sprint reaches `/app-ship`
+       with no P0 journey ever stated — and `/app-ship` will then ask the same question with more at
+       stake (codex, PR #21).
+     - **No driver available** → rows may advance on QA's own verdict, but **nothing may record this
+       build as having had its journeys exercised**, and the standup carries the line verbatim.
+       Drivers do not ship yet, so this is the expected path today; `/app-ship` re-asks and requires
+       an explicit waiver rather than inheriting silence.
 
    Then run the QA pass **as a ticket**, not as an errand. Create the row first, so the wave's QA
    has an owner, a branch and a place on the board like any other work:

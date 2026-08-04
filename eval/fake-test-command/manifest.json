@@ -19,5 +19,6 @@
     },
     "expect_exit": 2
   },
-  "last_verified_at": "2026-08-04"
+  "last_verified_at": "2026-08-04",
+  "status": "detector-exists-and-is-scored"
 }

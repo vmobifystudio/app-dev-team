@@ -1,7 +1,7 @@
 # Medication Companion — end-to-end plugin pilot log
 
 Date: 2026-08-04  
-Status: In progress  
+Status: Operational evidence complete; product expansion intentionally paused
 Plugin baseline: `main` at `b3676a3`  
 Project: `dry-runs/medication-companion`
 
@@ -41,17 +41,23 @@ This example exercises:
 
 - [x] Plugin baseline diagnostics
 - [x] Founder intent and scope assumptions recorded
-- [ ] Product, requirements, UX, architecture, and release documents
-- [ ] Event-sourced board and schedule
-- [ ] Dispatch admission and durable claim identity
-- [ ] Team-channel question/answer evidence
-- [ ] Android implementation
-- [ ] Unit/static/build evidence
-- [ ] Emulator launch and semantic journey evidence
-- [ ] Policy/dependency/privacy/accessibility gates
-- [ ] Candidate/readiness and control-room observations
-- [ ] Studio-learning proposal
-- [ ] Comparative final audit
+- [x] Product, requirements, UX, architecture, and release documents
+- [x] Event-sourced board and schedule
+- [x] Dispatch admission and durable claim identity
+- [x] Team-channel question/answer evidence
+- [x] Sufficient Android implementation to test the operating model
+- [x] Unit/static/build evidence
+- [x] Emulator launch and semantic journey evidence
+- [x] Policy/dependency/privacy/accessibility gate observations
+- [x] Candidate/readiness and control-room observations
+- [x] Studio-learning and global revamp proposal
+- [x] Comparative final audit
+
+## Final audit
+
+The operational findings, prioritized remediation plan, compatibility strategy, and acceptance tests are recorded in [Medication Companion Dry Run — Operational Audit and Global Revamp Plan](2026-08-04-medication-companion-operational-audit-and-revamp-plan.md).
+
+The pilot stopped after sufficient operational evidence was collected. Remaining sample-app polish is intentionally out of scope; the next work should improve the plugin's cross-module truth and enforcement.
 
 ## Baseline observations
 

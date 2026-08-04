@@ -4,7 +4,7 @@
   "expected_detector": "scripts/analytics-coverage-scan.mjs",
   "expected_signal": "P0 feature(s) have no event",
   "severity": "S2",
-  "why": "team-doctor's doc graph checks that an ARTIFACT has a writer. Nothing checks that every P0 FEATURE has an event. The traceability graph in P1.3/P1.4 is the structure that would make this mechanical; it does not exist yet.",
+  "why": "STALE NARRATIVE, CORRECTED 2026-08-04. This used to end \"[the traceability graph] does not exist yet\", which stopped being true when `scripts/trace.mjs` and `scripts/analytics-coverage-scan.mjs` shipped — the latter is this manifest's own detector and is invoked below. team-doctor's doc graph still only checks that an ARTIFACT has a writer, and that part stands; the P0-feature-to-event check it said was missing is exactly what analytics-coverage-scan now performs.",
   "detector": {
     "run": [
       "node",
@@ -13,5 +13,6 @@
     ],
     "expect_exit": 1
   },
-  "last_verified_at": "2026-08-04"
+  "last_verified_at": "2026-08-04",
+  "status": "detector-exists-and-is-scored"
 }

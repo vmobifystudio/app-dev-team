@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 52 top-level scripts (+9 shared libs) · 9 knowledge packs · 967 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 52 top-level scripts (+9 shared libs) · 9 knowledge packs · 981 assertions
 
 ---
 
@@ -694,7 +694,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
 | `journey-gate.mjs` | Proves a DECLARED P0 user journey completes — not that a process is alive |
-| `test.sh` | 967 assertions |
+| `test.sh` | 981 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -980,6 +980,28 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   designed. **DR6-01, landed rather than reported:** the reviewer stated its ten unmeasured items
   beautifully and *nothing verified that it had* — "state what you did not do" with no fixed heading
   is unfalsifiable, so it is now a literal `## Not checked` heading required even when empty.
+- **Codex review of PR #21 — five findings, two of them against the fixes above, 2026-08-04.**
+  (1) `journey-gate` accepted `evidence: ["does-not-exist.png"]` as a PASS — **recreating, inside the
+  gate written to forbid evidence-optional passes, exactly that defect**, hours after the same shape
+  was fixed in `runtime-gate.sh`. FC-001 in its purest form: the fix that lands in one mechanism and
+  stops before its sibling. Every cited artifact must now resolve to a non-empty file.
+  (2) The gate checked only `schema` and `result`, never `journey_id`, so a driver that ignored
+  `--journey` and returned one cached report counted as a PASS for **every** declared journey.
+  (3) `ship-gate.sh` bound the approval to `HEAD` while the runtime gate, the build and the release
+  tooling all consume the working TREE — a dirty tree meant the thing being released was not the
+  commit any approval named. Now a stated UNKNOWN.
+  (4) The journey gate existed but neither shipping path enforced it: `/app-build` printed exit 2 and
+  continued, `/app-ship` never invoked it, so a release could clear with no P0 journey ever run.
+  (5) `last_verified_at` had been **bulk-stamped without reading the narratives** — the exact defect
+  those fields were added to expose, committed by the person adding them. Sweeping for it found a
+  SECOND contradictory manifest codex had not flagged.
+  **Two method notes worth more than the fixes.** The anti-staleness check first grepped prose for
+  absence-claims and then failed on the CORRECTED manifests, because a correction must *quote* the
+  false claim to refute it and a regex cannot tell an assertion from a citation — so the claim moved
+  into an enumerated `status` field and the prose became free text nobody parses. **Prose is not
+  checkable; a field is.** And the dirty-tree fix's own end-to-end test caught two further bugs that
+  reading the diff had missed: a false "not a git repository" message emitted alongside the real one,
+  and a test using `$BD` ~340 lines above the line that assigns it. §4b's rule, applied to its author.
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the

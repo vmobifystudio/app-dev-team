@@ -222,10 +222,41 @@ for (const j of selected) {
     results.push({ j, state: 'UNKNOWN', detail: `driver report is not journey-result/v1 (got ${JSON.stringify(report.result)})`, started });
     continue;
   }
+  // THE REPORT MUST BE ABOUT THE JOURNEY WE ASKED FOR. This checked only `schema` and `result`, so
+  // a driver that ignored `--journey`, returned a cached report, or emitted one verdict for a
+  // different journey was counted as a PASS for EVERY selected P0 journey — one stale artifact
+  // clearing the whole set. Reported by codex on PR #21.
+  if (report.journey_id && report.journey_id !== j.id) {
+    results.push({ j, state: 'UNKNOWN', detail: `driver reported journey_id "${report.journey_id}" while being asked about "${j.id}" — a verdict about a different journey is not a verdict about this one`, started });
+    continue;
+  }
+  if (!report.journey_id) {
+    results.push({ j, state: 'UNKNOWN', detail: `driver report names no journey_id, so it cannot be matched to "${j.id}" — journey-result/v1 requires it`, started });
+    continue;
+  }
   // Evidence is not optional — the corrected runtime-gate rule, applied here from the start.
   if (report.result === 'PASS' && !(Array.isArray(report.evidence) && report.evidence.length)) {
     results.push({ j, state: 'UNKNOWN', detail: 'driver reported PASS with no evidence artifact — a pass nobody can inspect is not a pass', started });
     continue;
+  }
+  // ...AND THE EVIDENCE MUST EXIST. Checking only that the array is non-empty accepted
+  // `evidence: ["does-not-exist.png"]` as proof — which recreates, inside the gate written to
+  // forbid it, exactly the evidence-optional pass this gate exists to end. A path is not an
+  // artifact. Reported by codex on PR #21; the same shape as the runtime-gate defect fixed hours
+  // earlier, which is FC-001: the fix that lands in one mechanism and not its sibling.
+  if (report.result === 'PASS') {
+    const missing = report.evidence
+      .map((e) => ({ e, abs: resolve(root, String(e)) }))
+      .filter(({ abs }) => !existsSync(abs) || !statSync(abs).isFile() || statSync(abs).size === 0);
+    if (missing.length) {
+      results.push({
+        j,
+        state: 'UNKNOWN',
+        detail: `driver reported PASS citing evidence that is missing or empty: ${missing.map((m) => m.e).join(', ')} — a path is not an artifact`,
+        started,
+      });
+      continue;
+    }
   }
   results.push({
     j,

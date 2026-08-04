@@ -19,6 +19,19 @@ name: mutation (full catalogue)
 on:
   pull_request:
     branches: [main]
+    # PATH FILTER — the whole catalogue is ~45 minutes of ubuntu time. Mutation testing breaks the
+    # SOURCE and asks whether an assertion notices, so a change that touches no source cannot change
+    # its answer: a docs edit, a HANDBOOK count, a new eval manifest narrative. Running it on those
+    # buys nothing and is the single largest CI line item in this repo.
+    #
+    # The filter is deliberately WIDER than "scripts/" alone: `hooks/` ships executable behaviour,
+    # `eval/` fixtures are what several mutants are scored against, and the workflow file itself must
+    # re-run when its own definition changes or the change is unverified.
+    paths:
+      - 'scripts/**'
+      - 'hooks/**'
+      - 'eval/**'
+      - '.github/workflows/mutation-full.yml'
   workflow_dispatch:
 
 permissions:

@@ -43,3 +43,6 @@ fastlane/test_output
 
 # App Store Connect API key
 *.p8
+
+# Local dry-run fixture apps (hundreds of MB of scratch builds, never shipped)
+/dry-runs/

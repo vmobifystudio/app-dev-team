@@ -14,5 +14,6 @@
     "expect_exit": 1
   },
   "worked_example": "$4.985 is a TRUE tie at two decimal places, so the two modes disagree: bankers rounds half to even and yields 4.98; half-up yields 4.99. The manifest previously claimed $4.9995, which is NOT a tie — its third decimal is 9, so both modes round it to 5.00 and the documented input never reproduced the defect. A detector built to the old example would have looked correct and found nothing, which is this repo's own 'rule that cannot fail' class living inside the laboratory that measures it. Caught in review by codex on PR #9, not by any check here.",
-  "last_verified_at": "2026-08-04"
+  "last_verified_at": "2026-08-04",
+  "status": "detector-exists-and-is-scored"
 }

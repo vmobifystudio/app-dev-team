@@ -94,8 +94,14 @@ It emits **one** `journey-result/v1` JSON object on stdout:
 
 Rules the gate enforces on any driver:
 
+- **`journey_id` is required and must match the journey the driver was asked about.** A report with
+  no `journey_id`, or one naming a different journey, is UNKNOWN. Without this a driver that ignores
+  `--journey` and returns one cached report counts as a PASS for *every* declared journey.
 - **`PASS` with an empty `evidence` array is rejected as UNKNOWN.** A pass nobody can inspect is not
   a pass — the same rule that made `runtime-gate` stop returning PASS when its screenshot failed.
+- **Every cited evidence path must resolve to a non-empty file**, or the verdict is UNKNOWN. A path
+  is not an artifact: `evidence: ["does-not-exist.png"]` would otherwise recreate the
+  evidence-optional pass this gate exists to forbid.
 - **A driver that crashes is UNKNOWN, not FAIL.** A broken harness must never read as a broken app;
   that is how a developer gets sent to fix a defect that does not exist (DR4-001).
 - **A report that is not `journey-result/v1` is UNKNOWN.** Unparseable output is not a verdict.
