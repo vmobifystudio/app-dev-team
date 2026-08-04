@@ -112,8 +112,26 @@ function validate(journey, file) {
     if (v === '' || v === '0') {
       problems.push(`enter "${step.id}" uses ${JSON.stringify(v)} — indistinguishable from an empty default. Use a distinguishable value.`);
     }
-    if (/^\d{4}-\d{2}-\d{2}$/.test(v) && v === new Date().toISOString().slice(0, 10)) {
-      problems.push(`enter "${step.id}" uses today's date — indistinguishable from a clock call. Use a fixed past date.`);
+    // "TODAY" IS NOT ONE DATE. This compared against `new Date().toISOString()` — UTC — while the
+    // app under test runs in the USER'S timezone and a journey is written in the author's. In any
+    // zone ahead of UTC, between local midnight and UTC midnight, today's local date is tomorrow's
+    // UTC date and the refusal silently stopped firing. Found when the clock rolled over during a
+    // verification run at UTC+0530: the suite had passed in CI an hour earlier.
+    //
+    // A rule that works for most of the day, in some timezones, is FC-002 with a clock attached —
+    // and the defect it guards (a picker discarding the selection for System.currentTimeMillis())
+    // is exactly the kind that reaches production from an office east of UTC.
+    //
+    // So any date within a day either side of now is refused. That costs a journey author almost
+    // nothing — the instruction was already "use a fixed past date" — and it removes the timezone
+    // from the decision entirely.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      const day = 86_400_000;
+      const now = Date.now();
+      const nearNow = [-day, 0, day].some((d) => new Date(now + d).toISOString().slice(0, 10) === v);
+      if (nearNow) {
+        problems.push(`enter "${step.id}" uses today's date (in some timezone) — indistinguishable from a clock call. Use a fixed past date such as 1999-01-02.`);
+      }
     }
   }
   return { ok: !problems.length, problems, file };

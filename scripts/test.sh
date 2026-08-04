@@ -1812,6 +1812,25 @@ JGTODAY=$(jgproj jg-today)
 printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"%s"},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
   "$(date +%F)" > "$JGTODAY/docs/team/journeys/r.json"
 assert_exit 1 "a journey entering TODAY's date is refused as indistinguishable from a clock call" node "$JG" --root "$JGTODAY"
+# ...IN EVERY TIMEZONE. This assertion writes the date with `date +%F` (LOCAL) while the gate used to
+# compare against toISOString (UTC), so east of UTC — between local midnight and UTC midnight — the
+# two disagreed and the refusal stopped firing. Caught only because a verification run crossed the
+# boundary at UTC+0530, an hour after CI had passed. A rule that holds for most of the day in some
+# timezones is FC-002 with a clock attached. Both neighbouring UTC days are now refused too.
+JGTZ=$(jgproj jg-tz)
+for OFFSET in -1 0 1; do
+  D=$(node -e "const d=new Date(Date.now()+($OFFSET*86400000));process.stdout.write(d.toISOString().slice(0,10))")
+  printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"%s"},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
+    "$D" > "$JGTZ/docs/team/journeys/r.json"
+  node "$JG" --root "$JGTZ" >/dev/null 2>&1
+  if [ "$?" = "1" ]; then ok "...and a date $OFFSET day(s) from now is refused too (timezone-independent)"
+  else bad "...and a date $OFFSET day(s) from now is refused too (timezone-independent)" "$D was accepted"; fi
+done
+# A genuinely fixed past date is still accepted — this is a gate, not a ban on dates.
+printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"1999-01-02"},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
+  > "$JGTZ/docs/team/journeys/r.json"
+node "$JG" --root "$JGTZ" >/dev/null 2>&1
+[ "$?" != "1" ] && ok "...while a fixed past date is accepted" || bad "...while a fixed past date is accepted"
 assert_has "$TMP/err" "distinguishable" "...and names the property the value lacks"
 for BAD in '""' '"0"'; do
   printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"enter","id":"n","value":%s},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
