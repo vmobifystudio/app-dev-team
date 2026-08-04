@@ -138,22 +138,47 @@ invariant('I-03', 'Atomic admission', true, () => sandbox((dir) => {
 // I-04  Authenticated authority
 // ---------------------------------------------------------------------------------------------
 invariant('I-04', 'Authenticated authority', true, () => sandbox((dir) => {
-  board(['add', 'A-001', '--title', 'x', '--owner', 'ios-developer'], dir);
-  board(['move', 'A-001', 'claimed', '--by', 'ios-developer'], dir);
-  board(['move', 'A-001', 'done_reported', '--by', 'ios-developer'], dir);
-  // The question is not whether role SEPARATION is checked — it is. The question is whether a
-  // caller must PROVE it may assert a role at all, or merely spell it correctly.
-  const invented = board(['move', 'A-001', 'approved', '--by', 'a-role-that-does-not-exist'], dir);
-  const grep = run('grep', ['-rlE', 'actor/v1|attest|verifySignature', join(ROOT, 'scripts/lib')], ROOT);
-  if (grep.code === 0) {
-    return invented.code !== 0
-      ? { state: 'PASS', detail: 'actor attestation present and an invented role is refused' }
-      : { state: 'FAIL', detail: 'actor attestation exists but an invented role still passed' };
-  }
-  return {
-    state: 'FAIL',
-    detail: '`--by` is an unauthenticated string: no actor/v1, attestation or signature check exists anywhere in scripts/lib',
-  };
+  // BEHAVIOURAL. The grep version of this check ("does the word attest appear anywhere in
+  // scripts/lib") would have gone green the moment the file existed, whether or not anything
+  // consulted it — the same trap that made I-05 certify unfixed code.
+  //
+  // The question is NOT whether role separation is enforced; it is. The question is whether a
+  // caller must PROVE it may assert a role, or merely spell it correctly.
+  mkdirSync(join(dir, 'docs/team'), { recursive: true });
+  writeFileSync(join(dir, '.studio-policy.json'), JSON.stringify({ requireAttestedActors: true }));
+  writeFileSync(join(dir, 'docs/team/actors.json'), JSON.stringify({
+    actors: { 'dev-1': { roles: ['ios-developer'], secret: 's-dev' } },
+  }));
+
+  // 1. A bare `--by` with no actor at all must not proceed.
+  const bare = board(['add', 'T-001', '--title', 'x', '--owner', 'ios-developer', '--by', 'tech-manager'], dir);
+  if (bare.code === 0) return { state: 'FAIL', detail: '`--by` alone was accepted under requireAttestedActors — the role is still just a string' };
+
+  // 2. A REAL actor holding a REAL token, claiming a role it was never granted. This is the
+  //    self-approval bypass in its purest form: one process supplying two names.
+  const minted = run('node', ['-e',
+    `import(${JSON.stringify(join(ROOT, 'scripts/lib/actor.mjs'))}).then((m) => {` +
+    `const r = m.mintToken({ root: process.cwd(), actorId: 'dev-1', role: 'code-reviewer', ticket: 'T-001', event: 'created', ts: '' });` +
+    'process.stdout.write(r.ok ? r.token : "");});'], dir).out.trim();
+  const invented = board(['add', 'T-001', '--title', 'x', '--owner', 'ios-developer',
+    '--by', 'code-reviewer', '--actor', 'dev-1', '--actor-token', minted], dir);
+  if (invented.code === 0) return { state: 'FAIL', detail: 'dev-1 asserted "code-reviewer", a role it was never granted, and the event was accepted' };
+
+  // 3. ...and the legitimate case still works, or this is a wall rather than a gate.
+  const good = run('node', ['-e',
+    `import(${JSON.stringify(join(ROOT, 'scripts/lib/actor.mjs'))}).then((m) => {` +
+    `const r = m.mintToken({ root: process.cwd(), actorId: 'dev-1', role: 'ios-developer', ticket: 'T-001', event: 'created', ts: '' });` +
+    'process.stdout.write(r.ok ? r.token : "");});'], dir).out.trim();
+  const ok = board(['add', 'T-001', '--title', 'x', '--owner', 'ios-developer',
+    '--by', 'ios-developer', '--actor', 'dev-1', '--actor-token', good], dir);
+  if (ok.code !== 0) return { state: 'FAIL', detail: `a correctly attested actor was refused: ${ok.out.trim().split('\n')[0]}` };
+
+  // 4. The durable record must say which regime produced it. Without this stamp, turning the flag
+  //    on tomorrow retroactively launders every unproven decision made before it.
+  const stamped = logLines(dir).some((l) => { try { return JSON.parse(l).actor?.mode === 'attested'; } catch { return false; } });
+  if (!stamped) return { state: 'FAIL', detail: 'the accepted event carries no actor/v1 mode — history cannot distinguish proven from asserted' };
+
+  return { state: 'PASS', detail: 'a role must be granted to an actor and proven per-assertion; the regime is stamped on the event' };
 }));
 
 // ---------------------------------------------------------------------------------------------
@@ -236,13 +261,37 @@ invariant('I-06', 'Candidate-bound evidence', true, () => {
 // ---------------------------------------------------------------------------------------------
 // I-07  Enforced risk route
 // ---------------------------------------------------------------------------------------------
-invariant('I-07', 'Enforced risk route', true, () => {
-  const src = readFileSync(join(ROOT, 'scripts/lib/events.mjs'), 'utf8');
-  const consumes = /policy[_-]decision|required_approvals|policy\.approvals/i.test(src);
-  return consumes
-    ? { state: 'PASS', detail: 'the governed mutation consumes a durable policy decision' }
-    : { state: 'FAIL', detail: 'risk routing is advice on stdout: no policy-decision object is consumed at the transition it governs' };
-});
+invariant('I-07', 'Enforced risk route', true, () => sandbox((dir) => {
+  // Behavioural. The grep version asked whether events.mjs MENTIONED a policy decision — which a
+  // comment satisfies. What matters is whether the governed mutation refuses without one.
+  mkdirSync(join(dir, 'docs/team'), { recursive: true });
+  writeFileSync(join(dir, 'docs/team/risk-policy.json'), JSON.stringify({
+    schema: 'risk-policy/v1',
+    default: { risk: 'low', model: 'sonnet', approvals: [], required_evidence: [] },
+    rules: [{ match: { path: '**/billing/**' }, risk: 'critical', model: 'opus',
+      approvals: ['code-reviewer', 'security-reviewer'], required_evidence: ['threat-model'] }],
+  }));
+  board(['add', 'PAY-001', '--title', 'billing change', '--owner', 'ios-developer',
+    '--file', 'src/billing/Checkout.swift', '--invariant', 'totals never negative'], dir);
+  for (const [e, by] of [['claimed', 'ios-developer'], ['done_reported', 'ios-developer'],
+    ['verified', 'verification-engineer'], ['review_requested', 'ios-developer'],
+    ['started', 'code-reviewer'], ['approved', 'code-reviewer']]) board(['move', 'PAY-001', e, '--by', by], dir);
+
+  // The generic review is present and the separation rule is satisfied. Only the SPECIALIST the
+  // risk route demanded is missing — the requirement that used to be printed and discarded.
+  const short = board(['move', 'PAY-001', 'merged', '--by', 'tech-manager'], dir);
+  if (short.code === 0) {
+    return { state: 'FAIL', detail: 'a critical-risk change merged with the required security-reviewer approval absent — the risk route is advice, not a precondition' };
+  }
+  if (!/security-reviewer/.test(short.out)) {
+    return { state: 'FAIL', detail: `merge was refused, but not for the missing specialist: ${short.out.trim().split('\n')[1] || ''}` };
+  }
+  // ...and it must be a gate, not a wall.
+  board(['move', 'PAY-001', 'approved', '--by', 'security-reviewer'], dir);
+  const ok = board(['move', 'PAY-001', 'merged', '--by', 'tech-manager'], dir);
+  if (ok.code !== 0) return { state: 'FAIL', detail: 'the merge stayed refused after every required approval was recorded' };
+  return { state: 'PASS', detail: 'the risk route\'s required approvals are a precondition of the mutation they govern' };
+}));
 
 // ---------------------------------------------------------------------------------------------
 // I-08  Bidirectional scope coverage

@@ -6,14 +6,14 @@ FOUNDATION CONFORMANCE — I-01..I-12
         the read layer reports the log, not the hand-edited view
   PASS  I-03  Atomic admission
         12/12 concurrent admissions committed, chain intact
-  FAIL  I-04  Authenticated authority
-        `--by` is an unauthenticated string: no actor/v1, attestation or signature check exists anywhere in scripts/lib
+  PASS  I-04  Authenticated authority
+        a role must be granted to an actor and proven per-assertion; the regime is stamped on the event
   PASS  I-05  Complete work identity
         an approval binds base..head, covers every commit, and re-verifies clean
   PASS  I-06  Candidate-bound evidence
         evidence is content-addressed and invalidates as STALE
-  FAIL  I-07  Enforced risk route
-        risk routing is advice on stdout: no policy-decision object is consumed at the transition it governs
+  PASS  I-07  Enforced risk route
+        the risk route's required approvals are a precondition of the mutation they govern
   PASS  I-08  Bidirectional scope coverage
         an in-scope requirement that nothing implements is a named finding
   FAIL  I-09  Criterion-level proof
@@ -25,7 +25,7 @@ FOUNDATION CONFORMANCE — I-01..I-12
   PASS  I-12  Human-only publication
         no executable path can submit or publish to a store
 
-  8/12 invariants hold, 4 failing
+  10/12 invariants hold, 2 failing
 
   The foundation is NOT ESTABLISHED. Report these counts, never an averaged score:
   one failed critical invariant blocks a "trustworthy autonomous team" claim regardless

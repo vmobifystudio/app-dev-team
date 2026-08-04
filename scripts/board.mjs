@@ -48,6 +48,7 @@ import { createHash } from 'node:crypto';
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { withFileLock } from './lib/atomic.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
+import { resolveActor } from './lib/actor.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
 import {
@@ -125,7 +126,7 @@ function resolveId(tickets, id) {
 const VALUE_FLAGS = new Set([
   'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
-  'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root', 'base',
+  'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root', 'base', 'actor', 'actor-token',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
@@ -283,6 +284,40 @@ function append(logPath, event) {
   appendFileSync(logPath, `${sep}${JSON.stringify({ ...event, hash: chainHash(chain.tip, event) })}\n`);
 }
 
+/**
+ * Resolve and stamp the actor/v1 envelope for an event.
+ *
+ * WHY THIS IS ON EVERY EVENT AND NOT JUST APPROVALS. Authority matters wherever a role is claimed:
+ * who reported done, who verified, who unblocked. Stamping only the approval would leave the rest
+ * of the chain as anonymous as before, and the chain is what an approval is an approval OF.
+ *
+ * Under the default (insecure-local) this never refuses — it records `mode: "insecure-local"`, a
+ * durable admission that the role was asserted rather than proven. Under
+ * `requireAttestedActors: true` an unproven role is refused outright.
+ */
+function stampActor(paths, flags, ticket, eventName) {
+  const root = dirname(dirname(paths.log));
+  let requireAttested = false;
+  try { requireAttested = JSON.parse(readFileSync(resolve(root, '.studio-policy.json'), 'utf8')).requireAttestedActors === true; }
+  catch { /* no policy, or unreadable: the default regime is insecure-local */ }
+  const result = resolveActor({
+    root,
+    role: String(flags.by || ''),
+    ticket,
+    event: eventName,
+    ts: '',
+    token: typeof flags['actor-token'] === 'string' ? flags['actor-token'] : '',
+    actorId: typeof flags.actor === 'string' ? flags.actor : '',
+    requireAttested,
+  });
+  if (!result.ok) {
+    die(result.code, `refusing ${eventName} on ${ticket}: ${result.reason}\n` +
+      '  requireAttestedActors is on, so a role must be GRANTED to an actor in docs/team/actors.json\n' +
+      '  and proven with a token, not merely spelled correctly in --by.');
+  }
+  return result.actor;
+}
+
 function writeView(boardPath, tickets) {
   mkdirSync(dirname(boardPath), { recursive: true });
   writeFileSync(boardPath, renderBoard(tickets));
@@ -344,7 +379,28 @@ function deriveRisk(flags, paths) {
   if (result.status !== 0) {
     die(1, `--file was supplied but risk-router.mjs could not classify it against ${policyPath} — fix the policy, or drop --file if this ticket genuinely has none:\n${`${result.stdout || ''}${result.stderr || ''}`.trim()}`);
   }
-  try { return JSON.parse(result.stdout).risk || null; }
+  // THE WHOLE DECISION IS KEPT, NOT JUST THE TIER.
+  //
+  // This used to read `.risk` and throw the rest away — so `approvals` and `required_evidence`,
+  // the two fields that say what the tier actually DEMANDS, were computed and discarded at the
+  // moment they were derived. The router printed advice; the mutation it governs never saw it.
+  //
+  // That is the general pattern the audit named: tools emit advice while other tools make
+  // decisions. A policy decision has to be a durable object CONSUMED by the mutation it governs,
+  // not console output the caller is trusted to remember. FC-001 restated at the architecture
+  // level, which is why a recommendation-shaped mechanism keeps failing to bind.
+  try {
+    const route = JSON.parse(result.stdout);
+    return {
+      schema: 'policy-decision/v1',
+      risk: route.risk || null,
+      model: route.model || null,
+      required_approvals: route.approvals || [],
+      required_evidence: route.required_evidence || [],
+      decided_at: new Date().toISOString(),
+      policy: 'docs/team/risk-policy.json',
+    };
+  }
   catch (e) { die(1, `risk-router.mjs produced unparseable output for ${policyPath}: ${e.message}`); }
 }
 
@@ -374,7 +430,13 @@ function cmdAdd(id, flags, paths, idempotencyKey = '') {
       ? String(flags.invariant).split(';').map((s) => scrub('--invariant', s.trim())).filter(Boolean)
       : [],
     rollback: scrub('--rollback', flags.rollback || ''),
-    risk: deriveRisk(flags, paths),
+    ...(() => {
+      const decision = deriveRisk(flags, paths);
+      // `risk` stays a bare string: board-render, events.mjs's review_requested guard and the
+      // dashboards all read it, and changing its shape here would be the fix that breaks four
+      // consumers to serve one. The decision rides alongside it.
+      return decision ? { risk: decision.risk, policy_decision: decision } : { risk: null };
+    })(),
   };
   const event = {
     ts: new Date().toISOString(),
@@ -383,6 +445,7 @@ function cmdAdd(id, flags, paths, idempotencyKey = '') {
     by: flags.by || 'tech-manager',
     detail,
     provenance: 'cli',
+    actor: stampActor(paths, flags, normalizeId(id), 'created'),
     ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
   };
 
@@ -562,6 +625,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     by: flags.by || '',
     detail: typeof flags.detail === 'object' ? flags.detail : scrub('--detail', flags.detail || ''),
     provenance: 'cli',
+    actor: stampActor(paths, flags, ticket, name),
     // Stamped here as well as in `cmdAdd`. The first version of this fix stamped the key on
     // `created` only, so `alreadyApplied` could never find it for a `move` — the dedup guard ran,
     // found nothing, and the retry fell through to the state machine. FC-001 inside the fix for
