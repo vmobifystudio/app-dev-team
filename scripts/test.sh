@@ -3743,6 +3743,124 @@ grep -q -- '--board=' "$TMP/out" \
 # forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
 # flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
 # point by construction.
+# --- F8: "this is broken" is not "this cannot be checked here" ----------------------------------
+#
+# DR4-001's class, factored out. verify-done.sh could not tell a FAILING test from a test command
+# that never RAN, so a missing simulator looked exactly like a defect and developers were re-spawned
+# to fix bugs that did not exist. Each script then re-derived that judgement its own way.
+#
+# The classifier is CONSERVATIVE IN ONE DIRECTION ON PURPOSE: an unrecognised failure is a REAL
+# failure, never an environment problem. The inverse error is the dangerous one — a genuine defect
+# reported as "your toolchain is missing" is a defect nobody investigates.
+node -e '
+import("'"$HERE"'/lib/environment.mjs").then(({ classify }) => {
+  const cases = [
+    [{ status: 0, output: "" }, "ok", 0],
+    [{ status: 127, output: "" }, "environment", 2],
+    [{ status: 126, output: "" }, "environment", 2],
+    [{ status: null, output: "" }, "environment", 2],
+    [{ status: 1, output: "xcodebuild: command not found" }, "environment", 2],
+    [{ status: 1, output: "xcode-select: error: tool not installed" }, "environment", 2],
+    [{ status: 1, output: "adb: no devices/emulators found" }, "environment", 2],
+    // THE LOAD-BEARING NEGATIVES. Real failures that merely contain the word "not found" must NOT
+    // be laundered into CANNOT EVALUATE, or a broken build becomes an environment excuse.
+    [{ status: 1, output: "Test Case testLogin failed: expected 3 got 4" }, "failed", 1],
+    [{ status: 1, output: "error: module not found: MyFeature" }, "failed", 1],
+    [{ status: 65, output: "** TEST FAILED **" }, "failed", 1],
+  ];
+  for (const [input, kind, exit] of cases) {
+    const c = classify(input);
+    if (c.kind !== kind || c.exit !== exit) {
+      process.stderr.write(`${JSON.stringify(input)} -> ${c.kind}/${c.exit}, expected ${kind}/${exit}\n`);
+      process.exit(1);
+    }
+  }
+});
+' 2>"$TMP/err" \
+  && ok "the environment classifier separates a missing toolchain from a real failure" \
+  || bad "the environment classifier separates a missing toolchain from a real failure" "$(cat "$TMP/err")"
+
+# --- F6: the toolchain is pinned before the build, not discovered when it breaks ----------------
+#
+# R10: AGP/Kotlin/KSP incompatibility broke the build in two different fixtures, in two dry runs.
+# Both times the toolchain was found to be wrong halfway through a sprint, by an agent who then had
+# to diagnose someone else's environment.
+PPD="$TMP/project-profile"; rm -rf "$PPD"; mkdir -p "$PPD/docs/team"
+PPC() { ( cd "$PPD" && node "$HERE/project-profile.mjs" "$@" ); }
+
+PPC check >"$TMP/out" 2>&1
+[ $? = 2 ] && ok "no project profile is CANNOT EVALUATE — the toolchain is UNKNOWN, not defaulted" \
+           || bad "no project profile is CANNOT EVALUATE"
+assert_has "$TMP/out" 'not the' "...and it says so rather than implying defaults are fine"
+
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo fast","full":"echo full"}}\n' \
+  > "$PPD/docs/team/project-profile.json"
+PPC check >/dev/null 2>&1
+[ $? = 0 ] && ok "a profile whose declared tool is present at its declared version is CLEAR" \
+           || bad "a present, matching tool is CLEAR"
+
+# A WRONG VERSION IS BLOCKED (1), AN ABSENT TOOL IS CANNOT EVALUATE (2). Collapsing these is the
+# whole defect: one means fix your machine, the other means this project will not build correctly.
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v0.1."}],"test":{"fast":"echo f","full":"echo F"}}\n' \
+  > "$PPD/docs/team/project-profile.json"
+PPC check >/dev/null 2>&1
+[ $? = 1 ] && ok "...a declared tool at the WRONG version is BLOCKED (1), not cannot-evaluate" \
+           || bad "a wrong-version tool is BLOCKED (1)"
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"definitely-not-a-real-tool-xyz","args":[],"expect":"1"}],"test":{"fast":"echo f","full":"echo F"}}\n' \
+  > "$PPD/docs/team/project-profile.json"
+PPC check >/dev/null 2>&1
+[ $? = 2 ] && ok "...while an ABSENT tool is CANNOT EVALUATE (2) — nothing could be compared" \
+           || bad "an absent tool is CANNOT EVALUATE (2)"
+
+# test.fast / test.full: the split that stops every ticket paying for the whole matrix.
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"full":"echo FULL"}}\n' \
+  > "$PPD/docs/team/project-profile.json"
+PPC test-command --scope full >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'echo FULL' "test-command --scope full prints the declared command"
+PPC test-command --scope fast >/dev/null 2>&1
+[ $? = 2 ] && ok "...and an UNDECLARED scope is exit 2 with nothing substituted for it" \
+           || bad "an undeclared test scope is exit 2, never a substituted default"
+
+# --- F7: every schema this studio writes is declared, and none has silently vanished ------------
+#
+# Thirty-one `name/vN` identifiers, one already at v2, and nothing listed them. The registry is
+# SCANNED from the tree rather than hand-maintained: a hand-kept list is a second source of truth
+# about the first one, drifting in exactly the way it exists to catch.
+assert_exit 0 "the schema registry agrees with the tree" node "$HERE/schema-registry.mjs" check
+
+# Mirror: an undeclared schema must be found. Proven by removing one entry from a copy.
+SRD="$TMP/schema-registry"; rm -rf "$SRD"; mkdir -p "$SRD/docs/team/x" "$SRD/scripts"
+cp "$HERE"/*.mjs "$SRD/scripts/" 2>/dev/null
+mkdir -p "$SRD/scripts/lib" && cp "$HERE"/lib/*.mjs "$SRD/scripts/lib/" 2>/dev/null
+node -e '
+const fs = require("fs");
+const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+delete r.schemas["board-event/v1"];
+fs.writeFileSync(process.argv[2], JSON.stringify(r));
+' "$HERE/../docs/team/schema-registry.json" "$SRD/docs/team/schema-registry.json"
+( cd "$SRD" && node "$HERE/schema-registry.mjs" check --root "$SRD" ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "...and an undeclared schema is reported as drift" \
+           || bad "an undeclared schema is reported as drift" "$(cat "$TMP/out")"
+assert_has "$TMP/out" 'UNDECLARED  board-event/v1' "...naming the schema and who writes it"
+
+# --- F24: the ten engineering rules, ratified where they can be found --------------------------
+#
+# They lived only inside a dry-run report — the exact shape this repo keeps proving is not a rule.
+# Each rule must name its enforcing mechanism OR say it has none; a rule listed as enforced with
+# nothing enforcing it is the "rule that cannot fail" pattern, in the rules file.
+RULES="$HERE/../docs/25-engineering-rules.md"
+[ -f "$RULES" ] && ok "the ten engineering rules have a canonical home outside a dry-run report" \
+               || bad "the ten engineering rules have a canonical home"
+for _n in 1 2 3 4 5 6 7 8 9 10; do
+  grep -qE "^\| $_n \|" "$RULES" || { bad "engineering rule $_n is listed"; break; }
+done
+grep -cE '^\| [0-9]+ \|' "$RULES" | grep -qx 10 \
+  && ok "...all ten of them, no more and no fewer" \
+  || bad "...all ten of them" "$(grep -cE '^\| [0-9]+ \|' "$RULES") rows"
+grep -q 'No mechanism' "$RULES" \
+  && ok "...and rules with no enforcing mechanism say so rather than claiming a checkmark" \
+  || bad "rules with no enforcing mechanism say so"
+
 # --- F17: the artifact you upload, bound to the commit that passed ------------------------------
 #
 # R1, the strongest recurrence in the corpus: "no release-candidate aggregate; /app-ship is a bag of
