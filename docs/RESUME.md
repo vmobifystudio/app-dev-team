@@ -3,7 +3,19 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-07-30 · **Branch:** `revamp/phase-r-fixes` · **Suite:** 735 assertions green
+**Last updated:** 2026-08-05 · **Branch:** `main` · **Suite:** 1100 assertions green · **Invariants:** 12/12
+
+> **2026-08-05 — READ THIS BEFORE THE REST OF THE FILE.** Everything below §2 was written on
+> 2026-07-30 and large parts of it are now false. It said branch `revamp/phase-r-fixes`, 735
+> assertions, and **"Open PRs — nothing is on `main` yet"**; all three were wrong by weeks. The
+> whole revamp stack, the F-series kernel and the conformance suite are merged to `main`, the suite
+> is at 1100, and the twelve invariants hold.
+>
+> That matters more than the numbers: this is the file whose first line tells a cold agent to "read
+> this and nothing else until you have." A stale orientation document is not a small problem here —
+> it is the one artifact whose whole job is to be true, and it was quietly the least true thing in
+> the repository. Treat §3–§7 as historical reasoning (still worth reading, the arguments hold) and
+> §2 as the only section that claims current state.
 
 ---
 
@@ -156,9 +168,15 @@ before `parseArgs` was ever reached — the probe passed without testing anythin
 the failure mode dry run 5 hit twice. **A refusal is evidence only when you know which layer
 refused.**
 
+⚠️ **The `add` line below used to read `add APP-001 "probe"`, and that spelling was broken** — the
+title is `--title`, so `"probe"` landed in a positional nothing read, the ticket was created with an
+empty title, and the command exited 0. The standing probe in the file that says "must never
+regress" was itself teaching the wrong invocation. `board.mjs` now refuses an extra positional
+rather than discarding it (2026-08-05), so the old line fails loudly instead of quietly.
+
 ```bash
 echo SENTINEL > victim.txt
-node scripts/board.mjs add APP-001 "probe" --by tech-manager
+node scripts/board.mjs add APP-001 --title probe --by tech-manager
 node scripts/board.mjs move APP-001 blocked --by tech-manager --detail "--board=$PWD/victim.txt"
 head -1 victim.txt        # must still read SENTINEL — and the move must have EXITED 0,
                           # because a refusal here means you tested the state machine again

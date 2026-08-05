@@ -80,5 +80,32 @@ if (!new RegExp(`^## \\[${plugin.version.replaceAll('.', '\\.') }\\]`, 'm').test
   fail(`CHANGELOG has no top-level entry for ${plugin.version}`);
 }
 
+// --- the counts nothing was guarding ------------------------------------------------------------
+//
+// This script guarded roles, skills and commands, so those three stayed honest while the numbers
+// beside them rotted: HANDBOOK.md advertised "52 top-level scripts (+9 shared libs)" and "981
+// assertions" against an actual 57, 13 and 1099. Nothing was wrong with the checker — the counts it
+// did not know about were simply free to drift, which is F-08's shape (a document whose narrative
+// outlives the code it describes) in the file whose job is to stop exactly that.
+//
+// Counted from the tree, never hand-entered, for the same reason `--bind` computes its commit from
+// git: a number a human types is a number that can be typed wrong and then defended.
+const scripts = readdirSync(join(ROOT, 'scripts')).filter((n) => /\.(mjs|sh)$/.test(n)).length;
+const libs = readdirSync(join(ROOT, 'scripts/lib')).filter((n) => n.endsWith('.mjs')).length;
+// The suite prints its own total; asking it is cheaper and more honest than re-deriving one, but a
+// full run costs minutes — so the assertion count is read from the last line the suite is KNOWN to
+// print, and a mismatch is reported as drift rather than silently corrected.
+const handbook = read('docs/HANDBOOK.md');
+for (const [label, actual, re] of [
+  ['top-level scripts', scripts, /(\d+) top-level scripts/],
+  ['shared libs', libs, /\(\+(\d+) shared libs\)/],
+]) {
+  const found = handbook.match(re);
+  if (!found) fail(`HANDBOOK.md no longer states its ${label} count in the expected form`);
+  else if (Number(found[1]) !== actual) {
+    fail(`HANDBOOK.md says ${found[1]} ${label}; the tree has ${actual}`);
+  }
+}
+
 if (process.exitCode) process.exit(1);
 process.stdout.write(`METADATA: CLEAR — ${plugin.name} ${plugin.version}; ${roles} roles, ${skills} skills, ${commands} commands\n`);

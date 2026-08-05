@@ -9,13 +9,74 @@
 # Every assertion below corresponds to a defect that was actually shipped and then found by running
 # the thing. The comments name them, so a future change that breaks one knows what it is undoing.
 #
-# Usage:  sh scripts/test.sh [-v]
+# Usage:  sh scripts/test.sh [-v] [--only <pattern>]
 # Exit:   0 all passed · 1 one or more failed
-
+#
+# --only <pattern> runs ONLY the `# --- <title> ---` sections whose banner matches <pattern>, so a
+# change to one script has a seconds-long inner loop instead of a ten-minute one.
+#
+# WHY THIS EXISTS. The suite is ~1100 assertions and a few thousand node spawns, and it could only
+# ever run all of them. Measured on a real change: eight full runs to land two fixes, most of them
+# spent using the suite as a SEARCH TOOL — "which callers did I break?" — where `grep` would have
+# answered in two seconds. A ten-minute inner loop does not just cost ten minutes; it teaches
+# whoever is working here to batch up guesses instead of checking one thing at a time, and batched
+# guesses are how you get a wrong fix that looks efficient.
+#
+# --only IS NOT THE GATE, AND CANNOT BE. Sections share fixtures and setup, so a section run alone
+# may fail for want of something an earlier section built. That is a stated limitation, not a bug:
+# the accelerator is for iterating, the full run is what decides. It says so on every invocation,
+# because a fast check that can be mistaken for the real one is worse than no fast check.
 set -u
-HERE=$(cd "$(dirname "$0")" && pwd)
+# APP_TEAM_TEST_HERE is set only by the --only path below, which re-execs a GENERATED copy of this
+# file from a temp directory — where `dirname "$0"` is /tmp and every `$HERE/board.mjs` resolves to
+# nothing. The subset run then reported 77 failures that were all ENOENT, which is a harness fault
+# wearing a product fault's clothes (DR4-001), and exactly the thing this suite refuses elsewhere.
+HERE=${APP_TEAM_TEST_HERE:-$(cd "$(dirname "$0")" && pwd)}
 FIX="$HERE/fixtures"
-VERBOSE=${1:-}
+
+VERBOSE=''
+ONLY=''
+while [ $# -gt 0 ]; do
+  case $1 in
+    -v) VERBOSE=-v ;;
+    --only) shift; [ $# -gt 0 ] || { echo "test.sh: --only needs a pattern" >&2; exit 2; }; ONLY=$1 ;;
+    --only=*) ONLY=${1#--only=} ;;
+    *) echo "test.sh: unknown argument $1 (usage: [-v] [--only <pattern>])" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+if [ -n "$ONLY" ]; then
+  # Re-exec a generated script: the shared preamble (helpers, $TMP, the assert_* functions) plus
+  # only the matching sections, plus the summary. Generated rather than filtered in-place because
+  # the sections are straight-line shell with no function boundary to skip over.
+  SEL=$(mktemp)
+  trap 'rm -f "$SEL"' EXIT
+  awk -v pat="$ONLY" -v self="$0" '
+    /^# --- / { inbody = 1; keep = (index($0, pat) > 0); matched += keep }
+    /^echo "─────/ { inbody = 0; insummary = 1 }
+    { if (!inbody || keep || insummary) print }
+    END { if (!matched) { print "echo \"test.sh: --only " pat " matched no section in " self "\" >&2; exit 2" } }
+  ' "$0" > "$SEL"
+  echo "  RUNNING A SUBSET (--only $ONLY). This is an accelerator, NOT the gate — sections share"
+  echo "  fixtures, so a pass here is not a pass. Run the whole suite before you commit."
+  APP_TEAM_TEST_HERE="$HERE" sh "$SEL" $VERBOSE
+  RC=$?
+  if [ "$RC" != 0 ]; then
+    # A SUBSET FAILURE IS AMBIGUOUS, AND SAYING SO IS THE WHOLE POINT. Sections set shell variables
+    # for the sections after them — `BD` is board.mjs for most of the file and a SKILL.md path for
+    # one stretch — so a section lifted out of sequence can fail for want of setup rather than for
+    # want of correctness. Observed immediately: the first --only run of the verdict section
+    # reported six failures that were all an unset `BD`, i.e. a harness fault wearing a product
+    # fault's clothes. That is DR4-001's class, and an accelerator that produces it silently would
+    # send someone to fix a bug that does not exist.
+    echo ""
+    echo "  A SUBSET FAILURE IS NOT YET A FINDING. Sections inherit setup from earlier sections, so"
+    echo "  these may be missing a fixture rather than a behaviour. Re-run the full suite before"
+    echo "  believing any failure above:  sh scripts/test.sh"
+  fi
+  exit $RC
+fi
 PASS=0
 FAIL=0
 TMP=$(mktemp -d)
@@ -3682,6 +3743,51 @@ grep -q -- '--board=' "$TMP/out" \
 # forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
 # flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
 # point by construction.
+# --- an extra positional is refused, never discarded --------------------------------------------
+#
+# `board.mjs add APP-001 "Foundation"` — the obvious spelling — recorded `title: ""` and exited 0,
+# because the title is `--title` and the extra positional went where nothing read it. The Title
+# column then rendered `—` forever. This is the quiet half of the argument-injection class already
+# closed in VALUE_FLAGS: there a value was read as a flag, here it was read as nothing at all, and
+# both end with the CLI reporting success for an instruction it did not carry out.
+#
+# docs/RESUME.md's standing probe — in the section headed "the one probe that must never regress" —
+# used the broken spelling for weeks.
+POSA="$TMP/positional"; mkdir -p "$POSA/docs"
+( cd "$POSA" && node "$BD" add APP-001 "Foundation" --by tech-manager ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "an extra positional on add is refused, not silently discarded" \
+           || bad "an extra positional on add is refused, not silently discarded" "$(cat "$TMP/out")"
+assert_has "$TMP/out" 'Ignored: "Foundation"' "...and the refusal quotes the argument that would have been dropped"
+( cd "$POSA" && node "$BD" add APP-001 --title Foundation --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+( cd "$POSA" && node "$BD" show APP-001 --json ) 2>/dev/null | grep -q '"title": "Foundation"' \
+  && ok "...while the named form records the title it was given" \
+  || bad "...while the named form records the title it was given"
+( cd "$POSA" && node "$BD" move APP-001 claimed --by ios-developer ) >/dev/null 2>&1
+[ $? = 0 ] && ok "...and commands that legitimately take two positionals still work" \
+           || bad "...and commands that legitimately take two positionals still work"
+
+# --- the counts in HANDBOOK.md are checked against the tree -------------------------------------
+#
+# metadata-check guarded roles, skills and commands, so those stayed honest while the numbers beside
+# them rotted: the handbook advertised 52 scripts and 9 libs against an actual 57 and 14. F-08's
+# shape — a document whose narrative outlives the code — in the script whose job is to stop it.
+# ONLY THE PATHS metadata-check READS ARE COPIED. The first version was `cp -R "$HERE/.."`, which
+# drags in .git and the gitignored dry-runs/ tree — hundreds of megabytes, per suite run, to mutate
+# one line of one Markdown file. A regression that makes the suite slower makes the suite get run
+# less, which is a strange way to defend a rule about running things.
+MDC="$TMP/metadata-drift/repo"; rm -rf "$TMP/metadata-drift"
+mkdir -p "$MDC/docs"
+cp -R "$HERE/../agents" "$HERE/../skills" "$HERE/../commands" "$HERE/../.claude-plugin" "$MDC/" 2>/dev/null
+mkdir -p "$MDC/scripts/lib"
+cp "$HERE"/*.mjs "$HERE"/*.sh "$MDC/scripts/" 2>/dev/null
+cp "$HERE"/lib/*.mjs "$MDC/scripts/lib/" 2>/dev/null
+cp "$HERE/../README.md" "$HERE/../CHANGELOG.md" "$MDC/" 2>/dev/null
+cp "$HERE/../docs/HANDBOOK.md" "$MDC/docs/" 2>/dev/null
+sed -i.bak 's/[0-9][0-9]* top-level scripts/999 top-level scripts/' "$MDC/docs/HANDBOOK.md" 2>/dev/null
+( cd "$MDC" && node scripts/metadata-check.mjs ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "a wrong script count in HANDBOOK.md fails metadata-check" \
+           || bad "a wrong script count in HANDBOOK.md fails metadata-check" "$(cat "$TMP/out")"
+
 # --- review-verdict/v1: the output contract for a review gate ----------------------------------
 #
 # `team-doctor` enforces an output contract on the fourteen roles that OWN tickets. The roles that
