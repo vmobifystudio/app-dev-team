@@ -265,7 +265,8 @@ not recoverable by a later fix.
    `NOT REQUIRED` → binding is off for this project; proceed. `CLEAR` → proceed. Exit `1` → **stop;
    run no git command.** The approval no longer names what is about to merge. Ask `code-reviewer` to
    re-approve against the current commit with `board.mjs move APP-NNN approved --by code-reviewer
-   --bind --evidence <path> --context <path>` — never merge on the strength of a stale approval.
+   --verdict docs/53-reviews/APP-NNN-cycle-N.md --bind --evidence <path> --context <path>` — never
+   merge on the strength of a stale approval.
 
 2. **The gate runs first, before any git command** — it is not the bookkeeping that follows a
    merge. Run it and read its exit code:
@@ -278,7 +279,14 @@ not recoverable by a later fix.
    ticket with no `approved` event authored by a role other than its owner, and it re-derives that
    from the log at the moment you ask — so there is no window between checking and merging for a
    merge to slip through. The approval you were told about is not on the board: ask the reviewer to
-   append it with `board.mjs move APP-NNN approved --by code-reviewer`, or re-review.
+   append it with `board.mjs move APP-NNN approved --by code-reviewer --verdict
+   docs/53-reviews/APP-NNN-cycle-N.md`, or re-review.
+
+   **`--verdict` is not optional and you cannot supply it for them.** The CLI refuses `approved`
+   without a review document carrying `REVIEW VERDICT: APPROVE`, a `Scope: <base>..<head>` line and
+   a `## Not checked` section. If the reviewer has no such file, there is no review to record —
+   re-review is the answer, not a document written on their behalf by the person who wants the
+   merge.
 
    Exit `0` → the row is now `qa`, and only now do you touch git.
 

@@ -3743,6 +3743,28 @@ grep -q -- '--board=' "$TMP/out" \
 # forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
 # flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
 # point by construction.
+# --- no role file may generate an approval command the CLI refuses ------------------------------
+#
+# R5, the recurrence the corpus calls "the generator is the defect": the templates emit documents
+# the validator rejects, and the author is blamed for the generator's output. Making --verdict
+# mandatory created a fresh instance of it IN THE SAME SESSION — `tech-manager.md` carried two
+# repair paths telling it to append `board.mjs move APP-NNN approved --by code-reviewer`, which the
+# CLI now refuses. An instruction file that hands an agent a command guaranteed to fail is worse
+# than a missing instruction: the agent will assume it did something wrong.
+#
+# Checked mechanically because the set of files naming this command will grow, and the next one to
+# grow it will not remember this paragraph.
+for f in "$HERE"/../agents/*.md "$HERE"/../commands/*.md; do
+  # Only the lines that actually INVOKE the CLI, not prose mentioning the word "approved" — and not
+  # the `merged` gate's explanation of what it refuses.
+  if grep -qE 'board\.mjs"? move [A-Za-z0-9-]+ (approved|changes) ' "$f" 2>/dev/null; then
+    grep -q -- '--verdict' "$f" \
+      && ok "$(basename "$f") names an approval command and also names --verdict" \
+      || bad "$(basename "$f") names an approval command but never --verdict" \
+             "the CLI refuses it; this file hands an agent a command that cannot succeed"
+  fi
+done
+
 # --- an extra positional is refused, never discarded --------------------------------------------
 #
 # `board.mjs add APP-001 "Foundation"` — the obvious spelling — recorded `title: ""` and exited 0,
