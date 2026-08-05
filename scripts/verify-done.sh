@@ -68,8 +68,33 @@ TEST_CMD="${3:-}"
 
 if [ -z "$BRANCH" ]; then
   echo "verify-done: usage: verify-done.sh [--docs-only] <branch> [base] [test-command]" >&2
+  echo "  test-command may be the literal word 'fast' or 'full' to take it from the project" >&2
+  echo "  profile (docs/team/project-profile.json) instead of hardcoding one here." >&2
   exit 2
 fi
+
+# `fast` / `full` RESOLVE FROM THE PROJECT PROFILE (F6) RATHER THAN BEING HARDCODED PER CALLER.
+#
+# This script ran ONE test command per ticket — whatever the caller passed, which in practice was
+# the whole suite, every time. A one-line ticket paid for the full matrix. The profile declares both
+# scopes so the loop can spend proportionally: `fast` per ticket, `full` at merge and before ship.
+#
+# NOTHING IS SUBSTITUTED WHEN THE PROFILE IS SILENT. project-profile.mjs exits 2 for an undeclared
+# scope and this passes that straight through, because a default test command would make "the tests
+# ran" true of a command nobody chose — the same class as an evidence-optional pass.
+case "$TEST_CMD" in
+  fast|full)
+    _scope="$TEST_CMD"
+    _resolved=$(node "$(dirname "$0")/project-profile.mjs" test-command --scope "$_scope" 2>&1)
+    if [ $? -ne 0 ]; then
+      echo "verify-done: CANNOT EVALUATE — asked for the '$_scope' test command, and:" >&2
+      echo "$_resolved" | sed 's/^/  /' >&2
+      exit 2
+    fi
+    TEST_CMD="$_resolved"
+    echo "verify-done: test scope '$_scope' resolved from the project profile: $TEST_CMD" >&2
+    ;;
+esac
 
 if [ "$DOCS_ONLY" -eq 1 ] && [ -n "$TEST_CMD" ]; then
   echo "verify-done: --docs-only takes no test command (got '$TEST_CMD')." >&2

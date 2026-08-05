@@ -3,6 +3,62 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.0.0] — 2026-08-05
+
+The kernel. **779 → 1139 assertions**, twelve foundation invariants holding, and two CLI changes
+that break existing callers on purpose.
+
+**Why this is a major bump and not 2.1.** Two invocations that used to succeed now fail:
+
+- `board.mjs move <ID> approved|changes` **requires `--verdict <path>`**. An approval used to be a
+  word; it is now a document that is opened, parsed and hashed onto the event.
+- `board.mjs add <ID> "Some title"` **is refused**. The title is `--title`; the extra positional was
+  silently discarded, so the ticket was created with an empty title and exited 0.
+
+Both are breaking, both are the point, and neither has a compatibility shim — a flag that can be
+omitted is a rule that can be skipped.
+
+**The foundation, made falsifiable**
+- **Twelve invariants** (`scripts/foundation-conformance.mjs`), committed RED and then green, with
+  the delta published in `docs/foundation/`. They measure properties end to end rather than
+  mechanisms in isolation: the 981 assertions that preceded them were all passing while the board
+  could lose two thirds of its concurrent writes.
+- **Atomic append for every ledger** (`lib/atomic.mjs`). Twelve concurrent `board.mjs add` calls
+  used to commit four events and leave the hash chain forked.
+- **Authenticated authority** (`actor/v1`), **approval bound to base..head**, **content-addressed
+  criterion evidence**, **staleness invalidation**, and **one readiness reducer** every surface
+  projects.
+
+**Review and release**
+- **`review-verdict/v1`.** A review gate must produce a document carrying `REVIEW VERDICT:`,
+  `Scope: <base>..<head>` and a `## Not checked` section. `Scope` is what turns "review the diff,
+  not the whole app" into a recorded fact; a document saying REQUEST CHANGES cannot be appended as
+  `approved`.
+- **`release-candidate/v1`.** Readiness computed everything about a COMMIT and nothing about the
+  BINARY, so an artifact built from one commit could ship while the gates passed on another. The
+  artifact is now bound to its commit by hash, and a file changed after binding is BLOCKED.
+
+**The loop, and the tooling around it**
+- **`orchestrator.mjs`** (read-only) answers "what is legal now, and why" by calling the same
+  `validate()` the CLI calls — it has no model of its own to go stale, and no mutation commands
+  until it has run beside a real sprint.
+- **`project-profile/v1`** pins the toolchain before dispatch and declares `test.fast` / `test.full`;
+  `verify-done.sh` resolves them instead of running the whole matrix per ticket.
+- **`lib/environment.mjs`** separates "this is broken" from "this cannot be checked here".
+  `verify-done.sh` deliberately keeps its own stricter classifier; the disagreement is pinned by an
+  assertion so a tidy-up cannot collapse them and reintroduce DR4-001.
+- **`schema-registry.mjs`** — 31 schemas, scanned from the tree, undeclared and vanished both drift.
+- **`test.sh --only <pattern>`** — a 6-second inner loop instead of 10 minutes. It prints that it is
+  not the gate, and a failing subset says a failure may be a missing fixture.
+- **The ten engineering rules** (`docs/25-engineering-rules.md`), each naming its enforcing
+  mechanism **or stating it has none**. Three have none and say so.
+
+**Honestly not finished**
+- `/app-ship` has still never executed against a real submission.
+- Gates verify the process; across six dry runs not one *product* defect was caught by a gate.
+- The full `mutate.sh` catalogue takes ~2 hours locally and likely exceeds its 90-minute CI budget.
+- Rules 2, 3 and 5 are conventions with no mechanism.
+
 ## [2.0.0] — 2026-07-30
 
 The revamp. 74 commits, **48 → 779 assertions**, and the first release whose own documentation

@@ -16,6 +16,27 @@
  * a genuine defect reported as "your toolchain is missing" is a defect nobody investigates, which
  * is precisely the false-clear this repo exists to refuse. A real failure misreported as an
  * environment issue wastes an hour; an environment issue misreported as a pass ships a bug.
+ *
+ * `verify-done.sh` DELIBERATELY DISAGREES WITH THIS FILE, AND MUST NOT BE "UNIFIED" ONTO IT.
+ *
+ * It carries its own classifier with a third stage this one does not have: positive evidence that
+ * a suite actually RAN ("executed N tests", "TEST FAILED", an assertion count). Its default for
+ * unrecognised output is therefore the OPPOSITE of this file's — cannot-evaluate, not failure.
+ *
+ * That asymmetry is correct in both places because the two answer different questions:
+ *
+ *   here            "did this command fail, or could it not run?"  An unrecognised nonzero exit is
+ *                   most likely a real failure, so calling it environmental would hide defects.
+ *   verify-done.sh  "may I believe this DONE claim?"  Silence is not proof. Output with no sign a
+ *                   suite ran must never be recorded as a verdict about the code, in either
+ *                   direction — that is DR4-001 and the whole reason `verified_static` exists.
+ *
+ * Refactoring verify-done.sh to call `classify()` would turn "no evidence anything ran" into "real
+ * failure" and send developers to fix bugs that do not exist, which is the exact defect it was
+ * written to stop. It is also POSIX sh on purpose, so it keeps working when the Node stack does
+ * not. Two classifiers here is not FC-001 duplication; it is two different judgements that happen
+ * to share some patterns. `scripts/test.sh` pins the disagreement with an assertion so a future
+ * tidy-up cannot quietly collapse them.
  */
 
 /**

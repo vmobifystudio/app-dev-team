@@ -3780,6 +3780,23 @@ import("'"$HERE"'/lib/environment.mjs").then(({ classify }) => {
   && ok "the environment classifier separates a missing toolchain from a real failure" \
   || bad "the environment classifier separates a missing toolchain from a real failure" "$(cat "$TMP/err")"
 
+# THE TWO CLASSIFIERS DISAGREE ON PURPOSE, AND THAT MUST STAY TRUE.
+#
+# verify-done.sh has a third stage lib/environment.mjs does not: positive evidence that a suite
+# actually RAN. Its default for unrecognised output is therefore the OPPOSITE — cannot-evaluate,
+# not failure — because it answers "may I believe this DONE claim?", where silence is not proof.
+#
+# Pinned because the obvious tidy-up is to "unify the duplicate", and doing so would turn "no
+# evidence anything ran" into "real failure": DR4-001 reintroduced by a refactor that looks like
+# removing duplication. This assertion exists to make that refactor go red.
+grep -q 'no evidence that a test suite ran at all' "$HERE/verify-done.sh" \
+  && ok "verify-done.sh keeps its stricter third stage — output with no sign a suite ran is CANNOT EVALUATE" \
+  || bad "verify-done.sh keeps its stricter third stage" \
+         "if this was refactored onto lib/environment.mjs, DR4-001 is back: silence now reads as a real failure"
+grep -q 'DELIBERATELY DISAGREES' "$HERE/lib/environment.mjs" \
+  && ok "...and lib/environment.mjs records why the two must not be merged" \
+  || bad "lib/environment.mjs records why the two must not be merged"
+
 # --- F6: the toolchain is pinned before the build, not discovered when it breaks ----------------
 #
 # R10: AGP/Kotlin/KSP incompatibility broke the build in two different fixtures, in two dry runs.
@@ -3820,6 +3837,30 @@ assert_has "$TMP/out" 'echo FULL' "test-command --scope full prints the declared
 PPC test-command --scope fast >/dev/null 2>&1
 [ $? = 2 ] && ok "...and an UNDECLARED scope is exit 2 with nothing substituted for it" \
            || bad "an undeclared test scope is exit 2, never a substituted default"
+
+# THE SPLIT IS ONLY WORTH ANYTHING ONCE THE LOOP CALLS IT. verify-done.sh ran ONE command per
+# ticket — in practice the whole suite, every time, so a one-line ticket paid for the full matrix.
+# `fast`/`full` now resolve from the profile instead of being hardcoded by each caller.
+VDS="$TMP/verify-done-scope"; rm -rf "$VDS"; mkdir -p "$VDS/docs/team"
+( cd "$VDS" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo a > a.txt && git add -A && git commit -qm base \
+  && git checkout -q -b feat/x && echo b > b.txt && git add -A && git commit -qm work ) >/dev/null 2>&1
+
+# No profile: the scope cannot be resolved, so this is CANNOT EVALUATE. Nothing is substituted —
+# a default test command would make "the tests ran" true of a command nobody chose.
+( cd "$VDS" && sh "$HERE/verify-done.sh" feat/x main fast ) >"$TMP/out" 2>&1
+[ $? = 2 ] && ok "verify-done with scope 'fast' and no project profile is CANNOT EVALUATE" \
+           || bad "verify-done with an unresolvable scope is CANNOT EVALUATE" "$(cat "$TMP/out")"
+grep -q 'CANNOT EVALUATE' "$TMP/out" \
+  && ok "...and says so rather than falling back to a command nobody chose" \
+  || bad "...and says so rather than falling back"
+
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[],"test":{"fast":"echo 3 tests run: OK","full":"echo full"}}\n' \
+  > "$VDS/docs/team/project-profile.json"
+( cd "$VDS" && sh "$HERE/verify-done.sh" feat/x main fast ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" "resolved from the project profile" \
+  "...and with a profile it resolves the scope and SAYS which command it ran"
+assert_has "$TMP/out" 'VERIFIED' "...then verifies on the resolved command"
 
 # --- F7: every schema this studio writes is declared, and none has silently vanished ------------
 #
