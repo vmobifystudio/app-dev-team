@@ -393,16 +393,23 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      owner, increment `Cycles` — with the verdict persisted alongside the review at
      `docs/53-reviews/APP-NNN-cycle-N.md`.
    - `APPROVED` (and `VERIFICATION: PASS`, if one was required above) → the reviewer appends
-     `board.mjs move APP-NNN approved --by code-reviewer --detail "docs/53-reviews/APP-NNN-cycle-N.md"`.
+     `board.mjs move APP-NNN approved --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md`.
+     **The path moved from `--detail` to `--verdict`, and that is the whole change**: `--detail` was
+     free text nothing opened, so an approval could name a file that did not exist, or name nothing
+     at all. `--verdict` is read, parsed and hashed onto the event — the append is refused if the
+     file is missing, if it has no `REVIEW VERDICT:` line, if that line says `REQUEST CHANGES` while
+     you are appending `approved`, if it has no `Scope: <base>..<head>`, or if it has no
+     `## Not checked` section. A refusal here means the review is not recorded yet, not that the
+     code is bad; read the message and have the reviewer finish the document.
      Then spawn `tech-manager` to run the Merge gate (see `agents/tech-manager.md`), passing the
      `$BASE` resolved in step 3. The gate **is** `board.mjs move APP-NNN merged --by tech-manager`,
      which refuses without a non-owner `approved` and runs before any git command; on exit 0 the row
      is `qa`.
-   - `REQUEST CHANGES` → `board.mjs move APP-NNN changes --by code-reviewer --detail
-     "docs/53-reviews/APP-NNN-cycle-N.md"`, then re-spawn the original developer **pointed at that
-     file**, not at notes you are holding in context. If the file does not exist, ask the reviewer to
-     write it before re-spawning anyone — an unpersisted verdict is one compaction away from being
-     lost, and then nobody can say what was wrong.
+   - `REQUEST CHANGES` → `board.mjs move APP-NNN changes --by code-reviewer --verdict
+     docs/53-reviews/APP-NNN-cycle-N.md`, then re-spawn the original developer **pointed at that
+     file**, not at notes you are holding in context. You no longer have to remember to check the
+     file exists — the append refuses without it, which is what "an unpersisted verdict is one
+     compaction away from being lost" earns you once it is a mechanism instead of a paragraph.
 
      There is no `Cycles` column to increment any more. The count is the number of `changes` events,
      so it cannot drift from the ledger the way the hand-maintained column did.

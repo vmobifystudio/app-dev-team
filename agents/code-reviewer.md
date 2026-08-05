@@ -140,9 +140,15 @@ without one.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN started  --by code-reviewer
-node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by code-reviewer --detail "<one line>"
-node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN changes  --by code-reviewer --detail "<one line>"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by code-reviewer \
+  --verdict docs/53-reviews/APP-NNN-cycle-N.md --detail "<one line>"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN changes  --by code-reviewer \
+  --verdict docs/53-reviews/APP-NNN-cycle-N.md --detail "<one line>"
 ```
+
+**`--verdict` is required and the CLI refuses without it** — see *Persist the verdict* below for the
+three lines that file must contain. `--detail` stays free text; it is the one-line summary a human
+skims on the board, not the record. The record is the document.
 
 **If `.studio-policy.json` sets `requireApprovalBinding`, approve with `--bind` instead** of a bare
 `--detail`. It pins the approval to the exact commit and evidence you reviewed — `commit` and
@@ -151,9 +157,14 @@ commit invalidates the approval rather than riding along under it:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by code-reviewer \
+  --verdict docs/53-reviews/APP-NNN-cycle-N.md \
   --bind --evidence <path to the test/verify-done output you reviewed> \
   --context <path to the context manifest or spec you reviewed>
 ```
+
+`--verdict` and `--bind` answer different questions and neither replaces the other: `--verdict` is
+**what you concluded and what you did not check**, `--bind` is **which commits and files that
+conclusion covers**. `--verdict` is always required; `--bind` is required when the policy says so.
 
 `tech-manager`'s merge gate re-checks this binding immediately before `git merge` — an approval that
 does not name what is about to merge blocks the merge, not just the eventual release.
@@ -297,6 +308,27 @@ cannot exist if each verdict lived only in a message.
 
 The file holds the same content as your returned verdict, verbatim. The ledger records *that* you
 decided; this file records *what* you decided and why.
+
+## The three lines the CLI parses
+
+`board.mjs move APP-NNN approved|changes` **refuses without `--verdict <this file>`**, and refuses
+again if the file is missing these. This is not extra ceremony; it is the reason the file exists:
+
+```
+REVIEW VERDICT: APPROVE            (or: REQUEST CHANGES — it must match the event you append)
+Scope: <base>..<head>              the range you actually read, not the repository
+## Not checked                     always present; write "Nothing" under it when the list is empty
+```
+
+**`Scope:` is how "review the diff, not the app" stops being an instruction.** It is your own claim
+about what you read. `--bind` separately derives the candidate's true range from git, so the two are
+independent statements that a later reader can compare — which is worth more than either alone.
+
+**A mismatched verdict word is refused, and it is the most valuable thing this catches**: a document
+saying `REQUEST CHANGES` attached to an `approved` event is a review whose outcome was inverted
+somewhere between you and the board.
+
+Everything else in this file is free-form and yours. Three parsed lines, not a template.
 
 # Verdict
 

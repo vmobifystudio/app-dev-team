@@ -2248,7 +2248,35 @@ newboard() {
   printf '%s' "$d"
 }
 # bm <dir> <board.mjs args...> — run the CLI inside a scratch project
-bm() { d=$1; shift; ( cd "$d" && node "$BD" "$@" ); }
+# bm <dir> <board.mjs args...>
+#
+# `approved` and `changes` require `--verdict <file>` (scripts/lib/verdict.mjs). The thirty-three
+# assertions below that append one are about OTHER things — the review-cycle cap, capability,
+# separation of duties, approval binding, the static-verification lane — and threading a verdict
+# file through each would bury what each is actually asserting.
+#
+# So this helper supplies a MINIMAL VALID verdict when the caller did not, and only then. That is a
+# convenience for tests whose subject is elsewhere; it is NOT a way for the contract to go untested.
+# The assertions that ARE about the contract deliberately bypass this helper and call `node "$BD"`
+# directly, because a probe that cannot see the requirement cannot prove the requirement exists —
+# and `mutate.sh` re-proves it by breaking the parser and watching those probes go red.
+bm() {
+  d=$1; shift
+  _needs_verdict=''
+  for _a in "$@"; do
+    [ "$_a" = 'approved' ] && _needs_verdict=APPROVE
+    [ "$_a" = 'changes' ] && _needs_verdict='REQUEST CHANGES'
+    [ "$_a" = '--verdict' ] && { _needs_verdict=''; break; }
+  done
+  if [ -n "$_needs_verdict" ]; then
+    _vp="$d/.test-verdict.md"
+    printf 'REVIEW VERDICT: %s\nScope: base..head\n\n## Not checked\nNothing — this is a test fixture.\n' \
+      "$_needs_verdict" > "$_vp"
+    ( cd "$d" && node "$BD" "$@" --verdict "$_vp" )
+  else
+    ( cd "$d" && node "$BD" "$@" )
+  fi
+}
 # drive <dir> <id> <owner> — take a ticket all the way to merged through every legal step
 drive() {
   bm "$1" move "$2" claimed          --by "$3" >/dev/null 2>&1
@@ -3614,6 +3642,191 @@ grep -q -- '"detail":"--board=' "$INJ/docs/31-board-events.jsonl" \
 ( cd "$INJ" && node "$HERE/board.mjs" move APP-001 blocked --by tech-manager --detail ) >/dev/null 2>&1
 [ $? = 2 ] && ok "...and a value-taking flag with nothing after it is exit 2, not silently true" \
            || bad "a value-taking flag with nothing after it is exit 2"
+
+# --- the same hole, reopened five times by flags nobody declared --------------------------------
+# VALUE_FLAGS closed `--detail` and was then never extended: `evidence`, `context`, `run`, `attempt`
+# and `lease-seconds` were all read as values and none were declared. `--evidence "--board=<path>"`
+# therefore set `evidence` to `true` and `board` to an arbitrary path — the ORIGINAL bug, on the
+# approval path, which is the one place a redirected write also destroys the record of who approved
+# what. It failed safe only by ordering: bindApprovalEvidence rejects the missing evidence file
+# before writeView runs. `--run`/`--attempt` have no such accident; they forward into run-ledger's
+# argv. Found by probing the approval path, not by reading the set.
+INJ2="$TMP/inject-evidence"; mkdir -p "$INJ2/docs"
+( cd "$INJ2" && git init -q . && git config user.email t@t.t && git config user.name T
+  echo one > a.txt && git add -A && git commit -qm one
+  echo two >> a.txt && git add -A && git commit -qm two ) >/dev/null 2>&1
+INJ2_BASE=$( cd "$INJ2" && git rev-parse HEAD~1 )
+printf 'SENTINEL\n' > "$INJ2/victim.md"
+( cd "$INJ2" && node "$HERE/board.mjs" add T-001 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move T-001 claimed         --by ios-developer
+  node "$HERE/board.mjs" move T-001 done_reported   --by ios-developer
+  node "$HERE/board.mjs" move T-001 verified        --by tech-manager
+  node "$HERE/board.mjs" move T-001 review_requested --by ios-developer ) >/dev/null 2>&1
+# A VALID VERDICT IS SUPPLIED ON PURPOSE. Without it the review-verdict contract refuses first and
+# this probe passes while testing nothing — which is exactly what happened when the contract landed:
+# the assertion below went red because the message it greps for was being produced by a different
+# layer than the one under test. "Before believing a refusal, name the layer you expected it from."
+printf 'REVIEW VERDICT: APPROVE\nScope: base..head\n\n## Not checked\nNothing.\n' > "$INJ2/verdict.md"
+( cd "$INJ2" && node "$HERE/board.mjs" move T-001 approved --by code-reviewer --bind \
+    --verdict "$INJ2/verdict.md" \
+    --base "$INJ2_BASE" --evidence "--board=$INJ2/victim.md" --context "$INJ2/a.txt" ) >"$TMP/out" 2>&1
+[ "$(head -1 "$INJ2/victim.md")" = "SENTINEL" ] \
+  && ok "an --evidence value shaped like a flag does not redirect the board's output path" \
+  || bad "an --evidence value shaped like a flag does not redirect the board's output path" \
+         "victim.md was overwritten"
+grep -q -- '--board=' "$TMP/out" \
+  && ok "...and the refusal names the path it was GIVEN, not \"true\" — the tell that it was swallowed" \
+  || bad "...and the refusal names the path it was GIVEN, not \"true\"" "$(cat "$TMP/out")"
+
+# The durable half. The probe above catches ONE flag; this catches the next one somebody adds and
+# forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
+# flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
+# point by construction.
+# --- review-verdict/v1: the output contract for a review gate ----------------------------------
+#
+# `team-doctor` enforces an output contract on the fourteen roles that OWN tickets. The roles that
+# JUDGE were in neither tier, so nothing checked what a review returns — measured: `board.mjs move
+# APP-001 approved --by code-reviewer` succeeded with no document, no scope and no evidence. The
+# approval was a WORD. Meanwhile `agents/code-reviewer.md` mandates a `## Not checked` heading and
+# the ONLY assertion about it grepped the instruction file, which is the "rule whose only test is
+# that the rule is written down" class this repo exists to refuse.
+#
+# These bypass `bm` deliberately — bm supplies a valid verdict for the assertions whose subject is
+# elsewhere, and a probe that cannot see the requirement cannot prove the requirement exists.
+VD="$TMP/verdict"; mkdir -p "$VD/docs/53-reviews"
+vd_reset() {
+  rm -rf "$VD/docs"; mkdir -p "$VD/docs/53-reviews"
+  ( cd "$VD"
+    node "$BD" add V-001 --title t --owner ios-developer --by tech-manager
+    node "$BD" move V-001 claimed          --by ios-developer
+    node "$BD" move V-001 done_reported    --by ios-developer
+    node "$BD" move V-001 verified         --by tech-manager
+    node "$BD" move V-001 review_requested --by ios-developer ) >/dev/null 2>&1
+}
+
+vd_reset
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "approved with no --verdict is refused — an approval is a document, not a word" \
+           || bad "approved with no --verdict is refused" "$(cat "$TMP/out")"
+
+vd_reset
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/absent.md ) >/dev/null 2>&1
+[ $? = 2 ] && ok "...and a verdict path that does not exist is CANNOT EVALUATE (2), not refused (1)" \
+           || bad "a missing verdict file is exit 2, not exit 1"
+
+# THE HIGHEST-VALUE CATCH. A document concluding REQUEST CHANGES attached to an `approved` event is
+# a review whose outcome was inverted between the reviewer and the board. Nothing could see it
+# before, because nothing opened the document.
+vd_reset
+printf 'REVIEW VERDICT: REQUEST CHANGES\nScope: a..b\n\n## Not checked\nNothing.\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "...and a document saying REQUEST CHANGES cannot be appended as approved" \
+           || bad "a REQUEST CHANGES document cannot be appended as approved"
+assert_has "$TMP/out" 'disagree about the outcome' "...and the refusal says the two disagree, naming both"
+
+vd_reset
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "...and a verdict with no '## Not checked' section is refused" \
+           || bad "a verdict with no '## Not checked' section is refused"
+
+# Scope is what makes "review the diff, not the whole app" a recorded fact rather than an
+# instruction. A scope that does not resolve to a range is a scope nobody can check you against.
+vd_reset
+printf 'REVIEW VERDICT: APPROVE\n\n## Not checked\nNothing.\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "...and a verdict with no 'Scope: <base>..<head>' is refused" \
+           || bad "a verdict with no Scope line is refused"
+vd_reset
+printf 'REVIEW VERDICT: APPROVE\nScope: the login screen\n\n## Not checked\nNothing.\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >/dev/null 2>&1
+[ $? = 1 ] && ok "...and prose in the Scope line is refused — a range, not a description" \
+           || bad "prose in the Scope line is refused"
+
+vd_reset
+printf 'REVIEW VERDICT: APPROVE\nScope: abc1234..def5678\n\n## Not checked\n- 56dp measurement: no simulator here.\n' \
+  > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >/dev/null 2>&1
+[ $? = 0 ] && ok "a complete verdict is accepted" || bad "a complete verdict is accepted"
+node -e '
+const fs = require("fs");
+const lines = fs.readFileSync(process.argv[1], "utf8").trim().split("\n");
+const d = JSON.parse(lines[lines.length - 1]).detail || {};
+// Content-addressed for the same reason the approval evidence is: the event records WHICH document
+// was read, so editing the review afterwards is visible rather than silent.
+const missing = ["verdict", "verdict_path", "verdict_hash", "reviewed_scope"].filter((k) => !d[k]);
+if (missing.length) { process.stderr.write(`event detail is missing ${missing.join(" ")}\n`); process.exit(1); }
+if (d.reviewed_scope !== "abc1234..def5678") { process.stderr.write(`scope recorded as ${d.reviewed_scope}\n`); process.exit(1); }
+' "$VD/docs/31-board-events.jsonl" 2>"$TMP/err" \
+  && ok "...and the event records the verdict, its hash and the scope the reviewer claims to have read" \
+  || bad "...and the event records the verdict, its hash and the scope" "$(cat "$TMP/err")"
+
+# `changes` owes a document too. It is the one the developer is re-spawned against, so an
+# unpersisted one strands the retry with nothing to act on.
+vd_reset
+( cd "$VD" && node "$BD" move V-001 changes --by code-reviewer ) >/dev/null 2>&1
+[ $? = 1 ] && ok "changes owes a verdict document as much as approved does" \
+           || bad "changes owes a verdict document as much as approved does"
+vd_reset
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\n## Not checked\nNothing.\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 changes --by code-reviewer --verdict docs/53-reviews/v.md ) >/dev/null 2>&1
+[ $? = 1 ] && ok "...and an APPROVE document cannot be appended as changes either" \
+           || bad "an APPROVE document cannot be appended as changes"
+
+# ORDERING. A caller who may not write this event at all must hear THAT, not be sent to write a
+# document for a ticket they were never allowed to approve.
+#
+# BOTH authority rules are probed, because the first version of this assertion used
+# `--by ios-developer` and greped for the CAPABILITY message — and ios-developer is V-001's OWNER,
+# so the older did-not-gate-your-own-work rule answered first and the assertion failed. The rule it
+# was written to check was never reached. That is this repo's own "name the layer you expected the
+# refusal from", firing on the person adding the gate; two roles, two messages, so neither can
+# stand in for the other.
+vd_reset
+( cd "$VD" && node "$BD" move V-001 approved --by ios-developer ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'does not gate its own work' \
+  "the owner rule is refused before the verdict requirement, so the message is actionable"
+vd_reset
+( cd "$VD" && node "$BD" move V-001 approved --by product-designer ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'may not write' \
+  "...and so is the capability rule, for a role that is not the owner either"
+
+# The role file must carry the three parsed lines, or a reviewer reading it writes a document the
+# CLI rejects — the generator-is-the-defect failure (R5) in the review path.
+for _l in 'REVIEW VERDICT:' 'Scope: <base>..<head>' '## Not checked'; do
+  grep -q -- "$_l" "$HERE/../agents/code-reviewer.md" \
+    && ok "code-reviewer.md documents the parsed line: $_l" \
+    || bad "code-reviewer.md documents the parsed line: $_l"
+done
+grep -q -- '--verdict' "$HERE/../commands/app-build.md" \
+  && ok "...and /app-build's review step passes --verdict, not a --detail nothing opens" \
+  || bad "/app-build's review step passes --verdict"
+
+node -e '
+const fs = require("fs");
+const raw = fs.readFileSync(process.argv[1], "utf8");
+// COMMENTS ARE STRIPPED FIRST. Without this the checker read its own explanation: the note in
+// board.mjs telling you to declare a new flag says "flags.X", and "X" was duly reported as an
+// undeclared value flag. A check that fails on prose is a check people delete.
+const src = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+const declared = new Set(
+  (src.match(/const VALUE_FLAGS = new Set\(\[([\s\S]*?)\]\)/) || [, ""])[1]
+    .match(/'"'"'([a-z-]+)'"'"'/g)?.map((s) => s.slice(1, -1)) || []
+);
+// The only flags legitimately absent: they are read as booleans and never carry a value.
+const BOOLEANS = new Set(["bind", "json"]);
+const read = new Set();
+for (const m of src.matchAll(/flags\.([a-zA-Z][a-zA-Z0-9]*)|flags\[.([a-z-]+).\]/g)) {
+  read.add(m[1] || m[2]);
+}
+const undeclared = [...read].filter((f) => !declared.has(f) && !BOOLEANS.has(f)).sort();
+if (undeclared.length) {
+  process.stderr.write(`undeclared value flag(s): ${undeclared.join(" ")}\n`);
+  process.exit(1);
+}
+' "$HERE/board.mjs" 2>"$TMP/err" \
+  && ok "every flag board.mjs reads is declared a value flag or a known boolean" \
+  || bad "every flag board.mjs reads is declared a value flag or a known boolean" "$(cat "$TMP/err")"
 
 # --- the renderer escaped `|`, the reader never unescaped it -----------------------------------
 # CELL wrote `\|`; splitRow did a naive .split('|'). A title with a pipe shifted every later column,
@@ -6027,7 +6240,13 @@ for E in claimed done_reported; do bm "$FCB" move T-001 $E --by ios-developer >/
 bm "$FCB" move T-001 verified --by verification-engineer >/dev/null 2>&1
 bm "$FCB" move T-001 review_requested --by ios-developer >/dev/null 2>&1
 bm "$FCB" move T-001 started --by code-reviewer >/dev/null 2>&1
-( cd "$FCB" && node "$BD" move T-001 approved --by code-reviewer --bind --evidence ev.txt --context ctx.txt ) >/dev/null 2>&1
+# THE VERDICT FILE LIVES OUTSIDE THE FIXTURE REPO, deliberately. This call bypasses `bm` (it needs
+# an exact argument list), so the verdict is explicit — and writing it inside $FCB would add an
+# untracked file to the very working tree whose `files` manifest the next assertion pins. A test
+# fixture that perturbs the thing it measures is the measurement, not the subject.
+printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/x\n\n## Not checked\nNothing.\n' > "$TMP/fcb-verdict.md"
+( cd "$FCB" && node "$BD" move T-001 approved --by code-reviewer --verdict "$TMP/fcb-verdict.md" \
+    --bind --evidence ev.txt --context ctx.txt ) >/dev/null 2>&1
 if grep -q '"base_source":"merge-base with main"' "$FCB/docs/31-board-events.jsonl" 2>/dev/null; then
   ok "an approval binds base..head, resolved from the integration branch"
 else bad "an approval binds base..head, resolved from the integration branch"; fi

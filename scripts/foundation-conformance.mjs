@@ -60,7 +60,22 @@ function run(cmd, args, cwd) {
   }
 }
 
-const board = (args, cwd) => run('node', [join(ROOT, 'scripts/board.mjs'), ...args], cwd);
+/**
+ * `approved` and `changes` require `--verdict <file>` (scripts/lib/verdict.mjs). The invariants
+ * here are about candidate identity, capability and atomicity — not about the review's output
+ * contract, which scripts/test.sh probes directly. So a minimal valid verdict is supplied when the
+ * caller did not, keeping each invariant's subject visible. An invariant that fails because a
+ * fixture forgot a fixture file is a harness fault reported as a product fault (DR4-001).
+ */
+const board = (args, cwd) => {
+  if ((args.includes('approved') || args.includes('changes')) && !args.includes('--verdict')) {
+    const word = args.includes('approved') ? 'APPROVE' : 'REQUEST CHANGES';
+    const path = join(cwd, '.conformance-verdict.md');
+    writeFileSync(path, `REVIEW VERDICT: ${word}\nScope: base..head\n\n## Not checked\nNothing — conformance fixture.\n`);
+    args = [...args, '--verdict', path];
+  }
+  return run('node', [join(ROOT, 'scripts/board.mjs'), ...args], cwd);
+};
 const logLines = (dir) => {
   const p = join(dir, 'docs/31-board-events.jsonl');
   return existsSync(p) ? readFileSync(p, 'utf8').split('\n').filter(Boolean) : [];
