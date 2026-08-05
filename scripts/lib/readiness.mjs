@@ -28,6 +28,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
+import { artifactEntry } from './dossier.mjs';
+
 /** The candidate every verdict below is about. A readiness answer with no subject is about nothing. */
 function candidate(root) {
   const git = (args) => {
@@ -89,6 +91,13 @@ function reduceReadiness(root) {
   const gates = [
     gateEntry(root, 'journey', 'docs/team/journey-result.json', cand),
     gateEntry(root, 'runtime', 'docs/team/runtime-result.json', cand),
+    // THE ARTIFACT IS A GATE, NOT A FOOTNOTE. Every gate above is about a COMMIT; this one is about
+    // the file that would actually be uploaded. Without it, "readiness: PASS" is a true statement
+    // about source and silent about the binary — so an .ipa built from a different commit than the
+    // one that passed could ship with nothing noticing. It folds in HERE, through the same
+    // precedence as everything else, rather than being reported beside the verdict: a fact that
+    // does not participate in the verdict is a fact nobody has to act on.
+    artifactEntry(root, cand.head),
   ];
 
   // Precedence is explicit and ordered, so every surface reaches the same verdict from the same

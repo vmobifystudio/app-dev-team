@@ -3743,6 +3743,95 @@ grep -q -- '--board=' "$TMP/out" \
 # forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
 # flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
 # point by construction.
+# --- F17: the artifact you upload, bound to the commit that passed ------------------------------
+#
+# R1, the strongest recurrence in the corpus: "no release-candidate aggregate; /app-ship is a bag of
+# gates, not a submission pipeline." 4 of 6 dry runs, scored 4/10 twice, THE ONLY DIMENSION THAT
+# NEVER MOVED. It never moved because every previous pass added another gate, and the missing thing
+# was never a gate — it is the SUBJECT the gates are about.
+#
+# Concretely: readiness is computed about a COMMIT (gates record subject.head, staleness compares
+# it). Nothing recorded the BINARY. So an .ipa built from one commit could be uploaded while the
+# gates passed on another, and no mechanism here noticed. "Readiness: PASS" was a true statement
+# about source and silent about the file a human hands to Apple.
+RCD="$TMP/release-candidate"; rm -rf "$RCD"; mkdir -p "$RCD/build"
+( cd "$RCD" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && printf 'BINARY' > build/app.ipa && echo v1 > a.txt && git add -A && git commit -qm one ) >/dev/null 2>&1
+# A FUNCTION, NOT A STRING. `RCC="node $HERE/release-candidate.mjs"` word-splits: this repository's
+# own path contains spaces ("Mobify Studio Apps"), so the unquoted expansion passed "Studio" as the
+# script name and every invocation failed silently into the fixture's error path. Six assertions
+# went red for a reason that had nothing to do with the code under test.
+RCC() { node "$HERE/release-candidate.mjs" "$@"; }
+
+# NO RECORD IS NOT A PASS. The default state of a project that has never recorded an artifact must
+# be "what would be uploaded is UNKNOWN", never silence — an absent gate that prints nothing is
+# indistinguishable from a clean one.
+( cd "$RCD" && node "$HERE/readiness.mjs" ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'no build artifact has been recorded' \
+  "with no artifact recorded, readiness says what would be uploaded is UNKNOWN"
+grep -q 'PASS *artifact' "$TMP/out" \
+  && bad "...and the artifact gate does not read PASS before anything was recorded" \
+  || ok "...and the artifact gate does not read PASS before anything was recorded"
+
+( cd "$RCD" && RCC record --artifact build/nothing-here.ipa ) >/dev/null 2>&1
+[ $? = 2 ] && ok "recording an artifact that does not exist is CANNOT EVALUATE (2), not a refusal" \
+           || bad "recording a missing artifact is exit 2"
+
+( cd "$RCD" && RCC record --artifact build/app.ipa --platform ios --variant release --by release-manager ) >/dev/null 2>&1
+( cd "$RCD" && node "$HERE/readiness.mjs" ) >"$TMP/out" 2>&1
+grep -qE 'PASS +artifact' "$TMP/out" \
+  && ok "a clean-tree artifact recorded against HEAD passes the artifact gate" \
+  || bad "a clean-tree artifact recorded against HEAD passes the artifact gate" "$(grep artifact "$TMP/out")"
+
+# THE BINDING IS THE POINT. A file swapped after it was bound is BLOCKED — not stale, not a warning.
+cp "$RCD/build/app.ipa" "$TMP/app.ipa.orig"
+printf 'TAMPERED' > "$RCD/build/app.ipa"
+( cd "$RCD" && node "$HERE/readiness.mjs" ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'no longer hashes to what was recorded' \
+  "an artifact changed after binding is BLOCKED, naming both hashes"
+( cd "$RCD" && RCC verify ) >/dev/null 2>&1
+[ $? = 1 ] && ok "...and verify exits 1 on the changed file" || bad "verify exits 1 on the changed file"
+cp "$TMP/app.ipa.orig" "$RCD/build/app.ipa"
+
+# A COMMIT THAT MOVED ON. The gates and the binary are now about different source, which is exactly
+# the defect this whole file exists to make visible. STALE, never PASS.
+( cd "$RCD" && echo v2 > a.txt && git add -A && git commit -qm two ) >/dev/null 2>&1
+( cd "$RCD" && node "$HERE/readiness.mjs" ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'the gates and the binary are about different source' \
+  "an artifact built from an earlier commit is STALE once HEAD moves"
+
+# A DIRTY BUILD CANNOT BE REPRODUCED, and that is recorded rather than normalised away. Checked
+# before the commit comparison on purpose: "built from uncommitted work" is a stronger statement
+# than "built from an older commit", and the reader needs the stronger one.
+RCD2="$TMP/release-candidate-dirty"; rm -rf "$RCD2"; mkdir -p "$RCD2/build"
+( cd "$RCD2" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && printf 'BINARY' > build/app.ipa && echo v1 > a.txt && git add -A && git commit -qm one \
+  && echo uncommitted > a.txt ) >/dev/null 2>&1
+( cd "$RCD2" && RCC record --artifact build/app.ipa --platform ios ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'WORKING TREE WAS DIRTY' "recording from a dirty tree says so at record time"
+( cd "$RCD2" && node "$HERE/readiness.mjs" ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'cannot be reproduced from any commit' \
+  "...and readiness reads a dirty-built artifact as STALE, never PASS"
+
+# A REWRITTEN LEDGER IS CANNOT EVALUATE, NEVER AN EMPTY ONE. Treating a corrupt chain as "no
+# records" would turn tampering into a clean slate — the most useful possible outcome for whoever
+# tampered, and the reason every ledger here is chained rather than merely appended.
+sed -i.bak 's/"size":6/"size":9999/' "$RCD2/docs/team/release-candidates.jsonl"
+( cd "$RCD2" && RCC verify ) >"$TMP/out" 2>&1
+[ $? = 2 ] && ok "a rewritten release-candidate ledger is CANNOT EVALUATE" \
+           || bad "a rewritten release-candidate ledger is CANNOT EVALUATE" "$(cat "$TMP/out")"
+assert_has "$TMP/out" 'has been rewritten' "...and says the ledger was rewritten rather than reporting zero records"
+
+# The reducer stays the ONE reducer: the artifact gate folds into the same precedence as the rest,
+# rather than being reported beside the verdict where nobody has to act on it (I-11).
+( cd "$RCD2" && node "$HERE/readiness.mjs" --json ) >"$TMP/out" 2>&1
+node -e '
+const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+if (!s.gates.some((g) => g.gate === "artifact")) { process.stderr.write("artifact is not among the reduced gates\n"); process.exit(1); }
+' "$TMP/out" 2>"$TMP/err" \
+  && ok "the artifact gate is part of the one readiness reducer, not a fact printed beside it" \
+  || bad "the artifact gate is part of the one readiness reducer" "$(cat "$TMP/err")"
+
 # --- no role file may generate an approval command the CLI refuses ------------------------------
 #
 # R5, the recurrence the corpus calls "the generator is the defect": the templates emit documents
