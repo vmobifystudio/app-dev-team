@@ -3755,6 +3755,67 @@ grep -q -- '--board=' "$TMP/out" \
 # forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
 # flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
 # point by construction.
+# --- the board said `merged`; git said the branch was never merged -------------------------------
+#
+# FOUND BY EXECUTION, 2026-08-06, in a five-minute targeted experiment with no agents involved. A
+# `git merge` failed on a dirty tree, and then:
+#
+#     board.mjs move APP-001 merged     -> accepted
+#     board.mjs move APP-001 qa_passed  -> accepted
+#     board.mjs move APP-001 closed     -> accepted   final state: done
+#
+# main did not contain the commit. The branch was not an ancestor of main. A ticket reached `done` —
+# the strongest claim this system makes — with the code never integrated. FC-003, "green while
+# nothing happened", living inside the most consequential transition on the board.
+#
+# The gate is not wrong to allow it: `move ... merged` is a PRECONDITION that runs BEFORE any git
+# command by design, so an unapproved merge is impossible rather than merely detectable. What was
+# missing is the confirmation afterwards — the window between "allowed to merge" and "merged" was
+# unobserved, and a conflict, a dirty tree, a rejected push or an agent that never ran the command
+# all left the board asserting a merge that did not exist.
+MR="$TMP/merge-reconcile"; rm -rf "$MR"; mkdir -p "$MR/docs"
+( cd "$MR" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo base > a.txt && git add -A && git commit -qm base \
+  && git checkout -q -b feat/APP-001 && echo work >> a.txt && git add -A && git commit -qm work ) >/dev/null 2>&1
+MRB() { ( cd "$MR" && node "$BD" "$@" ) >/dev/null 2>&1; }
+MRB add APP-001 --title t --owner ios-developer --by tech-manager
+for e in "claimed ios-developer" "done_reported ios-developer" "verified tech-manager" \
+         "review_requested ios-developer" "started code-reviewer"; do
+  set -- $e; MRB move APP-001 "$1" --by "$2"
+done
+printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-001\n\n## Not checked\nNothing.\n' > "$MR/v.md"
+MRB move APP-001 approved --by code-reviewer --verdict "$MR/v.md"
+# The merge event WITHOUT the merge — exactly what the experiment produced.
+MRB move APP-001 merged --by tech-manager
+MRB move APP-001 qa_passed --by qa-engineer
+MRB move APP-001 closed --by tech-manager
+
+( cd "$MR" && node "$HERE/merge-reconcile.mjs" --root "$MR" ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "a ticket at done whose branch is not merged is BLOCKED, not believed" \
+           || bad "an unmerged done ticket is blocked" "$(cat "$TMP/out")"
+assert_has "$TMP/out" 'is not an ancestor of main' "...naming the branch and the integration branch"
+assert_has "$TMP/out" 'board asserts this code is integrated and git says it is not' \
+  "...and stating the disagreement in words, not just a code"
+
+# Actually merge it: the same board must now verify clean. A check that blocked either way would be
+# refuse-everything, which gets switched off.
+( cd "$MR" && git checkout -q main && git merge -q --no-ff feat/APP-001 -m m ) >/dev/null 2>&1
+( cd "$MR" && node "$HERE/merge-reconcile.mjs" --root "$MR" ) >"$TMP/out" 2>&1
+[ $? = 0 ] && ok "...and the identical board verifies CLEAR once the merge actually happens" \
+           || bad "a genuinely merged ticket verifies clear" "$(cat "$TMP/out")"
+
+# A deleted or squashed branch is UNKNOWN, never assumed merged — guessing either way is how this
+# class survives.
+( cd "$MR" && git branch -D feat/APP-001 ) >/dev/null 2>&1
+( cd "$MR" && node "$HERE/merge-reconcile.mjs" --root "$MR" ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'UNKNOWN' "a ticket with no matching branch is UNKNOWN, not assumed merged"
+
+grep -q 'merge-reconcile' "$HERE/ship-gate.sh" \
+  && ok "...and the ship gate runs it, so a release cannot go out on a board that claims a phantom merge" \
+  || bad "the ship gate runs merge-reconcile"
+grep -q 'merge-reconcile' "$HERE/orchestrator.mjs" \
+  && ok "...as does every build round" || bad "orchestrator round runs merge-reconcile"
+
 # --- the assertion count says more than it delivers ---------------------------------------------
 #
 # "1216 assertions" is quoted about this project in the README, the HANDBOOK, every commit message

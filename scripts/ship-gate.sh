@@ -235,6 +235,12 @@ run_detector "dependency-check" node "$HERE/dependency-check.mjs" "$ROOT"
 # blocked on all of them would be switched off within a week. It names the sites; a reviewer
 # decides. `--strict` is available to a project that has decided the answer is always no.
 run_detector "silent-fallback-scan" node "$HERE/silent-fallback-scan.mjs" "$ROOT"
+# Does the board's `merged` agree with git? Found by execution 2026-08-06: a failed `git merge`
+# left APP-001 at `done` with the branch never integrated. `board.mjs move ... merged` is a
+# PRECONDITION that runs before any git command by design, so it cannot confirm the merge
+# afterwards — and nothing was. Releasing on a board that claims unintegrated code is the worst
+# possible time to discover that.
+run_detector "merge-reconcile" node "$HERE/merge-reconcile.mjs" --root "$ROOT"
 # SHIP-P0-006: this guard only recognized `version: X.Y.Z` prose, not release-manager.md's own
 # required release-note heading `## vX.Y.Z — YYYY-MM-DD` — so the checker never even ran on a
 # correctly-formatted release note. Recognize both shapes; the checker's own regex mirrors this.
