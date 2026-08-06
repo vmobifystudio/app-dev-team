@@ -20,6 +20,46 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    Exit `1` → stop. Then read `docs/31-board.md`: if anything is `todo`, `in_progress`, or `review`,
    stop and tell the user "Sprint isn't done — run `/app-build` first."
 
+1a-i. **Record the artifact you are about to ship, and read the one readiness reducer.**
+
+   Everything below this line reasons about a COMMIT. Until the built binary is bound to that
+   commit, "readiness: PASS" is a true statement about source and says nothing about the file you
+   are handing to a store — an `.ipa` built from a different commit than the one that passed every
+   gate would ship with nothing noticing. Bind it first:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
+     --artifact <path to the built .ipa/.aab> --platform ios|android --variant release \
+     --by release-manager
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/readiness.mjs"
+   ```
+
+   `readiness.mjs` is the **only** place a readiness verdict is computed; `/app-status`, the
+   dashboard and the control room all project it. Do not form your own view from the gates below —
+   three surfaces each deciding for themselves is the defect one reducer exists to end.
+
+   - Exit `0` (**PASS**) → continue to 1a.
+   - Exit `1` → **BLOCKED or STALE. Stop.** STALE is not a failure: nothing says the product is
+     broken, it says nobody has checked *this* candidate. Re-run the gates it names, or rebuild and
+     re-record. A dirty-tree build is always STALE and cannot be argued out of — it is not
+     reproducible from the commit it claims.
+   - Exit `2` (**CANNOT EVALUATE**) → a gate has never run for this project, or no artifact was
+     recorded. Not a pass. Supply what it names.
+
+   Then confirm the gate results are still **about this candidate**, not about last Tuesday's:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/evidence-check.mjs" \
+     --result docs/team/journey-result.json --head "$(git rev-parse HEAD)"
+   ```
+
+   Every gate answers at a moment and then stops thinking. `journey-gate` says PASS, three more
+   commits land, and the PASS sits there green describing a candidate that no longer exists. Nobody
+   lied and nothing was tampered with — the verdict simply outlived its subject, which is the
+   ordinary way a release goes out believing something that *was* true. Exit `1` means the evidence
+   no longer describes what you are shipping; re-run the gate rather than reasoning about how
+   little changed.
+
 1a. **Run the ship gate.** These preconditions are a script, not prose to improvise — improvising
    them produced three silent, confident failures in one session (a guard that could not fail, a
    field-index mistake, a regex that reported zero open S1/S2 bugs while two were open; see

@@ -113,6 +113,38 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    ceilings that fire. If a harness does report spend, pass it with `--spend-usd` in step 6 and the
    `--max-spend-usd` ceiling starts applying too.
 
+0c. **Pin the toolchain before you dispatch anyone.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check
+   ```
+
+   Exit `0` → continue. Exit `1` → **a declared tool is the WRONG VERSION; this project will not
+   build correctly here.** Stop and say which. Exit `2` → the profile is missing, or a declared tool
+   is absent: the toolchain is UNPROVEN, which is not the same as fine. R10 is two dry runs where an
+   AGP/Kotlin/KSP mismatch was discovered *when the build broke*, mid-sprint, by an agent who then
+   had to debug someone else's machine. Discovering it here costs one command.
+
+1. **Ask what is legal now, rather than remembering.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" next
+   ```
+
+   READ-ONLY; it mutates nothing. For every ticket it prints the transitions the CLI would accept,
+   who may write each, and what earns it. Lines marked `GATE` are the ones with a closed role list —
+   those are the steps that must not be routed around.
+
+   **This exists because knowing the sequence is not the same as following it.** In dry run 3 the
+   orchestrator sent a ticket straight to `code-reviewer`, skipping verify-done → verified →
+   review_requested — and the person driving had *written* that sequence in the same session. The
+   board's guard refused the forged event, so nothing broke; the point is that the guard was the
+   only thing standing there.
+
+   Use it to plan the round. It is advisory about *earning* a transition and authoritative about
+   *legality*, because it asks the same `validate()` the append asks — it cannot drift from the CLI,
+   because it has no model of its own.
+
 1. **Read state.**
    - `node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json` — the derived state of every
      ticket, from the log. Find tickets where `status` is `todo` and every `dependsOn` ID is
@@ -249,8 +281,17 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      ```bash
      BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") \
        || { echo "$BASE"; echo "STOP: integration branch unresolved"; exit 2; }
-     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" "<project test command>"
+     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" fast
      ```
+
+     **`fast` and `full` resolve from `docs/team/project-profile.json` (F6) — prefer them to a
+     hardcoded command.** This step used to take one literal test command, which in practice was the
+     whole suite for every ticket, so a one-line change paid for the full matrix. Use `fast`
+     per-ticket and `full` on the last ticket of the round and before ship.
+
+     A scope the profile does not declare is **exit 2, with nothing substituted** — no default is
+     invented, because a default test command makes "the tests ran" true of a command nobody chose.
+     Projects with no profile keep passing a literal command; that path is unchanged.
 
      **If `integration-branch.sh` exits 2, STOP the round** and surface its message (it prints on
      stdout, so `$BASE` holds it) — do not run `verify-done.sh`, do not merge. Exit 2 means the

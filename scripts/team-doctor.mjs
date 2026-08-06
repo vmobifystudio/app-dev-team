@@ -735,6 +735,16 @@ const CANONICAL_PATHS = [
   'docs/team/ship-gate-verdict.json',        // ship-gate.sh --record's last verdict
   'docs/team/memory.jsonl',                  // memory-curator.mjs's proposed/reviewed ledger
   'docs/team/journeys/README.md',            // the journey-declaration contract journey-gate reads
+  // ADDED 2026-08-06 when the wiring pass discovered these were read by CODE but unknown to this
+  // list, so any command that named them was reported as a variant spelling. The check was right —
+  // one spelling per artifact — and its list was simply behind the gates that had been added since.
+  // A canonical-path list that lags the code turns a correct rule into noise, and a noisy rule is
+  // one somebody eventually switches off.
+  'docs/team/journey-result.json',           // journey-gate's verdict, read by lib/readiness.mjs
+  'docs/team/runtime-result.json',           // runtime-gate's verdict, read by lib/readiness.mjs
+  'docs/team/project-profile.json',          // platform, pinned toolchain, test.fast/test.full (F6)
+  'docs/team/release-candidates.jsonl',      // the artifact bound to its commit (F17)
+  'docs/team/schema-registry.json',          // every name/vN and who reads it (F7)
 ];
 // Structural references that name no artifact: the directories themselves, the glob the standup
 // reads a day's fragments with, and the archive consumed fragments are moved to.

@@ -3743,6 +3743,37 @@ grep -q -- '--board=' "$TMP/out" \
 # forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
 # flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
 # point by construction.
+# --- every shipped script has a caller ----------------------------------------------------------
+#
+# FOUND BY GREPPING, 2026-08-06, and it is the largest single omission this repo has produced:
+# `foundation-conformance.mjs` — the TWELVE INVARIANTS, the instrument that decides whether the
+# foundation holds, committed RED on purpose so "we fixed it" would be falsifiable — was referenced
+# by no command, no agent, no skill and no workflow. It ran when a human remembered.
+#
+# That is this repository's governing sentence failing on its own most important check, and it is
+# the same omission that kept the assertion suite outside CI until Phase 6. Four more were orphaned
+# beside it: orchestrator, release-candidate, schema-registry, evidence-check — every one built,
+# tested, and invoked by nothing.
+#
+# A capability nothing invokes is a capability that does not exist. This makes that a rule rather
+# than something a reviewer might notice.
+#
+# EXEMPT, with reasons rather than a bare list:
+#   test.sh, mutate.sh   the harness itself; being run BY a human is the point
+#   lib/*                libraries, imported not invoked (this loop only walks top-level scripts)
+#   *-scan.mjs           detectors composed by ship-gate.sh, which IS called — they are its limbs
+for f in "$HERE"/*.mjs "$HERE"/*.sh; do
+  n=$(basename "$f")
+  case "$n" in test.sh|mutate.sh) continue ;; esac
+  callers=$( { grep -rl -- "$n" "$HERE/../commands" "$HERE/../agents" "$HERE/../skills" \
+      "$HERE/../.github" 2>/dev/null; grep -rl -- "$n" "$HERE" 2>/dev/null \
+      | grep -v "^$HERE/$n$" | grep -v "test.sh$" | grep -v "mutate.sh$"; } | wc -l | tr -d ' ')
+  [ "${callers:-0}" -gt 0 ] \
+    && ok "$n is invoked by something other than the test harness" \
+    || bad "$n is invoked by something other than the test harness" \
+           "built, tested, and called by nothing — a capability nothing invokes does not exist"
+done
+
 # --- F8: "this is broken" is not "this cannot be checked here" ----------------------------------
 #
 # DR4-001's class, factored out. verify-done.sh could not tell a FAILING test from a test command

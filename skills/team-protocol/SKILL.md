@@ -309,6 +309,11 @@ Canonical paths, used verbatim by the loop — no other spelling is recognised:
 | ship-gate.sh's last recorded verdict | `docs/team/ship-gate-verdict.json` |
 | memory-curator.mjs's proposed/reviewed ledger | `docs/team/memory.jsonl` |
 | The journey-declaration contract (journey-gate) | `docs/team/journeys/README.md` |
+| journey-gate's recorded verdict, read by the readiness reducer | `docs/team/journey-result.json` |
+| runtime-gate's recorded verdict, read by the readiness reducer | `docs/team/runtime-result.json` |
+| The project's platform, pinned toolchain and test scopes (F6) | `docs/team/project-profile.json` |
+| The artifact bound to its commit (F17) | `docs/team/release-candidates.jsonl` |
+| Every `name/vN` this studio writes, and who reads it (F7) | `docs/team/schema-registry.json` |
 
 If you hit a blocker, end with this instead — and name **who** must answer **what**, never just
 "unclear":

@@ -65,6 +65,23 @@ jobs:
       - name: Team definition
         run: node scripts/team-doctor.mjs
 
+      # THE INVARIANT SUITE WAS AN ORPHAN. Found by grepping every script for a caller on
+      # 2026-08-06: `foundation-conformance.mjs` was referenced by no command, no agent, no skill
+      # and no workflow. The twelve invariants — the instrument that decides whether the foundation
+      # holds at all, committed RED on purpose so "we fixed it" would be falsifiable — ran only
+      # when a human remembered to type it.
+      #
+      # That is this repository's governing sentence ("a rule nobody executes is not a rule")
+      # failing on its own most important check, and it is the same omission that put the 113-
+      # assertion suite outside CI until Phase 6. The suite measures mechanisms; these measure
+      # whether the system holds a property end to end, which is the half no assertion can see.
+      - name: Foundation invariants (I-01..I-12)
+        run: node scripts/foundation-conformance.mjs
+
+      # Cheap, and it fails the moment someone adds a `name/vN` without declaring who reads it.
+      - name: Schema registry matches the tree
+        run: node scripts/schema-registry.mjs check
+
       - name: Plugin manifests parse
         run: |
           node -e "
