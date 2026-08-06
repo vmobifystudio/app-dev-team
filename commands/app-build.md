@@ -215,6 +215,27 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    (`owner_not_spawnable`).
 
 3. **Streaming review.** As each developer agent returns `DONE: APP-NNN`:
+   - **Check the report satisfies its contract BEFORE you believe any of it.** Save the agent's
+     returned text and run:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/report-check.mjs" --role <owner-role> --report <saved report>
+     ```
+
+     Exit `1` → **the DONE is not actionable.** Re-spawn the agent asking for the missing fields
+     specifically. **Do not fill them in yourself** — a field the orchestrator invents is a claim
+     nobody made, recorded as though someone did.
+
+     **Measured 2026-08-06, on the first agent ever spawned against this loop: it returned ONE of
+     six contract fields.** It also reported "no git repo initialized" about a directory that is a
+     git repository, made no commit, and reported DONE — so `verify-done.sh` came back REJECTED
+     with "nothing was actually written" and the ticket parked at `in_progress`.
+
+     `team-doctor` enforces that the role FILE declares those six fields. Nothing checked that an
+     agent RETURNS them, which is FC-002 at the boundary where this studio meets its own workers.
+     **Reading the report does not catch this**: the one that failed sounded complete, named its own
+     skips and explained itself. A reader supplies the missing structure from imagination.
+
    - **Record the claim as a claim**, before you have checked anything:
 
      ```bash

@@ -3755,6 +3755,54 @@ grep -q -- '--board=' "$TMP/out" \
 # forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
 # flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
 # point by construction.
+# --- the output contract was enforced against the FILE, never against the agent -------------------
+#
+# MEASURED BY SPAWNING ONE AGENT, 2026-08-06 (H4), the first ever run against this loop.
+#
+# team-doctor enforces that every ticket-owning role FILE declares six fields, because /app-build's
+# gates parse them. Nothing had ever checked that an agent RETURNS them. The agent returned ONE of
+# six. It also reported "no git repo initialized in this worktree" about a directory that IS a git
+# repository, made no commit, and reported DONE — so verify-done.sh came back REJECTED with
+# "nothing was actually written" and the ticket parked at in_progress.
+#
+# The gates worked. The HANDOFF did not, and the handoff was the half nobody was checking: FC-002
+# at the boundary where this studio meets its own workers.
+#
+# READING THE REPORT DOES NOT CATCH THIS, which is why it is a command and not an instruction. The
+# report that failed sounded complete, named its own skips and explained itself; a reader supplies
+# the missing structure from imagination.
+RPT="$TMP/report-check"; mkdir -p "$RPT"
+# The verbatim shape of the report that failed.
+printf 'Worktree: worked directly in project root (serialized round)\nDONE: APP-001\nBranch: none created — no git repo initialized in this worktree\nTests: 0 added, 1 existing green\nNext: code-reviewer\n' > "$RPT/h4.txt"
+node "$HERE/report-check.mjs" --role ios-developer --report "$RPT/h4.txt" >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "the report that actually failed H4 is caught as INCOMPLETE" \
+           || bad "the H4 report is caught as incomplete" "$(cat "$TMP/out")"
+assert_has "$TMP/out" '1 of 6 contract field' "...counting exactly how many of six it returned"
+assert_has "$TMP/out" 'MISSING  Second-path check:' "...and naming each missing field"
+assert_has "$TMP/out" 'NOT fill them in yourself' \
+  "...and forbidding the orchestrator from inventing the answer, which would record a claim nobody made"
+
+printf 'Worktree: .agent-wt/APP-001\nMutation confirmed: yes\nDaily fragment: docs/daily/x.md\nAssumptions & open questions: none\nSecond-path check: grepped every writer\nShared surfaces touched: none\n' > "$RPT/good.txt"
+node "$HERE/report-check.mjs" --role ios-developer --report "$RPT/good.txt" >/dev/null 2>&1
+[ $? = 0 ] && ok "...while a complete code-tier report clears" || bad "a complete report clears"
+node "$HERE/report-check.mjs" --role qa-engineer --report "$RPT/good.txt" >/dev/null 2>&1
+[ $? = 0 ] && ok "...and an artifact-tier role owes three fields, not six" \
+           || bad "an artifact role owes the artifact contract"
+node "$HERE/report-check.mjs" --role code-reviewer --report "$RPT/good.txt" >/dev/null 2>&1
+[ $? = 2 ] && ok "...and a gate role, which returns a verdict rather than a DONE, has no report contract" \
+           || bad "a gate role has no report contract"
+
+# THE TWO CONTRACTS MUST NOT DRIFT. If report-check and team-doctor disagree, a role owes one thing
+# to the doctor and another to the loop — the two-truths defect this repo has paid for repeatedly.
+for _f in 'Worktree:' 'Mutation confirmed:' 'Daily fragment:' 'Assumptions & open questions:' 'Second-path check:' 'Shared surfaces touched:'; do
+  grep -q -- "$_f" "$HERE/report-check.mjs" && grep -q -- "$_f" "$HERE/team-doctor.mjs" \
+    || { bad "report-check and team-doctor declare the same contract field: $_f"; break; }
+done
+ok "report-check and team-doctor declare the same six code-tier fields"
+grep -q 'report-check' "$HERE/../commands/app-build.md" \
+  && ok "...and /app-build runs it before believing a DONE" \
+  || bad "/app-build runs report-check before believing a DONE"
+
 # --- a planned project could not dispatch AT ALL --------------------------------------------------
 #
 # THE COMPLETE EXPLANATION FOR 11-OF-19, found by running it 2026-08-06.
@@ -3814,6 +3862,24 @@ assert_has "$TMP/out" 'role is not declared' "...and an undeclared role is refus
 grep -q 'team-bootstrap' "$HERE/../commands/app-plan.md" \
   && ok "...and /app-plan runs it, so the writer FC-005 was missing now exists in the pipeline" \
   || bad "/app-plan runs team-bootstrap"
+
+# project-profile.json IS ALSO A CONSUMER WITH NO PRODUCER — found while building the H4 fixture,
+# hours after this bootstrap was written to fix precisely that class. `orchestrator round` step 0c
+# requires the profile and nothing wrote it. FC-005 committed by the person who had just fixed
+# FC-005, one file over.
+#
+# It scaffolds UNSTATED: empty toolchain, no test commands, so `project-profile.mjs check` still
+# returns CANNOT EVALUATE until a human fills it in. That is deliberate — an unstated toolchain IS
+# unknown, and R10 is two builds broken by a toolchain nobody wrote down. The scaffold removes the
+# guesswork about the schema, not the requirement to state the answer.
+[ -f "$TBS/docs/team/project-profile.json" ] \
+  && ok "team-bootstrap also scaffolds project-profile.json, which orchestrator round requires" \
+  || bad "team-bootstrap scaffolds project-profile.json" \
+         "orchestrator round step 0c requires it and nothing else writes it — FC-005 again"
+( cd "$TBS" && node "$HERE/project-profile.mjs" check --root "$TBS" ) >/dev/null 2>&1
+[ $? = 2 ] && ok "...and the scaffold still reports CANNOT EVALUATE until a human states the toolchain" \
+           || bad "an unstated toolchain must stay CANNOT EVALUATE" \
+                  "a scaffold that made the check PASS would be worse than the missing file"
 
 # --- the board said `merged`; git said the branch was never merged -------------------------------
 #

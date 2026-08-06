@@ -120,6 +120,26 @@ const MANIFESTS = {
       },
     ],
   },
+  // project-profile.json — scaffolded UNSTATED, on purpose.
+  //
+  // Found while building the H4 fixture: `orchestrator round` step 0c requires this file, and this
+  // bootstrap — written that same morning to fix exactly this class — did not produce it. FC-005
+  // again, committed by the person who had just fixed FC-005, one file over.
+  //
+  // It is written with the toolchain EMPTY and the test commands UNSTATED, which means
+  // `project-profile.mjs check` still returns CANNOT EVALUATE until a human fills it in. That is
+  // deliberate and is not a half-fix: the toolchain genuinely IS unknown until someone states it,
+  // and R10 is two builds broken by a toolchain nobody had written down. What the scaffold removes
+  // is having to invent the schema from scratch — the failure stays, the guesswork goes.
+  'project-profile.json': {
+    schema: 'project-profile/v1',
+    platform: 'UNSTATED — ios | android | backend-service | web',
+    toolchain: [],
+    test: {},
+    _note: 'Fill in platform, toolchain (tool/args/expect per pinned tool) and test.fast / test.full. '
+      + 'Until then `project-profile.mjs check` reports CANNOT EVALUATE and /app-build stops at step 0 — '
+      + 'which is correct: an unstated toolchain is UNKNOWN, not fine.',
+  },
   'schedule.json': {
     schema: 'scheduler-plan/v1',
     max_parallel: 2,
