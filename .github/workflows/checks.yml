@@ -82,6 +82,14 @@ jobs:
       - name: Schema registry matches the tree
         run: node scripts/schema-registry.mjs check
 
+      # NOT A GATE — a measurement, printed where whoever reads a green build will see it.
+      # "1216 assertions" is the number this project quotes about itself everywhere, and a share of
+      # those only prove an instruction EXISTS in a Markdown file, not that anything happens. That
+      # is FC-002's shape, and this repo has been caught by it before. Printing the split on every
+      # run keeps the honest figure in front of the person deciding whether to trust the suite.
+      - name: Assertion census (behavioural vs documentary)
+        run: node scripts/assertion-census.mjs
+
       - name: Plugin manifests parse
         run: |
           node -e "

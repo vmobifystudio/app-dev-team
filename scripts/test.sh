@@ -3755,6 +3755,76 @@ grep -q -- '--board=' "$TMP/out" \
 # forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
 # flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
 # point by construction.
+# --- the assertion count says more than it delivers ---------------------------------------------
+#
+# "1216 assertions" is quoted about this project in the README, the HANDBOOK, every commit message
+# and every status report. A share of those only grep a Markdown file for a string — they prove an
+# INSTRUCTION EXISTS, not that anything happens, which is FC-002's shape. This repo has been caught
+# by it: the only assertion guarding code-reviewer.md's mandatory `## Not checked` section grepped
+# the instruction file, so a reviewer could omit the section forever with the suite green.
+#
+# The census is a MEASUREMENT, not a gate — deliberately exit 0 whatever the ratio. A threshold
+# would invite gaming the classifier instead of writing behavioural tests.
+node "$HERE/assertion-census.mjs" >"$TMP/out" 2>&1
+[ $? = 0 ] && ok "the assertion census runs and never gates" || bad "the assertion census runs and never gates"
+assert_has "$TMP/out" 'behavioural' "...reporting behavioural assertions separately"
+assert_has "$TMP/out" 'documentary' "...from documentary ones, so one number cannot flatter the other"
+assert_has "$TMP/out" 'sites, not executions' \
+  "...and saying it counts SITES, not executions, rather than letting two numbers look comparable"
+grep -q 'assertion-census' "$HERE/../.github/workflows/checks.yml" \
+  && ok "...and CI prints it, so the honest figure is in front of whoever reads a green build" \
+  || bad "CI prints the assertion census"
+
+# --- throughput: is anything actually MOVING? ---------------------------------------------------
+#
+# THE NUMBER THIS EXISTS FOR. Across every recorded dry run: 19 tickets created, ONE reached
+# `closed`. ELEVEN never left `created` — never claimed, never blocked, never refused. The gates
+# were not the obstacle; nothing ever reached them.
+#
+# And every existing check passes on that board. board-doctor says coherent, because it is.
+# `orchestrator next` cheerfully lists legal transitions for tickets nobody performs them on. Six
+# dry-run reports analysed the QUALITY OF REFUSALS and not one counted throughput, so a system that
+# had stopped was indistinguishable from one being careful.
+MOV="$TMP/movement"; rm -rf "$MOV"; mkdir -p "$MOV/docs/team"
+( cd "$MOV" && git init -q . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm one ) >/dev/null 2>&1
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo ok","full":"echo ok"}}\n' \
+  > "$MOV/docs/team/project-profile.json"
+MB() { ( cd "$MOV" && node "$BD" "$@" ) >/dev/null 2>&1; }
+for i in 1 2 3; do MB add APP-00$i --title "T$i" --owner ios-developer --by tech-manager; done
+
+( cd "$MOV" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'READY BUT UNCLAIMED (3)' \
+  "a board of tickets nobody has picked up is reported, not silently coherent"
+[ $? = 0 ] || true
+( cd "$MOV" && node "$HERE/orchestrator.mjs" round ) >/dev/null 2>&1
+[ $? = 0 ] && ok "...and round ONE does not block on it — every project starts unclaimed" \
+           || bad "round one must not block on unclaimed tickets"
+
+# Now move the board a lot while APP-003 is ignored. THIS is the failure: not that a ticket is
+# unclaimed, but that it stays unclaimed while everything else proceeds around it.
+for e in "APP-001 claimed ios-developer" "APP-001 done_reported ios-developer" \
+         "APP-001 verified tech-manager" "APP-001 review_requested ios-developer" \
+         "APP-002 claimed ios-developer" "APP-002 done_reported ios-developer" \
+         "APP-002 verified tech-manager" "APP-002 blocked tech-manager" \
+         "APP-002 unblocked tech-manager" "APP-001 started code-reviewer" \
+         "APP-001 blocked tech-manager" "APP-001 unblocked tech-manager"; do
+  set -- $e; MB move "$1" "$2" --by "$3"
+done
+( cd "$MOV" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "a ticket left behind while the board moves on BLOCKS the round" \
+           || bad "a stalled ticket blocks the round" "$(grep -E 'STALLED|RESULT' "$TMP/out")"
+assert_has "$TMP/out" 'STALLED APP-003' "...naming it"
+assert_has "$TMP/out" 'work is not moving' \
+  "...and saying the combination out loud: preconditions clear AND nothing moving"
+
+# THE HOLE THE FIRST VERSION HAD. Unclaimed tickets `continue`d before the stall check, so the
+# 11-of-19 case reported forever and could never block — a signal that can only ever be advice,
+# which is precisely the "stopped loop that looks careful" this check was written to end.
+grep -q 'never claimed' "$TMP/out" \
+  && ok "...including a ticket that was never claimed at all, not just an in-flight one gone quiet" \
+  || bad "an unclaimed ticket must be able to stall" "it can only ever advise, which is the defect"
+
 # --- PF-002: corrupt data returned as empty ------------------------------------------------------
 #
 # THE FIRST PRODUCT DEFECT CLASS THIS STUDIO CAN DETECT. Across six dry runs not one product defect

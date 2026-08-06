@@ -125,7 +125,9 @@ function load() {
   let parsed;
   try { parsed = parseEventLog(readFileSync(LOG, 'utf8')); }
   catch (e) { die(2, `cannot read the event log: ${e.message}`); }
-  return reduce(parsed.events);
+  // The raw events ride along: movement() measures staleness in BOARD EVENTS, which the reduced
+  // ticket map cannot express — it holds the current state, not how much happened around it.
+  return { ...reduce(parsed.events), events: parsed.events };
 }
 
 /**
@@ -256,6 +258,64 @@ function cmdExplain() {
  * THE WORST ANSWER WINS, and CANNOT EVALUATE is not softened into a pass. A round that cannot
  * prove its preconditions is not a round that may spawn agents.
  */
+/**
+ * Is anything actually MOVING?
+ *
+ * THE NUMBER THAT PROMPTED THIS. Across every recorded run: 19 tickets created, ONE reached
+ * `closed`. Eleven never left `created` — never claimed, never blocked, never refused. The gates
+ * were not the obstacle; nothing ever reached them.
+ *
+ * And every existing check passes on that board. `board-doctor` says coherent — it is. `readiness`
+ * says what it says about a release nobody is approaching. `orchestrator next` lists legal
+ * transitions for tickets nobody is performing them on. Six dry-run reports analysed the QUALITY OF
+ * REFUSALS and not one counted throughput, so a system that had stopped was indistinguishable from
+ * one that was working carefully.
+ *
+ * TWO DISTINCT SIGNALS, because they need different responses:
+ *
+ *   READY BUT UNCLAIMED  every dependency merged, no owner has picked it up. This is the 11-of-19
+ *                        case. It is not a defect in the ticket; it means the loop stopped
+ *                        dispatching, and the fix is to spawn someone or to say why not.
+ *   STALLED              in flight, but nothing has happened to it while the board moved on around
+ *                        it. Measured in BOARD EVENTS rather than wall-clock: an agent loop has no
+ *                        reliable clock, and "ten things happened and none of them were this" is
+ *                        the honest statement of being left behind.
+ *
+ * Round one of a project has no history, so nothing can be stalled and nothing false-blocks.
+ */
+const STALL_EVENTS = Number(process.env.APP_TEAM_STALL_EVENTS || 10);
+const TERMINAL = new Set(['done', 'qa']);
+
+function movement(tickets, events) {
+  const unclaimed = [];
+  const stalled = [];
+  for (const t of tickets.values()) {
+    if (TERMINAL.has(t.status)) continue;
+    const deps = (t.dependsOn || []).filter((d) => {
+      const dep = tickets.get(key(d));
+      return !dep || !['qa', 'done'].includes(dep.status);
+    });
+    const everClaimed = (t.events || []).some((e) => e.event === 'claimed');
+    const isUnclaimed = t.status === 'todo' && !deps.length && !everClaimed;
+    if (isUnclaimed) unclaimed.push(t.id);
+
+    // How much of the board moved since this ticket last did.
+    //
+    // COMPUTED FOR UNCLAIMED TICKETS TOO, and the first version did not — it `continue`d after
+    // recording them, so the 11-of-19 case reported forever and never blocked. A signal that can
+    // only ever be advice is the thing this whole check was written to stop being: a stopped loop
+    // that looks identical to a careful one, round after round, with a friendly note about it.
+    //
+    // Round one is unaffected: nothing has ten events behind it yet.
+    const lastIndex = events.map((e, i) => (key(e.ticket) === key(t.id) ? i : -1)).filter((i) => i >= 0).pop();
+    const since = lastIndex === undefined ? events.length : events.length - 1 - lastIndex;
+    if (since >= STALL_EVENTS && !deps.length) {
+      stalled.push({ id: t.id, status: isUnclaimed ? 'never claimed' : t.status, since });
+    }
+  }
+  return { unclaimed, stalled };
+}
+
 function cmdRound() {
   const steps = [
     { name: 'board doctor', argv: [resolve(HERE_SCRIPTS, 'board-doctor.mjs'), resolve(ROOT, 'docs/31-board.md')],
@@ -280,6 +340,38 @@ function cmdRound() {
   }
 
   process.stdout.write('ROUND PRECONDITIONS\n\n' + lines.join('\n') + '\n\n');
+  // THROUGHPUT IS REPORTED WHATEVER THE PRECONDITIONS SAID. A blocked round still wants to know
+  // that eleven tickets have never been picked up; reporting it only on the happy path would hide
+  // it exactly when the loop is already struggling.
+  const { tickets, events } = load();
+  const move = movement(tickets, events);
+  if (move.unclaimed.length || move.stalled.length) {
+    process.stdout.write('  MOVEMENT\n');
+    if (move.unclaimed.length) {
+      process.stdout.write(
+        `    READY BUT UNCLAIMED (${move.unclaimed.length}): ${move.unclaimed.join(', ')}\n` +
+        '        Every dependency merged and nobody has picked them up. Across every recorded run,\n' +
+        '        11 of 19 tickets ended here — never claimed, never blocked, never refused. Spawn an\n' +
+        '        owner, or say in the standup why not. Silence here is how a stopped loop looks\n' +
+        '        identical to a careful one.\n'
+      );
+    }
+    for (const s of move.stalled) {
+      process.stdout.write(`    STALLED ${s.id} [${s.status}] — ${s.since} board events have happened since this one moved\n`);
+    }
+    process.stdout.write('\n');
+  }
+
+  if (worst === 0 && move.stalled.length) {
+    process.stdout.write(
+      '  RESULT: BLOCKED — every precondition is clear and work is not moving.\n' +
+      '  That combination is the one this check exists for: a coherent board where nothing is\n' +
+      '  happening passes every other gate in this studio. Claim it, block it with a reason, or\n' +
+      '  close it — but do not run another round around it.\n'
+    );
+    process.exit(1);
+  }
+
   if (worst === 0) {
     process.stdout.write('  All preconditions CLEAR. What is legal now:\n\n');
     cmdNext();
