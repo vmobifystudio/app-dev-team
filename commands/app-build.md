@@ -56,94 +56,45 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 
 ## Steps
 
-0. **Adopt the event log, then run the board doctor gate** — *before spawning anything*.
+0. **Run every mechanical precondition as ONE command, before spawning anything.**
 
    ```bash
-   if [ ! -f docs/31-board-events.jsonl ] && [ -f docs/31-board.md ]; then
-     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" migrate docs/31-board.md --out docs/31-board-events.jsonl \
-       && node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" render \
-       && echo "MIGRATED: hand-written board -> event log"
-   fi
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" round
    ```
 
-   Run this **once, at the top of the first round only** — after that the log exists and the guard
-   is a no-op. Announce what it reconstructed and how much of it is `inferred` (`ts: null`): those
-   are events the hand-written board never recorded, and the metrics in `/app-status` will be thin
-   for tickets that predate the log. If migrate exits non-zero the board is too old to reconstruct —
-   print `LEGACY BOARD: no event log — running the hand-written path`, use `board-doctor` as the
-   authority for the rest of this run, and move rows by hand as this command used to. Do not strand
-   the project over it.
+   This replaces four separate steps that used to be four separate paragraphs: the **board doctor**
+   gate, the **budget** ceiling, the **toolchain** check, and printing **what is legal now**. Every
+   one of them was already a script with its own exit code. What was prose was the discipline of
+   running all four, in order, every round — and that is exactly the kind of discipline this
+   codebase has repeatedly proven does not survive contact with a long file. Dry run 3's skipped
+   transition was not ignorance; it was load.
 
-   Then, on either path, use the `board-doctor` skill:
+   It is READ-ONLY. It claims nothing, advances nothing, appends nothing.
+
+   - Exit `0` → every precondition CLEAR, and it prints the legal transitions per ticket. Continue.
+   - Exit `1` → **BLOCKED. Spawn nobody this round.** It names which precondition and why: an
+     incoherent board (repair it with `tech-manager`, then re-run), a reached ceiling or the
+     emergency stop (raising a ceiling is the user's decision, never a workaround you apply to keep
+     going), or a declared tool at the wrong version.
+   - Exit `2` → **CANNOT EVALUATE. Also not a pass.** Usually no board yet (`/app-plan` first), or
+     no `docs/team/project-profile.json` so the toolchain is UNPROVEN. Supply what it names.
+
+   **If a project has no event log yet but does have a hand-written `docs/31-board.md`**, migrate
+   once before this step, then continue as normal:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" migrate docs/31-board.md --out docs/31-board-events.jsonl \
+     && node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" render
    ```
 
-   - Exit `0` → print `BOARD DOCTOR: CLEAN — N tickets` and continue.
-   - Exit `1` → **stop. Spawn nobody.** Print the anomaly list verbatim, spawn `tech-manager` once
-     to repair the board, then re-run the doctor. If it fails a second time, surface to the user.
-   - Exit `2` → no board yet; suggest `/app-plan`.
+   Announce how much it reconstructed as `inferred` (`ts: null`) — those are events the hand-written
+   board never recorded, so `/app-status` metrics will be thin for tickets that predate the log. If
+   migrate exits non-zero the board is too old to reconstruct: say `LEGACY BOARD: no event log`, use
+   `board-doctor` as the authority for the rest of the run, and do not strand the project over it.
 
-   This gate is not optional and it runs **every round**, not just the first — a ticket becomes
-   `stranded` the moment its dependency is blocked, which happens mid-loop at step 4.
-
-0a. **Budget gate — the loop's only economic brake.**
-
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" check
-   ```
-
-   - Exit `0` → print the `BUDGET:` line in the standup (step 6) and continue. It is surfaced every
-     round on purpose: a spend you only see when it stops you is a spend you saw too late.
-   - Exit `1` → **CEILING REACHED. Stop the loop.** Print its lines verbatim, then the sprint
-     summary from step 8 naming every unfinished ticket. Do not spawn this round. Raising a ceiling
-     (`--max-rounds`, `--max-spawns`, `--max-retries`, `--max-agent-spawns`, `--max-spend-usd`, or
-     `APP_TEAM_MAX_*`) is the user's decision, not a workaround you apply to keep going.
-   - It also reports **per-agent** spawn counts against `--max-agent-spawns`. The studio-wide total
-     can look healthy while 59 of 60 spawns belong to one role looping on one ticket; that is the
-     failure a per-agent ceiling catches and the aggregate cannot. Journal them in step 6 with
-     `--agents ios-developer=2,qa-engineer=1`.
-   - The same command reports the **EMERGENCY STOP** (`.studio-stop`, or `APP_TEAM_STOP`) and exits
-     `1`. That is not a budget and must not be treated as one: a ceiling can be raised with a
-     reason, a stop is cleared by the operator who set it and by nobody else.
-
-   **Token cost is not measurable in this harness**, so nothing here pretends to know it. What is
-   counted is what is countable — rounds, spawns, retries, refusals, wall-clock — and those are the
-   ceilings that fire. If a harness does report spend, pass it with `--spend-usd` in step 6 and the
-   `--max-spend-usd` ceiling starts applying too.
-
-0c. **Pin the toolchain before you dispatch anyone.**
-
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check
-   ```
-
-   Exit `0` → continue. Exit `1` → **a declared tool is the WRONG VERSION; this project will not
-   build correctly here.** Stop and say which. Exit `2` → the profile is missing, or a declared tool
-   is absent: the toolchain is UNPROVEN, which is not the same as fine. R10 is two dry runs where an
-   AGP/Kotlin/KSP mismatch was discovered *when the build broke*, mid-sprint, by an agent who then
-   had to debug someone else's machine. Discovering it here costs one command.
-
-1. **Ask what is legal now, rather than remembering.**
-
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" next
-   ```
-
-   READ-ONLY; it mutates nothing. For every ticket it prints the transitions the CLI would accept,
-   who may write each, and what earns it. Lines marked `GATE` are the ones with a closed role list —
-   those are the steps that must not be routed around.
-
-   **This exists because knowing the sequence is not the same as following it.** In dry run 3 the
-   orchestrator sent a ticket straight to `code-reviewer`, skipping verify-done → verified →
-   review_requested — and the person driving had *written* that sequence in the same session. The
-   board's guard refused the forged event, so nothing broke; the point is that the guard was the
-   only thing standing there.
-
-   Use it to plan the round. It is advisory about *earning* a transition and authoritative about
-   *legality*, because it asks the same `validate()` the append asks — it cannot drift from the CLI,
-   because it has no model of its own.
+   **The `GATE` lines in its output are the ones with a closed role list.** Those are the steps that
+   must not be routed around, and `orchestrator explain <TICKET>` says why any given transition is
+   refused — including the ones you expected to be legal, which is the more useful half.
 
 1. **Read state.**
    - `node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json` — the derived state of every

@@ -3010,9 +3010,21 @@ assert_exit 1 "the spend ceiling applies once spend is reported" \
 
 # Wiring: journaled but never checked is a metric nobody reads; checked but never surfaced is a
 # spend you first see when it stops you.
-grep -q 'round-journal.mjs" check' "$HERE/../commands/app-build.md" \
+# THE GUARANTEE IS UNCHANGED; WHERE IT IS SATISFIED MOVED. This used to grep app-build.md for a
+# literal `round-journal.mjs check`. That call now lives inside `orchestrator round`, which
+# app-build runs as its first step — so the direct grep went red while the budget gate was running
+# MORE reliably than before, not less.
+#
+# The lazy fix would have been to grep for "orchestrator round" instead, and it would have been
+# wrong: that only proves app-build names a command, not that the command checks the budget. So
+# both halves are asserted, and the chain has no gap either half could hide.
+grep -qE 'round-journal\.mjs" check|orchestrator\.mjs" round' "$HERE/../commands/app-build.md" \
   && ok "/app-build runs the budget gate at the top of the round" \
   || bad "/app-build runs the budget gate at the top of the round"
+grep -q "round-journal.mjs" "$HERE/orchestrator.mjs" \
+  && ok "...and the round command it delegates to actually checks the budget" \
+  || bad "...and the round command it delegates to actually checks the budget" \
+         "app-build now delegates to `orchestrator round`; if that stops checking the budget, the ceiling is gone"
 grep -q 'round-journal.mjs" append' "$HERE/../commands/app-build.md" \
   && ok "...and journals the round before looping" \
   || bad "...and journals the round before looping"

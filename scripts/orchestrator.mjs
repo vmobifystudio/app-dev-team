@@ -55,13 +55,17 @@
  *   2  cannot evaluate — no event log, or it is unreadable
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { parseArgs } from './lib/args.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { parseEventLog, reduce, validate, key } from './lib/events.mjs';
 import { ROLES_IN_MATRIX } from './lib/capabilities.mjs';
 import { BUILD_SPAWNABLE_OWNERS } from './lib/board.mjs';
+
+const HERE_SCRIPTS = dirname(fileURLToPath(import.meta.url));
 
 const die = (code, message) => { process.stderr.write(`orchestrator: ${message}\n`); process.exit(code); };
 
@@ -231,6 +235,62 @@ function cmdExplain() {
   }
 }
 
+/**
+ * `round` — every mechanical precondition of a build round, in order, as ONE command.
+ *
+ * WHY. `/app-build` is 658 lines and `tech-manager.md` another 365. Before any work happens an
+ * agent must read past a thousand lines of instructions and then REMEMBER to run four separate
+ * checks in the right order. That is the same pressure that produced dry run 3's skipped
+ * transition: not ignorance, load. The steps were always scripts; what was prose was the
+ * discipline of running all of them, every round, before spawning anybody.
+ *
+ * It RUNS NOTHING NEW. Every check below already existed and already had an exit code; this only
+ * removes the opportunity to do three of four and believe you did all of them. Nothing here
+ * mutates — no claim, no advance, no append. It is the read-only half on purpose: a model that
+ * starts writing before it has been validated against a live loop is the second source of truth
+ * the control room was designed to avoid.
+ *
+ * THE WORST ANSWER WINS, and CANNOT EVALUATE is not softened into a pass. A round that cannot
+ * prove its preconditions is not a round that may spawn agents.
+ */
+function cmdRound() {
+  const steps = [
+    { name: 'board doctor', argv: [resolve(HERE_SCRIPTS, 'board-doctor.mjs'), resolve(ROOT, 'docs/31-board.md')],
+      blocked: 'the board is incoherent — spawn nobody until tech-manager repairs it',
+      unknown: 'there is no board yet; run /app-plan' },
+    { name: 'budget', argv: [resolve(HERE_SCRIPTS, 'round-journal.mjs'), 'check'],
+      blocked: 'a ceiling is reached, or the emergency stop is set. Raising a ceiling is the operator\'s call, not a workaround',
+      unknown: 'the budget could not be read' },
+    { name: 'toolchain', argv: [resolve(HERE_SCRIPTS, 'project-profile.mjs'), 'check'],
+      blocked: 'a declared tool is the WRONG version — this project will not build correctly here',
+      unknown: 'no project profile, or a declared tool is absent: the toolchain is UNPROVEN, which is not the same as fine' },
+  ];
+
+  let worst = 0;
+  const lines = [];
+  for (const s of steps) {
+    const r = spawnSync(process.execPath, s.argv, { cwd: ROOT, encoding: 'utf8' });
+    const code = r.status === 0 ? 0 : r.status === 1 ? 1 : 2;
+    worst = Math.max(worst, code);
+    const state = code === 0 ? 'CLEAR' : code === 1 ? 'BLOCKED' : 'CANNOT EVALUATE';
+    lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}` : code === 2 ? ` — ${s.unknown}` : ''}`);
+  }
+
+  process.stdout.write('ROUND PRECONDITIONS\n\n' + lines.join('\n') + '\n\n');
+  if (worst === 0) {
+    process.stdout.write('  All preconditions CLEAR. What is legal now:\n\n');
+    cmdNext();
+    process.exit(0);
+  }
+  process.stdout.write(
+    worst === 1
+      ? '  RESULT: BLOCKED — spawn nobody this round. Fix what is named above.\n'
+      : '  RESULT: CANNOT EVALUATE — a precondition could not be checked. This is NOT a pass;\n' +
+        '  supply what is named above rather than proceeding on the assumption it is fine.\n'
+  );
+  process.exit(worst);
+}
+
 function cmdStatus() {
   const { tickets } = load();
   const all = [...tickets.values()];
@@ -244,9 +304,11 @@ function cmdStatus() {
 switch (command) {
   case 'next': cmdNext(); break;
   case 'explain': cmdExplain(); break;
+  case 'round': cmdRound(); break;
   case 'status': cmdStatus(); break;
   default:
     die(1, `unknown command "${command ?? ''}"\n` +
+           '  round                every mechanical precondition of a build round, then next\n' +
            '  next [--json]        what may happen to every ticket, and by whom\n' +
            '  explain <TICKET>     why this ticket is or is not actionable\n' +
            '  status               one-line summary\n' +
