@@ -3755,6 +3755,72 @@ grep -q -- '--board=' "$TMP/out" \
 # forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
 # flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
 # point by construction.
+# --- PF-002: corrupt data returned as empty ------------------------------------------------------
+#
+# THE FIRST PRODUCT DEFECT CLASS THIS STUDIO CAN DETECT. Across six dry runs not one product defect
+# was caught by a gate, and that was never a mystery: knowledge/failure-corpus.md holds seven
+# classes, all of them about the STUDIO's own defects, each with a mechanised Tell — and nothing
+# equivalent existed for the apps. The product classes were written into reports and left there.
+#
+# PF-002 is the one that is cleanly greppable: malformed persisted data caught and returned as an
+# empty list, so a user whose file was corrupted sees exactly what a new user sees. No error, no
+# telemetry, no way for support to tell "you have no data" from "we lost your data".
+PFS="$TMP/silent-fallback"; rm -rf "$PFS"; mkdir -p "$PFS/src"
+printf 'fun loadEntries(): List<Entry> {\n    return try {\n        Json.decodeFromString<List<Entry>>(readFile(p))\n    } catch (e: Exception) {\n        emptyList()\n    }\n}\n' > "$PFS/src/Bad.kt"
+node "$HERE/silent-fallback-scan.mjs" "$PFS" >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'src/Bad.kt' "a corrupt-read caught and returned as an empty list is found"
+
+# THE BARE-RETURN FORM IS THE ORIGINATING SHAPE. Kotlin's try-as-expression writes
+# `} catch (e) { emptyList() }` with no `return` keyword; the first version of this scan required
+# `return` and therefore missed the exact example it was written against. A detector that cannot
+# find its own originating incident is FC-006, so the bare form has its own assertion.
+grep -q 'Bad.kt:4' "$TMP/out" \
+  && ok "...including the bare try-as-expression form with no return keyword" \
+  || bad "...including the bare try-as-expression form" "$(cat "$TMP/out")"
+
+# A HANDLER THAT REPORTS IS NOT THIS CLASS. The defect is silence, not the catch.
+printf 'fun load3(): List<Entry> {\n    try { return ObjectMapper().readValue(readFile(p)) }\n    catch (e: Exception) { Log.e(TAG, "corrupt", e); return emptyList() }\n}\n' > "$PFS/src/Logged.kt"
+node "$HERE/silent-fallback-scan.mjs" "$PFS" >"$TMP/out" 2>&1
+grep -q 'Logged.kt' "$TMP/out" \
+  && bad "a handler that logs is not reported — the defect is silence, not the catch" \
+  || ok "a handler that logs is not reported — the defect is silence, not the catch"
+
+# FALSE POSITIVE THAT ACTUALLY HAPPENED, on this scan's first run: a flat 12-line lookback crossed
+# a function boundary and reported an in-memory cache because the function ABOVE it called
+# readFile. The scan's own header says a detector that refuses everything gets switched off within
+# a week; shipping with that bug would have been exactly that.
+printf 'fun readStore(): String { return readFile(path) }\nfun cacheLookup(k: String): List<Item> {\n    try { return memo[k]!! } catch (e: Exception) { return emptyList() }\n}\n' > "$PFS/src/Cache.kt"
+node "$HERE/silent-fallback-scan.mjs" "$PFS" >"$TMP/out" 2>&1
+grep -q 'Cache.kt' "$TMP/out" \
+  && bad "an in-memory cache below an unrelated file-reading function is not reported" \
+         "the lookback crossed a function boundary again" \
+  || ok "an in-memory cache below an unrelated file-reading function is not reported"
+
+# Warn by default, block on demand — and a root with no source is CANNOT EVALUATE, never CLEAR.
+node "$HERE/silent-fallback-scan.mjs" "$PFS" >/dev/null 2>&1
+[ $? = 0 ] && ok "findings warn by default, so the gate does not become refuse-everything" \
+           || bad "findings warn by default"
+node "$HERE/silent-fallback-scan.mjs" "$PFS" --strict >/dev/null 2>&1
+[ $? = 1 ] && ok "...and --strict blocks, for a project that has decided the answer is always no" \
+           || bad "--strict blocks"
+# N/A, NOT CANNOT-EVALUATE, and the distinction is load-bearing. This exited 2 at first, reasoning
+# that "nothing scanned" must never read as clean — right about source that could not be READ,
+# wrong about a project with no source of these languages at all. It immediately took six ship-gate
+# fixtures to CANNOT EVALUATE that were genuinely fine: the false-BLOCK half of the false-positive
+# problem, which switches a gate off just as fast as noise does.
+mkdir -p "$TMP/pf-empty"
+node "$HERE/silent-fallback-scan.mjs" "$TMP/pf-empty" >"$TMP/out" 2>&1
+[ $? = 0 ] && ok "a project with no Swift/Kotlin/Java/TS is N/A, not CANNOT EVALUATE" \
+           || bad "a project with no scannable source is N/A" "it must not block a docs-only project"
+assert_has "$TMP/out" 'not the same as a clean sweep' "...and says so rather than implying it swept clean"
+node "$HERE/silent-fallback-scan.mjs" "$TMP/definitely-not-a-real-root" >/dev/null 2>&1
+[ $? = 2 ] && ok "...while a root that does not exist is still CANNOT EVALUATE" \
+           || bad "a missing root is CANNOT EVALUATE"
+
+grep -q 'silent-fallback-scan' "$HERE/ship-gate.sh" \
+  && ok "...and the ship gate actually runs it" \
+  || bad "...and the ship gate actually runs it"
+
 # --- every shipped script has a caller ----------------------------------------------------------
 #
 # FOUND BY GREPPING, 2026-08-06, and it is the largest single omission this repo has produced:

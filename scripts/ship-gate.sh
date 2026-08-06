@@ -229,6 +229,12 @@ run_detector "dependency-check" node "$HERE/dependency-check.mjs" "$ROOT"
 [ -f "$ROOT/docs/10-prd.md" ] && [ -f "$ROOT/docs/52-analytics.md" ] && \
   run_detector "analytics-coverage-scan" node "$HERE/analytics-coverage-scan.mjs" "$ROOT"
 [ -n "$SWIFT_FILES" ] && run_detector "subscription-restore-scan" node "$HERE/subscription-restore-scan.mjs" "$ROOT"
+# PF-002 — corrupt data returned as empty, indistinguishable from "you have no data". The first
+# class from knowledge/product-failure-corpus.md to be mechanised. Warn-mode: the pattern is a
+# strong smell rather than a proof (an optional cache is a legitimate instance), and a gate that
+# blocked on all of them would be switched off within a week. It names the sites; a reviewer
+# decides. `--strict` is available to a project that has decided the answer is always no.
+run_detector "silent-fallback-scan" node "$HERE/silent-fallback-scan.mjs" "$ROOT"
 # SHIP-P0-006: this guard only recognized `version: X.Y.Z` prose, not release-manager.md's own
 # required release-note heading `## vX.Y.Z — YYYY-MM-DD` — so the checker never even ran on a
 # correctly-formatted release note. Recognize both shapes; the checker's own regex mirrors this.
