@@ -46,13 +46,16 @@
  * second truth the control room was carefully designed to avoid.
  *
  * Usage:
+ *   orchestrator.mjs round                every mechanical precondition of a build round, then next
+ *   orchestrator.mjs ship                 every mechanical precondition of a release
  *   orchestrator.mjs next [--json]        every ticket, what may happen to it next, and by whom
  *   orchestrator.mjs explain <TICKET>     why this ticket is or is not actionable right now
  *   orchestrator.mjs status               one line: how much is actionable, blocked, waiting
  *
  * Exit codes:
- *   0  answered
- *   2  cannot evaluate — no event log, or it is unreadable
+ *   0  answered / every precondition clear
+ *   1  a precondition BLOCKED (round, ship)
+ *   2  cannot evaluate — no event log, or a precondition could not be checked. Never a pass.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -291,6 +294,68 @@ function cmdRound() {
   process.exit(worst);
 }
 
+/**
+ * `ship` — the mechanical preconditions of a release, in order, as ONE command.
+ *
+ * Same argument as `round`, at the other end of the pipeline: /app-ship is 328 lines and its first
+ * four steps were four separate paragraphs each ending in "read the exit code". They are the four
+ * questions that must all hold before a human is asked to submit anything:
+ *
+ *   is the board coherent          a release is the worst moment to discover an incoherent board
+ *   is the candidate ready         ONE reducer — including the artifact bound to its commit
+ *   is the evidence still current  a gate answers at a moment and then stops thinking
+ *   did the process complete       ship-gate's preconditions
+ *
+ * DELIBERATELY NOT INCLUDED, with reasons rather than omission:
+ *
+ *   release-candidate record  needs `--artifact <path>`, which only the caller knows. Guessing it
+ *                             would be inventing the subject of the whole release.
+ *   runtime-gate              needs a device or simulator and takes minutes. It stays its own step
+ *                             so a CANNOT EVALUATE there is unmistakably about the environment.
+ *   the human submission      I-12. No executable path submits or publishes, and this is a
+ *                             read-only reporter, not an exception to that.
+ */
+function cmdShip() {
+  const steps = [
+    { name: 'board', argv: [resolve(HERE_SCRIPTS, 'board-doctor.mjs'), resolve(ROOT, 'docs/31-board.md')],
+      blocked: 'the board is incoherent — a release is the worst moment to find that out',
+      unknown: 'there is no board to check' },
+    { name: 'readiness', argv: [resolve(HERE_SCRIPTS, 'readiness.mjs')],
+      blocked: 'BLOCKED or STALE. STALE is not a failure — nobody has checked THIS candidate. Re-run the gates it names, or rebuild and re-record',
+      unknown: 'a gate has never run for this project, or no artifact was recorded — what would be uploaded is UNKNOWN' },
+    { name: 'ship gate', argv: [resolve(HERE_SCRIPTS, 'ship-gate.sh')],
+      blocked: 'a release precondition failed — read its lines verbatim, they name which',
+      unknown: 'a precondition could not be checked; supply what it names' },
+  ];
+
+  let worst = 0;
+  const lines = [];
+  for (const s of steps) {
+    const isShell = s.argv[0].endsWith('.sh');
+    const r = isShell
+      // `--record` writes docs/team/ship-gate-verdict.json, which the control room's Mission
+      // Control panel defers to. Dry run 5 found its narrower sweep could report `clear` while this
+      // gate had just returned BLOCKED, so the recorded verdict is not optional decoration.
+      ? spawnSync('sh', [s.argv[0], ROOT, '--record'], { cwd: ROOT, encoding: 'utf8' })
+      : spawnSync(process.execPath, s.argv, { cwd: ROOT, encoding: 'utf8' });
+    const code = r.status === 0 ? 0 : r.status === 1 ? 1 : 2;
+    worst = Math.max(worst, code);
+    const state = code === 0 ? 'CLEAR' : code === 1 ? 'BLOCKED' : 'CANNOT EVALUATE';
+    lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}` : code === 2 ? ` — ${s.unknown}` : ''}`);
+  }
+
+  process.stdout.write('SHIP PRECONDITIONS\n\n' + lines.join('\n') + '\n\n');
+  process.stdout.write(
+    worst === 0
+      ? '  All CLEAR. Still to do by hand: the runtime gate, and the human submission decision.\n' +
+        '  Nothing here submits or publishes anything — that boundary is constitutional (I-12).\n'
+      : worst === 1
+        ? '  RESULT: BLOCKED — do not release. Fix what is named above.\n'
+        : '  RESULT: CANNOT EVALUATE — a precondition could not be checked. This is NOT a pass.\n'
+  );
+  process.exit(worst);
+}
+
 function cmdStatus() {
   const { tickets } = load();
   const all = [...tickets.values()];
@@ -305,10 +370,12 @@ switch (command) {
   case 'next': cmdNext(); break;
   case 'explain': cmdExplain(); break;
   case 'round': cmdRound(); break;
+  case 'ship': cmdShip(); break;
   case 'status': cmdStatus(); break;
   default:
     die(1, `unknown command "${command ?? ''}"\n` +
            '  round                every mechanical precondition of a build round, then next\n' +
+           '  ship                 every mechanical precondition of a release\n' +
            '  next [--json]        what may happen to every ticket, and by whom\n' +
            '  explain <TICKET>     why this ticket is or is not actionable\n' +
            '  status               one-line summary\n' +

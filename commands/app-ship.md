@@ -10,80 +10,75 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
 ## Steps
 
-1. **Sanity check the board.** Run the board doctor — a release is the worst possible moment to
-   discover a stranded ticket:
+1. **Bind the artifact, then run every mechanical precondition as ONE command.**
 
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md
-   ```
-
-   Exit `1` → stop. Then read `docs/31-board.md`: if anything is `todo`, `in_progress`, or `review`,
-   stop and tell the user "Sprint isn't done — run `/app-build` first."
-
-1a-i. **Record the artifact you are about to ship, and read the one readiness reducer.**
-
-   Everything below this line reasons about a COMMIT. Until the built binary is bound to that
-   commit, "readiness: PASS" is a true statement about source and says nothing about the file you
-   are handing to a store — an `.ipa` built from a different commit than the one that passed every
-   gate would ship with nothing noticing. Bind it first:
+   First bind what you are about to ship to the commit that passed. Everything else here reasons
+   about a COMMIT; until the binary is bound to it, "readiness: PASS" is a true statement about
+   source and silent about the file you hand to a store:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
      --artifact <path to the built .ipa/.aab> --platform ios|android --variant release \
      --by release-manager
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/readiness.mjs"
    ```
 
-   `readiness.mjs` is the **only** place a readiness verdict is computed; `/app-status`, the
-   dashboard and the control room all project it. Do not form your own view from the gates below —
-   three surfaces each deciding for themselves is the defect one reducer exists to end.
+   This step stays explicit because only you know the artifact path — guessing it would be inventing
+   the subject of the whole release. A build from a dirty tree records as such and reads STALE
+   forever after; that is not a bug to work around.
 
-   - Exit `0` (**PASS**) → continue to 1a.
-   - Exit `1` → **BLOCKED or STALE. Stop.** STALE is not a failure: nothing says the product is
-     broken, it says nobody has checked *this* candidate. Re-run the gates it names, or rebuild and
-     re-record. A dirty-tree build is always STALE and cannot be argued out of — it is not
-     reproducible from the commit it claims.
-   - Exit `2` (**CANNOT EVALUATE**) → a gate has never run for this project, or no artifact was
-     recorded. Not a pass. Supply what it names.
+   Then:
 
-   Then confirm the gate results are still **about this candidate**, not about last Tuesday's:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" ship
+   ```
+
+   That runs the board doctor, the ONE readiness reducer (which now includes the artifact you just
+   bound) and `ship-gate.sh`, in order, worst answer wins. They were three separate steps each
+   ending in "read the exit code"; the discipline of running all three, every time, is exactly what
+   a 328-line file erodes.
+
+   - Exit `0` → continue to the runtime gate below.
+   - Exit `1` → **do not release.** It names which precondition. **STALE is not a failure** —
+     nothing says the product is broken, it says nobody checked THIS candidate. Re-run the gates it
+     names, or rebuild and re-record.
+   - Exit `2` → **CANNOT EVALUATE, also not a pass.** A gate has never run, or no artifact was
+     recorded, so what would be uploaded is UNKNOWN.
+
+   Confirm the gate results still describe this candidate rather than last Tuesday's:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/evidence-check.mjs" \
      --result docs/team/journey-result.json --head "$(git rev-parse HEAD)"
    ```
 
-   Every gate answers at a moment and then stops thinking. `journey-gate` says PASS, three more
-   commits land, and the PASS sits there green describing a candidate that no longer exists. Nobody
-   lied and nothing was tampered with — the verdict simply outlived its subject, which is the
-   ordinary way a release goes out believing something that *was* true. Exit `1` means the evidence
-   no longer describes what you are shipping; re-run the gate rather than reasoning about how
+   Every gate answers at a moment and then stops thinking. `journey-gate` says PASS, three commits
+   land, and the PASS sits there green describing a candidate that no longer exists. Nobody lied;
+   the verdict outlived its subject. Exit `1` → re-run the gate rather than reasoning about how
    little changed.
 
-1a. **Run the ship gate.** These preconditions are a script, not prose to improvise — improvising
-   them produced three silent, confident failures in one session (a guard that could not fail, a
-   field-index mistake, a regex that reported zero open S1/S2 bugs while two were open; see
-   `defect-hunting`):
+   **`orchestrator ship` submits and publishes nothing** — that boundary is constitutional (I-12).
+   It reports; you and the user decide.
 
-   ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/ship-gate.sh" . --record
-   ```
+1a. **If step 1 reported the ship gate as BLOCKED or CANNOT EVALUATE — resolve it here.**
 
-   `--record` writes this verdict to `docs/team/ship-gate-verdict.json` so the control room's
-   Mission Control panel can defer to it instead of only sweeping ticket/bug state — dry run 5
-   (Android fixture) found that narrower sweep could say `clear` while this gate had just returned
-   BLOCKED.
+   Do **not** re-run `ship-gate.sh` by hand: `orchestrator ship` already ran it (with `--record`, so
+   `docs/team/ship-gate-verdict.json` is written for the control room's Mission Control panel — dry
+   run 5 found its narrower sweep could say `clear` while this gate had just returned BLOCKED).
+   Running it twice invites acting on the older of two answers.
 
-   - Exit `0` → **CLEAR.** Continue.
-   - Exit `1` → **BLOCKED by a real condition** — an open S1/S2, a ticket still in flight
-     (including `blocked`), a QA hold. Print its blockers verbatim and stop.
-   - Exit `2` → **CANNOT EVALUATE.** A required input is missing or unparseable. The gate prints one
-     missing input per line; **surface those lines verbatim** under
-     `SHIP GATE: CANNOT EVALUATE` at the top of your output. This is a stop that names what is
-     absent — never a pass, and never an unrecoverable error.
+   These preconditions are a script, not prose to improvise — improvising them produced three
+   silent, confident failures in one session (a guard that could not fail, a field-index mistake, a
+   regex that reported zero open S1/S2 bugs while two were open; see `defect-hunting`).
 
-   On exit `2`, offer the user exactly two ways forward per missing input, and take the one they
-   choose:
+   - **BLOCKED** → a real condition: an open S1/S2, a ticket still in flight (including `blocked`),
+     a QA hold. Print its blockers verbatim and stop.
+   - **CANNOT EVALUATE** → a required input is missing or unparseable. The gate prints one missing
+     input per line; **surface those lines verbatim** under `SHIP GATE: CANNOT EVALUATE` at the top
+     of your output. This is a stop that names what is absent — never a pass, and never an
+     unrecoverable error.
+
+   On CANNOT EVALUATE, offer the user exactly two ways forward per missing input, and take the one
+   they choose (then re-run `orchestrator ship`, not the gate alone):
 
    1. **Produce it.** Name the owning role and spawn it. A brownfield project reaching `/app-ship`
       without `docs/50-test-plan.md` has simply never run a QA wave — that file is only ever written
