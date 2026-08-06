@@ -3946,6 +3946,40 @@ grep -q 'never claimed' "$TMP/out" \
   && ok "...including a ticket that was never claimed at all, not just an in-flight one gone quiet" \
   || bad "an unclaimed ticket must be able to stall" "it can only ever advise, which is the defect"
 
+# A TICKET AT `qa` MUST BE ABLE TO STALL — and the first version of this check could not see one.
+#
+# `TERMINAL` was written as ['done', 'qa']. A ticket at `qa` has MERGED and still owes `qa_passed`
+# and `closed`, so treating it as terminal made the stall detector blind to exactly the population
+# it was built to find: of 19 recorded tickets, 4 ended at `merged` and 2 at `qa_passed` — all six
+# sitting at `qa`, and this check would have called that board healthy.
+#
+# Found by the third experiment, which was aimed at those six, falsified its own hypothesis (the
+# transitions out of merged work cleanly), and then asked whether the new instrument would have SEEN
+# them. It would not have. An instrument with a blind spot over its own subject is worse than no
+# instrument, because it answers.
+MOVQ="$TMP/movement-qa"; rm -rf "$MOVQ"; mkdir -p "$MOVQ/docs/53-reviews" "$MOVQ/docs/team"
+( cd "$MOVQ" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm b ) >/dev/null 2>&1
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo ok","full":"echo ok"}}\n' \
+  > "$MOVQ/docs/team/project-profile.json"
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\n## Not checked\nNothing.\n' > "$MOVQ/docs/53-reviews/v.md"
+QB() { ( cd "$MOVQ" && node "$BD" "$@" ) >/dev/null 2>&1; }
+QB add APP-001 --title t --owner ios-developer --by tech-manager
+QB move APP-001 claimed --by ios-developer
+QB move APP-001 done_reported --by ios-developer
+QB move APP-001 verified --by tech-manager
+QB move APP-001 review_requested --by ios-developer
+QB move APP-001 started --by code-reviewer
+QB move APP-001 approved --by code-reviewer --verdict "$MOVQ/docs/53-reviews/v.md"
+QB move APP-001 merged --by tech-manager
+QB add APP-002 --title t2 --owner ios-developer --by tech-manager
+for _i in 1 2 3 4 5 6; do QB move APP-002 blocked --by tech-manager; QB move APP-002 unblocked --by tech-manager; done
+( cd "$MOVQ" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
+grep -q 'STALLED APP-001 \[qa\]' "$TMP/out" \
+  && ok "a ticket parked at qa while the board moves on IS stalled — merged is not done" \
+  || bad "a ticket parked at qa must be able to stall" \
+         "TERMINAL must be ['done'] alone; qa still owes qa_passed and closed"
+
 # --- PF-002: corrupt data returned as empty ------------------------------------------------------
 #
 # THE FIRST PRODUCT DEFECT CLASS THIS STUDIO CAN DETECT. Across six dry runs not one product defect

@@ -284,7 +284,16 @@ function cmdExplain() {
  * Round one of a project has no history, so nothing can be stalled and nothing false-blocks.
  */
 const STALL_EVENTS = Number(process.env.APP_TEAM_STALL_EVENTS || 10);
-const TERMINAL = new Set(['done', 'qa']);
+// ONLY `done` IS TERMINAL. This said `['done', 'qa']`, and that was a defect in the instrument
+// itself: a ticket at `qa` has merged and still owes `qa_passed` and `closed`. Excluding it made
+// the stall detector BLIND TO EXACTLY THE POPULATION IT WAS BUILT TO FIND — of 19 recorded tickets,
+// 4 ended at `merged` and 2 at `qa_passed`, all of them sitting at `qa`, and this check would have
+// reported the board as moving fine.
+//
+// Caught by the third experiment, which was aimed at those six tickets and found the transitions
+// out of `merged` work cleanly (H3 falsified). The blind spot only surfaced because the experiment
+// then asked whether the new instrument would have SEEN them. It would not have.
+const TERMINAL = new Set(['done']);
 
 function movement(tickets, events) {
   const unclaimed = [];
