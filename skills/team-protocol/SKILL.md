@@ -315,6 +315,20 @@ Canonical paths, used verbatim by the loop — no other spelling is recognised:
 | The artifact bound to its commit (F17) | `docs/team/release-candidates.jsonl` |
 | Every `name/vN` this studio writes, and who reads it (F7) | `docs/team/schema-registry.json` |
 
+**The four dispatch manifests** — `dispatch-preflight` refuses to spawn any owner without all four,
+and until 2026-08-06 **no step in the pipeline wrote any of them**, so a freshly planned project
+could not dispatch at all and every ticket sat at `created`. `/app-plan` now runs
+`scripts/team-bootstrap.mjs`, which writes them at the safe end of each contract for a project to
+then edit.
+
+| Artifact | Canonical path |
+|---|---|
+| Which role may perform which operation on which path | `docs/team/capabilities.json` |
+| The blast-radius router `dispatch-preflight` consults | `docs/team/risk-policy.json` |
+| Scheduler overrides (the ready set derives from the board) | `docs/team/schedule.json` |
+| The hashed context an agent was actually given | `docs/team/context-manifest.json` |
+| Plaintext HMAC actor keys — `deny_all`, never writable by any role | `docs/team/actors.json` |
+
 If you hit a blocker, end with this instead — and name **who** must answer **what**, never just
 "unclear":
 

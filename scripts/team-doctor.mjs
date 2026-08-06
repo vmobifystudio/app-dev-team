@@ -745,6 +745,16 @@ const CANONICAL_PATHS = [
   'docs/team/project-profile.json',          // platform, pinned toolchain, test.fast/test.full (F6)
   'docs/team/release-candidates.jsonl',      // the artifact bound to its commit (F17)
   'docs/team/schema-registry.json',          // every name/vN and who reads it (F7)
+  // The four dispatch manifests. They were absent from this list for the same reason they were
+  // absent from the pipeline: nothing wrote them, so nothing named them, so the canonical-path
+  // check had no opinion about the files feeding the most consequential gate in the loop. FC-005
+  // twice over — the artifact had no writer, and the check for artifacts-without-writers did not
+  // cover artifacts of this shape.
+  'docs/team/actors.json',                   // plaintext HMAC keys — deny_all, never writable
+  'docs/team/capabilities.json',             // which role may perform which operation on which path
+  'docs/team/risk-policy.json',              // the blast-radius router dispatch-preflight consults
+  'docs/team/schedule.json',                 // scheduler overrides; the ready set derives from the board
+  'docs/team/context-manifest.json',         // the hashed context an agent was actually given
 ];
 // Structural references that name no artifact: the directories themselves, the glob the standup
 // reads a day's fragments with, and the archive consumed fragments are moved to.

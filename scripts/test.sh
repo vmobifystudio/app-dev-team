@@ -3755,6 +3755,66 @@ grep -q -- '--board=' "$TMP/out" \
 # forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
 # flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
 # point by construction.
+# --- a planned project could not dispatch AT ALL --------------------------------------------------
+#
+# THE COMPLETE EXPLANATION FOR 11-OF-19, found by running it 2026-08-06.
+#
+# /app-build runs `dispatch-preflight` before spawning any owner. Four of its nine required inputs
+# are manifests in docs/team/. ON A FRESHLY PLANNED PROJECT THAT DIRECTORY DOES NOT EXIST — so
+# preflight died on the first manifest, /app-build's own rule ("a failed or unavailable check stops
+# the spawn") stopped the round, and every ticket sat at `created` forever.
+#
+# Across every recorded dry run, 11 of 19 tickets ended exactly there: never claimed, never blocked,
+# never refused. Six reports called it an agent-diligence problem. It was a missing writer.
+#
+# IT IS FC-005 FROM THIS REPO'S OWN CORPUS — "the check whose own input nobody writes... it never
+# fires, the Definition of Done cites it, everyone believes it is covered, and no writer was ever
+# assigned." The corpus mechanises that Tell in team-doctor, for docs/NN-*.md artifacts only. The
+# docs/team/*.json manifests feeding the most consequential gate were outside its scope, so the
+# check written for this exact class never looked where it had happened.
+TBS="$TMP/team-bootstrap"; rm -rf "$TBS"; mkdir -p "$TBS/docs" "$TBS/src"
+( cd "$TBS" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm base ) >/dev/null 2>&1
+( cd "$TBS" && node "$BD" add APP-001 --title t --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+
+PRE() { ( cd "$TBS" && node "$HERE/dispatch-preflight.mjs" --root "$TBS" --ticket APP-001 \
+  --context docs/team/context-manifest.json --schedule docs/team/schedule.json \
+  --capability docs/team/capabilities.json --risk docs/team/risk-policy.json \
+  --role "$1" --operation write --path "$2" --file "$2" --change feature ); }
+
+PRE ios-developer src/App.swift >"$TMP/out" 2>&1
+grep -q '"status": "CLEAR"' "$TMP/out" \
+  && bad "a project with no docs/team cannot dispatch — the fixture is wrong" \
+  || ok "before bootstrap, a freshly planned project cannot dispatch at all (the 11-of-19 cause)"
+
+( cd "$TBS" && node "$HERE/team-bootstrap.mjs" --root "$TBS" ) >"$TMP/out" 2>&1
+[ $? = 0 ] && ok "team-bootstrap writes the manifests dispatch requires" \
+           || bad "team-bootstrap writes the manifests" "$(cat "$TMP/out")"
+
+PRE ios-developer src/App.swift >"$TMP/out" 2>&1
+grep -q '"status": "CLEAR"' "$TMP/out" \
+  && ok "...and AFTER it, the same project dispatches CLEAR — the loop can finally start" \
+  || bad "a bootstrapped project dispatches CLEAR" "$(head -3 "$TMP/out")"
+
+# A BOOTSTRAP THAT OPENED EVERYTHING WOULD BE WORSE THAN THE FAILURE — the gate would pass while
+# checking nothing. My first version wrote `roles: []`, which was safe and left dispatch failing one
+# step later with a clearer message: a bootstrap whose output cannot dispatch has moved the stopping
+# point and called it safety. These four prove the seeded defaults still refuse.
+PRE product-designer src/App.swift >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'outside allowed paths' "...while a document role still may not write source"
+PRE ios-developer docs/team/actors.json >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'denied to EVERY role' "...nobody may write the actor secrets"
+PRE release-manager src/App.swift >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'role is not declared' "...and an undeclared role is refused, not defaulted"
+
+( cd "$TBS" && node "$HERE/team-bootstrap.mjs" --root "$TBS" ) >/dev/null 2>&1
+[ $? = 1 ] && ok "re-running refuses to overwrite — an edited policy is not a bootstrap's to reset" \
+           || bad "re-running refuses to overwrite without --force"
+
+grep -q 'team-bootstrap' "$HERE/../commands/app-plan.md" \
+  && ok "...and /app-plan runs it, so the writer FC-005 was missing now exists in the pipeline" \
+  || bad "/app-plan runs team-bootstrap"
+
 # --- the board said `merged`; git said the branch was never merged -------------------------------
 #
 # FOUND BY EXECUTION, 2026-08-06, in a five-minute targeted experiment with no agents involved. A
