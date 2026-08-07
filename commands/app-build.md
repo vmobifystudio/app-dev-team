@@ -119,24 +119,18 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . check
      ```
 
-     `import-bugs` folds `docs/51-bugs.md` into `docs/90-register.jsonl` through the same `parseBugs`
+     `import-bugs` folds `docs/51-bugs.md` into `docs/90-register.jsonl` through the parser
      `ship-gate.sh` already uses, so QA keeps writing the Markdown it always wrote and nothing is
-     lost by nobody reading it. `check` exits 1 while any item still owes an answer; that is a
-     **report** here (open bugs mid-sprint are what a sprint is for) and a **refusal** at ship.
-
-     For every open `S1`/`S2` still without a ticket, create a `BUG-NNN-fix` row and link it:
+     lost by nobody reading it. `check` exits 1 while anything still owes an answer. Here that is a **report** — open bugs
+     mid-sprint are what a sprint is for — and at ship it is a **refusal**. For every open `S1`/`S2`
+     with no ticket, cut a `BUG-NNN-fix` row and link it:
 
      ```bash
      node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . link BUG-007 --ticket BUG-007-fix --by tech-manager
      ```
 
-     **Why this replaced a sentence.** The instruction used to be "for every open S1 or S2, ensure a
-     matching row exists on the board" — with nothing that failed if it never happened. A bug with no
-     ticket is not a board row, so it is invisible to `board-doctor`, to `orchestrator round`, to
-     step 8's exit check (which accounts for every non-`done` ROW) and to the sprint summary. It is
-     closed by being unmentioned. `tech-manager.md` already records the cost at scale: ~70 findings
-     silently skipped in a real programme while four review rounds reported nothing wrong.
-     Deferring is fine and cheap — `DEFERRED` is terminal — it just has to be authored and reasoned.
+     An item with **no ticket** is the one to act on: nothing on the board will ever pick it up.
+     Why this is a command and not the sentence it replaced: `scripts/register.mjs` header.
 
 1a. **Route the finished wave's assumptions into the ledger.** For every agent that returned last
    round, each `ASSUMED, NOT RAISED` line in its `Assumptions & open questions` field becomes a real
@@ -166,9 +160,19 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    `tech-manager` covering everything it cannot. See `team-protocol` §Mid-sprint Q&A for the exact
    contract.
 
-   Then re-render and confirm the count actually fell. A batch that comes back with the same number
-   of open questions means `tech-lead` wrote prose instead of ledger rows, and the next wave is
-   about to inherit the same guesses.
+   **Then prove the batch answered something** — read the count before you spawn, pass it back after:
+
+   ```bash
+   BEFORE=$(node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --json | tr -dc '0-9:,{}"a-z ' | sed -n 's/.*"open": *\([0-9]*\).*/\1/p')
+   # ... spawn tech-lead ONCE with the whole batch ...
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --was "$BEFORE"
+   ```
+
+   Exit `1` → **the batch answered nothing.** `tech-lead` wrote prose instead of ledger rows and the
+   next wave is about to inherit the same guesses: re-spawn it requiring one `answer` row per
+   question it can settle and ONE `escalation` for the rest, and do not proceed to step 2. This was
+   the sentence "re-render and confirm the count actually fell" with nothing checking it — the exact
+   shape `report-check.mjs` exists to catch one step below.
 
    **Why this sits here and not later:** a question answered after the wave is spawned is answered
    too late — the developer has already decided. Measured across three dry runs and ten agent-runs,
@@ -188,18 +192,11 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      --owner ios-developer --tickets APP-001,APP-002 --pool 3
    ```
 
-   **This is the fix for a contradiction that would have bitten the first real multi-ticket wave.**
-   `parallel-orchestrator` step 2 says one agent invocation per owner, batched; `agent-isolation`
-   said one worktree per TICKET; step 3 says each agent's prompt names *its* worktree path,
-   singular. One `ios-developer` owning three tickets was spawned once, given three worktrees, and
-   told to stand in one path that did not exist. Working all three in one tree makes every branch
-   carry its siblings' files — which `code-reviewer` check 9 correctly rejects, sending
-   `tech-manager` hunting a collision the orchestrator caused.
-
-   The unit of isolation was never the ticket; it is the **writer**. One agent working three tickets
-   one after another in its own slot cannot corrupt anyone: it cuts `feat/APP-001-slug`, commits,
-   cuts `feat/APP-002-slug` from the same base, commits. Branch-per-ticket is unchanged. Disk is now
-   bounded by the parallelism cap instead of by the backlog.
+   The owner works its tickets **one after another in that one slot**, cutting `feat/APP-NNN-slug`
+   per ticket and committing between — so branch-per-ticket is unchanged and every branch carries
+   only its own files (`code-reviewer` check 9). `lease` refuses when the pool is full; that is the
+   parallelism cap, and raising it is a decision, not a workaround. The unit of isolation is the
+   **writer**, never the ticket: `agent-isolation` Rule 1 has the argument.
 
    **Claim each ticket before its agent is spawned**, so the board says who is working on what while
    they work rather than after they return:
@@ -301,22 +298,16 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" --static <branch> "$BASE"
      ```
 
-     **`--static` is the default per-ticket lane, and the reason is arithmetic.** `verify-done.sh`
-     runs the test command either in the agent's slot or in a `mktemp -d` worktree it then deletes.
-     Both are cold, and the second is cold forever. Three tickets bought three cold builds for a
-     signal no single feature branch can give: whether the MERGED tree works. Step 5 of this file
-     already argues exactly that about the runtime gate — "one app build per wave instead of one per
-     ticket, run on the merged tree" — and then paid for the per-ticket builds anyway.
+     **`--static` is the default per-ticket lane.** It verifies the half a branch can answer — it
+     exists, it has commits, it changed files, the diff is this ticket's — and exits **2**, because
+     the suite genuinely has not run and CANNOT EVALUATE is the honest word. Record
+     `verified_static`: it unlocks review, approval and the merge gate, refuses `closed`, and blocks
+     `ship-gate.sh`. Step 5's wave pass runs the suite once on the merged tree and earns the real
+     `verified`. The arithmetic behind this is in `scripts/verify-done.sh`.
 
-     `--static` verifies the half a branch can answer (it exists, it has commits, it changed files,
-     the diff is this ticket's) and exits **2** — because the tests genuinely have not run, and
-     CANNOT EVALUATE is the honest word. Record `verified_static`, which already unlocks review,
-     approval and the merge gate, already refuses `closed`, and already blocks `ship-gate.sh`. The
-     wave pass in step 5 is what runs the suite and earns the real `verified`.
-
-     **When to still run tests per ticket.** If the project's `fast` scope is genuinely scoped
-     (`./gradlew :module:test`, `swift test --filter Unit`) **and** `build-env.sh` reports the
-     caches apply, `fast` costs seconds and buys the developer earlier feedback — use it:
+     **Still run tests per ticket when `fast` is genuinely scoped** (`./gradlew :module:test`,
+     `swift test --filter Unit`) **and** `build-env.sh --check` says the caches apply — then it costs
+     seconds and buys the developer earlier feedback:
 
      ```bash
      sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" fast
@@ -519,17 +510,11 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
    ```
 
-   **Do this on every terminal outcome, not only after a merge** — that was the whole defect. Removal
-   was specified in three places and all three were the merge path, so a `rejected`, a cap-converted
-   `blocked`, a `BLOCKED:` return or a crashed round left its tree behind forever, with no cap, no
-   budget and no reaper. Measured in the plugin's own repository, which contains no application code:
-   12 worktrees, 88 MB. An iOS project's worktrees also carry DerivedData.
-
-   The reaper derives liveness from the board (`in_progress`/`review`), so it cannot disagree with
-   it, and it **never** runs `--force`: a worktree with uncommitted changes is reported and left
-   alone. One `git stash` in a shared tree already cost 22 files of live work (DR4-027); an automatic
-   cleanup is that move with better manners. `orchestrator round` runs the same script read-only at
-   step 0 and BLOCKS the round if the pool is over its disk ceiling.
+   **Every terminal outcome, not only a merge** — `rejected`, a cap-converted `blocked`, a
+   `BLOCKED:` return, a crashed round. The reaper derives liveness from the board and **never**
+   `--force`s: a dirty worktree is reported and left alone, because that is somebody's unseen work.
+   `orchestrator round` runs it read-only at step 0 and BLOCKS on the disk ceiling. Measured cost of
+   the old merge-only rule: `scripts/worktree-reap.mjs` header.
 
 5. **The wave integration pass — merge once, test once, push once.** Every ticket whose merge gate
    cleared is sitting at `qa` with its branch unmerged. This is where the git merges happen, and it
@@ -554,18 +539,18 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      One push, one CI run for the whole wave, which `ci-status.mjs` reads at the top of the next
      round (`orchestrator round`). **No agent ever triggers, re-runs or cancels a workflow.**
    - Exit `1` **FAIL or CONFLICT** → **the wave does not advance** and no ticket gets a real
-     `verified`. A conflict aborts that one merge only and the rest continue, so a conflicting ticket
-     costs itself and not the wave; resolve a textual conflict in the integration tree per
-     `git-pr-strategy` §6, and send a behaviour/contract conflict back as a ticket to the owner of
-     that contract. For a failing suite, re-spawn only the owners the failure names — it prints a
-     **candidate list** derived from changed files and says plainly that a candidate list is not a
-     verdict. If no ticket's files appear in the failure, that is itself the finding: the wave broke
-     something no single ticket touched, which is the composition failure a per-ticket build
-     structurally cannot see. Route that to `tech-lead`, not to a developer.
-   - Exit `2` **CANNOT EVALUATE** → no `full` scope declared, or the suite could not run here.
-     Not a pass. Every ticket keeps its `verified_static`, `closed` stays refused, and
-     `ship-gate.sh` keeps blocking. The wave branch is kept so the merged tree can be built
-     somewhere that has the toolchain.
+     `verified`. A conflict aborts that one merge and the rest continue: resolve a textual one in the
+     integration tree (`git-pr-strategy` §6), send a behaviour/contract one back as a ticket to the
+     owner of that contract. For a failing suite, re-spawn only the owners its **candidate list**
+     names — a candidate list is a filename heuristic, not a verdict. If no ticket's files appear at
+     all, the wave broke something no single ticket touched: that is the composition failure a
+     per-ticket build cannot see, and it goes to `tech-lead`, not a developer.
+   - Exit `2` **CANNOT EVALUATE** → no `full` scope declared, or the suite could not run here. Not a
+     pass. Every ticket keeps `verified_static`, `closed` stays refused, `ship-gate.sh` keeps
+     blocking, and the wave branch is kept so the merged tree can be built where the toolchain is.
+   - **A non-green wave is a normal outcome, not a stuck loop.** `merge-reconcile` reports those
+     tickets as `AWAITING INTEGRATION` rather than as a board that is lying, so the next round starts
+     normally. It did not, for one commit: see `scripts/merge-reconcile.mjs`.
 
    Then the runtime gate. **Once a wave of tickets is in `qa`, run the `runtime-gate` skill's script
    on the integration branch, before spawning `qa-engineer`**:
@@ -692,8 +677,20 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    Print the terminal view in the standup. `docs/32-board-view.md` carries a Mermaid dependency
    graph that renders on GitHub — stranded and blocked tickets are outlined in red.
 
-   Also surface unanswered team messages: any `question` in `docs/team/messages.jsonl` with no matching
-   `answer` is a `tech-manager` action item, not a thing to leave sitting.
+   Also surface what the channel still owes, and **escalate the founder's half to the founder**:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --escalations
+   ```
+
+   An unanswered `question` is a `tech-manager` action item, not a thing to leave sitting. An
+   **escalation** is not: `team-protocol` requires it to be *resolved or passed to the user in the
+   same round*, and exit `1` from the second command means one is still open. **Surface those to the
+   user verbatim in this round's report** — do not carry them to the next round.
+
+   Until now an escalation was written to a ledger, counted by a renderer, and read by nobody: it is
+   not a blocker, so the autonomous run never surfaced it.
 
 6a. **Journal the round — one line, every round, before you loop.**
 

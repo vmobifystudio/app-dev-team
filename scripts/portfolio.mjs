@@ -56,6 +56,7 @@ const REL = {
   log: 'docs/31-board-events.jsonl',
   messages: 'docs/team/messages.md',
   bugs: 'docs/51-bugs.md',
+  register: 'docs/90-register.jsonl',
   journal: 'docs/33-rounds.jsonl',
 };
 
@@ -266,6 +267,32 @@ function readProject(root) {
   const bugsText = read(root, REL.bugs);
   const bugs = bugsText === null ? null : parseBugs(bugsText);
 
+  // THE REGISTER, AT THE SURFACE A FOUNDER ACTUALLY LOOKS AT (EE-007).
+  //
+  // docs/90-register.jsonl indexes everything the studio OWES across bugs AND audit findings, and
+  // `ship-gate.sh` refuses a release while any item lacks a terminal status. It was read by the ship
+  // gate, the round preconditions and /app-status — and by none of the CROSS-PROJECT surfaces. A
+  // portfolio that cannot say "project X has nine findings nobody has decided about" is exactly the
+  // view that lets it happen, which reproduces the register's own founding failure one level up.
+  //
+  // `undecided` is the number that matters: not "is anything broken" — a release with three DEFERRED
+  // S3s is a fine release — but "is anything unanswered".
+  const registerText = read(root, REL.register);
+  let register = null;
+  if (registerText !== null) {
+    const items = new Map();
+    for (const line of registerText.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      try {
+        const r = JSON.parse(line);
+        items.set(String(r.id).toUpperCase(), { ...(items.get(String(r.id).toUpperCase()) || {}), ...r });
+      } catch { /* a half-readable register is the ship gate's finding to make, not the portfolio's */ }
+    }
+    const all = [...items.values()];
+    const undecided = all.filter((i) => ['OPEN', 'IN-PROGRESS'].includes(i.status));
+    register = { total: all.length, undecided: undecided.length, untracked: undecided.filter((i) => !i.ticket).length };
+  }
+
   const messagesText = read(root, REL.messages);
   const questions = messagesText === null ? null : openQuestions(parseMessages(messagesText));
 
@@ -283,6 +310,7 @@ function readProject(root) {
     awaiting,
     staticOnly,
     bugs,
+    register,
     questions,
     budget: budgetOf(root),
     idleDays,
@@ -307,7 +335,12 @@ function readProject(root) {
 // the exact misreading this file exists to prevent, committed in its own output. A finite sentinel.
 const UNREADABLE_RANK = 1_000_000_000;
 const IDLE_CAP = 8;
-const WEIGHTS = { s1: 30, s2: 15, blocked: 12, staticOnly: 10, question: 6, awaiting: 4, unplanned: 20, budget: 20, unknownBugs: 8 };
+// `undecided` sits between a question (6) and a blocked ticket (12): an item nobody has decided
+// about is worse than an open question, because a question is at least addressed to somebody.
+// `untracked` — undecided AND with no ticket — is weighted as heavily as a blocked ticket, because
+// nothing on any board will ever pick it up: it is closed by being unmentioned, which is the exact
+// failure the register exists to end.
+const WEIGHTS = { s1: 30, s2: 15, blocked: 12, staticOnly: 10, question: 6, awaiting: 4, unplanned: 20, budget: 20, unknownBugs: 8, undecided: 8, untracked: 12 };
 
 function score(p) {
   if (p.unreadable) return { total: UNREADABLE_RANK, why: ['UNREADABLE'] };
@@ -326,6 +359,10 @@ function score(p) {
   if (p.lifecycle === 'unplanned') add(WEIGHTS.unplanned, 'no tickets yet');
   if (p.budget.state === 'ceiling reached') add(WEIGHTS.budget, 'budget ceiling reached');
   // An unknown count is not a zero count, and it must cost something or it is free to ignore.
+  if (p.register) {
+    add(p.register.undecided * WEIGHTS.undecided, `${p.register.undecided} register item(s) undecided`);
+    add(p.register.untracked * WEIGHTS.untracked, `${p.register.untracked} undecided with NO ticket`);
+  }
   if (p.bugs === null) add(WEIGHTS.unknownBugs, 'open defects UNKNOWN (no bug board)');
   if (p.budget.state === 'unknown') add(WEIGHTS.unknownBugs, 'budget UNKNOWN');
 
@@ -359,6 +396,9 @@ function render(projects) {
       p.bugs === null
         ? `     bugs:      UNKNOWN — no ${REL.bugs}. Not zero.`
         : `     bugs:      ${p.bugs.blocking.length} open S1/S2, ${p.bugs.deferred.length} open S3/S4`,
+      p.register === null
+        ? '     register:  none — bugs and findings have no index. Not "nothing outstanding".'
+        : `     register:  ${p.register.undecided} of ${p.register.total} undecided${p.register.untracked ? `, ${p.register.untracked} with NO ticket` : ''}`,
     );
     for (const a of p.awaiting.slice(0, 4)) line(`     awaiting:  ${a}`);
     for (const s of p.staticOnly) line(`     static:    ${s}`);

@@ -19,6 +19,22 @@ allowed-tools: Read, Glob, Grep, Bash
      Anomalies go at the **top** of the status output, not the bottom. A `stranded` ticket is the
      single most important thing on this screen: it is work the sprint loop will never surface on
      its own.
+3aa. **Say which `qa` rows have actually landed.** `qa` now covers two states and they need different
+   answers:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/merge-reconcile.mjs" --root .
+   ```
+
+   - `AWAITING INTEGRATION: …` → those tickets passed the merge gate and the wave has not run. Print
+     them as **"gated, not yet landed"** with the command that lands them
+     (`wave-integrate.mjs --wave <N>`). This is the loop working, not a fault.
+   - `BLOCKED — claims integrated code that is NOT in <base>` → a ticket says it shipped and git
+     disagrees. That goes at the **top** of this screen next to the doctor's anomalies.
+
+   Without this, a founder reading `4 in qa` cannot tell "four features are on the integration
+   branch" from "four features are approved and still sitting on their own branches".
+
 3a. **Render the board** so the shape is visible, not tabular:
 
    ```bash

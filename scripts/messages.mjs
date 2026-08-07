@@ -18,6 +18,10 @@
  *   messages.mjs migrate [--ledger <docs/team/messages.md>] [--force]
  *   messages.mjs render  [--ledger <docs/team/messages.md>]
  *   messages.mjs channels [--ledger ...]              # every channel the log can produce
+ *   messages.mjs open [--was <n>] [--escalations] [--json] [--ledger ...]
+ *                     # what still owes an answer. `--was <n>` exits 1 if the count did not fall
+ *                     # across a Q&A batch (EE-003); `--escalations` exits 1 while any escalation
+ *                     # is unclosed, which is the founder's half of the channel (EE-004).
  *   messages.mjs artifact <ADR|PDR|DDR|WAIVER|INCIDENT|ASSUMPTION> --by <role> --title "<line>"
  *                     [--ticket <ID>] [--expires <YYYY-MM-DD>] [--owner <role>]
  *                     [--confidence high|medium|low] [--validate-by <YYYY-MM-DD>] [--body "<text>"]
@@ -38,6 +42,9 @@ import {
   ASKING_KINDS,
   ARTIFACT_TYPES,
   TICKETLESS,
+  toArray,
+  threadOf,
+  pairQuestions,
   normalize,
   parseMessageLog,
   nextId,
@@ -119,9 +126,9 @@ const FLAGS = new Set([
   '--from', '--to', '--ticket', '--kind', '--summary', '--body', '--ledger', '--priority',
   '--artifact', '--transition', '--decision', '--evidence', '--expires-after-round', '--round',
   '--requirements', '--channel', '--project', '--by', '--title', '--expires', '--owner',
-  '--confidence', '--validate-by',
+  '--confidence', '--validate-by', '--was',
 ]);
-const BOOLEANS = new Set(['--blocking', '--force', '--quiet']);
+const BOOLEANS = new Set(['--blocking', '--force', '--quiet', '--json', '--escalations']);
 
 function parseArgs(argv) {
   const out = {};
@@ -502,9 +509,104 @@ function main() {
       for (const [name, count] of index) process.stdout.write(`#${name}\t${count}\n`);
       return 0;
     }
+    /**
+     * `open` — how many questions still owe an answer, and which escalations nobody has closed.
+     *
+     * TWO SEAMS CLOSE HERE, and both were instructions rather than mechanisms (EE-003, EE-004).
+     *
+     * EE-003. `/app-build` step 1b is, by its own argument, the highest-leverage step in the loop:
+     * "a question answered after the wave is spawned is answered too late — the developer has
+     * already decided", measured across three dry runs where the live channel was used ZERO times.
+     * Its verification was one sentence — "re-render and confirm the count actually fell" — with
+     * nothing checking it. A `tech-lead` that returns a thoughtful paragraph instead of `answer`
+     * rows produces exactly the shape `report-check.mjs` exists to catch one step below, where the
+     * lesson was already learned: reading the report does not catch this.
+     *
+     * `--was <n>` is that sentence as an exit code. The caller reads the count before it spawns the
+     * batch and passes it back afterwards; if the count did not fall, exit 1.
+     *
+     * EE-004. `team-protocol` requires every escalation to `tech-manager` to be "resolved or passed
+     * to the user in the same round", and `/app-run` surfaces "only blockers and the two human
+     * gates". An escalation is not a blocker in that sense — the ticket that raised it keeps moving
+     * — so in the studio's designed mode an escalation was written to a ledger, counted by a
+     * renderer, and read by nobody. `--escalations` gives the autonomous driver a non-zero exit to
+     * act on, which is the only kind of instruction it has been shown to follow.
+     *
+     * Exit: 0 nothing owed (or the count fell) · 1 something owes an answer · 2 no ledger yet.
+     */
+    case 'open': {
+      const paths = ledgerPaths(options);
+      if (!existsSync(paths.jsonl)) {
+        process.stdout.write(`OPEN: CANNOT EVALUATE — no ledger at ${paths.jsonl}.\n  Normal in round 1; a missing ledger is not an empty one.\n`);
+        return 2;
+      }
+      const { messages } = readLog(paths);
+      const byThread = new Map();
+      for (const m of messages) {
+        const t = m.thread || threadOf(m);
+        if (!byThread.has(t)) byThread.set(t, []);
+        byThread.get(t).push(m);
+      }
+      const open = [];
+      for (const thread of byThread.values()) open.push(...pairQuestions(thread).open);
+
+      // An escalation is closed by a `decision` on the same thread — the same pairing rule the
+      // renderer's DELIVERY block uses, so there is one answer to "is this still open" and not two.
+      const escalations = [];
+      for (const thread of byThread.values()) {
+        const raised = thread.filter((m) => m.kind === 'escalation');
+        const decided = thread.filter((m) => m.kind === 'decision').length;
+        escalations.push(...raised.slice(decided));
+      }
+
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify({
+          schema: 'messages-open/v1', open: open.length, escalations: escalations.length,
+          questions: open.map((m) => ({ id: m.id, ticket: m.ticket, from: m.from, to: m.to, summary: m.summary })),
+          escalated: escalations.map((m) => ({ id: m.id, ticket: m.ticket, from: m.from, to: m.to, summary: m.summary })),
+        }, null, 2)}\n`);
+      } else {
+        process.stdout.write(`OPEN QUESTIONS: ${open.length}\n`);
+        for (const m of open) process.stdout.write(`  ${m.id}  ${m.ticket}  ${m.from} -> ${toArray(m.to).join(',')}  ${m.summary}\n`);
+        if (escalations.length) {
+          process.stdout.write(`\nUNCLOSED ESCALATIONS: ${escalations.length} — these are the founder's, not the team's\n`);
+          for (const m of escalations) process.stdout.write(`  ${m.id}  ${m.ticket}  ${m.from}: ${m.summary}\n`);
+          process.stdout.write(
+            '  team-protocol: an escalation is resolved or passed to the user IN THE SAME ROUND.\n' +
+            '  Close one by appending a `decision` that names the artifact it changed.\n'
+          );
+        }
+      }
+
+      // `--escalations` narrows the exit code to the founder-facing half, so /app-run can surface
+      // exactly those without stopping for every ordinary open question mid-sprint.
+      if (options.escalations) return escalations.length ? 1 : 0;
+
+      if (options.was !== undefined) {
+        const was = Number(options.was);
+        if (!Number.isFinite(was)) return die('--was takes the open-question count you read BEFORE the batch');
+        if (open.length >= was && was > 0) {
+          process.stderr.write(
+            `messages: the batch answered NOTHING — ${was} open before, ${open.length} open now.\n` +
+            '  tech-lead wrote prose instead of ledger rows, and the next wave is about to inherit\n' +
+            '  the same guesses. Re-spawn it with the batch and require one `answer` row per question\n' +
+            '  it can settle, and ONE `escalation` covering everything it cannot (team-protocol\n' +
+            '  §Mid-sprint Q&A). Do not proceed to step 2 on an unfallen count.\n'
+          );
+          return 1;
+        }
+        return 0;
+      }
+      return open.length ? 1 : 0;
+    }
     default:
-      return die(`unknown command "${command}" — send | migrate | render | channels | artifact`);
+      return die(`unknown command "${command}" — send | migrate | render | channels | artifact | open`);
   }
 }
 
-main();
+// `main()` RETURNS an exit code and nothing was reading it — every `return 1` in the switch above
+// was decorative, and `messages.mjs open --was 1` reported the refusal on stderr while exiting 0.
+// A caller branching on that exit code would have proceeded through a batch that answered nothing.
+// The existing commands were unaffected only because they exit through `die()`, which calls
+// process.exit itself — so the hole was invisible until a command needed a non-zero SUCCESS path.
+process.exit(main() ?? 0);

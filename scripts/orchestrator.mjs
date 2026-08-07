@@ -455,6 +455,33 @@ function cmdRound() {
     }
   }
 
+  // INTENT DRIFT, REPORTED IN THE ROUND THAT CREATES IT (EE-009).
+  //
+  // `trace.mjs` walks goal -> outcome -> requirement -> criterion -> ticket -> test -> analytics and
+  // reports every break. Its callers were `/app-init`, `/app-run` (before Gate 1) and `/app-ship`:
+  // before any ticket exists, and again when it is too late to be cheap. Nothing ran it during the
+  // sprint that creates the drift — so a ticket cut mid-round (a `BUG-NNN-fix`, an `AUDIT-NNN`,
+  // anything tech-manager files in response to QA) attaches to no requirement and nothing notices
+  // until the release gate asks.
+  //
+  // Reported, never blocking: a mid-sprint board legitimately has loose ends, and a round that
+  // refused to start over an untraced bug-fix ticket would be switched off in a week.
+  {
+    const tr = spawnSync(process.execPath, [resolve(HERE_SCRIPTS, 'trace.mjs'), '--project-root', ROOT, '--only', 'trace', '--json'], { cwd: ROOT, encoding: 'utf8' });
+    if (tr.status === 1) {
+      try {
+        const parsed = JSON.parse(tr.stdout);
+        const breaks = parsed.trace?.breaks || parsed.breaks || [];
+        if (breaks.length) {
+          process.stdout.write(`  INTENT — ${breaks.length} break(s) in the goal -> ticket -> test chain\n`);
+          for (const b of breaks.slice(0, 6)) process.stdout.write(`    ${typeof b === 'string' ? b : (b.detail || b.node || JSON.stringify(b)).slice(0, 140)}\n`);
+          if (breaks.length > 6) process.stdout.write(`    ... and ${breaks.length - 6} more (trace.mjs --only trace)\n`);
+          process.stdout.write('    Not blocking a round. /app-ship asks the same question with more at stake.\n\n');
+        }
+      } catch { /* trace's own exit-2 path reports itself at ship; this reporter stays quiet */ }
+    }
+  }
+
   if (worst === 0 && move.stalled.length) {
     process.stdout.write(
       '  RESULT: BLOCKED — every precondition is clear and work is not moving.\n' +

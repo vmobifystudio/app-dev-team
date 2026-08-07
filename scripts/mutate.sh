@@ -171,6 +171,11 @@ M44@@scripts/worktree-slot.mjs@@if (!mine && others.length >= POOL) {@@if (false
 M45@@scripts/wave-integrate.mjs@@const green = test.status === 0 && !cannotRun;@@const green = true;@@a wave whose merged tree fails its suite is exit 1 — the wave does not advance@@wave-integrate: merge once
 M46@@scripts/ship-gate.sh@@    1) block "the register has item@@    1) note "the register has item@@ship-gate BLOCKS on a register item nobody has decided about@@ship-gate reads the register
 M47@@scripts/dispatch-preflight.mjs@@if (policy.requireTicketFiles === true) {@@if (false) {@@...and ARMED, the same undeclared ticket is REFUSED at dispatch, not at merge@@requireTicketFiles
+M48@@scripts/merge-reconcile.mjs@@const awaitingWave = (t) => t.status === 'qa' && t.verifiedStatic === true;@@const awaitingWave = () => false;@@a merge-gated ticket awaiting the wave does NOT block the loop@@EE-001
+M49@@scripts/merge-reconcile.mjs@@const awaitingWave = (t) => t.status === 'qa' && t.verifiedStatic === true;@@const awaitingWave = () => true;@@...while a REAL verified whose branch is unmerged still BLOCKS — the gate still bites@@EE-001
+M50@@scripts/messages.mjs@@if (open.length >= was && was > 0) {@@if (false) {@@...and --was REFUSES a Q&A batch that answered nothing@@EE-003 / EE-004
+M51@@scripts/messages.mjs@@if (options.escalations) return escalations.length ? 1 : 0;@@if (options.escalations) return 0;@@...and an unclosed escalation exits 1, which is what /app-run surfaces to the user@@EE-003 / EE-004
+M52@@scripts/messages.mjs@@process.exit(main() ?? 0);@@main();@@messages open exits 1 while a question still owes an answer@@EE-003 / EE-004
 CATALOGUE
 }
 

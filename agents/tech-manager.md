@@ -99,24 +99,20 @@ reading rather than a guess. Risk is derived from the project's risk policy via 
 never hand-typed — and a ticket routed `high`/`critical` **cannot reach `review_requested`** without
 at least one `--invariant` recorded here at creation (repeatable: separate several with `;`).
 
-**A ticket with no `--file` is the one that collides.** `contention-check.mjs` runs on every dispatch
-and can only see the set declared here; with nothing declared it answers `CANNOT EVALUATE` — honest,
-and by default not fatal, because most legacy tickets predate the flag. So two agents get dispatched
-into the same file and find out at merge. The stated fallback (`parallel-orchestrator` 2b: list the
-files each ticket is *likely* to touch) is a prediction made by a role that has never opened the
-code, and the measured cost of getting it wrong is two "independent" tickets in one module producing
-add/add conflicts on all 8 files.
-
-`orchestrator round` names every ticket that declares none, every round. Once the board is clean, arm
-it — `"requireTicketFiles": true` in `.studio-policy.json` — and `dispatch-preflight` refuses an
-undeclared ticket at the spawn, where the fix is one flag, instead of at the merge, where it is a
-rebase. Correct an existing ticket with the array form, because a correction may NARROW a set:
+**A ticket with no `--file` is the one that collides** — `contention-check.mjs` can only see what is
+declared here, so an undeclared ticket dispatches on a guess and finds out at merge.
+`orchestrator round` names them every round; once the board is clean, arm
+`"requireTicketFiles": true` in `.studio-policy.json` and `dispatch-preflight` refuses them at the
+spawn, where the fix is one flag. Correct an existing ticket with the array form — a correction may
+NARROW a set, which a repeated flag could not:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 corrected --by tech-manager \
   --detail '{"files":["app/Store.swift","app/StoreTests.swift"]}'
-``` `--rollback <note>` records the recovery path for anything that isn't trivially
-reversible — optional, but read it back before `/app-ship` on anything that touches stored data.
+```
+
+`--rollback <note>` records the recovery path for anything that isn't trivially reversible —
+optional, but read it back before `/app-ship` on anything that touches stored data.
 
 ```
 ID: APP-NNN
@@ -181,12 +177,9 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply         
 Measured cost of skipping isolation entirely:
 `${CLAUDE_PLUGIN_ROOT}/docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
 
-**Two things changed and both were defects.** A worktree per TICKET could not coexist with spawning
-one agent per OWNER — one agent, three trees, one working directory (OPS-005). And removal was only
-ever specified after a merge, so every rejected, blocked or crashed ticket leaked its tree: 12
-worktrees and 88 MB in the plugin's own repo, which has no app code in it (OPS-006). Leasing bounds
-the pool by parallelism; reaping handles the failure paths; the reaper never `--force`s, so
-uncommitted work stops a removal instead of being deleted.
+Leasing bounds the pool by parallelism rather than by backlog; reaping handles the failure paths a
+merge-only rule never reached; the reaper never `--force`s, so uncommitted work stops a removal
+instead of being deleted. The two defects behind both: `agent-isolation` Rule 1.
 
 Before a parallel batch, check **file overlap** — see **Parallel execution** below for why feature
 independence is the wrong test.
@@ -361,15 +354,12 @@ not recoverable by a later fix.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --push   # after GREEN
    ```
 
-   **Why the merge moved.** Per-ticket merging ran `git push origin "$BASE"` once per ticket, so a
-   three-ticket wave started three CI runs on the integration branch — on macOS runners for iOS —
-   and nothing anywhere read a single one of them (`knowledge/git-workflow.md` called a green build
-   a hard merge gate; the gate above reads an approval and nothing on the server). One wave, one
-   merge sequence, one push, one CI run, and `ci-status.mjs` reads it at the top of the next round.
+   One wave, one merge sequence, one push, one CI run — and `ci-status.mjs` reads it at the top of
+   the next round. Why it moved: `scripts/wave-integrate.mjs` header.
 
-   Add a "Merged APP-NNN" line under **Shipped** in the day's daily-fragment-aggregate once the wave
-   lands, not when the gate passes — the gate is permission, the wave is the fact. That gap is what
-   `merge-reconcile.mjs` measures, and it now runs at wave end as well as round start.
+   Add "Merged APP-NNN" under **Shipped** once the wave *lands*, not when the gate passes: the gate
+   is permission, the wave is the fact, and `merge-reconcile` distinguishes them by name
+   (`AWAITING INTEGRATION` is not a board that is lying).
 4. On merge conflict, **you resolve it — in the integration worktree, not by respawning anybody.**
    `wave-integrate.mjs` aborts that one merge, keeps the rest of the wave, and prints the conflicted
    files.
@@ -380,9 +370,8 @@ not recoverable by a later fix.
      contract, with the hunks attached: `board.mjs move APP-NNN blocked --by tech-manager --detail
      "semantic conflict against $BASE on <files>"`, then `unblocked` once it lands. The CLI prints
      which dependents just stopped being claimable; act on that line.
-   - The old instruction — re-spawn the original developer cold to rebase — bought a full context
-     rebuild for a mechanical merge whose hunks you were already holding. Keep it only for the
-     semantic case, where the developer's judgement is the thing you actually need.
+   - Re-spawning a developer cold to rebase buys a full context rebuild for hunks you are already
+     holding. Keep that for the semantic case, where its judgement is what you actually need.
 5. Never force-push. Never rewrite the integration branch. Never trigger, re-run or cancel a CI
    workflow: `ci-status.mjs` only ever reads.
 

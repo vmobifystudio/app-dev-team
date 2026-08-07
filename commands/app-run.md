@@ -22,7 +22,10 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 - **The board doctor gate is not skippable, including under `--yolo`.** `--yolo` skips *human*
   gates, never correctness gates. An autonomous run is exactly the situation where a silently
   stranded ticket goes unnoticed for the whole sprint.
-- **No `DONE` is believed unverified.** `verify-done.sh` runs on every developer return.
+- **No `DONE` is believed unverified.** `verify-done.sh` runs on every developer return — `--static`
+  by default, which checks the branch, the commits and the changed files and states plainly that the
+  suite has not run. The suite runs once per wave on the merged tree (step 4). "Verified" here never
+  means "an agent said so".
 
 ## Steps
 
@@ -83,10 +86,25 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    it does not re-propose the app that already exists.
 
 4. **Build loop.** Run the `/app-build` loop autonomously, round after round:
-   - board doctor gate → parallel ICs **spawned by each ticket's `Owner`, per `/app-build` step 2**
+   - round preconditions (`orchestrator round`: board · budget · merge truth · toolchain · CI ·
+     worktree pool) → parallel ICs **spawned by each ticket's `Owner`, per `/app-build` step 2**
      (never a list named here — an out-of-date copy is how `AUDIT-NNN` tickets stopped being picked
-     up) → verified `DONE` → streaming `code-reviewer` (Axiom audit gate on iOS) → `tech-manager`
-     merge gate → `qa-engineer` → bug loop.
+     up) → **static** `DONE` verification → streaming `code-reviewer` (Axiom audit gate on iOS) →
+     `tech-manager` merge **gate** → **wave integration** → `qa-engineer` → bug loop.
+   - **The merge gate no longer merges, and that is the shape of the loop now.** It grants
+     permission per ticket; `wave-integrate.mjs` merges the whole wave once, runs the full suite
+     once on the merged tree, and pushes once — so there is one CI run per wave and
+     `ci-status.mjs` reads it at the top of the next round. Per-ticket verification is
+     `verify-done.sh --static`, which exits 2 by design: the suite genuinely has not run, the ticket
+     records `verified_static`, and the wave's green is what earns the real `verified`. See
+     `/app-build` steps 3 and 5.
+   - **A wave that does not go green does not advance the wave**, and that is a normal outcome an
+     autonomous run must survive rather than escalate: the tickets keep their `verified_static`,
+     `ship-gate.sh` keeps blocking, and `merge-reconcile` reports them as `AWAITING INTEGRATION`
+     rather than as a board that is lying. Re-spawn only the owners the failure names.
+   - **Escalations are surfaced to the user in the round they are raised** (`/app-build` step 6,
+     `messages.mjs open --escalations`). They are not blockers — the ticket that raised one keeps
+     moving — so without this step they would sit in the ledger unread for the whole run.
    - After each round, spawn `tech-manager` to write the standup at `docs/daily/<today>.md`
    - Before each implementation spawn, run `scripts/dispatch-preflight.mjs`; no role launches until
      context, scheduling, capabilities, and risk routing all clear.

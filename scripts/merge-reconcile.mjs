@@ -105,7 +105,40 @@ catch (e) { die(2, `cannot read the event log: ${e.message}`); }
 const branches = (git(['branch', '--format=%(refname:short)']) || '').split('\n').filter(Boolean);
 const CLAIMS_INTEGRATED = new Set(['qa', 'done']);
 
+/**
+ * `qa` MEANS TWO DIFFERENT THINGS NOW, AND CONFLATING THEM DEADLOCKS THE LOOP.
+ *
+ * When this file was written, `board.mjs move <ID> merged` was immediately followed by `git merge`
+ * in the same breath — tech-manager merged per ticket — so a ticket at `qa` whose branch was not an
+ * ancestor of the integration branch could only mean the board was lying. That was true and this
+ * check was right.
+ *
+ * The wave model (`wave-integrate.mjs`, 2026-08-07) split those two acts on purpose. The merge gate
+ * is now PERMISSION and the wave pass is the FACT, and between them every gated ticket sits at `qa`
+ * with an unmerged branch. That is not a lie; it is the design, and `tech-manager.md` says so.
+ *
+ * MEASURED CONSEQUENCE OF NOT KNOWING THAT. This file is a precondition of `orchestrator.mjs round`,
+ * whose exit 1 means "spawn nobody this round". So a wave that failed (exit 1), a wave that could
+ * not run (exit 2 — the expected path wherever no `full` scope is declared), or a round that simply
+ * ended between step 4 and step 5 left the next round BLOCKED by a false accusation, with the
+ * remedy text telling the operator to hand-merge — i.e. to route around the wave model. Reproduced
+ * on a fixture the day the wave model landed.
+ *
+ * THE SIGNAL ALREADY EXISTED, so this needs no new field and no new event. `verified_static` is
+ * exactly "reviewed, merge-gated, and the suite has NOT run", and the wave's green is what upgrades
+ * it to a real `verified`:
+ *
+ *   qa + verifiedStatic   the wave has not run yet          -> PENDING. Report it. Not a lie.
+ *   qa - verifiedStatic   the wave ran and reported green   -> the branch MUST be integrated.
+ *   done                  cannot be reached without both    -> the branch MUST be integrated.
+ *
+ * A project that does NOT use the wave model is unaffected: it merges per ticket, `verifiedStatic`
+ * is false at `qa`, and this bites exactly as it always did.
+ */
+const awaitingWave = (t) => t.status === 'qa' && t.verifiedStatic === true;
+
 const lying = [];
+const pending = [];
 const unknown = [];
 let ok = 0;
 
@@ -116,6 +149,7 @@ for (const t of tickets.values()) {
   // Any matching branch being merged is enough: a ticket may legitimately have had more than one.
   const merged = mine.some((b) => git(['merge-base', '--is-ancestor', b, base]) !== null);
   if (merged) ok += 1;
+  else if (awaitingWave(t)) pending.push({ id: t.id, branches: mine });
   else lying.push({ id: t.id, status: t.status, branches: mine });
 }
 
@@ -136,8 +170,18 @@ if (lying.length) {
 }
 
 const parts = [`${ok} integrated claim(s) verified against ${base}`];
+if (pending.length) parts.push(`${pending.length} awaiting the wave`);
 if (unknown.length) parts.push(`${unknown.length} UNKNOWN`);
 process.stdout.write(`MERGE RECONCILE: ${lying.length ? 'BLOCKED' : 'CLEAR'} — ${parts.join(', ')}\n`);
+if (pending.length) {
+  process.stdout.write(
+    `  AWAITING INTEGRATION: ${pending.map((p) => p.id).join(', ')}\n` +
+    '  Merge-gated and carrying `verified_static`, so the wave pass has not run for them yet. This\n' +
+    '  is the wave model working, not the board lying: the gate is permission, the wave is the fact.\n' +
+    '  Land them with:  node scripts/wave-integrate.mjs --root . --wave <N>\n' +
+    '  They cannot reach `closed` and `ship-gate.sh` blocks the release until it has.\n'
+  );
+}
 if (unknown.length) {
   process.stdout.write(
     `  UNKNOWN (no branch found): ${unknown.join(', ')}\n` +

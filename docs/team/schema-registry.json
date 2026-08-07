@@ -114,6 +114,12 @@
       ],
       "reader": null
     },
+    "messages-open/v1": {
+      "files": [
+        "scripts/messages.mjs"
+      ],
+      "reader": "commands/app-build.md step 1b (--was, the Q&A batch check) and step 6 (--escalations, the founder's half)"
+    },
     "orchestrator-next/v1": {
       "files": [
         "scripts/orchestrator.mjs"

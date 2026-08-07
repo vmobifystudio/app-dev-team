@@ -5,6 +5,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+**Coherence.** The first two commits made the parts good and left the seams. The end-to-end review
+(`docs/reviews/2026-08-07-end-to-end-flow-review.md`) walked the call graph, the ticket lifecycle and
+the founder's own path through the studio, and found nine places where two individually-correct
+components had never been introduced to each other. The headline was a regression from this morning.
+
+**EE-001 — the wave model deadlocked the loop after any failed wave.** `merge-reconcile.mjs` treats
+`qa` as "claims integrated", which was true when the merge gate was followed by `git merge` in the
+same breath. The wave model split permission from fact on purpose, so every gated ticket sits at `qa`
+with an unmerged branch — and merge-reconcile is a PRECONDITION of `orchestrator round`, whose exit 1
+means "spawn nobody". A wave that failed, a wave that could not run, or a round that ended between
+step 4 and step 5 left the loop blocked by a false accusation, with remedy text telling the operator
+to hand-merge. `verifiedStatic` already distinguished the two states; it now does.
+
+That is FC-001, this repository's own defining defect class, committed by the person who had spent
+the day writing about it: a mechanism that changed the MEANING of an existing event, with every
+consumer checked except the one written by someone else whose whole job is policing that event.
+
+**EE-003 / EE-004 — the channel's two open ends.** `messages.mjs open` is new.
+`--was <n>` refuses a mid-sprint Q&A batch that answered nothing (the verification used to be the
+sentence "re-render and confirm the count actually fell"). `--escalations` exits 1 while any
+escalation is unclosed, which is what `/app-run` now surfaces to the founder — an escalation is not a
+blocker, so the autonomous run had never shown one to anybody. Also: `main()` returned an exit code
+and nothing read it, so every refusal in that file was decorative.
+
+**EE-006 — `/app-recover` was 11 lines of prose invoking nothing**, for the highest-stress moment the
+studio has. It now works four questions as commands: the lease, the board, the worktrees, the wave.
+
+**EE-007 / EE-009** — the register reaches `portfolio.mjs` (undecided items now score, and an
+undecided item with NO ticket scores as heavily as a blocked one); `trace.mjs` runs during the round
+that creates the drift, not only at init and ship.
+
+**EE-002 — I made the runbook 20% longer in the commits justified by its length.** Partly repaid: the
+reasoning moved to the script headers where this repo keeps it, and `app-build.md` / `tech-manager.md`
+lost 40 lines without losing a command. Still above the pre-wave baseline, and still the finding most
+likely to decide whether an agent can run this unattended.
+
+**A guard against a mistake I made three times in one day.** `... && ok "long" || bad "short"` breaks
+mutation testing silently — the catalogue matches the expected label against the FAIL line, so a pair
+whose halves disagree always reports "CAUGHT, but not by its own assertion", and a real gate reads as
+decorative. It is now an assertion, and it found **83 pre-existing mismatches**.
+
+**1322 -> 1325 assertions, 0 failing. 15/15 mutations CAUGHT (M38-M52), none by the wrong assertion.**
+
+
 **Economics.** Every gate in this studio asked "is this legal?" and none asked "what did that cost,
 and did we buy anything with it?" The adversarial review of 2026-08-07
 (`docs/reviews/2026-08-07-adversarial-operations-review.md`) found six S1-tier consequences, all of
