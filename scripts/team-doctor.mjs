@@ -23,6 +23,7 @@ import { join, basename, dirname } from 'node:path';
 
 import { BUILD_SPAWNABLE_OWNERS } from './lib/board.mjs';
 import { ROLE_GATES, ROLES_IN_MATRIX } from './lib/capabilities.mjs';
+import { CODE_CONTRACT, ARTIFACT_CONTRACT, CODE_ROLES, ARTIFACT_ROLES } from './lib/contract.mjs';
 import { STOP_FILE } from './lib/stop.mjs';
 
 const ROOT = process.cwd();
@@ -115,35 +116,13 @@ if (appBuild) {
 // and worktree discipline; roles that produce a uniquely-named document do not, but still owe the
 // orchestrator the fields its gates read. Five of the ten spawnable owners had NO output contract
 // at all, so /app-build got free-form prose back and every gate no-opped.
-const CODE_CONTRACT = [
-  'Worktree:',
-  'Mutation confirmed:',
-  'Daily fragment:',
-  'Assumptions & open questions:',
-  'Second-path check:',
-  'Shared surfaces touched:',
-];
-const ARTIFACT_CONTRACT = ['Worktree:', 'Daily fragment:', 'Assumptions & open questions:'];
-
-// Anything writing source or repo config (CI, signing, build flavors) is a code role.
-const CODE_ROLES = [
-  'ios-developer',
-  'android-developer',
-  'backend-developer',
-  'web-developer',
-  'monetization-engineer',
-  'devops-engineer',
-  'test-automation-engineer',
-];
-const ARTIFACT_ROLES = [
-  'ux-architect',
-  'product-designer',
-  'product-manager',
-  'product-researcher',
-  'qa-engineer',
-  'data-analyst',
-  'aso-specialist',
-];
+//
+// SHARED WITH report-check.mjs AND spawn-prompt.mjs via lib/contract.mjs (previously three hand-
+// typed copies with a comment on each promising to stay in sync — this repo's own corpus is
+// "backend-developer and monetization-engineer were two releases behind" for exactly that reason).
+// This file checks the FULL contract including `Branch:`, because a role FILE is checked for what
+// it DECLARES; `report-check.mjs` counts only the `.checked` subset, because that count is a fixed
+// six that predates `Branch:` being required — see contract.mjs for why the two differ on purpose.
 
 for (const [list, fields, tier] of [
   [CODE_ROLES, CODE_CONTRACT, 'code'],

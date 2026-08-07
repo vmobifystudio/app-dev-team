@@ -226,6 +226,20 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    An operator sets it with `echo "reason" > .studio-stop` and clears it with `rm .studio-stop`,
    with no code change and no restart.
 
+   **Then compose each agent's prompt — do not write it by hand.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-prompt.mjs" compose \
+     --root . --ticket APP-NNN --role <owner> --slot .agent-wt/<owner>
+   ```
+
+   Use its stdout as the spawn message **verbatim**. This exists because the reminder that a prompt
+   must contain the output contract also failed the person who wrote it: the first prompt ever sent
+   against this loop said *"Return the CODE profile defined in `team-protocol`"* instead of
+   containing it, and the agent — correct code, correctly committed — returned **0 of 6** contract
+   fields (H5, 2026-08-07). The identical ticket, role and slot, re-spawned with the contract text
+   pasted in, returned all six (H5b). See `parallel-orchestrator` step 4 for the full account.
+
    This is a script rather than a reminder because the reminder failed on the people who wrote it:
    two writers went into one checkout hours after that rule was hardened, one ran `git stash` +
    `git reset`, and 22 files of the other's work were lost (DR4-027). Isolation cannot be a
@@ -261,12 +275,21 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      returned text and run:
 
      ```bash
-     node "${CLAUDE_PLUGIN_ROOT}/scripts/report-check.mjs" --role <owner-role> --report <saved report>
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/report-check.mjs" --role <owner-role> --report <saved report> --root .
      ```
 
      Exit `1` → **the DONE is not actionable.** Re-spawn the agent asking for the missing fields
      specifically. **Do not fill them in yourself** — a field the orchestrator invents is a claim
      nobody made, recorded as though someone did.
+
+     **`--root` is not optional.** Without it the check is presence-only — a field can be *stated*
+     without being *true*. Measured 2026-08-07 (H5b): an agent returned all six fields, cleanly, and
+     one was false — `Daily fragment: docs/daily/<today>-<role>-<ticket>.md` named a real, well-written file that
+     was never `git add`ed, so it did not exist on the branch. `--root` runs `git show
+     <branch>:<path>` against the claim instead of trusting the string, the same class of check
+     `agent-isolation` already requires for the code diff (`Mutation confirmed:`). Exit `1` with
+     `FALSE CLAIM` names the untracked file; re-spawn the agent to stage and commit it — never commit
+     it yourself from here.
 
      **Measured 2026-08-06, on the first agent ever spawned against this loop: it returned ONE of
      six contract fields.** It also reported "no git repo initialized" about a directory that is a
@@ -277,6 +300,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      agent RETURNS them, which is FC-002 at the boundary where this studio meets its own workers.
      **Reading the report does not catch this**: the one that failed sounded complete, named its own
      skips and explained itself. A reader supplies the missing structure from imagination.
+
 
    - **Record the claim as a claim**, before you have checked anything:
 

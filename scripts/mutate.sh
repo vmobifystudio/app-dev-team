@@ -191,6 +191,8 @@ M65@@scripts/worktree-reap.mjs@@  if (/^integration-wave-/.test(name)) {@@  if (
 M66@@scripts/register.mjs@@  if (!ROLES.has(String(value))) {@@  if (false) {@@a role this studio does not have is REFUSED — an item authored by nobody answers to nobody@@N4/N6/N7
 M67@@scripts/register.mjs@@  if (!ID_SHAPE.test(subject)) die(1,@@  if (false) die(1,@@...and so is an id the board could never match, which makes every --ticket link uncheckable@@N4/N6/N7
 M68@@scripts/register.mjs@@  if (errors.length) die(2,@@  if (false) die(2,@@...but a register that EXISTS and will not parse is CANNOT EVALUATE, never 'nothing owed'@@N4/N6/N7
+M69@@scripts/report-check.mjs@@if (fragmentTruth?.ok === false) {@@if (false) {@@...naming it a false claim, not a missing field@@presence is not truth
+M70@@scripts/spawn-prompt.mjs@@const missing = contract.fields.filter((f) => !text.includes(f));@@const missing = [];@@verify REFUSES the exact prompt shape that produced H5's 0-of-6 result@@spawn-prompt
 CATALOGUE
 }
 

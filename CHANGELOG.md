@@ -5,6 +5,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+**H5/H5b's two gates, built.** The dry-run pair on 2026-08-07 found a dispatch failure (an agent
+returned 0 of 6 contract fields because the spawn prompt referenced the contract instead of
+containing it) and, once that was fixed, a truth-checking gap (an agent returned all six fields and
+one — `Daily fragment:` — was false: real, well-written, never committed).
+
+- **`scripts/spawn-prompt.mjs`** composes the spawn prompt with the six-field output contract
+  INLINED as literal text, pulling the ticket ID, board row and spec pointers from the board itself.
+  `verify` distinguishes H5's failing prompt shape ("Return the CODE profile defined in
+  team-protocol") from H5b's passing one — measured against both real transcripts, not asserted in
+  the abstract. Wired into `parallel-orchestrator` step 4 and `/app-build` step 2.
+- **`report-check.mjs --root <project>`** verifies the `Daily fragment:` claim against git
+  (`git show <branch>:<path>`) instead of checking that the field is merely present — the same class
+  of check `agent-isolation` already requires for the code diff. Without `--root` it stays
+  presence-only and says so on the CLEAR line, so a project that has not adopted it is unaffected.
+- **`lib/contract.mjs`** — the six-field contract and the two role tiers, previously hand-typed in
+  `report-check.mjs` and `team-doctor.mjs` with a comment on each promising to stay in sync. A third
+  consumer (`spawn-prompt.mjs`) made a third hand-typed copy the obviously wrong move, given this
+  repo's own history: "backend-developer and monetization-engineer were two releases behind" is what
+  a fourth copy costs. All three now import one lib; an assertion fails if a fourth ever hand-rolls it.
+
+**+31 assertions (1370 -> 1401), 0 failing. 32/32 PR-and-H5 mutations CAUGHT (M38-M70).**
+
+Also fixed: a pre-existing, unrelated syntax defect in `test.sh` — an `ok`/`bad` pair with a stray
+unmatched quote, latent since some earlier edit in this session, masked by line-number luck until an
+insertion nearby finally triggered it. Found by `sh -n`, not by reading.
+
+
 **Review round 3 — the last three code findings.**
 
 - **N4 — two reducers over one append-only log.** `portfolio.mjs` carried its own

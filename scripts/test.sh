@@ -3717,7 +3717,7 @@ printf 'SENTINEL\n' > "$INJ/victim.txt"
          "victim.txt was overwritten"
 grep -q -- '"detail":"--board=' "$INJ/docs/31-board-events.jsonl" \
   && ok "...and the value is RECORDED verbatim, not swallowed as \"detail\": true" \
-  || bad "...and the value is RECORDED verbatim, not swallowed as \" "$(tail -1 "$INJ/docs/31-board-events.jsonl")"
+  || bad "...and the value is RECORDED verbatim, not swallowed as \"detail\": true" "$(tail -1 "$INJ/docs/31-board-events.jsonl")"
 ( cd "$INJ" && node "$HERE/board.mjs" move APP-001 blocked --by tech-manager --detail ) >/dev/null 2>&1
 [ $? = 2 ] && ok "...and a value-taking flag with nothing after it is exit 2, not silently true" \
            || bad "...and a value-taking flag with nothing after it is exit 2, not silently true"
@@ -3798,13 +3798,100 @@ node "$HERE/report-check.mjs" --role code-reviewer --report "$RPT/good.txt" >/de
 [ $? = 2 ] && ok "...and a gate role, which returns a verdict rather than a DONE, has no report contract" \
            || bad "...and a gate role, which returns a verdict rather than a DONE, has no report contract"
 
-# THE TWO CONTRACTS MUST NOT DRIFT. If report-check and team-doctor disagree, a role owes one thing
-# to the doctor and another to the loop — the two-truths defect this repo has paid for repeatedly.
-for _f in 'Worktree:' 'Mutation confirmed:' 'Daily fragment:' 'Assumptions & open questions:' 'Second-path check:' 'Shared surfaces touched:'; do
-  grep -q -- "$_f" "$HERE/report-check.mjs" && grep -q -- "$_f" "$HERE/team-doctor.mjs" \
-    || { bad "report-check and team-doctor declare the same contract field: $_f"; break; }
+
+# --- report-check --root: presence is not truth (H5b, 2026-08-07) ----------------------------------
+#
+# A second agent, dispatched with the contract correctly inlined, returned all six fields — and one
+# was FALSE: "Daily fragment: docs/daily/<date>-...md" named a real, well-written file that had
+# never been `git add`ed, so it was never on the branch. Checking that text CONTAINS a field label is
+# not checking that the field is TRUE — the same claim/verification gap H4 found in the code diff,
+# surviving into the one field nothing double-checked.
+RCF="$TMP/report-check-fixture"; rm -rf "$RCF"; mkdir -p "$RCF"
+( cd "$RCF" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init
+  git checkout -q -b feat/APP-001-x main && echo code > code.txt && git add code.txt && git commit -qm code
+) >/dev/null 2>&1
+
+printf 'DONE: APP-001\nWorktree: .agent-wt/ios-developer\nBranch: feat/APP-001-x\nMutation confirmed: git diff --numstat -> 1 files, +1/-0\nDaily fragment: docs/daily/2026-08-07-ios-developer-APP-001.md\nAssumptions & open questions: none\nSecond-path check: none applicable\nShared surfaces touched: none\nNext: code-reviewer\n' > "$RCF/claim.txt"
+
+# Without --root: unchanged behaviour, presence-only, and it SAYS SO rather than silently downgrading.
+node "$HERE/report-check.mjs" --role ios-developer --report "$RCF/claim.txt" >"$TMP/rc-nr.txt" 2>&1
+[ $? = 0 ] && ok "without --root, report-check stays presence-only (unchanged for projects that predate it)" \
+  || bad "without --root, report-check stays presence-only (unchanged for projects that predate it)" "$(cat "$TMP/rc-nr.txt")"
+assert_has "$TMP/rc-nr.txt" "presence only" "...and says so on the CLEAR line rather than silently downgrading"
+
+# With --root, against a branch where the fragment was NEVER committed: FALSE CLAIM.
+node "$HERE/report-check.mjs" --role ios-developer --report "$RCF/claim.txt" --root "$RCF" >"$TMP/rc-false.txt" 2>&1
+[ $? = 1 ] && ok "--root catches a Daily fragment claim that is not actually on the branch" \
+  || bad "--root catches a Daily fragment claim that is not actually on the branch" "$(cat "$TMP/rc-false.txt")"
+assert_has "$TMP/rc-false.txt" "FALSE CLAIM" "...naming it a false claim, not a missing field"
+assert_has "$TMP/rc-false.txt" "docs/daily/2026-08-07-ios-developer-APP-001.md" "...naming the exact path that is missing"
+assert_has "$TMP/rc-false.txt" "Do NOT commit it" "...and forbidding the orchestrator from committing it on the agent's behalf"
+
+# Now commit the SAME path on the SAME branch: the claim becomes true, and the gate clears verified.
+( cd "$RCF" && git checkout -q feat/APP-001-x && mkdir -p docs/daily \
+  && echo "fragment" > docs/daily/2026-08-07-ios-developer-APP-001.md \
+  && git add docs/daily/2026-08-07-ios-developer-APP-001.md && git commit -qm fragment && git checkout -q main
+) >/dev/null 2>&1
+node "$HERE/report-check.mjs" --role ios-developer --report "$RCF/claim.txt" --root "$RCF" >"$TMP/rc-true.txt" 2>&1
+[ $? = 0 ] && ok "...and clears once the fragment is genuinely committed on that branch" \
+  || bad "...and clears once the fragment is genuinely committed on that branch" "$(cat "$TMP/rc-true.txt")"
+assert_has "$TMP/rc-true.txt" "VERIFIED on the branch" "...and says it verified the claim, not just counted fields"
+
+# --- spawn-prompt: the contract must be inlined, not referenced (H5, 2026-08-07) --------------------
+#
+# The first prompt ever sent against this loop said "Return the CODE profile defined in
+# team-protocol" instead of containing it, and the agent returned 0 of 6 fields — worse than the
+# agent that failed H4 the day before. The identical ticket, role and slot, re-spawned with the
+# contract pasted in literally, returned all six. Dispatch, not capability.
+SPF="$TMP/spawn-prompt-fixture"; rm -rf "$SPF"; mkdir -p "$SPF/docs"
+( cd "$SPF" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf 'Integration branch: main\n' > "$SPF/docs/23-git-strategy.md"
+( cd "$SPF" && node "$HERE/board.mjs" add APP-001 --title "greet includes the name" --owner ios-developer \
+    --feature F-001 --spec "prd#F-001" --acceptance "Given Ada, shows Hello Ada" --by tech-manager \
+) >/dev/null 2>&1
+
+( cd "$SPF" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role ios-developer --slot .agent-wt/ios-developer ) >"$TMP/sp-compose.txt" 2>&1
+[ $? = 0 ] && ok "spawn-prompt compose succeeds against a real board row" \
+  || bad "spawn-prompt compose succeeds against a real board row" "$(cat "$TMP/sp-compose.txt")"
+assert_has "$TMP/sp-compose.txt" "greet includes the name" "...and carries the board row's title, not a placeholder"
+assert_has "$TMP/sp-compose.txt" "DONE: APP-001" "...and inlines the contract's header line"
+assert_has "$TMP/sp-compose.txt" "Mutation confirmed:" "...and every field label, literally"
+assert_has "$TMP/sp-compose.txt" "BLOCKED: APP-001" "...and the BLOCKED alternative, so the agent has both paths"
+
+# verify must tell H5's failing shape from H5b's passing shape — that distinction IS the point.
+printf 'Return the CODE profile defined in `team-protocol`.\n' > "$TMP/sp-h5.txt"
+node "$HERE/spawn-prompt.mjs" verify --role ios-developer --prompt "$TMP/sp-h5.txt" >"$TMP/sp-h5-out.txt" 2>&1
+[ $? = 1 ] && ok "verify REFUSES the exact prompt shape that produced H5's 0-of-6 result" \
+  || bad "verify REFUSES the exact prompt shape that produced H5's 0-of-6 result" "$(cat "$TMP/sp-h5-out.txt")"
+assert_has "$TMP/sp-h5-out.txt" "CONTRACT NOT INLINED" "...naming the failure by name"
+
+node "$HERE/spawn-prompt.mjs" verify --role ios-developer --prompt "$TMP/sp-compose.txt" >"$TMP/sp-h5b-out.txt" 2>&1
+[ $? = 0 ] && ok "...and CLEARS the composed prompt, which is the H5b shape" \
+  || bad "...and CLEARS the composed prompt, which is the H5b shape" "$(cat "$TMP/sp-h5b-out.txt")"
+
+# --- one contract, three consumers: report-check, team-doctor, spawn-prompt agree on the roles too --
+node "$HERE/spawn-prompt.mjs" compose --root "$SPF" --ticket APP-001 --role code-reviewer >/dev/null 2>&1
+[ $? = 2 ] && ok "spawn-prompt refuses to compose for a gate role, agreeing with report-check and team-doctor" \
+  || bad "spawn-prompt refuses to compose for a gate role, agreeing with report-check and team-doctor"
+
+# THE TWO CONTRACTS MUST NOT DRIFT — proven by AGREEMENT, not by grepping for text that no longer
+# lives in either file. report-check.mjs and team-doctor.mjs (and, now, spawn-prompt.mjs) used to
+# each hand-type the same six field names with a comment promising to stay in sync; that promise is
+# how "backend-developer and monetization-engineer were two releases behind" happened. All three now
+# import scripts/lib/contract.mjs, so asserting "the field string appears in this file" would prove
+# nothing — asserting that all three import the ONE lib is what actually rules out a second copy.
+for _f in report-check.mjs team-doctor.mjs spawn-prompt.mjs; do
+  grep -q "from './lib/contract.mjs'" "$HERE/$_f" \
+    || { bad "$_f imports the shared contract lib rather than a private copy" "no import found"; break; }
 done
-ok "report-check and team-doctor declare the same six code-tier fields"
+ok "report-check, team-doctor and spawn-prompt import the ONE contract lib, not private copies"
+# And the lib itself is the only place the six code-tier field names may be hand-typed.
+CONTRACTDUP=$( { grep -rln "'Mutation confirmed:'" "$HERE"/*.mjs 2>/dev/null || true; } | grep -v "lib/contract.mjs" | tr '\n' ' ')
+[ -z "$(printf '%s' "$CONTRACTDUP" | tr -d ' ')" ] \
+  && ok "...and no script outside the lib hand-types the contract fields" \
+  || bad "...and no script outside the lib hand-types the contract fields" "$CONTRACTDUP"
 grep -q 'report-check' "$HERE/../commands/app-build.md" \
   && ok "...and /app-build runs it before believing a DONE" \
   || bad "...and /app-build runs it before believing a DONE"

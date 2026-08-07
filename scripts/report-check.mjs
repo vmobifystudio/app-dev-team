@@ -25,37 +25,46 @@
  *
  * TIERS mirror team-doctor's, so a role cannot owe one thing to the doctor and another here.
  *
- * Usage:  report-check.mjs --role <role> --report <file>
+ * PRESENCE IS NOT TRUTH — FOUND BY THE SAME METHOD AS H4, ONE DAY LATER (H5b, 2026-08-07). A
+ * second agent, dispatched correctly this time (the contract inlined in the prompt, as
+ * `parallel-orchestrator` step 4 requires), returned all six fields. This script said CLEAR. Every
+ * field was then verified independently rather than trusted, and one was false: `Daily fragment:
+ * docs/daily/<date>-ios-developer-APP-001.md` named a real, well-written file that existed on
+ * disk in the worktree and had never been `git add`ed — so it was not on the branch, exactly the
+ * "uncommitted work reported as done" shape H4 found in the code diff, surviving in the one field
+ * this checker had no way to catch, because checking that text CONTAINS a field is not checking
+ * that the field is TRUE.
+ *
+ * `agent-isolation`'s own output contract already draws this line for the code diff — "Mutation
+ * confirmed: git diff --numstat -> <N files, +A/-B>" exists so the CLAIM is checkable against git,
+ * not so it reads well. The daily fragment had a field but no equivalent confirmation. So with
+ * `--root` and a resolvable `Branch:` line, this now runs the same class of check: `git show
+ * <branch>:<path>`. Without `--root` it falls back to presence-only and SAYS SO on the CLEAR line,
+ * because a check that silently downgrades is the exact defect this whole file exists to refuse.
+ *
+ * Usage:  report-check.mjs --role <role> --report <file> [--root <project-root>]
  *         report-check.mjs --role <role>            (reads the report on stdin)
- * Exit:   0 every required field present
- *         1 a required field is missing — the DONE is not actionable
- *         2 cannot evaluate — unknown role, or no report to read
+ * Exit:   0 every required field present (and, with --root, verified true)
+ *         1 a required field is missing, OR present but FALSE — the DONE is not actionable
+ *         2 cannot evaluate — unknown role, no report to read, or --root given but not a git repo
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 import { parseArgs } from './lib/args.mjs';
+import { contractFor } from './lib/contract.mjs';
 
 const die = (code, message) => { process.stderr.write(`report-check: ${message}\n`); process.exit(code); };
-const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['role', 'report']), die });
-
-// Kept identical to team-doctor's CODE_CONTRACT / ARTIFACT_CONTRACT. If these drift, a role owes
-// one contract to the doctor and a different one to the loop — which is the two-truths defect this
-// repository has paid for more than once.
-const CODE_CONTRACT = [
-  'Worktree:', 'Mutation confirmed:', 'Daily fragment:',
-  'Assumptions & open questions:', 'Second-path check:', 'Shared surfaces touched:',
-];
-const ARTIFACT_CONTRACT = ['Worktree:', 'Daily fragment:', 'Assumptions & open questions:'];
-
-const CODE_ROLES = new Set(['ios-developer', 'android-developer', 'backend-developer', 'web-developer',
-  'monetization-engineer', 'devops-engineer', 'test-automation-engineer']);
-const ARTIFACT_ROLES = new Set(['ux-architect', 'product-designer', 'product-manager', 'product-researcher',
-  'qa-engineer', 'data-analyst', 'aso-specialist']);
+const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['role', 'report', 'root']), die });
 
 const role = String(flags.role || '');
 if (!role) die(2, 'need --role <role>');
-const required = CODE_ROLES.has(role) ? CODE_CONTRACT : ARTIFACT_ROLES.has(role) ? ARTIFACT_CONTRACT : null;
+// `.checked` omits `Branch:` — it is required in the TEMPLATE (contractBlock, contract.mjs) because
+// the daily-fragment truth check below needs it, but it was never one of the six report-check has
+// always counted, and changing that count would silently invalidate every "returned all N" fixture
+// this suite already carries.
+const required = contractFor(role)?.checked ?? null;
 if (!required) {
   die(2, `"${role}" is not a ticket-owning role in either contract tier.\n` +
          '  Only roles that return a DONE have a report contract. If this role should have one, add\n' +
@@ -73,9 +82,54 @@ if (typeof flags.report === 'string') {
 if (!text.trim()) die(2, 'no report to check — pass --report <file> or pipe it on stdin');
 
 const missing = required.filter((field) => !text.includes(field));
-if (!missing.length) {
-  process.stdout.write(`REPORT CHECK: CLEAR — ${role} returned all ${required.length} contract field(s)\n`);
+
+/**
+ * Verify the Daily fragment CLAIM against git, not just its presence in the text.
+ *
+ * Returns null when nothing could be checked (no --root, no parseable Branch:/Daily fragment:
+ * line, or the branch does not exist) — a caller must treat null as "unverified", never as "false".
+ * A project that has not adopted --root yet must keep working exactly as before.
+ */
+function verifyDailyFragment() {
+  if (typeof flags.root !== 'string') return null;
+  const branchLine = text.match(/^Branch:\s*(\S+)/m);
+  const fragmentLine = text.match(/^Daily fragment:\s*(\S+)/m);
+  if (!branchLine || !fragmentLine) return null;
+  const root = resolve(String(flags.root));
+  try {
+    execFileSync('git', ['show', `${branchLine[1]}:${fragmentLine[1]}`], { cwd: root, stdio: ['ignore', 'ignore', 'ignore'] });
+    return { ok: true, branch: branchLine[1], path: fragmentLine[1] };
+  } catch {
+    // Distinguish "the branch itself doesn't exist" (verify-done's job, not this file's) from
+    // "the branch exists and the file is not on it" (this file's finding).
+    try { execFileSync('git', ['rev-parse', '--verify', branchLine[1]], { cwd: root, stdio: ['ignore', 'ignore', 'ignore'] }); }
+    catch { return null; }
+    return { ok: false, branch: branchLine[1], path: fragmentLine[1] };
+  }
+}
+const fragmentTruth = missing.includes('Daily fragment:') ? null : verifyDailyFragment();
+
+if (!missing.length && fragmentTruth?.ok !== false) {
+  const verified = fragmentTruth?.ok === true;
+  process.stdout.write(
+    `REPORT CHECK: CLEAR — ${role} returned all ${required.length} contract field(s)` +
+    `${verified ? ' (Daily fragment VERIFIED on the branch)' : ' — presence only; pass --root to verify the Daily fragment claim against git'}\n`
+  );
   process.exit(0);
+}
+
+if (fragmentTruth?.ok === false) {
+  process.stdout.write(
+    `REPORT CHECK: FALSE CLAIM — ${role}'s "Daily fragment: ${fragmentTruth.path}" is not on branch "${fragmentTruth.branch}".\n\n` +
+    '  The path exists somewhere — on disk, in the worktree, possibly well-written — and was never\n' +
+    '  `git add`ed and committed. This is the same claim/verification gap H4 found in the code diff\n' +
+    '  (a DONE reported over uncommitted work), surviving in the one field presence-checking cannot\n' +
+    '  catch. ic-workflow step 8 says to commit the fragment WITH the change; it was not.\n\n' +
+    '  Re-spawn the agent to stage and commit the fragment on this branch. Do NOT commit it\n' +
+    '  yourself from the orchestrator — a fragment you commit on the agent\'s behalf is a claim\n' +
+    '  nobody made, recorded as though someone did.\n'
+  );
+  process.exit(1);
 }
 
 process.stdout.write(
