@@ -49,10 +49,18 @@
  *   register.mjs check [--json]
  *   register.mjs import-bugs [--bugs docs/51-bugs.md] --by <role>
  *
- * Exit codes:
- *   0  done / CLEAR
- *   1  REFUSED (a write the rules do not allow) or, for `check`, items still owe an answer
- *   2  CANNOT EVALUATE — the register is missing or unreadable. Never an empty register.
+ * Exit codes are PER COMMAND, because they are not the same everywhere and one summary was false
+ * (N6). It said "2 CANNOT EVALUATE — the register is missing or unreadable. Never an empty
+ * register", while `check` deliberately returns 0 on a missing file — the fix for 36 false blocks
+ * on docs-only fixtures, where a project that has never filed a bug is not a project that cannot be
+ * evaluated. The softening is right; the header describing every command as if it applied was not.
+ *
+ *   add · status · link      0 written · 1 REFUSED (a write the rules do not allow) · 2 unreadable
+ *   check                    0 nothing owes an answer, INCLUDING when no register exists yet
+ *                            1 something owes an answer · 2 the register exists and will not parse
+ *   show                     0 printed · 2 the named item is not on the register
+ *   import-bugs              0 imported · 1 --by missing · 2 no bug board to import from
+ *   render                   0 written
  */
 import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -60,7 +68,12 @@ import { dirname, resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { withFileLock } from './lib/atomic.mjs';
-import { parseBugs } from './lib/board.mjs';
+import { parseBugs, KNOWN_OWNERS } from './lib/board.mjs';
+import { ROLES_IN_MATRIX } from './lib/capabilities.mjs';
+import {
+  OPEN_STATUSES, TERMINAL_STATUSES, NEEDS_REASON, ALL_STATUSES,
+  registerKey, terminalRefusal, reduceRegister,
+} from './lib/register.mjs';
 
 const die = (code, message) => { process.stderr.write(`register: ${message}\n`); process.exit(code); };
 
@@ -82,83 +95,21 @@ const FILE = typeof flags.file === 'string' ? resolve(flags.file) : resolve(ROOT
 
 const KINDS = new Set(['bug', 'finding', 'risk', 'assumption']);
 
-/**
- * The vocabulary, and the half of it that matters.
- *
- * TERMINAL means "somebody decided, and said why". It does NOT mean "fixed" — `DEFERRED` and
- * `WRONG-FINDING` are terminal and are the honest outcomes for most audit findings. What is not
- * terminal is `OPEN` and `IN-PROGRESS`: those are the states in which an item is still owed, and
- * they are what `check` refuses to ship on.
- *
- * `WRONG-FINDING` exists because an audit that cannot record "this was not actually a defect" makes
- * every reviewer round up to a fix. It requires a reason for exactly the same reason `DEFERRED`
- * does: without one it is indistinguishable from ignoring the finding.
- */
-const OPEN_STATUSES = new Set(['OPEN', 'IN-PROGRESS']);
-const TERMINAL_STATUSES = new Set(['FIXED', 'DEFERRED', 'WRONG-FINDING', 'WONTFIX']);
-const NEEDS_REASON = new Set(['DEFERRED', 'WRONG-FINDING', 'WONTFIX']);
-const ALL_STATUSES = new Set([...OPEN_STATUSES, ...TERMINAL_STATUSES]);
 
 const now = () => new Date().toISOString();
-const key = (id) => String(id ?? '').toUpperCase();
+const key = registerKey;
 
-/**
- * ONE place that decides whether a terminal status is earned. Returns null when it is, or the
- * reason it is not.
- *
- * WHY THIS IS A FUNCTION AND NOT TWO COPIES OF AN `if`. `cmdStatus` refused a `DEFERRED` with no
- * reason and a `FIXED` with no ticket — and `import-bugs` appended straight to the log, so it was a
- * SECOND WRITE PATH around both. Executed against the canonical row in `agents/qa-engineer.md`, an
- * import produced a `WONTFIX` collapsed to `FIXED` with no reason and a `FIXED` with no ticket:
- * exactly the two states M38 and M39 exist to make impossible, reachable by another door.
- *
- * That is `defect-hunting` §1 — the validation added to one producer while another walks around it
- * — committed inside the file whose whole purpose is that every item has an authored decision.
- */
-function terminalRefusal(status, { reason, ticket }) {
-  if (NEEDS_REASON.has(status) && (typeof reason !== 'string' || reason.trim().length < 10)) {
-    return `${status} requires a reason of substance. Without one it is indistinguishable from ignoring the item, and the whole point of a terminal status is that somebody DECIDED.`;
-  }
-  if (status === 'FIXED' && !ticket) {
-    return 'FIXED needs the ticket whose merge carried it. FIXED is a claim about the integration branch; with no ticket there is nothing to check it against.';
-  }
-  return null;
-}
 
 function load({ required = true } = {}) {
   if (!existsSync(FILE)) {
     if (required) die(2, `no register at ${FILE}\n  This is CANNOT EVALUATE, not an empty register: a missing file and "nothing is owed" are\n  different answers, and only one of them is safe to ship on.`);
     return { records: [], items: new Map() };
   }
-  const records = [];
-  const text = readFileSync(FILE, 'utf8');
-  let lineNo = 0;
-  for (const line of text.split(/\r?\n/)) {
-    lineNo += 1;
-    if (!line.trim()) continue;
-    try { records.push(JSON.parse(line)); }
-    catch (e) { die(2, `${FILE}:${lineNo} is not valid JSON (${e.message})\n  A half-readable register is CANNOT EVALUATE. Fix the line; never re-render over it.`); }
-  }
-  // Last write wins per id, which is what makes this append-only rather than editable: a correction
-  // is a later record, and the whole history stays on disk for anyone who asks how it got here.
-  const items = new Map();
-  for (const r of records) {
-    const k = key(r.id);
-    const prev = items.get(k) || { id: r.id, history: [] };
-    items.set(k, {
-      ...prev,
-      id: r.id,
-      kind: r.kind ?? prev.kind,
-      title: r.title ?? prev.title,
-      severity: r.severity ?? prev.severity,
-      owner: r.owner ?? prev.owner,
-      ticket: r.ticket ?? prev.ticket,
-      evidence: r.evidence ?? prev.evidence,
-      status: r.status ?? prev.status,
-      reason: r.reason ?? prev.reason,
-      history: [...prev.history, r],
-    });
-  }
+  const { items, records, errors } = reduceRegister(readFileSync(FILE, 'utf8'));
+  // FAIL CLOSED on a half-readable register: a caller deciding whether to ship must not read a
+  // truncated log as "nothing is owed". The reducer returns errors rather than throwing so the
+  // dashboard can render one; this caller is the one that must refuse.
+  if (errors.length) die(2, `${FILE}:${errors[0].line} is not valid JSON (${errors[0].message})\n  A half-readable register is CANNOT EVALUATE. Fix the line; never re-render over it.`);
   return { records, items };
 }
 
@@ -171,12 +122,34 @@ function append(record) {
 // commands
 // --------------------------------------------------------------------------------------------
 
+/**
+ * N7 — the two conventions this file diverged from without arguing it.
+ *
+ * `lib/board.mjs` parses ids as `PREFIX-NNN` with an optional suffix (the pattern M06 protects,
+ * after `BUG-001-fix` was truncated to `BUG-001` by a laxer one), and `lib/capabilities.mjs` is the
+ * roles table every other writer consults. This file accepted any string for both — so `--by
+ * tehc-manager` filed an item authored by nobody, and an id the board could never match made the
+ * `--ticket` link uncheckable. The closed status vocabulary, atomic append, generated view and
+ * correction-by-appending were all matched from the start; these two were the gaps.
+ */
+const ID_SHAPE = /^[A-Za-z]+-\d+(?:-[A-Za-z]+)?$/;
+const ROLES = new Set([...KNOWN_OWNERS, ...ROLES_IN_MATRIX]);
+const checkRole = (flag, value) => {
+  if (value === undefined) return;
+  if (!ROLES.has(String(value))) {
+    die(1, `REFUSED: ${flag} "${value}" is not a role this studio has.\n  Roles come from lib/capabilities.mjs and the board's owner set, not from free text — an item\n  authored by nobody is an item nobody answers for.`);
+  }
+};
+
 function cmdAdd() {
   if (!subject) die(1, 'add needs an ID: register.mjs add BUG-001 --kind bug --title "..." --by qa-engineer');
+  if (!ID_SHAPE.test(subject)) die(1, `REFUSED: "${subject}" is not an id shape this studio uses (PREFIX-NNN, optionally -suffix).\n  Ids are matched against the board and against each other; one that cannot be matched makes\n  every --ticket link on it uncheckable.`);
   const kind = String(flags.kind || '');
   if (!KINDS.has(kind)) die(1, `--kind must be one of ${[...KINDS].join(' | ')} (got "${kind || 'nothing'}")`);
   if (typeof flags.title !== 'string' || flags.title.trim().length < 5) die(1, '--title is required and must say what the item IS.\n  A register row whose title nobody can act on is the row that gets skipped.');
   if (typeof flags.by !== 'string') die(1, '--by is required: an item nobody raised is an item nobody will answer for.');
+  checkRole('--by', flags.by);
+  checkRole('--owner', flags.owner);
 
   const { items } = load({ required: false });
   if (items.has(key(subject))) {
@@ -200,6 +173,7 @@ function cmdStatus() {
   const status = String(argument).toUpperCase();
   if (!ALL_STATUSES.has(status)) die(1, `REFUSED: "${argument}" is not a status.\n  Legal: ${[...ALL_STATUSES].join(' | ')}\n  The vocabulary is closed on purpose — a freehand word is a status nothing can count.`);
   if (typeof flags.by !== 'string') die(1, '--by is required: a status change nobody authored is a status change nobody owns.');
+  checkRole('--by', flags.by);
 
   const { items } = load();
   const item = items.get(key(subject));

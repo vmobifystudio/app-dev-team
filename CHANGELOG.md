@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+**Review round 3 — the last three code findings.**
+
+- **N4 — two reducers over one append-only log.** `portfolio.mjs` carried its own
+  `items.set(id, {...prev, ...r})` loop while `register.mjs` had another. New `lib/register.mjs`
+  holds the vocabulary, `terminalRefusal()` and `reduceRegister()`; both import it, and an assertion
+  proves the two agree on what is undecided rather than asserting the code looks shared. The CLI is
+  the caller that fails closed on a half-readable log; the dashboard reports the unreadable count
+  instead of crashing.
+- **N6 — the header described one exit contract and the code had several.** It promised
+  `2 CANNOT EVALUATE` for a missing register while `check` deliberately returns 0 (the 36-false-block
+  fix). Now stated per command, and both ends asserted.
+- **N7 — no id-shape or role validation**, while `lib/board.mjs` and `lib/capabilities.mjs` already
+  hold both. `--by tehc-manager` filed an item authored by nobody; an id the board could never match
+  made every `--ticket` link on it uncheckable.
+
+**+8 assertions (1362 -> 1370), 0 failing. 30/30 PR mutations CAUGHT (M38-M68).** The anchor-drift
+check earned its place: moving the validator into the lib left M38/M39 anchored at code that no
+longer existed, and the suite said so rather than reporting two phantom survivors.
+
+
 **Review round 2 — the non-blocking findings that were about to become blocking ones.**
 
 - **N1/N9 — `['qa','done'].includes(status)` has now produced three defects, so it became one

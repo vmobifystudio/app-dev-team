@@ -161,8 +161,8 @@ M34@@scripts/subscription-restore-scan.mjs@@&& !/Transaction\.currentEntitlement
 M35@@scripts/financial-constant-scan.mjs@@if (!findings.length)@@if (true)@@a bankers rounding implementation under a half-up rule blocks release
 M36@@scripts/requirements-conflict-scan.mjs@@if (prdQuota && archQuota && prdQuota !== archQuota)@@if (false)@@a quota conflict blocks release
 M37@@scripts/analytics-coverage-scan.mjs@@if (!missing.length)@@if (true)@@a missing P0 analytics event blocks release
-M38@@scripts/register.mjs@@if (NEEDS_REASON.has(status)@@if (false && NEEDS_REASON.has(status)@@DEFERRED with no --reason is REFUSED (a deferral without one is an omission)@@register: the two trackers
-M39@@scripts/register.mjs@@if (status === 'FIXED' && !ticket) {@@if (false) {@@FIXED with no --ticket is REFUSED (nothing would be checkable against the board)@@register: the two trackers
+M38@@scripts/lib/register.mjs@@if (NEEDS_REASON.has(status)@@if (false && NEEDS_REASON.has(status)@@DEFERRED with no --reason is REFUSED (a deferral without one is an omission)@@register: the two trackers
+M39@@scripts/lib/register.mjs@@if (status === 'FIXED' && !ticket) {@@if (false) {@@FIXED with no --ticket is REFUSED (nothing would be checkable against the board)@@register: the two trackers
 M40@@scripts/worktree-reap.mjs@@dirty: state.live ? false : dirty(w.path)@@dirty: false@@a DIRTY orphan is reported, not reclaimed@@worktree-reap: the leak
 M41@@scripts/worktree-reap.mjs@@if (finalMb > MAX_DISK_MB) {@@if (false) {@@the disk ceiling BLOCKS when the pool exceeds it@@worktree-reap: the leak
 M42@@scripts/ci-status.mjs@@process.exit(ARMED ? code : 0);@@process.exit(0);@@armed, an unanswerable CI question is CANNOT EVALUATE — never a pass@@ci-status: the merge gate
@@ -188,6 +188,9 @@ M62@@scripts/messages.mjs@@if (options.count) { process.stdout.write(`${open.len
 M63@@scripts/wave-integrate.mjs@@  if (outstanding.length > 1) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }@@  if (false) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }@@a ticket with two unintegrated branches is REPORTED, not picked between@@N2: ambiguity
 M64@@scripts/wave-integrate.mjs@@  const after = branch[i + String(id).length];@@  const after = undefined;@@...and APP-1 does not match the branch of APP-12@@N2: ambiguity
 M65@@scripts/worktree-reap.mjs@@  if (/^integration-wave-/.test(name)) {@@  if (false) {@@...and --apply never reaps it, because a kept wave tree is CLEAN and the dirty check would not save it@@N3: the kept
+M66@@scripts/register.mjs@@  if (!ROLES.has(String(value))) {@@  if (false) {@@a role this studio does not have is REFUSED — an item authored by nobody answers to nobody@@N4/N6/N7
+M67@@scripts/register.mjs@@  if (!ID_SHAPE.test(subject)) die(1,@@  if (false) die(1,@@...and so is an id the board could never match, which makes every --ticket link uncheckable@@N4/N6/N7
+M68@@scripts/register.mjs@@  if (errors.length) die(2,@@  if (false) die(2,@@...but a register that EXISTS and will not parse is CANNOT EVALUATE, never 'nothing owed'@@N4/N6/N7
 CATALOGUE
 }
 

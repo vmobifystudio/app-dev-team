@@ -49,6 +49,7 @@ import {
   isEmpty,
 } from './lib/board.mjs';
 import { parseEventLog, reduce, key } from './lib/events.mjs';
+import { reduceRegister, undecided } from './lib/register.mjs';
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const REL = {
@@ -278,20 +279,17 @@ function readProject(root) {
   // `undecided` is the number that matters: not "is anything broken" — a release with three DEFERRED
   // S3s is a fine release — but "is anything unanswered".
   const registerText = read(root, REL.register);
-  let register = null;
-  if (registerText !== null) {
-    const items = new Map();
-    for (const line of registerText.split(/\r?\n/)) {
-      if (!line.trim()) continue;
-      try {
-        const r = JSON.parse(line);
-        items.set(String(r.id).toUpperCase(), { ...(items.get(String(r.id).toUpperCase()) || {}), ...r });
-      } catch { /* a half-readable register is the ship gate's finding to make, not the portfolio's */ }
-    }
-    const all = [...items.values()];
-    const undecided = all.filter((i) => ['OPEN', 'IN-PROGRESS'].includes(i.status));
-    register = { total: all.length, undecided: undecided.length, untracked: undecided.filter((i) => !i.ticket).length };
-  }
+  // ONE reducer over the register, imported rather than re-implemented (N4). This block used to
+  // carry its own `items.set(id, {...prev, ...r})` loop — a second reader of an append-only log,
+  // which is the shape that produced this repo's last four fail-open gates and the reason
+  // `parseBugs` and `lib/board.mjs` exist at all.
+  const register = registerText === null ? null : (() => {
+    const { items, errors } = reduceRegister(registerText);
+    // A dashboard must not crash on a truncated log; `ship-gate` is the caller that refuses on it.
+    // Reporting the count of unreadable lines beats pretending the file was empty.
+    const { open, untracked } = undecided(items);
+    return { total: items.size, undecided: open.length, untracked: untracked.length, unreadable: errors.length };
+  })();
 
   const messagesText = read(root, REL.messages);
   const questions = messagesText === null ? null : openQuestions(parseMessages(messagesText));
@@ -398,7 +396,7 @@ function render(projects) {
         : `     bugs:      ${p.bugs.blocking.length} open S1/S2, ${p.bugs.deferred.length} open S3/S4`,
       p.register === null
         ? '     register:  none — bugs and findings have no index. Not "nothing outstanding".'
-        : `     register:  ${p.register.undecided} of ${p.register.total} undecided${p.register.untracked ? `, ${p.register.untracked} with NO ticket` : ''}`,
+        : `     register:  ${p.register.undecided} of ${p.register.total} undecided${p.register.untracked ? `, ${p.register.untracked} with NO ticket` : ''}${p.register.unreadable ? `, ${p.register.unreadable} UNREADABLE line(s)` : ''}`,
     );
     for (const a of p.awaiting.slice(0, 4)) line(`     awaiting:  ${a}`);
     for (const s of p.staticOnly) line(`     static:    ${s}`);

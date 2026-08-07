@@ -8406,6 +8406,63 @@ NKEEP="$TMP/n3-keep"; rm -rf "$NKEEP"; mkdir -p "$NKEEP/.agent-wt/integration-wa
   || bad "...and --apply never reaps it, because a kept wave tree is CLEAN and the dirty check would not save it"
 assert_has "$TMP/n3.txt" "integration worktree" "...it is reported and counted rather than silently kept"
 
+
+# --- N4/N6/N7: one reducer, an honest header, and the two conventions this file skipped ------------
+#
+# N4. `portfolio.mjs` carried its own `items.set(id, {...prev, ...r})` loop over the register while
+# `register.mjs` had another — a second reader of an append-only log, which is the shape that
+# produced this repo's last four fail-open gates and the reason `parseBugs` and `lib/board.mjs`
+# exist. Both now import `lib/register.mjs`.
+#
+# N6. The header promised "2 CANNOT EVALUATE — the register is missing or unreadable" for every
+# command, while `check` deliberately returns 0 on a missing file (the fix for 36 false blocks on
+# docs-only fixtures). The softening is right; describing it as if it applied everywhere was not.
+#
+# N7. No id-shape check and no role check, while `lib/board.mjs` and `lib/capabilities.mjs` already
+# hold both — so `--by tehc-manager` filed an item authored by nobody.
+NREG="$TMP/n467"; rm -rf "$NREG"; mkdir -p "$NREG/docs"; printf '{}\n' > "$NREG/.studio-policy.json"
+nreg() { ( cd "$NREG" && node "$HERE/register.mjs" --root . "$@" ); }
+
+assert_exit 0 "a known role may file an item" \
+  nreg add BUG-001 --kind bug --title "the date picker discards the selection" --by qa-engineer
+assert_exit 1 "a role this studio does not have is REFUSED — an item authored by nobody answers to nobody" \
+  nreg add BUG-002 --kind bug --title "filed by a typo" --by tehc-manager
+assert_exit 1 "...and so is an id the board could never match, which makes every --ticket link uncheckable" \
+  nreg add nonsense --kind bug --title "no id shape at all" --by qa-engineer
+assert_exit 0 "...while a SUFFIXED id still works (BUG-NNN-fix is the documented bug-fix shape)" \
+  nreg add BUG-003-fix --kind bug --title "suffixed ids are the fix-ticket convention" --by qa-engineer
+
+# N6, as behaviour rather than as a sentence: the two ends of the exit contract the header now
+# states per command.
+NMISS="$TMP/n467-missing"; rm -rf "$NMISS"; mkdir -p "$NMISS/docs"; printf '{}\n' > "$NMISS/.studio-policy.json"
+assert_exit 0 "check on a project that has never filed anything is CLEAR, not CANNOT EVALUATE" \
+  sh -c 'cd "$1" && node "$2/register.mjs" --root . check' sh "$NMISS" "$HERE"
+printf '{"id":"BUG-9","kind":"bug","status":"OPEN"}\nthis line is not json\n' > "$NMISS/docs/90-register.jsonl"
+assert_exit 2 "...but a register that EXISTS and will not parse is CANNOT EVALUATE, never 'nothing owed'" \
+  sh -c 'cd "$1" && node "$2/register.mjs" --root . check' sh "$NMISS" "$HERE"
+
+# N4 — proven by AGREEMENT, which is the only thing that shows there is one reducer and not two.
+# Both readers are handed the same log and must report the same counts.
+( cd "$NREG" && node "$HERE/register.mjs" --root . show --json ) >"$TMP/n4-reg.json" 2>&1
+node -e '
+import("'"$HERE"'/lib/register.mjs").then((m) => {
+  const fs = require("node:fs");
+  const text = fs.readFileSync(process.argv[1], "utf8");
+  const { items } = m.reduceRegister(text);
+  const { open } = m.undecided(items);
+  const viaCli = require(process.argv[2]).items.filter((i) => ["OPEN", "IN-PROGRESS"].includes(i.status)).length;
+  process.exit(open.length === viaCli ? 0 : (console.error(`lib says ${open.length}, the CLI says ${viaCli}`), 1));
+});
+' "$NREG/docs/90-register.jsonl" "$TMP/n4-reg.json" \
+  && ok "the register has ONE reducer: the library and the CLI agree on what is undecided" \
+  || bad "the register has ONE reducer: the library and the CLI agree on what is undecided"
+
+# And no caller may quietly grow a second one back.
+REDUP=$( { grep -rn "items.set(key(r.id)\|items.set(String(r.id).toUpperCase()" "$HERE"/*.mjs 2>/dev/null || true; } | tr '\n' ' ')
+[ -z "$(printf '%s' "$REDUP" | tr -d ' ')" ] \
+  && ok "...and no script re-implements that reduction inline" \
+  || bad "...and no script re-implements that reduction inline" "$REDUP"
+
 # --- an ok/bad pair must carry the SAME label ------------------------------------------------------
 #
 # `... && ok "long label" || bad "short label"` type-checks, reads fine, and quietly breaks mutation
