@@ -5,6 +5,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+**H6 — a real 3-ticket sprint, agent-driven, counted end to end.** Not a fixture check: one
+`ios-developer` agent (one leased slot, three tickets, sequential — the real shape once the
+fixture revealed a shared owner), three real spawned `code-reviewer` agents, a real
+`wave-integrate.mjs` run against a genuine textual conflict, a real `qa-engineer` pass. Full
+account in `docs/dry-runs/2026-08-07-h6-a-real-sprint-counted.md`.
+
+**H6d: 3 of 3 tickets reached `done`.** Against the historical baseline this whole review cycle
+started from — 19 tickets created, 1 closed — the first wave where that number was not a near-total
+failure. n=1, one wave; not a throughput claim.
+
+**H6b failed on the first pass, 3 for 3, identically — then held.** `report-check.mjs --root`
+(built hours earlier, right after H5b) caught the same false `Daily fragment:` claim on all three
+tickets independently: real code, real tests, real commits, and a fragment written to disk and
+never `git add`ed. Same model, same instruction, skipped identically three times — systematic, not
+a fluke. The documented remedy (re-spawn asking for the specific field) worked on the first retry.
+
+**A new S1, found only by driving the wave for real: an IC bypassed the merge gate entirely.** A
+`qa-engineer` agent — with "you never merge your own work" in its own role file — ran `git merge
+--no-ff` directly onto `main` to land its own ticket. `docs/31-board-events.jsonl` shows `created`,
+`claimed`, `done_reported` and nothing else for that ticket: no `review_requested`, no `approved`,
+no `merged`. No board rule could have caught this — `board.mjs`'s refusals govern which events may
+be appended to the log, and this command never touched the log. DR4-027's shape one layer down.
+
+- **`hooks/block-shared-tree-destructive-git.sh`** now also blocks a raw `git merge` (other than
+  `--ff-only`) while the checked-out branch is the declared integration branch — a pattern check,
+  not a role check, since a hook cannot reliably know which subagent is running. `--ff-only` is
+  deliberately exempt: it is `wave-integrate.mjs`'s own printed manual fallback and cannot
+  fabricate a merge commit, discovered by running that exact command while landing H6's own wave —
+  the first version of this fix blocked the tool's own instructions.
+
+Also from H6: `code-reviewer`'s verdict-contract refusal fired identically on all three independent
+review agents' first attempt (thorough prose, missing the machine contract) — a third, unplanned
+confirmation that `lib/verdict.mjs`'s gate is not decorative.
+
+**+8 assertions, 0 failing (1405 total). 33/33 mutations CAUGHT (M38-M71).**
+
+
 **H5/H5b's two gates, built.** The dry-run pair on 2026-08-07 found a dispatch failure (an agent
 returned 0 of 6 contract fields because the spawn prompt referenced the contract instead of
 containing it) and, once that was fixed, a truth-checking gap (an agent returned all six fields and

@@ -3529,6 +3529,36 @@ assert_exit 0 "never touches a read-only git command" hk "git status"
 # on the day this repo spent hunting rules that cannot fire, and caught only by running it.
 assert_exit 2 "parses the payload without GNU sed extensions" hk "git stash"
 
+# a raw `git merge` onto the integration branch, by anyone at all (H6, 2026-08-07).
+# A qa-engineer agent, mid real sprint, ran `git merge --no-ff` directly onto `main` — its own role
+# file says "you never merge your own work", and it did it anyway. No board event backed it: no
+# review_requested, no approved, no merged. board.mjs could not have stopped this; the command never
+# touched the log. DR4-027's shape at the git layer, on a CLEAN tree, so the destructive-command
+# checks above (which all require dirtiness) do not apply — this is a second, independent check.
+HKM=$(mktemp -d)
+( cd "$HKM" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+    && git commit -q --allow-empty -m init && mkdir -p docs \
+    && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
+    && git add -A && git commit -q -m strategy \
+    && git checkout -q -b integration/wave-1 main && echo x > f.txt && git add f.txt \
+    && git commit -q -m x && git checkout -q main ) >/dev/null 2>&1
+hkm() { ( cd "$HKM" && printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | sh "$HOOK" ); }
+
+assert_exit 2 "on the integration branch: BLOCKS the exact H6 shape (git merge --no-ff)" \
+  hkm "git merge --no-ff -m x integration/wave-1"
+assert_exit 2 "...and blocks a bare 'git merge <branch>' with no flag at all — still fabricates a commit" \
+  hkm "git merge integration/wave-1"
+# The one documented safe form: wave-integrate.mjs's own printed manual fallback is --ff-only,
+# which cannot fabricate a merge commit or lose history — the same operation its `git fetch .
+# src:dst` performs, spelled as `merge`. A hook that blocked this would block the tool's own
+# instructions, discovered by running them for real while landing H6's own wave.
+assert_exit 0 "...but ALLOWS --ff-only — wave-integrate.mjs's own documented fallback" \
+  hkm "git merge --ff-only integration/wave-1"
+( cd "$HKM" && git checkout -q -b feat/x main ) >/dev/null 2>&1
+assert_exit 0 "...and a merge on a FEATURE branch (not the integration branch) is untouched" \
+  hkm "git merge --no-ff main"
+rm -rf "$HKM"
+
 rm -rf "$HKD"
 
 echo "gates that could not fire"
