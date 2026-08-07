@@ -124,7 +124,11 @@ function cmdLease() {
   // A SECOND LEASE TO THE SAME OWNER IS REFUSED, and this is the guard that matters: it is exactly
   // the "two orchestrators both hand out work" window that `parallel-orchestrator` closes for
   // tickets with `claimed`, applied to the tree the work happens in.
-  if (mine && !flags.force) {
+  // `!flags.force` USED TO BE HERE, undocumented, disabling the check this file's own header calls
+  // the guard that matters. A flag that turns off a guard and appears in no usage string is not an
+  // escape hatch, it is a hole with a password — and the legitimate path already exists and is one
+  // command: release the slot once its wave is committed and merged. Removed (B6).
+  if (mine) {
     const same = JSON.stringify(mine.tickets) === JSON.stringify(tickets);
     if (!same) {
       die(1, `REFUSED: ${owner} already holds ${DIR}/${owner} for ${mine.tickets.join(', ')}.\n` +

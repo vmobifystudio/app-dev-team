@@ -176,6 +176,12 @@ M49@@scripts/merge-reconcile.mjs@@const awaitingWave = (t) => t.status === 'qa' 
 M50@@scripts/messages.mjs@@if (open.length >= was && was > 0) {@@if (false) {@@...and --was REFUSES a Q&A batch that answered nothing@@EE-003 / EE-004
 M51@@scripts/messages.mjs@@if (options.escalations) return escalations.length ? 1 : 0;@@if (options.escalations) return 0;@@...and an unclosed escalation exits 1, which is what /app-run surfaces to the user@@EE-003 / EE-004
 M52@@scripts/messages.mjs@@process.exit(main() ?? 0);@@main();@@messages open exits 1 while a question still owes an answer@@EE-003 / EE-004
+M53@@scripts/wave-integrate.mjs@@let ff = gitTry(['fetch', '.', `${WAVE_BRANCH}:${BASE}`], { cwd: ROOT });@@let ff = gitTry(['merge', '--ff-only', WAVE_BRANCH], { cwd: ROOT });@@--push fast-forwards $BASE itself, with the checkout on another branch entirely@@B1: --push must land
+M55@@scripts/lib/events.mjs@@return dep.verifiedStatic === true;@@return false;@@a dependent is REFUSED while its dependency is merge-gated but not yet integrated@@B2: a dependency is satisfied
+M56@@scripts/register.mjs@@if (refusal) { downgraded.push@@if (false) { downgraded.push@@...downgraded to OPEN, while a FIXED row that DOES name its ticket imports terminal@@B3: import-bugs is held
+M57@@scripts/worktree-reap.mjs@@const totalMb = poolMb + cacheMb;@@const totalMb = poolMb;@@...so a cache over the ceiling BLOCKS, with no worktrees involved at all@@B4/B5/B6
+M58@@scripts/ci-status.mjs@@const headline = ARMED || code === 0 ? state : `ADVISORY (${state})`;@@const headline = state;@@unarmed, ci-status says ADVISORY on line 1 rather than a verdict it is not enforcing@@B4/B5/B6
+M59@@scripts/worktree-slot.mjs@@  if (mine) {@@  if (mine && !flags.force) {@@--force no longer buys a second lease past the guard its own header calls the one that matters@@B4/B5/B6
 CATALOGUE
 }
 
@@ -189,6 +195,7 @@ excluded() {
 runtime-gate.sh — the build, install, launch and liveness paths@@Needs Xcode, a booted simulator, or adb. The suite only exercises runtime-gate's CANNOT-EVALUATE branches; the branches that decide PASS vs FAIL never execute on this host or in CI, so nothing would go red for a mutation in them. This is the gate whose whole job is running the artifact, and it is the one we cannot mutation-test.
 runtime-gate.sh — the xcodebuild / gradle invocations themselves@@Same reason. A mutation to a build command is invisible without a mobile toolchain.
 ship-gate.sh — the malformed-WAIVED: branch@@No fixture reaches it. Mutating it would report SURVIVED, but the cause is a missing fixture, not a decorative assertion. Write the fixture first, then add the mutation; reporting it as a hole today would be a false alarm, which is how a tool like this gets switched off.
+wave-integrate.mjs — the post-push confirmation that $BASE actually moved@@No fixture reaches it. `git fetch . <wave>:<base>` either advances the ref or fails, so the branch where the fetch SUCCEEDS and the ref is still elsewhere cannot be constructed — mutating it reports SURVIVED for want of a fixture rather than for want of an assertion. It is kept in the code because the defect it guards against (B1) shipped once already: --push printed PUSHED for a branch that never moved. A confirmation is cheap; believing an exit code twice is not.
 network-dependent assertions@@There are none in this suite, deliberately. If one is ever added it belongs on this list rather than in the score, because a mutation caught only when the network is up is not caught.
 EXCLUDED
 }

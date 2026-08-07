@@ -304,7 +304,41 @@ if (!flags.push) {
 }
 
 // --- push, once ------------------------------------------------------------------------------------------
-const ff = gitTry(['merge', '--ff-only', WAVE_BRANCH], { cwd: ROOT });
+// `git merge --ff-only` MERGES INTO WHATEVER IS CHECKED OUT — and this never checked out $BASE.
+//
+// It ran with `cwd: ROOT` and no idea what ROOT had on HEAD. If the operator was standing on any
+// other branch, that branch was silently fast-forwarded to the wave, $BASE never moved, and this
+// printed `PUSHED <base>` and exited 0. Reproduced against a bare remote: `develop` unchanged on
+// both sides, an unrelated `scratch/operator` branch advanced to the wave tip, exit 0.
+//
+// Two wrongs at once: the wave lands nowhere, and a branch nobody leased gets rewritten — which is
+// the rule this file's own header states at line 151, broken by this file.
+//
+// The fix updates the REF instead of merging into a working tree. `git fetch . <src>:<dst>` is
+// fast-forward-only by default, needs no checkout, and refuses outright when <dst> is checked out
+// somewhere — so the one case that genuinely needs a working tree is reported rather than guessed
+// at. Note the printed manual fallback below has always included the `git checkout ${BASE}` this
+// code omitted; the instructions were right and the implementation was not.
+const baseBefore = gitTry(['rev-parse', BASE]).out;
+const waveTip = gitTry(['rev-parse', WAVE_BRANCH]).out;
+
+let ff = gitTry(['fetch', '.', `${WAVE_BRANCH}:${BASE}`], { cwd: ROOT });
+if (!ff.ok && /checked out|refusing to fetch into/i.test(ff.out)) {
+  // $BASE is checked out somewhere. If that somewhere is ROOT, a plain ff-only merge is correct and
+  // safe — it is the branch we intend to move. Anywhere else, we do not touch another tree.
+  const head = gitTry(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ROOT }).out;
+  if (head === BASE) ff = gitTry(['merge', '--ff-only', WAVE_BRANCH], { cwd: ROOT });
+  else {
+    process.stdout.write(
+      `\n  PUSH SKIPPED: ${BASE} is checked out in another worktree, and this will not move a branch\n` +
+      `  from under whoever is standing on it. ROOT is on "${head}".\n` +
+      `  Land it from the tree that holds ${BASE}:\n` +
+      `    git checkout ${BASE} && git merge --ff-only ${WAVE_BRANCH} && git push origin ${BASE}\n`
+    );
+    keep = true;
+    process.exit(1);
+  }
+}
 if (!ff.ok) {
   process.stdout.write(
     `\n  PUSH SKIPPED: ${BASE} could not fast-forward to ${WAVE_BRANCH}:\n${ff.out.split('\n').map((l) => `    ${l}`).join('\n')}\n` +
@@ -314,6 +348,20 @@ if (!ff.ok) {
   keep = true;
   process.exit(1);
 }
+
+// CONFIRM THE REF ACTUALLY MOVED BEFORE CLAIMING ANYTHING. The defect above printed PUSHED for a
+// branch that never changed, so "the command exited 0" is not evidence that the wave landed —
+// exactly the claim/verification gap `merge-reconcile.mjs` exists to close one level up.
+const baseAfter = gitTry(['rev-parse', BASE]).out;
+if (baseAfter !== waveTip) {
+  process.stdout.write(
+    `\n  PUSH SKIPPED: ${BASE} did not move. It was ${baseBefore.slice(0, 8)} and is ${baseAfter.slice(0, 8)};\n` +
+    `  the wave tip is ${waveTip.slice(0, 8)}. Nothing was pushed, because nothing landed.\n`
+  );
+  keep = true;
+  process.exit(1);
+}
+
 const push = gitTry(['push', 'origin', BASE], { cwd: ROOT });
 process.stdout.write(push.ok
   ? `\n  PUSHED ${BASE} — one push, one CI run for the wave. Read it next round with ci-status.mjs.\n`

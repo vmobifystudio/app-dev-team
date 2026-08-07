@@ -2369,7 +2369,13 @@ bm "$D" add DEP-001 --title "Foundation" --owner ios-developer >/dev/null 2>&1
 bm "$D" add DEP-002 --title "Feature" --owner android-developer --depends DEP-001 >/dev/null 2>&1
 assert_exit 1 "a claim on a ticket whose dependency has not merged is refused" \
   bm "$D" move DEP-002 claimed --by android-developer
-assert_has "$TMP/err" "has not merged" "...and names the dependency that is holding it"
+# The refusal used to say "has not merged". It now says whose CODE IS NOT ON THE INTEGRATION
+# BRANCH, because the wave model made those two different sentences: a dependency can be merged
+# (gated) and still not integrated (the wave has not run). The assertion follows the distinction
+# rather than the old wording — and asserts the TICKET ID is named, which is the part a developer
+# acts on and the part that was always the point.
+assert_has "$TMP/err" "not on the integration branch" "...and names the dependency that is holding it"
+assert_has "$TMP/err" "DEP-001" "...by ticket id, which is the part the reader acts on"
 drive "$D" DEP-001 ios-developer
 assert_exit 0 "...and is allowed the moment that dependency merges (qa, not done)" \
   bm "$D" move DEP-002 claimed --by android-developer
@@ -8100,6 +8106,171 @@ assert_has "$TMP/mo4.txt" "these are the founder's" "...marked as the founder's,
 ( cd "$MOP" && node "$HERE/messages.mjs" channels ) >/dev/null 2>&1
 [ $? = 0 ] && ok "...and the pre-existing commands still exit 0 through the same return path" \
   || bad "...and the pre-existing commands still exit 0 through the same return path"
+
+
+# --- B1: --push must land on $BASE, not on whatever is checked out --------------------------------
+#
+# `git merge --ff-only` merges into the WORKING TREE it runs in, and this ran with cwd=ROOT without
+# ever checking out $BASE. Reproduced by the reviewer against a bare remote: `develop` unchanged on
+# both sides, an unrelated `scratch/operator` silently fast-forwarded to the wave tip, exit 0, and
+# the words "PUSHED develop" on stdout. Two wrongs at once — the wave lands nowhere, and a branch
+# nobody leased is rewritten, which is the rule wave-integrate's own header states.
+#
+# THE FIXTURE IS THE POINT: its HEAD is deliberately NOT on the base. The pre-existing wave fixture
+# is always on `main == $BASE`, which is why nothing here could have caught it.
+WP="$TMP/wave-push"; rm -rf "$WP"; mkdir -p "$WP/docs/team" "$WP/docs/53-reviews"
+WPO="$TMP/wave-push-origin.git"; rm -rf "$WPO"; git init -q --bare "$WPO"
+( cd "$WP" && git init -q -b develop . && git config user.email t@t.t && git config user.name T
+  printf 'docs/\n' > .gitignore
+  printf 'Integration branch: develop\n' > docs/23-git-strategy.md
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":"sh run-tests.sh"}}\n' > docs/team/project-profile.json
+  printf '#!/bin/sh\necho "1 tests run: 1 passing"\n' > run-tests.sh
+  git add -A && git commit -qm init && git remote add origin "$WPO" && git push -q origin develop
+  git checkout -q -b feat/APP-001 develop && echo x > f.txt && git add f.txt && git commit -qm APP-001
+  node "$HERE/board.mjs" add APP-001 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-001 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-001 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-001 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-001 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: develop..feat/APP-001\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 merged --by tech-manager
+  git checkout -q -b scratch/operator develop ) >/dev/null 2>&1
+
+WP_SCRATCH_BEFORE=$( cd "$WP" && git rev-parse scratch/operator )
+( cd "$WP" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --push ) >"$TMP/wp.txt" 2>&1
+WP_WAVE=$( cd "$WP" && git rev-parse integration/wave-1 2>/dev/null )
+WP_DEV=$( cd "$WP" && git rev-parse develop )
+WP_ORIGIN=$( git --git-dir="$WPO" rev-parse develop 2>/dev/null )
+WP_SCRATCH=$( cd "$WP" && git rev-parse scratch/operator )
+
+[ "$WP_DEV" = "$WP_WAVE" ] \
+  && ok "--push fast-forwards \$BASE itself, with the checkout on another branch entirely" \
+  || bad "--push fast-forwards \$BASE itself, with the checkout on another branch entirely" "develop=$WP_DEV wave=$WP_WAVE: $(tail -3 "$TMP/wp.txt")"
+[ "$WP_SCRATCH" = "$WP_SCRATCH_BEFORE" ] \
+  && ok "...and does NOT move the branch that happened to be checked out" \
+  || bad "...and does NOT move the branch that happened to be checked out" "scratch/operator moved to $WP_SCRATCH"
+[ "$WP_ORIGIN" = "$WP_WAVE" ] \
+  && ok "...and the push actually reached origin" \
+  || bad "...and the push actually reached origin" "origin/develop=$WP_ORIGIN wave=$WP_WAVE"
+
+# --- B2: a dependency is satisfied by INTEGRATION, not by permission ------------------------------
+#
+# The claimed-gate tested for a `merged` EVENT. The wave model made `merged` permission, so a
+# dependent became claimable the moment its dependency was approved — and its slot was cut from an
+# integration branch without the code it depends on. EE-001's class, in the second reader of the
+# same event, found in review of the commit that split them.
+DEPW="$TMP/dep-wave"; rm -rf "$DEPW"; mkdir -p "$DEPW/docs/53-reviews"
+( cd "$DEPW" && git init -q -b main . ) >/dev/null 2>&1
+( cd "$DEPW"
+  node "$HERE/board.mjs" add APP-001 --title dep --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" add APP-002 --title dependent --owner ios-developer --by tech-manager --depends APP-001
+  node "$HERE/board.mjs" move APP-001 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-001 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-001 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-001 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-001\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 merged --by tech-manager ) >/dev/null 2>&1
+
+( cd "$DEPW" && node "$HERE/board.mjs" move APP-002 claimed --by ios-developer ) >"$TMP/dep1.txt" 2>&1
+[ $? = 1 ] \
+  && ok "a dependent is REFUSED while its dependency is merge-gated but not yet integrated" \
+  || bad "a dependent is REFUSED while its dependency is merge-gated but not yet integrated" "$(cat "$TMP/dep1.txt")"
+assert_has "$TMP/dep1.txt" "awaiting the wave" "...and the refusal names the wave, not a merge that did happen"
+
+( cd "$DEPW" && node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "wave 1 green" ) >/dev/null 2>&1
+( cd "$DEPW" && node "$HERE/board.mjs" move APP-002 claimed --by ios-developer ) >"$TMP/dep2.txt" 2>&1
+[ $? = 0 ] \
+  && ok "...and becomes claimable the moment the wave lands its dependency" \
+  || bad "...and becomes claimable the moment the wave lands its dependency" "$(cat "$TMP/dep2.txt")"
+
+# A project that merges PER TICKET never sets verifiedStatic, so its dependents must unblock exactly
+# as before. Without this the fix would trade one stall for another.
+DEPC="$TMP/dep-classic"; rm -rf "$DEPC"; mkdir -p "$DEPC/docs/53-reviews"
+( cd "$DEPC" && git init -q -b main . ) >/dev/null 2>&1
+( cd "$DEPC"
+  node "$HERE/board.mjs" add APP-001 --title dep --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" add APP-002 --title dependent --owner ios-developer --by tech-manager --depends APP-001
+  node "$HERE/board.mjs" move APP-001 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-001 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "tests green"
+  node "$HERE/board.mjs" move APP-001 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-001\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 merged --by tech-manager ) >/dev/null 2>&1
+assert_exit 0 "a per-ticket-merge project's dependents unblock at the gate, exactly as before" \
+  sh -c 'cd "$1" && node "$2/board.mjs" move APP-002 claimed --by ios-developer' sh "$DEPC" "$HERE"
+
+# --- B3: import-bugs is held to the register's own rules ------------------------------------------
+#
+# `import-bugs` appended straight to the log, so it was a SECOND WRITE PATH around the two refusals
+# M38 and M39 exist to enforce. Against the canonical nine-column row in agents/qa-engineer.md it
+# produced titles taken from the Build column ("1.0.3 (42)"), a WONTFIX collapsed to FIXED with no
+# reason, and a FIXED with no ticket. defect-hunting §1, inside the file whose whole purpose is that
+# every item carries an authored decision.
+RGI="$TMP/reg-import"; rm -rf "$RGI"; mkdir -p "$RGI/docs"; printf '{}\n' > "$RGI/.studio-policy.json"
+cat > "$RGI/docs/51-bugs.md" <<'BUGS'
+| BUG-001 | APP-004 | **S1** | iOS | Tap the date picker and save, reopen the entry | the chosen date | today's date | 1.0.3 (42) | FIXED |
+| BUG-002 |  | **S2** | Android | Rotate on the list screen while syncing | list keeps order | list resets | 1.0.3 (42) | WONTFIX |
+| BUG-003 | APP-009 | **S3** | iOS | Long titles overflow the card | truncates | overlaps the icon | 1.0.3 (42) |  |
+BUGS
+( cd "$RGI" && node "$HERE/register.mjs" --root . import-bugs --by qa-engineer ) >"$TMP/rgi.txt" 2>&1
+( cd "$RGI" && node "$HERE/register.mjs" --root . show --json ) >"$TMP/rgi.json" 2>&1
+
+assert_has "$TMP/rgi.json" "Tap the date picker" "import-bugs titles the row from its description, not from the Build column"
+grep -q '1.0.3' "$TMP/rgi.json" \
+  && bad "...and never from the Build column" "a title is still the build string" \
+  || ok "...and never from the Build column"
+assert_has "$TMP/rgi.txt" "BUG-002" "a WONTFIX row with no reason is REPORTED, not silently imported terminal"
+node -e '
+const items = require(process.argv[1]).items;
+const by = Object.fromEntries(items.map((i) => [i.id, i]));
+const bad = [];
+if (by["BUG-002"].status !== "OPEN") bad.push("BUG-002 imported " + by["BUG-002"].status + ", not OPEN");
+if (by["BUG-001"].status !== "FIXED") bad.push("BUG-001 should import FIXED — it names a ticket");
+process.exit(bad.length ? (console.error(bad.join("; ")), 1) : 0);
+' "$TMP/rgi.json" \
+  && ok "...downgraded to OPEN, while a FIXED row that DOES name its ticket imports terminal" \
+  || bad "...downgraded to OPEN, while a FIXED row that DOES name its ticket imports terminal"
+
+# --- B4/B5/B6: the ceiling, line 1, and a flag with no usage string -------------------------------
+CEIL="$TMP/ceiling"; rm -rf "$CEIL"; mkdir -p "$CEIL/docs" "$CEIL/.studio-cache/DerivedData" "$CEIL/bin"
+( cd "$CEIL" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+dd if=/dev/zero of="$CEIL/.studio-cache/DerivedData/big.bin" bs=1024 count=3072 >/dev/null 2>&1
+
+# B4. build-env.sh moved DerivedData OUT of the worktrees so reaping cannot destroy a warm build —
+# correct, and it put the largest consumer of disk on an iOS project outside the ceiling added to
+# stop the disk filling. Counted here, never reaped: deleting a warm cache is the operator's call.
+( cd "$CEIL" && node "$HERE/worktree-reap.mjs" --root . ) >"$TMP/ceil.txt" 2>&1
+assert_has "$TMP/ceil.txt" "shared cache" "the disk ceiling counts .studio-cache, which is where the build cache now lives"
+assert_exit 1 "...so a cache over the ceiling BLOCKS, with no worktrees involved at all" \
+  sh -c 'cd "$1" && node "$2/worktree-reap.mjs" --root . --max-disk-mb 2' sh "$CEIL" "$HERE"
+[ -f "$CEIL/.studio-cache/DerivedData/big.bin" ] \
+  && ok "...and never reaps it — a warm cache is an asset, deleting it is the operator's call" \
+  || bad "...and never reaps it — a warm cache is an asset, deleting it is the operator's call"
+
+# B5. Line 1 must match the exit code — this repo's law, broken here: `CI STATUS: FAIL` with exit 0.
+printf 'Integration branch: main\n' > "$CEIL/docs/23-git-strategy.md"
+printf '{}\n' > "$CEIL/.studio-policy.json"
+printf '#!/bin/sh\nexit 1\n' > "$CEIL/bin/gh"; chmod +x "$CEIL/bin/gh"
+( cd "$CEIL" && PATH="$CEIL/bin:$PATH" node "$HERE/ci-status.mjs" --root . --base main ) >"$TMP/ci-adv.txt" 2>&1
+CI_ADV_RC=$?
+head -1 "$TMP/ci-adv.txt" | grep -q "ADVISORY" \
+  && ok "unarmed, ci-status says ADVISORY on line 1 rather than a verdict it is not enforcing" \
+  || bad "unarmed, ci-status says ADVISORY on line 1 rather than a verdict it is not enforcing" "$(head -1 "$TMP/ci-adv.txt")"
+[ "$CI_ADV_RC" = "0" ] \
+  && ok "...and line 1 agrees with the exit code, which is what an agent acts on" \
+  || bad "...and line 1 agrees with the exit code, which is what an agent acts on" "exit $CI_ADV_RC"
+
+# B6. A flag that disables a guard and appears in no usage string is a hole with a password.
+SLOTF="$TMP/slot-force"; rm -rf "$SLOTF"; mkdir -p "$SLOTF/docs"
+( cd "$SLOTF" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init && printf 'Integration branch: main\n' > docs/23-git-strategy.md
+  node "$HERE/worktree-slot.mjs" --root . lease --owner ios-developer --tickets APP-001 ) >/dev/null 2>&1
+assert_exit 1 "--force no longer buys a second lease past the guard its own header calls the one that matters" \
+  sh -c 'cd "$1" && node "$2/worktree-slot.mjs" --root . lease --owner ios-developer --tickets APP-009 --force' sh "$SLOTF" "$HERE"
 
 # --- an ok/bad pair must carry the SAME label ------------------------------------------------------
 #

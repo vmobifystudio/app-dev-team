@@ -171,7 +171,22 @@ const rows = pool.map((w) => {
 const orphans = rows.filter((r) => !r.live);
 const removable = orphans.filter((r) => !r.dirty);
 const stuck = orphans.filter((r) => r.dirty);
-const totalMb = rows.reduce((n, r) => n + r.mb, 0);
+const poolMb = rows.reduce((n, r) => n + r.mb, 0);
+
+// THE LEAK MOVED OUT FROM UNDER ITS OWN CEILING (B4).
+//
+// `build-env.sh` relocates DerivedData, the Gradle home and the SwiftPM cache to `.studio-cache/`
+// precisely so reaping a slot cannot throw away a warm build. Correct — and it means the single
+// largest consumer of disk on a real iOS project is no longer inside the directory this ceiling
+// measures. The reported number would say "3 worktrees, 40 MB" beside a 12 GB cache, and the gate
+// added to stop the disk filling would never fire on the thing that fills it.
+//
+// So it is COUNTED here and never reaped: a warm cache is an asset, and deleting it is the
+// operator's call with `rm -rf .studio-cache`. Counting it makes the ceiling honest; reaping it
+// would make the caches pointless.
+const cacheDir = resolve(ROOT, '.studio-cache');
+const cacheMb = existsSync(cacheDir) ? Math.round(diskKb(cacheDir) / 1024) : 0;
+const totalMb = poolMb + cacheMb;
 const reclaimableMb = removable.reduce((n, r) => n + r.mb, 0);
 
 // --- apply ------------------------------------------------------------------------------------------
@@ -190,7 +205,7 @@ if (flags.apply) {
 if (flags.json) {
   process.stdout.write(`${JSON.stringify({
     schema: 'worktree-reap/v1', root: ROOT, dir: DIR, applied: Boolean(flags.apply),
-    maxDiskMb: MAX_DISK_MB, totalMb, reclaimableMb,
+    maxDiskMb: MAX_DISK_MB, totalMb, poolMb, cacheMb, reclaimableMb,
     worktrees: rows, removed: removed.map((r) => r.name), failed,
   }, null, 2)}\n`);
 } else {
@@ -201,7 +216,11 @@ if (flags.json) {
     process.stdout.write(`  ${tag} ${r.name.padEnd(24)} ${String(r.mb).padStart(6)} MB  ${r.branch || '(detached)'}\n`);
     process.stdout.write(`           ${' '.repeat(24)}         ${r.why}\n`);
   }
-  process.stdout.write(`\n  ${rows.length} worktree(s), ${totalMb} MB total, ceiling ${MAX_DISK_MB} MB\n`);
+  process.stdout.write(
+    `\n  ${rows.length} worktree(s) ${poolMb} MB` +
+    `${cacheMb ? ` + shared cache .studio-cache/ ${cacheMb} MB (counted, never reaped)` : ''}` +
+    ` = ${totalMb} MB total, ceiling ${MAX_DISK_MB} MB\n`
+  );
   if (removable.length) {
     process.stdout.write(`  RECLAIMABLE: ${removable.length} orphan(s), ${reclaimableMb} MB — ${flags.apply ? 'removed' : 'run with --apply to remove'}\n`);
   }
@@ -230,7 +249,10 @@ if (failed.length) {
 const finalMb = totalMb - removed.reduce((n, r) => n + r.mb, 0);
 if (finalMb > MAX_DISK_MB) {
   process.stderr.write(
-    `worktree-reap: BLOCKED — ${finalMb} MB of agent worktrees exceeds the ${MAX_DISK_MB} MB ceiling.\n` +
+    `worktree-reap: BLOCKED — ${finalMb} MB (${poolMb} MB worktrees + ${cacheMb} MB shared cache) ` +
+    `exceeds the ${MAX_DISK_MB} MB ceiling.\n` +
+    `  The cache is not reclaimable by this tool — it is a warm build, and deleting it is yours:\n` +
+    `    rm -rf ${cacheDir}\n` +
     `  ${stuck.length ? `${stuck.length} orphan(s) are dirty and cannot be reclaimed automatically; read them first.\n  ` : ''}` +
     'Reclaim space, or raise the ceiling deliberately — APP_TEAM_MAX_DISK_MB / --max-disk-mb.\n' +
     '  Raising a ceiling is the operator\'s decision, never a workaround an agent applies to keep going.\n'

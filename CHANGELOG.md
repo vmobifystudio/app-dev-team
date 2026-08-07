@@ -5,6 +5,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+**Review round.** `code-reviewer` returned REQUEST CHANGES on this branch with six blocking
+findings, two of them found by executing rather than reading. All six are fixed here, each with an
+assertion and a mutation that proves the assertion can go red.
+
+- **B1 — `wave-integrate --push` landed the wave on the wrong branch and reported success.**
+  `git merge --ff-only` merges into the working tree it runs in, and this ran with `cwd: ROOT`
+  without ever checking out `$BASE`. Reproduced against a bare remote: `develop` unchanged on both
+  sides, an unrelated checked-out branch silently fast-forwarded to the wave tip, exit 0, `PUSHED
+  develop` on stdout. The wave landed nowhere and a branch nobody leased was rewritten. Now the REF
+  is updated (`git fetch . <wave>:<base>`, fast-forward-only, no checkout, refuses when the target is
+  checked out elsewhere) and `$BASE` is confirmed to have moved before anything is claimed. The
+  printed manual fallback had always included the `git checkout` the code omitted.
+- **B2 — the dependency guard still read `merged` as fact.** `lib/events.mjs` gated `claimed` on a
+  `merged` event, so once `merged` became permission a dependent was claimable before its dependency
+  was integrated — its slot cut from a branch without the code it depends on. Same in the two
+  `orchestrator.mjs` readers. EE-001's class in the second reader of the same event.
+- **B3 — `register.mjs import-bugs` was a second write path around its own refusals.** It appended
+  directly, so `WONTFIX` collapsed to `FIXED` with no reason and `FIXED` imported with no ticket —
+  the two states M38 and M39 exist to prevent, reachable by another door. Titles also came from the
+  Build column. One `terminalRefusal()` now serves both paths; a row that cannot satisfy it imports
+  OPEN and is reported.
+- **B4** the disk ceiling now counts `.studio-cache/`, where `build-env.sh` had moved the largest
+  consumer of disk on an iOS project — out from under the ceiling added to stop the disk filling.
+  Counted, never reaped. **B5** `ci-status.mjs` said `CI STATUS: FAIL` on line 1 while exiting 0 when
+  unarmed; line 1 now says `ADVISORY (...)`, because an agent reads line 1 and acts on it. **B6** an
+  undocumented `--force` disabled the second-lease guard its own header calls the one that matters.
+
+`mutate.sh` gained one declared exclusion: the post-push confirmation cannot be reached by any
+fixture, so it is named in `excluded()` with the reason rather than left as a phantom survivor.
+
+**1325 -> 1343 assertions, 0 failing. 21/21 PR mutations CAUGHT (M38-M59), none by the wrong
+assertion.**
+
+
 **Coherence.** The first two commits made the parts good and left the seams. The end-to-end review
 (`docs/reviews/2026-08-07-end-to-end-flow-review.md`) walked the call graph, the ticket lifecycle and
 the founder's own path through the studio, and found nine places where two individually-correct

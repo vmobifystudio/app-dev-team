@@ -105,7 +105,15 @@ const report = (state, code, lines, extra = {}) => {
   const payload = { schema: 'ci-status/v1', state, base: BASE, armed: ARMED, ...extra };
   if (flags.json) process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   else {
-    process.stdout.write(`CI STATUS: ${state} — branch ${BASE}\n`);
+    // LINE 1 MUST MATCH THE EXIT CODE — this repo's law, and this file broke it.
+    //
+    // Unarmed, the exit is softened to 0 so an ordinary project without `gh` is not deadlocked
+    // (that part is right). But line 1 still read `CI STATUS: FAIL` while the process exited 0, and
+    // an agent reads line 1 and acts on it — the same defect `verify-done.sh`'s header describes
+    // fixing, where it printed "VERIFIED:" while exiting 2. The verdict is still stated; it is
+    // stated as what it is, which is advice.
+    const headline = ARMED || code === 0 ? state : `ADVISORY (${state})`;
+    process.stdout.write(`CI STATUS: ${headline} — branch ${BASE}\n`);
     for (const l of lines) process.stdout.write(`  ${l}\n`);
     if (!ARMED && code !== 0) {
       process.stdout.write(

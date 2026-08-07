@@ -173,9 +173,12 @@ function cmdNext() {
     verifiedStatic: t.verifiedStatic,
     // A ticket whose dependency is unmet is not "actionable but tricky" — it is not actionable,
     // and saying so is the whole job of this command.
+    // INTEGRATED, not merely merge-gated (B2). `qa` covers both "the wave landed this" and "the
+    // gate passed and the wave has not run", and only the first satisfies a dependent. Same test
+    // `validate()` applies, so this reporter cannot disagree with the refusal the CLI would give.
     blockedBy: (t.dependsOn || []).filter((d) => {
       const dep = tickets.get(key(d));
-      return !dep || !['qa', 'done'].includes(dep.status);
+      return !dep || !['qa', 'done'].includes(dep.status) || dep.verifiedStatic === true;
     }),
     options: optionsFor(tickets, t.id),
   }));
@@ -187,7 +190,7 @@ function cmdNext() {
   for (const r of rows) {
     process.stdout.write(`  ${r.id}  [${r.status}${r.verifiedStatic ? ', static only' : ''}]${r.owner ? `  owner ${r.owner}` : ''}\n`);
     if (r.blockedBy.length) {
-      process.stdout.write(`      NOT ACTIONABLE — depends on ${r.blockedBy.join(', ')}, not yet merged\n`);
+      process.stdout.write(`      NOT ACTIONABLE — depends on ${r.blockedBy.join(', ')}, whose code is not on the integration branch\n`);
     }
     if (!r.options.length) {
       process.stdout.write('      no legal transition from here for any known role\n');
@@ -302,7 +305,7 @@ function movement(tickets, events) {
     if (TERMINAL.has(t.status)) continue;
     const deps = (t.dependsOn || []).filter((d) => {
       const dep = tickets.get(key(d));
-      return !dep || !['qa', 'done'].includes(dep.status);
+      return !dep || !['qa', 'done'].includes(dep.status) || dep.verifiedStatic === true;
     });
     const everClaimed = (t.events || []).some((e) => e.event === 'claimed');
     const isUnclaimed = t.status === 'todo' && !deps.length && !everClaimed;

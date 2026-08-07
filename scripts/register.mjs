@@ -102,6 +102,29 @@ const ALL_STATUSES = new Set([...OPEN_STATUSES, ...TERMINAL_STATUSES]);
 const now = () => new Date().toISOString();
 const key = (id) => String(id ?? '').toUpperCase();
 
+/**
+ * ONE place that decides whether a terminal status is earned. Returns null when it is, or the
+ * reason it is not.
+ *
+ * WHY THIS IS A FUNCTION AND NOT TWO COPIES OF AN `if`. `cmdStatus` refused a `DEFERRED` with no
+ * reason and a `FIXED` with no ticket — and `import-bugs` appended straight to the log, so it was a
+ * SECOND WRITE PATH around both. Executed against the canonical row in `agents/qa-engineer.md`, an
+ * import produced a `WONTFIX` collapsed to `FIXED` with no reason and a `FIXED` with no ticket:
+ * exactly the two states M38 and M39 exist to make impossible, reachable by another door.
+ *
+ * That is `defect-hunting` §1 — the validation added to one producer while another walks around it
+ * — committed inside the file whose whole purpose is that every item has an authored decision.
+ */
+function terminalRefusal(status, { reason, ticket }) {
+  if (NEEDS_REASON.has(status) && (typeof reason !== 'string' || reason.trim().length < 10)) {
+    return `${status} requires a reason of substance. Without one it is indistinguishable from ignoring the item, and the whole point of a terminal status is that somebody DECIDED.`;
+  }
+  if (status === 'FIXED' && !ticket) {
+    return 'FIXED needs the ticket whose merge carried it. FIXED is a claim about the integration branch; with no ticket there is nothing to check it against.';
+  }
+  return null;
+}
+
 function load({ required = true } = {}) {
   if (!existsSync(FILE)) {
     if (required) die(2, `no register at ${FILE}\n  This is CANNOT EVALUATE, not an empty register: a missing file and "nothing is owed" are\n  different answers, and only one of them is safe to ship on.`);
@@ -182,20 +205,12 @@ function cmdStatus() {
   const item = items.get(key(subject));
   if (!item) die(1, `REFUSED: ${subject} is not on the register. Add it first — a status on nothing records nothing.`);
 
-  // A DEFERRAL WITHOUT A REASON IS AN OMISSION WEARING A DECISION'S CLOTHES. This is the single
-  // refusal that does the work: it is trivially easy to close a register by marking everything
-  // DEFERRED, and the reason field is what makes that visible to the next reader.
-  if (NEEDS_REASON.has(status) && (typeof flags.reason !== 'string' || flags.reason.trim().length < 10)) {
-    die(1, `REFUSED: ${status} requires --reason, and it must say something.\n  "${status}" without a reason is indistinguishable from ignoring the item, and the whole point\n  of a terminal status is that somebody DECIDED. Say what they decided and why.`);
-  }
-
-  // FIXED IS A CLAIM ABOUT THE INTEGRATION BRANCH, not about a branch or a working tree —
-  // tech-manager.md already says so in prose. This is that sentence as a refusal: name the ticket
-  // that carried the fix, so the claim is checkable against the board rather than taken on trust.
+  // A DEFERRAL WITHOUT A REASON IS AN OMISSION WEARING A DECISION'S CLOTHES, and FIXED is a claim
+  // about the INTEGRATION BRANCH rather than about a working tree. Both refusals live in
+  // `terminalRefusal` so that `import-bugs` cannot reach a terminal status this path would reject.
   const ticket = typeof flags.ticket === 'string' ? flags.ticket : item.ticket;
-  if (status === 'FIXED' && !ticket) {
-    die(1, `REFUSED: FIXED needs --ticket <ID> — the ticket whose merge carried the fix.\n  FIXED is a claim about the integration branch. Without a ticket there is nothing to check it\n  against, and "we fixed it" becomes the only evidence that it was fixed.`);
-  }
+  const refusal = terminalRefusal(status, { reason: flags.reason, ticket });
+  if (refusal) die(1, `REFUSED: ${refusal}`);
 
   append({
     schema: 'studio-register/v1', v: 1, ts: now(), action: 'status',
@@ -286,26 +301,52 @@ function cmdImportBugs() {
   const { items } = load({ required: false });
 
   let added = 0;
+  const downgraded = [];
   for (const b of parsed.bugs) {
     if (items.has(key(b.id))) continue;
+
+    // THE DESCRIPTION CELL, and not by position. `qa-engineer.md`'s canonical row is nine columns
+    // (id | ticket | severity | platform | steps | expected | actual | build | resolution) but real
+    // boards carry shorter ones. Taking the LAST cell — the first attempt here — yielded titles like
+    // "1.0.3 (42)", the Build column. Taking the longest cell after the severity is right for both
+    // shapes, and a title nobody can read is the row that gets skipped, which is the failure this
+    // whole file exists to close.
+    const cells = b.line.split('|').map((c) => c.replace(/\*\*/g, '').trim()).filter(Boolean);
+    const title = cells.slice(3).sort((x, y) => y.length - x.length)[0] || cells.slice(-1)[0] || b.line;
+
+    // `parseBugs.closed` is one boolean over FIXED|CLOSED|WONTFIX, so importing it as `FIXED`
+    // collapsed a refusal ("WONTFIX needs a reason") into a status that needs none. Read the word
+    // the row actually used, then hold the import to the SAME rule the CLI enforces: a row that
+    // cannot satisfy it imports as OPEN and is reported, rather than being waved through terminal.
+    // An importer that can mint a terminal status the CLI would refuse is a second write path
+    // around the only rule this register has.
+    let status = 'OPEN';
+    let reason;
+    if (b.closed) {
+      status = /\bWONTFIX\b/i.test(b.line) ? 'WONTFIX' : 'FIXED';
+      reason = cells.slice(3).find((c) => c.length >= 10 && /wont|won't|not|dupl|invalid|by design|cannot/i.test(c));
+      const refusal = terminalRefusal(status, { reason, ticket: b.ticket });
+      if (refusal) { downgraded.push(`${b.id}: ${status} -> OPEN (${refusal.split('.')[0]})`); status = 'OPEN'; reason = undefined; }
+    }
+
     append({
       schema: 'studio-register/v1', v: 1, ts: now(), action: 'add',
-      // The DESCRIPTION cell, not the whole row. `parseBugs` hands back the raw line; importing it
-      // verbatim made every register title an unreadable re-print of the pipes around it, and a
-      // title nobody can read is the row that gets skipped — which is the failure this file exists
-      // to close, reproduced inside its own migration path.
-      id: b.id, kind: 'bug', severity: b.severity,
-      title: (b.line.split('|').map((c) => c.trim()).filter(Boolean).pop() || b.line).slice(0, 200),
-      // A row already marked FIXED/CLOSED/WONTFIX in the Markdown imports as terminal — importing it
-      // as OPEN would manufacture work that was already done and make the first `check` a wall of
-      // noise, which is how a new gate gets switched off in its first week.
-      status: b.closed ? 'FIXED' : 'OPEN',
-      by: flags.by, ...(b.ticket ? { ticket: b.ticket } : {}),
+      id: b.id, kind: 'bug', severity: b.severity, title: String(title).slice(0, 200),
+      status, by: flags.by,
+      ...(reason ? { reason } : {}),
+      ...(b.ticket ? { ticket: b.ticket } : {}),
       evidence: bugsPath.replace(`${ROOT}/`, ''),
     });
     added += 1;
   }
   process.stdout.write(`register: imported ${added} bug(s) from ${bugsPath} (${parsed.bugs.length} row(s) seen, ${parsed.bugs.length - added} already present)\n`);
+  if (downgraded.length) {
+    process.stdout.write(
+      `register: ${downgraded.length} row(s) claimed a terminal status the register's own rule refuses, and were imported OPEN:\n` +
+      downgraded.map((d) => `  ${d}\n`).join('') +
+      '  Give each a real decision: register.mjs status <ID> <STATUS> --by <role> --reason "..." [--ticket <ID>]\n'
+    );
+  }
   if (added) render();
 }
 
