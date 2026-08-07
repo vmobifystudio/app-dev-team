@@ -92,6 +92,9 @@ allowed-tools: Read, Glob, Grep, Bash
 
 4. Print today's daily report if it exists at `docs/daily/<today>.md`.
 5. Print recent bug list from `docs/51-bugs.md` if it exists — show open S1/S2 only.
+   Then print the register view at `docs/90-register.md` — every item still `OPEN` or `IN-PROGRESS`,
+   and separately the ones with **no ticket**, which are the ones nothing on the board will ever pick
+   up. `node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" check` is the same answer as an exit code.
 5a. If `docs/81-findings.md` exists, print the findings register summary: counts per status, and
    **name every row still `OPEN` or `IN-PROGRESS`**. A register with open rows means the audit is
    not closed, however quiet the board looks.

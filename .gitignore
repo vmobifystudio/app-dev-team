@@ -41,6 +41,11 @@ fastlane/test_output
 # Per-agent git worktrees (agent-isolation skill)
 .agent-wt/
 
+# Shared toolchain caches (scripts/build-env.sh). Deliberately inside the repo — trivially found,
+# trivially deleted — and deliberately OUTSIDE every .agent-wt/ worktree, so worktree-reap.mjs
+# cannot take the warm build with it when it reclaims a slot.
+.studio-cache/
+
 # App Store Connect API key
 *.p8
 

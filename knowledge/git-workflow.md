@@ -36,6 +36,48 @@ directly. `tech-manager`'s merge gate reads that doc — it does not assume `mai
 unrecorded is how a team ends up with feature branches merged to `main` on a project whose release
 process expects `develop`.
 
+## How the studio integrates: slots, waves, one push
+
+The branch model above is unchanged. What changed is **where agents stand** and **when the merges
+happen** — the two places the studio was paying per ticket for a signal that is only meaningful per
+wave.
+
+| Unit | What it is | Command |
+|---|---|---|
+| **slot** | one worktree per WRITING AGENT, keyed by owner, bounded by the parallelism cap | `worktree-slot.mjs lease --owner ios-developer --tickets APP-001,APP-002` |
+| **branch** | one per ticket, cut inside the slot, unchanged | `git checkout -b feat/APP-001-slug` |
+| **gate** | per ticket: a non-owner approval. Passes or refuses; runs no git command | `board.mjs move APP-001 merged --by tech-manager` |
+| **wave** | every gated branch merged `--no-ff` into `integration/wave-N`, ONE build, ONE suite | `wave-integrate.mjs --wave 3` |
+| **push** | one per wave, fast-forwarding the integration branch | `wave-integrate.mjs --wave 3 --push` |
+
+**Per ticket the studio verifies statically** (`verify-done.sh --static`: branch, commits, changed
+files, scope) and records `verified_static` — honest, because the suite genuinely has not run, and
+`verified_static` already refuses `closed` and already blocks `ship-gate.sh`. **Per wave it runs the
+suite once on the merged tree**, and a green wave earns the real `verified` for every ticket in it.
+`verified` was always legal from `qa` for exactly this reason; nothing had ever walked that path.
+
+Keep `fast` per-ticket testing where the scope is genuinely scoped (`:module:test`,
+`swift test --filter`) — with warm caches that costs seconds and gives the developer earlier
+feedback. Where `fast` is really the whole matrix, it is not a fast scope.
+
+**Toolchain caches live outside every worktree** (`scripts/build-env.sh` → `.studio-cache/`:
+`GRADLE_USER_HOME`, `SWIFTPM_CACHE_PATH`, `STUDIO_DERIVED_DATA`). Otherwise each slot, and each
+throwaway verification worktree, compiles from cold — and the throwaway ones are deleted, so they
+are cold forever. Xcode has no environment variable for DerivedData, so the project's own test
+command must pass `-derivedDataPath "$STUDIO_DERIVED_DATA"`; `build-env.sh --check` says per project
+whether it does, rather than letting an exported variable stand in for a saving nobody made.
+
+**Conflicts have an owner.** `wave-integrate.mjs` aborts the one merge that conflicted, keeps the
+rest of the wave, and names the files. A textual conflict is `tech-manager`'s to resolve in the
+integration tree; a conflict that changes behaviour or a contract goes back as a ticket to the owner
+of that contract. Re-spawning a developer cold to perform a mechanical rebase buys a full context
+rebuild for hunks the manager is already holding.
+
+**Squash-merge remains incompatible with `requireApprovalBinding`**, and the wave branch adds a
+second place to get it wrong: `--no-ff` into the wave branch then `--ff-only` onto the integration
+branch keeps the approved SHA an ancestor, and a squash anywhere in that chain does not. Record the
+choice in `docs/23-git-strategy.md`.
+
 ## Versioning
 
 - **Android:** `version.properties` with `versionCode = MAJOR*10000 + MINOR*100 + PATCH`
@@ -54,6 +96,30 @@ process expects `develop`.
   Firebase config restored from base64 secrets in CI. Prod-release tasks fail fast on missing secrets.
 - A clean build + green tests is a hard merge gate. Flagship apps also require a CTO/code-review
   agent pass (zero Critical + zero Important) before merge.
+
+**How that sentence is actually enforced, because for a long time it was not.** The merge gate
+(`board.mjs move <ID> merged`) reads one thing: a non-owner `approved`. It reads nothing on the
+server, and nothing else did either — a grep of the whole plugin for a CI-status read found two
+hits, both in `repo-controls.sh`, which only *reports* whether branch protection is configured. So
+on every project where the user had not personally set protection, work merged with CI never
+consulted in either direction.
+
+Two mechanisms close it, and neither puts an agent in a polling loop:
+
+- **`scripts/ci-status.mjs`** reads the last completed workflow conclusion for the integration
+  branch (`gh run list`, read-only) at the **top of every round**, via `orchestrator round`. A red
+  base stops the studio before it piles another wave on top of it. It is armed per project with
+  `"requireCiGreen": true` in `.studio-policy.json` — a project with no `gh`, no remote or no CI is
+  unaffected, because a gate that deadlocks ordinary projects is a gate its first user switches off.
+  An environmental failure can be waived in `docs/team/ci-waiver.json`, and the waiver **names the
+  commit SHA it forgives**, so it expires on the next push instead of quietly covering the next real
+  failure.
+- **One push per wave.** `wave-integrate.mjs --push` is the only thing that pushes the integration
+  branch, so there is exactly one CI run per wave and exactly one reader of it. Per-ticket merging
+  used to start one run per ticket, on macOS runners for iOS, all superseded and none read.
+
+**No agent may trigger, re-run or cancel a workflow.** CI spend is the operator's; a studio that can
+start its own builds can spend without limit.
 
 ## Secrets — never in the repo
 

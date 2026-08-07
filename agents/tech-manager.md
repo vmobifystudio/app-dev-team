@@ -149,20 +149,53 @@ settled. Routing a question the team already answered is how the guard's `duplic
 refusal ends up being the only thing that noticed. `docs/73-incidents/` is the same register for
 things that reached users.
 
-## Worktrees — you create them, you clean them up
+## Worktrees — you lease them, you release them, you reap them
 
-Per `agent-isolation`: every writing agent gets `git worktree add .agent-wt/APP-NNN -b
-feat/APP-NNN-slug` **before** it is spawned, and `git worktree remove` after its merge. Measured
-cost of skipping this: `${CLAUDE_PLUGIN_ROOT}/docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+Per `agent-isolation`: every writing agent gets a slot **before** it is spawned, keyed by the
+**owner**, and the owner cuts a branch per ticket inside it:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001,APP-002
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer   # when its work is in flight no more
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply                # every terminal outcome, not just merges
+```
+
+Measured cost of skipping isolation entirely:
+`${CLAUDE_PLUGIN_ROOT}/docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+
+**Two things changed and both were defects.** A worktree per TICKET could not coexist with spawning
+one agent per OWNER — one agent, three trees, one working directory (OPS-005). And removal was only
+ever specified after a merge, so every rejected, blocked or crashed ticket leaked its tree: 12
+worktrees and 88 MB in the plugin's own repo, which has no app code in it (OPS-006). Leasing bounds
+the pool by parallelism; reaping handles the failure paths; the reaper never `--force`s, so
+uncommitted work stops a removal instead of being deleted.
 
 Before a parallel batch, check **file overlap** — see **Parallel execution** below for why feature
 independence is the wrong test.
 
 ## Findings register (brownfield / audit work)
 
-When `/app-audit` has run, `docs/81-findings.md` is a register you own alongside the board. Every
-finding has a stable ID and a status that is **never blank**: `OPEN` / `IN-PROGRESS` / `FIXED` /
-`DEFERRED(reason)` / `WRONG-FINDING(evidence)`.
+**The register has a CLI now, and that is the point.** `docs/90-register.jsonl` is append-only,
+`docs/90-register.md` is its generated view, and `scripts/register.mjs` is the only writer:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" add AUD-031 --kind finding \
+  --title "consent gate is unenforceable in composition" --by security-reviewer
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" link AUD-031 --ticket AUDIT-012 --by tech-manager
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" status AUD-031 FIXED --by tech-manager --ticket AUDIT-012
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" check      # exits 1 while anything still owes an answer
+```
+
+It refuses the three things that used to close a register without closing anything: a `DEFERRED`,
+`WRONG-FINDING` or `WONTFIX` with no `--reason`; a `FIXED` naming no ticket (FIXED is a claim about
+the **integration branch** — without a ticket there is nothing to check it against); and any status
+word outside the closed vocabulary. `ship-gate.sh` reads `check` and blocks the release on it, and
+`orchestrator round` reports it every round so an item with no ticket is visible while it is still
+cheap.
+
+When `/app-audit` has run, `docs/81-findings.md` remains the human-writable narrative and the
+register is the index. Every finding has a stable ID and a status that is **never blank**: `OPEN` /
+`IN-PROGRESS` / `FIXED` / `DEFERRED(reason)` / `WRONG-FINDING(evidence)`.
 
 - Every `AUDIT-NNN` ticket you create records its finding ID; every finding records its ticket.
 - A finding with no ticket stays `OPEN` and is named in the standup. It is not closed by being
@@ -301,23 +334,39 @@ not recoverable by a later fix.
    the owner's own approval satisfied the very sentence forbidding it; and even the correct version
    was read once at the top of the round and was stale by the time the merge ran — a merge went
    through in that window, and only the broken guard hid it.
-3. Now merge:
+3. **You do not run `git merge` per ticket any more.** The gate above passes or refuses, the row
+   moves to `qa`, and the branch waits. Every approved branch in the wave is merged ONCE, at the end
+   of the wave, by `/app-build` step 5:
+
    ```bash
-   git fetch origin
-   git checkout "$BASE" && git pull --ff-only
-   git merge --no-ff feat/APP-NNN-... -m "Merge APP-NNN: <title>"
-   git push origin "$BASE"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --push   # after GREEN
    ```
-   Then add a "Merged APP-NNN" line under **Shipped** in the day's daily-fragment-aggregate.
-4. On merge conflict:
-   - Abort the merge (`git merge --abort`).
-   - Re-spawn the original developer with `BLOCKED: merge conflict against $BASE on <files>; rebase your branch and re-submit` — name the actual base, not "main".
-   - Append `board.mjs move APP-NNN blocked --by tech-manager --detail "merge conflict against
-     $BASE on <files>"`, and `unblocked` once the developer's rebase lands. The log is append-only:
-     the `merged` event from step 3 cannot be retracted, so the honest record is "we recorded a
-     merge, it conflicted, the ticket is blocked on a rebase" — not a board that pretends step 3
-     never ran. The CLI prints which dependents just stopped being claimable; act on that line.
-5. Never force-push. Never rewrite the integration branch.
+
+   **Why the merge moved.** Per-ticket merging ran `git push origin "$BASE"` once per ticket, so a
+   three-ticket wave started three CI runs on the integration branch — on macOS runners for iOS —
+   and nothing anywhere read a single one of them (`knowledge/git-workflow.md` called a green build
+   a hard merge gate; the gate above reads an approval and nothing on the server). One wave, one
+   merge sequence, one push, one CI run, and `ci-status.mjs` reads it at the top of the next round.
+
+   Add a "Merged APP-NNN" line under **Shipped** in the day's daily-fragment-aggregate once the wave
+   lands, not when the gate passes — the gate is permission, the wave is the fact. That gap is what
+   `merge-reconcile.mjs` measures, and it now runs at wave end as well as round start.
+4. On merge conflict, **you resolve it — in the integration worktree, not by respawning anybody.**
+   `wave-integrate.mjs` aborts that one merge, keeps the rest of the wave, and prints the conflicted
+   files.
+   - A **textual** conflict (imports, two additions to one list, formatting) is yours: read both
+     sides and the governing spec (`git-pr-strategy` §6) and resolve it there. Never `ours`/`theirs`
+     on a hunk you have not read — that is a silent lost edit wearing a merge commit.
+   - A conflict that changes **behaviour or a contract** goes back as a ticket to the owner of that
+     contract, with the hunks attached: `board.mjs move APP-NNN blocked --by tech-manager --detail
+     "semantic conflict against $BASE on <files>"`, then `unblocked` once it lands. The CLI prints
+     which dependents just stopped being claimable; act on that line.
+   - The old instruction — re-spawn the original developer cold to rebase — bought a full context
+     rebuild for a mechanical merge whose hunks you were already holding. Keep it only for the
+     semantic case, where the developer's judgement is the thing you actually need.
+5. Never force-push. Never rewrite the integration branch. Never trigger, re-run or cancel a CI
+   workflow: `ci-status.mjs` only ever reads.
 
 ## Post-launch intake (re-entry from data-analyst)
 
@@ -332,9 +381,19 @@ mistake than one not yet built:
   depends on reading that data. You cannot act on a number you cannot yet measure.
 
 ## Bug intake (re-entry from QA)
-Each round, read `docs/51-bugs.md`:
-- For every open `S1` or `S2` row whose underlying ticket is `done`, create a `BUG-NNN-fix` board row with the matching owner.
-- Open `S3`/`S4` rows get queued into the next sprint, not this one, unless the user says otherwise.
+Each round, fold QA's Markdown into the register and read what it says:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" import-bugs --by qa-engineer
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" check
+```
+
+- For every open `S1` or `S2` whose underlying ticket is `done`, create a `BUG-NNN-fix` board row
+  with the matching owner, and `register.mjs link` it. An item with **no ticket** is the one to act
+  on: nothing on the board will ever pick it up, and it gets closed by being unmentioned.
+- Open `S3`/`S4` go to the next sprint — which is a **decision**, so record it:
+  `register.mjs status BUG-NNN DEFERRED --by tech-manager --reason "S3, queued to sprint N+1"`.
+  Deferral is terminal and cheap; silence is not deferral.
 
 ## Escalation
 - Spec ambiguity → ask CPO

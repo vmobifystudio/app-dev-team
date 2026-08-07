@@ -134,7 +134,19 @@ echo "Spawn nobody. Two writers in one tree is the collision this plugin exists 
 echo "has been reproduced twice — most recently by the orchestrator that had just documented it"
 echo "(docs/research/2026-07-29-dry-run-4-findings.md, DR4-027: 22 files lost to one \`git reset\`)."
 echo
-echo "Create them, then re-run this gate:"
+echo "Create them, then re-run this gate."
+echo
+echo "PASS OWNERS, NOT TICKETS. The unit of isolation is the WRITER, not the ticket: two agents in"
+echo "one tree corrupt each other, while one agent working three tickets one after another in its"
+echo "own tree cannot corrupt anyone. Leasing a slot per owner is what makes"
+echo "parallel-orchestrator's 'one agent invocation per owner, batched' and 'each agent's prompt"
+echo "names ITS worktree path' both true at once — they could not both be true per ticket (OPS-005)."
+echo
+for id in $missing; do
+  echo "  node scripts/worktree-slot.mjs lease --owner $id --tickets APP-NNN,APP-NNN"
+done
+echo
+echo "For a project still keyed by ticket, the old shape still works and this gate still checks it:"
 for id in $missing; do
   echo "  git worktree add \"$DIR/$id\" -b \"feat/$id-short-slug\""
 done

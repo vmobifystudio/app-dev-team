@@ -53,12 +53,24 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 
 2. **Group by owner.** One agent invocation per owner, batched. iOS dev gets all their ready tickets in one prompt; same for Android; same for backend.
 
-2a. **Create one worktree per writing agent, then let the gate check you** (`agent-isolation`):
+2a. **Lease one slot per writing agent, then let the gate check you** (`agent-isolation`):
 
    ```bash
-   git worktree add .agent-wt/APP-001 -b feat/APP-001-short-slug
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" APP-001 APP-002 APP-003
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001,APP-004
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner android-developer --tickets APP-002
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" ios-developer android-developer
    ```
+
+   **The gate takes OWNERS now, because that is what has a tree each.** Step 2 above batches by
+   owner and step 3 below tells each agent to use "its worktree path" — those two sentences and a
+   worktree-per-ticket rule could not all be true at once, and the first owner with two ready
+   tickets is where it breaks (`agent-isolation` Rule 1 has the full argument). The owner cuts a
+   branch per ticket inside its slot, so branch-per-ticket and `code-reviewer`'s "this branch
+   contains only this ticket's files" both still hold.
+
+   `lease` refuses when the pool is full — that is the round's parallelism cap doing its job, and
+   raising it (`--pool N`) is a decision about how much of the machine the studio may use, not a
+   workaround to keep going.
 
    The gate is the last thing you run before the launch message, and **its exit code decides
    whether the launch happens**:

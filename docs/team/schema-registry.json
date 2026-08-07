@@ -21,9 +21,16 @@
     },
     "capability-manifest/v1": {
       "files": [
-        "scripts/capability-check.mjs"
+        "scripts/capability-check.mjs",
+        "scripts/team-bootstrap.mjs"
       ],
       "reader": null
+    },
+    "ci-status/v1": {
+      "files": [
+        "scripts/ci-status.mjs"
+      ],
+      "reader": "scripts/orchestrator.mjs \u2014 the `ci` round precondition; /app-build step 0 surfaces it"
     },
     "context-manifest/v2": {
       "files": [
@@ -121,7 +128,8 @@
     },
     "project-profile/v1": {
       "files": [
-        "scripts/project-profile.mjs"
+        "scripts/project-profile.mjs",
+        "scripts/team-bootstrap.mjs"
       ],
       "reader": null
     },
@@ -137,6 +145,18 @@
       ],
       "reader": null
     },
+    "register-check/v1": {
+      "files": [
+        "scripts/register.mjs"
+      ],
+      "reader": "scripts/orchestrator.mjs (round report) and scripts/ship-gate.sh (release refusal)"
+    },
+    "register-show/v1": {
+      "files": [
+        "scripts/register.mjs"
+      ],
+      "reader": "commands/app-status.md, and any human reading the generated docs/90-register.md"
+    },
     "release-candidate/v1": {
       "files": [
         "scripts/release-candidate.mjs"
@@ -146,7 +166,8 @@
     "risk-policy/v1": {
       "files": [
         "scripts/foundation-conformance.mjs",
-        "scripts/risk-router.mjs"
+        "scripts/risk-router.mjs",
+        "scripts/team-bootstrap.mjs"
       ],
       "reader": null
     },
@@ -170,7 +191,8 @@
     },
     "scheduler-plan/v1": {
       "files": [
-        "scripts/scheduler.mjs"
+        "scripts/scheduler.mjs",
+        "scripts/team-bootstrap.mjs"
       ],
       "reader": null
     },
@@ -191,6 +213,30 @@
         "scripts/lib/messages.mjs"
       ],
       "reader": null
+    },
+    "studio-register/v1": {
+      "files": [
+        "scripts/register.mjs"
+      ],
+      "reader": "scripts/register.mjs, reducing its own append-only log to current state"
+    },
+    "worktree-reap/v1": {
+      "files": [
+        "scripts/worktree-reap.mjs"
+      ],
+      "reader": "scripts/orchestrator.mjs \u2014 the `worktree pool` round precondition; /app-build step 4a applies it"
+    },
+    "worktree-slots-list/v1": {
+      "files": [
+        "scripts/worktree-slot.mjs"
+      ],
+      "reader": "skills/parallel-orchestrator/SKILL.md step 2a, before a parallel launch"
+    },
+    "worktree-slots/v1": {
+      "files": [
+        "scripts/worktree-slot.mjs"
+      ],
+      "reader": "scripts/worktree-reap.mjs, to tell a leased slot from an orphaned one"
     }
   }
 }

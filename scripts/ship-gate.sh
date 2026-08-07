@@ -395,6 +395,45 @@ else
     "no bug board at $BUGS — qa-engineer owns it. The open-defect count is UNKNOWN, not zero. Run a QA pass (or have qa-engineer write the file recording that none was needed), then re-run."
 fi
 
+# --- 3b. nothing on the register still owes an answer ---------------------------------------------
+#
+# Step 3 above counts OPEN S1/S2 rows in one Markdown table. That is a real check and it is not the
+# same question. OPS-004: this studio tracks work in eleven places, and the two that feed work back
+# INTO the loop — docs/51-bugs.md and docs/81-findings.md — were the only two with no CLI, no
+# vocabulary and no validator. An AUDIT FINDING with no ticket was invisible to every gate here,
+# including step 3, which only knows about bug rows. tech-manager.md records the measured cost:
+# "~70 findings were silently skipped in a real programme while four review rounds reported nothing
+# wrong."
+#
+# `register.mjs check` asks the one question that covers all of them: is there anything nobody has
+# DECIDED about? Shipping with three DEFERRED S3 bugs is a fine release. Shipping without knowing is
+# the failure. Deferral is terminal and cheap — it just has to be authored and reasoned.
+#
+# A project with no register is UNKNOWN, never clear: an absent file and "nothing is owed" are
+# different answers, and only one of them is safe to ship on.
+if [ -f "$ROOT/docs/90-register.jsonl" ]; then
+  REG=$(node "$HERE/register.mjs" --root "$ROOT" check 2>"$ERRFILE"); RC=$?
+  case "$RC" in
+    0) : ;;
+    1) block "the register has item(s) with no terminal status — nobody has decided about them:
+$(printf '%s' "$REG" | sed -n '3,12p')
+           Give each a decision: node scripts/register.mjs status <ID> <FIXED|DEFERRED|WRONG-FINDING|WONTFIX> --by <role> --reason \"...\"" ;;
+    *) unknown "register.mjs check could not read docs/90-register.jsonl ($(cat "$ERRFILE")) — what is owed is UNKNOWN, not nothing." ;;
+  esac
+fi
+# NO `else`. A project with no register file is N/A, not UNKNOWN — and getting this wrong is a
+# mistake this repository has already made and written up once, in merge-reconcile.mjs: "Exiting 2
+# for 'no git' or 'no board' felt right ('we could not check'), and it poisoned six ship-gate
+# fixtures that are docs-only directories. That is the false-BLOCK half of the false-positive
+# problem, and it switches a gate off just as fast as noise does."
+#
+# The same distinction resolves it here. This gate blocks on items the register HAS, never on its own
+# absence: a register that does not exist has never had a bug or a finding filed into it. The two
+# ways one legitimately comes to exist are both already covered — /app-build step 1 runs
+# `register.mjs import-bugs` every round, and the "no bug board" branch above already reports a
+# project that never ran a QA pass as UNKNOWN in its own words. Adding a second UNKNOWN for the same
+# missing QA pass would block docs-only and pre-QA projects twice for one gap.
+
 # --- 4. QA's own verdict --------------------------------------------------------------------------
 # QA can recommend holding while every per-ticket review approved, and both can be right: a review
 # is scoped to one diff and cannot see that the sprint's journey was never wired together.

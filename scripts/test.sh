@@ -7630,6 +7630,318 @@ if grep -rq "env-only-secret" "$FCS3/docs" 2>/dev/null; then
   bad "...and the secret never appears anywhere in the tree the agent reads"
 else ok "...and the secret never appears anywhere in the tree the agent reads"; fi
 
+
+# --- build-env: the caches leave the worktree (OPS-003) -------------------------------------------
+#
+# Every per-ticket build was cold. verify-done runs the test command either in an agent's slot or in
+# a `mktemp -d` worktree it then DELETES, so whatever warmed up died with the trap. Nothing pinned
+# GRADLE_USER_HOME, the SwiftPM cache or DerivedData anywhere durable. At the six-retry spawn budget
+# that is seven cold compiles for one ticket.
+BE="$HERE/build-env.sh"
+sh "$BE" --print > "$TMP/be.txt" 2>&1
+assert_has "$TMP/be.txt" "GRADLE_USER_HOME" "build-env exports GRADLE_USER_HOME (the one with a real effect, no cooperation needed)"
+assert_has "$TMP/be.txt" ".studio-cache" "...rooted at .studio-cache/, outside every .agent-wt worktree so a reaper cannot take it"
+
+# THE HONEST HALF. xcodebuild has no environment variable for DerivedData — it takes
+# -derivedDataPath and nothing else — so an exported STUDIO_DERIVED_DATA the project's own test
+# command ignores is a saving nobody made. Believing in it silently is the exact shape of defect
+# this repository keeps re-finding, so --check says per project whether it applies.
+assert_exit 2 "build-env --check FLAGS an xcodebuild command that does not pin DerivedData" \
+  sh "$BE" --check "xcodebuild test -scheme App"
+assert_exit 0 "...and passes one that does" \
+  sh "$BE" --check 'xcodebuild test -derivedDataPath "$STUDIO_DERIVED_DATA"'
+assert_exit 0 "...and says gradle/SwiftPM need no cooperation at all" \
+  sh "$BE" --check "./gradlew test"
+
+# --- verify-done --static: the per-ticket lane of the wave model (OPS-003) ------------------------
+#
+# --static exits 2, NOT 0, and that is the whole design. The tests genuinely have not run, so CANNOT
+# EVALUATE is the honest word and `verified_static` is the honest event — which already refuses
+# `closed` and already blocks ship-gate. There is no path from "nothing ran" to a green.
+VDS="$TMP/vds"; rm -rf "$VDS"; mkdir -p "$VDS"
+( cd "$VDS" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init && git checkout -q -b feat/APP-001 \
+  && echo hi > f.txt && git add f.txt && git commit -q -m APP-001 && git checkout -q main ) >/dev/null 2>&1
+
+( cd "$VDS" && sh "$HERE/verify-done.sh" --static feat/APP-001 main ) >"$TMP/vds.txt" 2>&1
+[ $? = 2 ] && ok "verify-done --static is exit 2 CANNOT EVALUATE, never a pass" \
+  || bad "verify-done --static is exit 2 CANNOT EVALUATE, never a pass" "$(head -2 "$TMP/vds.txt")"
+assert_has "$TMP/vds.txt" "deferred-to-wave" "...naming WHY the suite did not run, so it is not mistaken for a missing command"
+assert_has "$TMP/vds.txt" "verified_static" "...and routing to the event that refuses closed and blocks ship-gate"
+assert_has "$TMP/vds.txt" "wave-integrate" "...and naming what will actually run the suite"
+
+# A test command with --static would run per ticket, which is the cost --static removes. Refused
+# rather than silently ignored: a flag whose meaning quietly inverts is worse than no flag.
+assert_exit 2 "--static REFUSES a test command instead of running it anyway" \
+  sh -c 'cd "$1" && sh "$2/verify-done.sh" --static feat/APP-001 main "true"' sh "$VDS" "$HERE"
+assert_exit 2 "--static and --docs-only are mutually exclusive (one settles the tests, one defers them)" \
+  sh -c 'cd "$1" && sh "$2/verify-done.sh" --static --docs-only feat/APP-001 main' sh "$VDS" "$HERE"
+
+# --- worktree-reap: the leak was the failure paths (OPS-006) --------------------------------------
+#
+# Removal was specified in three places — /app-build 4a, tech-manager.md, agent-isolation — and all
+# three were the merge path. A rejected, blocked or crashed ticket kept its tree forever, with no
+# cap, no disk budget and no reaper. Measured in this repo, which has no app code: 12 worktrees,
+# 88 MB. An iOS project's worktrees also carry DerivedData.
+WR="$TMP/wreap"; rm -rf "$WR"; mkdir -p "$WR"
+( cd "$WR" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+( cd "$WR" && node "$HERE/board.mjs" add APP-001 --title live --owner ios-developer --by tech-manager \
+  && node "$HERE/board.mjs" add APP-002 --title dead --owner ios-developer --by tech-manager \
+  && node "$HERE/board.mjs" move APP-001 claimed --by ios-developer ) >/dev/null 2>&1
+( cd "$WR" && git worktree add -q .agent-wt/APP-001 -b feat/APP-001 && git worktree add -q .agent-wt/APP-002 -b feat/APP-002 ) >/dev/null 2>&1
+
+( cd "$WR" && node "$HERE/worktree-reap.mjs" --root . ) >"$TMP/wr.txt" 2>&1
+assert_has "$TMP/wr.txt" "LIVE     APP-001" "worktree-reap leaves a tree whose ticket is still in flight"
+assert_has "$TMP/wr.txt" "ORPHAN   APP-002" "...and names the one whose ticket is not — the failure-path leak nothing collected"
+
+# NEVER --force. `git worktree remove` refuses a dirty tree, and that refusal is the feature: this is
+# the same class of loss as DR4-027's `git stash`, where one command discarded 22 files of another
+# agent's in-progress work.
+echo scratch > "$WR/.agent-wt/APP-002/left-behind.txt"
+( cd "$WR" && node "$HERE/worktree-reap.mjs" --root . --apply ) >"$TMP/wr2.txt" 2>&1
+assert_has "$TMP/wr2.txt" "ORPHAN\*" "a DIRTY orphan is reported, not reclaimed"
+[ -d "$WR/.agent-wt/APP-002" ] && ok "...and the tree with uncommitted work is still there afterwards" \
+  || bad "...and the tree with uncommitted work is still there afterwards" "it was deleted"
+
+rm -f "$WR/.agent-wt/APP-002/left-behind.txt"
+( cd "$WR" && node "$HERE/worktree-reap.mjs" --root . --apply ) >"$TMP/wr3.txt" 2>&1
+[ -d "$WR/.agent-wt/APP-002" ] \
+  && bad "a CLEAN orphan is reclaimed by --apply" "still present" \
+  || ok "a CLEAN orphan is reclaimed by --apply"
+[ -d "$WR/.agent-wt/APP-001" ] && ok "...and the live one is untouched" \
+  || bad "...and the live one is untouched" "the reaper took a tree an agent may still be in"
+
+# The board is the authority on liveness, so the reaper cannot disagree with it. With no event log
+# there is no board, and nothing may be called an orphan — fail-safe, not fail-open.
+WRN="$TMP/wreap-nolog"; rm -rf "$WRN"; mkdir -p "$WRN"
+( cd "$WRN" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init && git worktree add -q .agent-wt/APP-009 -b feat/APP-009 ) >/dev/null 2>&1
+( cd "$WRN" && node "$HERE/worktree-reap.mjs" --root . --apply ) >"$TMP/wr4.txt" 2>&1
+[ -d "$WRN/.agent-wt/APP-009" ] \
+  && ok "with NO event log nothing is called an orphan — the reaper fails safe, never open" \
+  || bad "with NO event log nothing is called an orphan" "it deleted a tree it could not judge"
+
+# The ceiling is ON by default (5 GB). A ceiling that defaults to unlimited is a gate that never
+# fires, which is the shape this repo has been caught by before — the orphaned invariant suite, the
+# unreachable --driver, the detector nobody called.
+#
+# Sized against a real pool rather than an empty one: `0 > 0` is false, so a 0 MB fixture under a
+# 0 MB ceiling passes and the assertion proves nothing. Two megabytes of actual bytes is what makes
+# this branch reachable at all.
+dd if=/dev/zero of="$WRN/.agent-wt/APP-009/ballast.bin" bs=1024 count=2048 >/dev/null 2>&1
+assert_exit 1 "the disk ceiling BLOCKS when the pool exceeds it" \
+  sh -c 'cd "$1" && node "$2/worktree-reap.mjs" --root . --max-disk-mb 1' sh "$WRN" "$HERE"
+assert_exit 0 "...and clears under a ceiling the pool fits inside" \
+  sh -c 'cd "$1" && node "$2/worktree-reap.mjs" --root . --max-disk-mb 5000' sh "$WRN" "$HERE"
+
+# --- ci-status: the merge gate CI has always claimed (OPS-001) ------------------------------------
+#
+# knowledge/git-workflow.md said "a clean build + green tests is a hard merge gate" and nothing
+# implemented it: the merge gate reads a non-owner approval and nothing on the server. Grepping the
+# whole plugin for a CI-status read found two hits, both in repo-controls.sh, which only REPORTS.
+CIS="$TMP/cis"; rm -rf "$CIS"; mkdir -p "$CIS/docs" "$CIS/bin"
+( cd "$CIS" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf 'Integration branch: main\n' > "$CIS/docs/23-git-strategy.md"
+printf '#!/bin/sh\necho "no auth" >&2\nexit 1\n' > "$CIS/bin/gh"; chmod +x "$CIS/bin/gh"
+
+# UNARMED IS THE DEFAULT AND MUST NEVER DEADLOCK. A project with no gh, no remote or no CI at all is
+# ordinary. A gate that stops those is a gate its first user switches off — so without
+# requireCiGreen this reports and exits 0, loudly, rather than blocking.
+printf '{}\n' > "$CIS/.studio-policy.json"
+( cd "$CIS" && PATH="$CIS/bin:$PATH" node "$HERE/ci-status.mjs" --root . --base main ) >"$TMP/ci1.txt" 2>&1
+[ $? = 0 ] && ok "ci-status never blocks a project that has not armed requireCiGreen" \
+  || bad "ci-status never blocks a project that has not armed requireCiGreen" "$(head -3 "$TMP/ci1.txt")"
+assert_has "$TMP/ci1.txt" "CANNOT EVALUATE" "...while still SAYING it could not ask — exit 0 is not the same as green"
+assert_has "$TMP/ci1.txt" "ADVISORY ONLY" "...and naming the flag that would make it a gate"
+
+# Armed, the same unanswerable question is CANNOT EVALUATE and stops the round. "Nobody asked" and
+# "it is green" are different answers and only one of them is safe to build on.
+printf '{"requireCiGreen": true}\n' > "$CIS/.studio-policy.json"
+assert_exit 2 "armed, an unanswerable CI question is CANNOT EVALUATE — never a pass" \
+  sh -c 'cd "$1" && PATH="$1/bin:$PATH" node "$2/ci-status.mjs" --root . --base main' sh "$CIS" "$HERE"
+
+# --- register: the two trackers that fed the loop had no machine (OPS-004) ------------------------
+#
+# This studio tracks work in eleven places. docs/51-bugs.md and docs/81-findings.md were the only two
+# with no CLI, no vocabulary and no validator — and the only two that feed work back INTO the loop.
+# A bug or finding with no ticket is not a board row, so board-doctor, orchestrator round and
+# /app-build's exit check are all blind to it, and it is closed by being unmentioned.
+# tech-manager.md's own note: ~70 findings silently skipped while four review rounds reported nothing.
+RG="$TMP/reg"; rm -rf "$RG"; mkdir -p "$RG/docs"; printf '{}\n' > "$RG/.studio-policy.json"
+rg_() { ( cd "$RG" && node "$HERE/register.mjs" --root . "$@" ); }
+
+assert_exit 0 "register check is CLEAR on an empty register" rg_ check
+rg_ add BUG-001 --kind bug --title "the date picker selection is discarded" --severity S1 --by qa-engineer >/dev/null 2>&1
+assert_exit 1 "...and refuses the moment one item owes an answer" rg_ check
+
+# THE REFUSAL THAT DOES THE WORK. It is trivially easy to close a register by marking everything
+# DEFERRED; the reason field is what makes that visible to the next reader. Deferring is a decision,
+# and a decision has an author and a why.
+assert_exit 1 "DEFERRED with no --reason is REFUSED (a deferral without one is an omission)" \
+  rg_ status BUG-001 DEFERRED --by tech-manager
+# FIXED is a claim about the INTEGRATION BRANCH — tech-manager.md says so in prose. This is that
+# sentence as a refusal: name the ticket whose merge carried it, or there is nothing to check.
+assert_exit 1 "FIXED with no --ticket is REFUSED (nothing would be checkable against the board)" \
+  rg_ status BUG-001 FIXED --by tech-manager
+assert_exit 1 "a status outside the closed vocabulary is REFUSED, with the legal list" \
+  rg_ status BUG-001 done --by tech-manager
+assert_exit 1 "adding an ID twice is REFUSED — correct by appending, never by re-adding" \
+  rg_ add BUG-001 --kind bug --title "another go at the same id" --by qa-engineer
+
+rg_ status BUG-001 FIXED --by tech-manager --ticket APP-004 >/dev/null 2>&1
+assert_exit 0 "a terminal status with its evidence clears the register" rg_ check
+rg_ status BUG-001 DEFERRED --by tech-manager --reason "S3 in practice, queued to sprint 4" >/dev/null 2>&1
+assert_exit 0 "DEFERRED WITH a reason is terminal too — deferring is a fine decision, silence is not" rg_ check
+
+# import-bugs makes the Markdown a SOURCE rather than the register, through the same parseBugs
+# ship-gate.sh already trusts. One parser, not two that can disagree about what a bug row is.
+printf '| BUG-002 | APP-001 | **S2** | crashes on rotate |\n' > "$RG/docs/51-bugs.md"
+rg_ import-bugs --by qa-engineer >/dev/null 2>&1
+assert_exit 1 "import-bugs pulls docs/51-bugs.md in, and the imported row owes an answer" rg_ check
+rg_ show --json > "$TMP/reg-show.json" 2>&1
+assert_has "$TMP/reg-show.json" "crashes on rotate" "...importing the DESCRIPTION cell, not a re-print of the pipes around it"
+
+# --- worktree-slot: one tree per WRITER, which the ticket never was (OPS-005) ----------------------
+#
+# parallel-orchestrator step 2 batches by owner; step 3 tells each agent to use "its worktree path",
+# singular; agent-isolation demanded one worktree per TICKET. An ios-developer owning three tickets
+# was spawned once, given three trees, and told to stand in a path that did not exist. Both
+# resolutions were broken: one tree makes every branch carry its siblings' files (code-reviewer
+# check 9 rejects it), and one spawn per ticket throws away the batching step 2 exists for.
+WS="$TMP/wslot"; rm -rf "$WS"; mkdir -p "$WS/docs"
+( cd "$WS" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf 'Integration branch: main\n' > "$WS/docs/23-git-strategy.md"
+ws_() { ( cd "$WS" && node "$HERE/worktree-slot.mjs" --root . "$@" ); }
+
+ws_ lease --owner ios-developer --tickets APP-001,APP-002 >"$TMP/ws1.txt" 2>&1
+[ -d "$WS/.agent-wt/ios-developer" ] \
+  && ok "a slot is leased per OWNER and holds all of that owner's tickets" \
+  || bad "a slot is leased per OWNER and holds all of that owner's tickets" "$(cat "$TMP/ws1.txt")"
+assert_has "$TMP/ws1.txt" "spawn-gate.sh ios-developer" "...and tells the caller to gate on OWNERS, which is what now has a tree each"
+
+# spawn-gate needs no change at all: it asks whether <dir>/<name> is a real worktree, and an owner
+# name is a name. That the existing gate accepts the new shape unmodified is the assertion.
+assert_exit 0 "spawn-gate accepts an owner-keyed slot with no modification to the gate itself" \
+  sh -c 'cd "$1" && sh "$2/spawn-gate.sh" ios-developer' sh "$WS" "$HERE"
+
+assert_exit 1 "a second wave into a slot still holding the first is REFUSED" \
+  ws_ lease --owner ios-developer --tickets APP-009
+assert_exit 1 "leasing past the pool size is REFUSED — that is the parallelism cap doing its job" \
+  ws_ lease --owner android-developer --tickets APP-003 --pool 1
+ws_ release --owner ios-developer >/dev/null 2>&1
+assert_exit 0 "...and releasing frees the slot for the next owner" \
+  ws_ lease --owner android-developer --tickets APP-003 --pool 1
+
+# A released lease leaves the TREE, and the reaper is what reclaims it — with its dirty check intact.
+( cd "$WS" && node "$HERE/worktree-reap.mjs" --root . ) >"$TMP/ws2.txt" 2>&1
+assert_has "$TMP/ws2.txt" "ios-developer" "a released slot's tree becomes the reaper's problem, not a silent leak"
+
+# --- wave-integrate: merge once, test once, push once (OPS-002 / OPS-003 / OPS-008) ---------------
+#
+# The loop paid per TICKET for a signal only meaningful per WAVE: a cold build per DONE (seven for
+# one ticket at the retry ceiling), a push and therefore a CI run per merge (none of them read), and
+# a cold developer respawn for every merge conflict. /app-build step 5 already made this exact
+# argument about the runtime gate — "one app build per wave... the only place three
+# individually-approved tickets and no composition root is visible at all" — and then ran the
+# per-ticket builds anyway.
+WI="$TMP/wave"; rm -rf "$WI"; mkdir -p "$WI/docs/team" "$WI/docs/53-reviews"
+( cd "$WI" && git init -q -b main . && git config user.email t@t.t && git config user.name T ) >/dev/null 2>&1
+printf 'docs/\n' > "$WI/.gitignore"
+printf 'Integration branch: main\n' > "$WI/docs/23-git-strategy.md"
+printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"sh run-tests.sh","full":"sh run-tests.sh"}}\n' > "$WI/docs/team/project-profile.json"
+cat > "$WI/run-tests.sh" <<'RT'
+#!/bin/sh
+echo "3 tests run: 3 passing"
+for f in feature-*.txt; do [ -f "$f" ] || continue; grep -q OK "$f" || { echo "FAILED: assertion failed in $f"; exit 1; }; done
+exit 0
+RT
+( cd "$WI" && git add -A && git commit -q -m init ) >/dev/null 2>&1
+
+wave_mk() {  # <nnn> <OK|BAD>
+  ( cd "$WI" && git checkout -q -b "feat/APP-$1" main && echo "$2" > "feature-$1.txt" \
+    && git add "feature-$1.txt" && git commit -q -m "APP-$1" && git checkout -q main ) >/dev/null 2>&1
+}
+wave_drive() {  # <nnn> — walk a ticket to the merge gate, exactly as /app-build does
+  ( cd "$WI"
+    node "$HERE/board.mjs" add "APP-$1" --title "t$1" --owner ios-developer --by tech-manager
+    node "$HERE/board.mjs" move "APP-$1" claimed --by ios-developer
+    node "$HERE/board.mjs" move "APP-$1" done_reported --by ios-developer
+    node "$HERE/board.mjs" move "APP-$1" verified_static --by tech-manager --detail "deferred to wave"
+    node "$HERE/board.mjs" move "APP-$1" review_requested --by ios-developer --detail "-> code-reviewer"
+    printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-%s\n\n## Not checked\nNothing.\n' "$1" > "docs/53-reviews/APP-$1-cycle-0.md"
+    node "$HERE/board.mjs" move "APP-$1" approved --by code-reviewer --verdict "docs/53-reviews/APP-$1-cycle-0.md"
+    node "$HERE/board.mjs" move "APP-$1" merged --by tech-manager ) >/dev/null 2>&1
+}
+wave_mk 001 OK; wave_mk 002 OK; wave_drive 001; wave_drive 002
+
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --dry-run ) >"$TMP/wi0.txt" 2>&1
+assert_has "$TMP/wi0.txt" "APP-001" "wave-integrate --dry-run names the wave without touching anything"
+( cd "$WI" && git rev-parse --verify integration/wave-1 ) >/dev/null 2>&1 \
+  && bad "--dry-run creates no branch" "integration/wave-1 exists" \
+  || ok "--dry-run creates no branch"
+
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 1 ) >"$TMP/wi1.txt" 2>&1
+[ $? = 0 ] && ok "a clean wave merges and its suite runs GREEN — once, on the merged tree" \
+  || bad "a clean wave merges and its suite runs GREEN" "$(tail -5 "$TMP/wi1.txt")"
+assert_has "$TMP/wi1.txt" "merged 2, conflicted 0" "...merging every gated branch in one pass"
+assert_has "$TMP/wi1.txt" "move APP-001 verified" "...and printing the upgrade the green earns per ticket"
+assert_has "$TMP/wi1.txt" "NOT PUSHED" "...pushing nothing without --push: one push per wave is a decision, not a side effect"
+
+# THE UPGRADE PATH IS REAL, NOT ADVICE. `verified` is legal from `qa` precisely so a ticket merged on
+# a STATIC verification can be raised once the suite finally runs (lib/events.mjs legalEvents). That
+# path existed and nothing had ever walked it; this is what walks it, with no new event and no
+# schema change.
+( cd "$WI" && node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "wave 1 full suite green" ) >"$TMP/wi-up.txt" 2>&1
+[ $? = 0 ] && ok "the wave's green upgrades verified_static to a real verified (no new event needed)" \
+  || bad "the wave's green upgrades verified_static to a real verified" "$(cat "$TMP/wi-up.txt")"
+
+# A ticket whose branch breaks the merged tree fails the WAVE, and the wave names candidates from
+# the changed-file map rather than re-spawning everyone.
+wave_mk 003 BAD; wave_drive 003
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 2 ) >"$TMP/wi2.txt" 2>&1
+[ $? = 1 ] && ok "a wave whose merged tree fails its suite is exit 1 — the wave does not advance" \
+  || bad "a wave whose merged tree fails its suite is exit 1" "$(tail -4 "$TMP/wi2.txt")"
+assert_has "$TMP/wi2.txt" "CANDIDATE tickets" "...naming candidates from the changed-file map"
+assert_has "$TMP/wi2.txt" "APP-003" "...and the candidate is the ticket that actually broke it"
+assert_has "$TMP/wi2.txt" "not a verdict" "...stated as a heuristic, because attributing by feel is the alternative"
+
+# A CONFLICT COSTS ITSELF, NOT THE WAVE. Per-ticket merging blocked on the first conflict and sent a
+# cold developer to rebase; here the other approved work still integrates.
+( cd "$WI" && git checkout -q -b feat/APP-004 main && echo left > shared.txt && git add shared.txt && git commit -q -m APP-004 \
+  && git checkout -q -b feat/APP-005 main && echo right > shared.txt && git add shared.txt && git commit -q -m APP-005 \
+  && git checkout -q main ) >/dev/null 2>&1
+wave_drive 004; wave_drive 005
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 3 ) >"$TMP/wi3.txt" 2>&1
+assert_has "$TMP/wi3.txt" "conflicted 1" "one conflicting branch is aborted and the rest of the wave still merges"
+assert_has "$TMP/wi3.txt" "CONFLICT APP-005" "...naming which ticket and which files"
+assert_has "$TMP/wi3.txt" "shared.txt" "...so tech-manager can read both sides instead of guessing"
+assert_has "$TMP/wi3.txt" "Nothing here picks a side" "...and the script never resolves it: ours/theirs unread is a silent lost edit"
+
+# Re-running the same wave number would merge on top of the previous result and report it as fresh.
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 3 ) >"$TMP/wi4.txt" 2>&1
+assert_has "$TMP/wi4.txt" "already exists" "re-running a wave number is refused rather than silently re-integrating"
+
+# --- ship-gate reads the register (OPS-004) --------------------------------------------------------
+#
+# Step 3 of ship-gate counts open S1/S2 rows in one Markdown table. That is a real check and a
+# DIFFERENT question: an audit finding is not a bug row, so it was invisible there. Shipping with
+# three DEFERRED S3 bugs is a fine release; shipping without knowing is the failure.
+SGR="$TMP/shipreg"; rm -rf "$SGR"; mkdir -p "$SGR/docs"
+cp "$FIX/clean.md" "$SGR/docs/31-board.md" 2>/dev/null || printf '# board\n' > "$SGR/docs/31-board.md"
+( cd "$SGR" && node "$HERE/register.mjs" --root . add AUD-031 --kind finding \
+    --title "consent gate unenforceable in composition" --by security-reviewer ) >/dev/null 2>&1
+( cd "$SGR" && sh "$HERE/ship-gate.sh" . ) >"$TMP/sgr.txt" 2>&1
+assert_has "$TMP/sgr.txt" "no terminal status" "ship-gate BLOCKS on a register item nobody has decided about"
+( cd "$SGR" && node "$HERE/register.mjs" --root . status AUD-031 WRONG-FINDING --by cto \
+    --reason "the composition root wires the gated logger; re-checked on the merged tree" ) >/dev/null 2>&1
+( cd "$SGR" && sh "$HERE/ship-gate.sh" . ) >"$TMP/sgr2.txt" 2>&1
+grep -q "no terminal status" "$TMP/sgr2.txt" \
+  && bad "...and stops blocking once every item has been DECIDED (not necessarily fixed)" "still blocking" \
+  || ok "...and stops blocking once every item has been DECIDED (not necessarily fixed)"
+
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
 # conflicted file untouched. A broken agent file reached the base branch and was found two merges

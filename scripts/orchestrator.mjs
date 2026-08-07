@@ -339,6 +339,27 @@ function cmdRound() {
     { name: 'toolchain', argv: [resolve(HERE_SCRIPTS, 'project-profile.mjs'), 'check'],
       blocked: 'a declared tool is the WRONG version — this project will not build correctly here',
       unknown: 'no project profile, or a declared tool is absent: the toolchain is UNPROVEN, which is not the same as fine' },
+
+    // CI (OPS-001). `knowledge/git-workflow.md` has always said "a clean build + green tests is a
+    // hard merge gate" and nothing implemented it — the merge gate reads an approval and nothing on
+    // the server. Asking at the TOP of the round rather than at merge time costs one read-only
+    // command, puts no agent in a polling loop, and still stops the studio piling a wave on top of
+    // a red base. Opt-in via `.studio-policy.json: requireCiGreen`, so a project with no gh, no
+    // remote or no CI is unaffected — a gate that deadlocks ordinary projects is a gate its first
+    // user switches off.
+    { name: 'ci', argv: [resolve(HERE_SCRIPTS, 'ci-status.mjs'), '--root', ROOT],
+      blocked: 'the integration branch is RED and no waiver names that commit — fix it before adding a wave on top of it',
+      unknown: 'CI could not be asked (no gh, not authenticated, no runs, or a run still going). NOT green — nobody asked' },
+
+    // DISK (OPS-006). Worktree removal was only ever specified on the merge path, so a rejected,
+    // blocked or crashed ticket left its tree behind forever, with no cap and no reaper. Measured in
+    // this repository — which contains no application code — 12 worktrees and 88 MB. On an iOS
+    // project each also carries its own DerivedData. This is REPORT-ONLY here (no `--apply`, because
+    // this command is read-only by construction) and blocks only on the disk ceiling: an orphan is
+    // reclaimable, a full disk fails every build on the machine.
+    { name: 'worktree pool', argv: [resolve(HERE_SCRIPTS, 'worktree-reap.mjs'), '--root', ROOT],
+      blocked: 'the agent worktree pool is over its disk ceiling — reclaim it (worktree-reap.mjs --apply) or raise the ceiling deliberately',
+      unknown: 'not a git repository, or the event log is unreadable, so no worktree can be judged orphaned' },
   ];
 
   let worst = 0;
@@ -348,7 +369,16 @@ function cmdRound() {
     const code = r.status === 0 ? 0 : r.status === 1 ? 1 : 2;
     worst = Math.max(worst, code);
     const state = code === 0 ? 'CLEAR' : code === 1 ? 'BLOCKED' : 'CANNOT EVALUATE';
-    lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}` : code === 2 ? ` — ${s.unknown}` : ''}`);
+    // A STEP THAT SOFTENED ITS OWN VERDICT MUST SAY SO ON THIS LINE.
+    //
+    // `ci-status.mjs` exits 0 whenever `requireCiGreen` is not armed, whatever it actually found —
+    // deliberately, so an ordinary project without `gh` is not deadlocked. But printing a bare
+    // `CLEAR ci` for "we could not ask anyone" is the exact green-while-nothing-happened shape this
+    // file's own header argues against. Its headline rides along, so CLEAR never stands in for
+    // CANNOT EVALUATE without saying which it was.
+    const headline = (r.stdout || '').split('\n').find((l) => /^[A-Z ]+STATUS: /.test(l.trim()));
+    const carried = code === 0 && headline && !/: PASS\b/.test(headline) ? ` — ${headline.trim()} (advisory: this project has not armed it)` : '';
+    lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}` : code === 2 ? ` — ${s.unknown}` : carried}`);
   }
 
   process.stdout.write('ROUND PRECONDITIONS\n\n' + lines.join('\n') + '\n\n');
@@ -372,6 +402,31 @@ function cmdRound() {
       process.stdout.write(`    STALLED ${s.id} [${s.status}] — ${s.since} board events have happened since this one moved\n`);
     }
     process.stdout.write('\n');
+  }
+
+  // THE REGISTER IS REPORTED HERE AND ENFORCED AT SHIP, and the asymmetry is deliberate.
+  //
+  // Open bugs and unanswered findings mid-sprint are NORMAL — that is what a sprint is for — so
+  // blocking a build round on them would deadlock the loop on its own inbox. `ship-gate.sh` is
+  // where `register.mjs check` is a refusal. What this achieves is visibility every round instead
+  // of a single discovery at the release, which is the specific failure OPS-004 describes: an item
+  // with no ticket is invisible to the board, the doctor and the sprint summary, and gets closed by
+  // being unmentioned.
+  {
+    const reg = spawnSync(process.execPath, [resolve(HERE_SCRIPTS, 'register.mjs'), '--root', ROOT, 'check', '--json'], { cwd: ROOT, encoding: 'utf8' });
+    if (reg.status === 0 || reg.status === 1) {
+      try {
+        const parsed = JSON.parse(reg.stdout);
+        if (parsed.open > 0) {
+          process.stdout.write(`  REGISTER — ${parsed.open} of ${parsed.total} item(s) still owe an answer\n`);
+          for (const i of parsed.openItems.slice(0, 8)) {
+            process.stdout.write(`    ${String(i.status).padEnd(12)} ${String(i.id).padEnd(14)} ${i.ticket ? `-> ${i.ticket}` : 'NO TICKET — nothing will pick this up'}  ${i.title}\n`);
+          }
+          if (parsed.openItems.length > 8) process.stdout.write(`    ... and ${parsed.openItems.length - 8} more (register.mjs check)\n`);
+          process.stdout.write('    Not blocking a round; ship-gate.sh refuses on these. An item with no ticket is the one\n    to act on now — it is the shape that gets closed by being unmentioned.\n\n');
+        }
+      } catch { /* a register that will not parse is ship-gate's problem, loudly, not this reporter's */ }
+    }
   }
 
   if (worst === 0 && move.stalled.length) {

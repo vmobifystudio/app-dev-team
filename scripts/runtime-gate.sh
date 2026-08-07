@@ -68,6 +68,14 @@ esac
 [ -d "$ROOT" ] || { echo "runtime-gate: no such directory: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
 
+# Pin the shared toolchain caches (OPS-003). This gate builds once per WAVE, so it is not the
+# repeated cost the caches were added for — but it runs on the same machine minutes after
+# verify-done did, and GRADLE_USER_HOME alone means the Android path reuses that dependency cache
+# instead of re-resolving it. The iOS path deliberately keeps its own -derivedDataPath: it has to
+# know where the built .app landed, and pointing it at the shared cache would make the artifact it
+# then launches ambiguous with every other build in there.
+. "$(dirname "$0")/build-env.sh"
+
 DATE=$(date +%F)
 EVIDENCE="$ROOT/docs/evidence"
 WORK=$(mktemp -d)

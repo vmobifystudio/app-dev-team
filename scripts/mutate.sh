@@ -148,6 +148,15 @@ M26@@scripts/lib/messages.mjs@@if (decided.length && openQuestions(thread).lengt
 M27@@scripts/lib/messages.mjs@@if (mine.length) {@@if (false) {@@a second open question from one role is refused — escalate the first
 M28@@scripts/lib/messages.mjs@@if (spent >= MAX_PER_TICKET) {@@if (false) {@@the thirteenth message on one ticket is refused
 M29@@scripts/lib/messages.mjs@@m.expires && m.expires < today@@m.expires && m.expires > today@@an expired waiver is a finding, not a formality
+M30@@scripts/register.mjs@@if (NEEDS_REASON.has(status)@@if (false && NEEDS_REASON.has(status)@@DEFERRED with no --reason is REFUSED (a deferral without one is an omission)
+M31@@scripts/register.mjs@@if (status === 'FIXED' && !ticket) {@@if (false) {@@FIXED with no --ticket is REFUSED (nothing would be checkable against the board)
+M32@@scripts/worktree-reap.mjs@@dirty: state.live ? false : dirty(w.path)@@dirty: false@@a DIRTY orphan is reported, not reclaimed
+M33@@scripts/worktree-reap.mjs@@if (finalMb > MAX_DISK_MB) {@@if (false) {@@the disk ceiling BLOCKS when the pool exceeds it
+M34@@scripts/ci-status.mjs@@process.exit(ARMED ? code : 0);@@process.exit(0);@@armed, an unanswerable CI question is CANNOT EVALUATE — never a pass
+M35@@scripts/verify-done.sh@@[ "$STATIC" -eq 1 ] && TESTS_STATUS="deferred-to-wave"@@:@@...naming WHY the suite did not run, so it is not mistaken for a missing command
+M36@@scripts/worktree-slot.mjs@@if (!mine && others.length >= POOL) {@@if (false) {@@leasing past the pool size is REFUSED — that is the parallelism cap doing its job
+M37@@scripts/wave-integrate.mjs@@const green = test.status === 0 && !cannotRun;@@const green = true;@@a wave whose merged tree fails its suite is exit 1 — the wave does not advance
+M38@@scripts/ship-gate.sh@@    1) block "the register has item@@    1) note "the register has item@@ship-gate BLOCKS on a register item nobody has decided about
 M30@@scripts/lib/messages.mjs@@if (record.v !== SCHEMA_VERSION) {@@if (false) {@@a schema-v2 record makes board-doctor CANNOT EVALUATE, never a pass
 M31@@scripts/messages.mjs@@writeFileSync(md, renderMessages(messages));@@if (!existsSync(md)) writeFileSync(md, renderMessages(messages));@@a hand edit to the generated view is overwritten by the next render
 M32@@scripts/accessibility-scan.mjs@@&& !/accessibilityLabel/.test(block)@@&& false@@comment-only and unlabelled SwiftUI controls remain detectable

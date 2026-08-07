@@ -3,6 +3,63 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+**Economics.** Every gate in this studio asked "is this legal?" and none asked "what did that cost,
+and did we buy anything with it?" The adversarial review of 2026-08-07
+(`docs/reviews/2026-08-07-adversarial-operations-review.md`) found six S1-tier consequences, all of
+them from the absence of an integration role rather than from a gate failing. This closes them.
+
+**CI became a gate instead of a sentence (OPS-001, OPS-002)**
+- `knowledge/git-workflow.md` has always said "a clean build + green tests is a hard merge gate".
+  Nothing implemented it: the merge gate reads a non-owner approval and nothing on the server, and a
+  grep of the whole plugin for a CI-status read returned two hits, both in `repo-controls.sh`, which
+  only *reports*. New `scripts/ci-status.mjs` reads the last completed conclusion for the integration
+  branch and `orchestrator round` refuses to start a round on red. Opt-in per project
+  (`"requireCiGreen": true`), because a project with no `gh` is ordinary and a gate that deadlocks it
+  gets switched off. Waivers name a **commit SHA**, so they expire on the next push.
+- **No agent may trigger, re-run or cancel a workflow.** `ci-status.mjs` only ever reads.
+
+**One wave, one merge, one build, one push (OPS-002, OPS-003, OPS-008)**
+- New `scripts/wave-integrate.mjs`: merges every gated branch `--no-ff` into `integration/wave-N` in
+  its own worktree, runs the `full` scope ONCE on the merged tree, attributes failures to candidate
+  tickets by changed files, and pushes once with `--push`. A conflict aborts that one merge and the
+  rest of the wave continues.
+- `verify-done.sh --static` is the per-ticket lane: verifies branch, commits and changed files, and
+  exits **2** — because the tests genuinely have not run. It routes to `verified_static`, which
+  already refuses `closed` and already blocks ship. The wave's green earns the real `verified`, using
+  the `qa → verified` transition that has always been legal and that nothing had ever walked.
+- `tech-manager` no longer runs `git merge` per ticket, and resolves textual conflicts itself instead
+  of re-spawning a cold developer to rebase hunks the manager is already holding.
+- New `scripts/build-env.sh` pins `GRADLE_USER_HOME`, `SWIFTPM_CACHE_PATH` and `STUDIO_DERIVED_DATA`
+  at `.studio-cache/`, outside every worktree. `--check` says per project whether the Xcode path
+  actually consumes it, rather than letting an exported variable stand in for a saving nobody made.
+
+**One worktree per writer, not per ticket (OPS-005, OPS-006)**
+- New `scripts/worktree-slot.mjs`. `parallel-orchestrator` batched by owner, `agent-isolation`
+  demanded a worktree per ticket, and step 3 told each agent to use "its worktree path" — three
+  sentences that could not all be true, and the first owner with two ready tickets is where it
+  breaks. `spawn-gate.sh` needed no change: pass it owners.
+- New `scripts/worktree-reap.mjs`, wired read-only into `orchestrator round` and applied at
+  `/app-build` step 4a. Removal used to be specified only on the merge path, so every rejected,
+  blocked or crashed ticket leaked its tree — 12 worktrees and 88 MB measured in this repository,
+  which contains no application code. It **never** `--force`s: a dirty orphan is reported and left.
+  A 5 GB disk ceiling is on by default and blocks the round.
+
+**One register, with a status that is never blank (OPS-004)**
+- New `scripts/register.mjs` over `docs/90-register.jsonl`. `docs/51-bugs.md` and
+  `docs/81-findings.md` were the only two trackers in the studio with no CLI, no vocabulary and no
+  validator — and the only two that feed work back *into* the loop. An item with no ticket was
+  invisible to `board-doctor`, `orchestrator round` and the sprint summary, and got closed by being
+  unmentioned (~70 findings, once, in a real programme).
+- `register.mjs check` refuses while anything lacks a terminal status; `ship-gate.sh` reads it.
+  `DEFERRED` is terminal and cheap — it just needs an author and a reason. `FIXED` needs the ticket
+  whose merge carried it, because FIXED is a claim about the integration branch.
+- `import-bugs` folds QA's Markdown in through the same `parseBugs` `ship-gate.sh` already uses, so
+  the table stays a source and stops being the register.
+
+**+59 assertions (1258 → 1317) and 9 mutations** (M30–M38), one per new refusal.
+
 ## [3.0.0] — 2026-08-05
 
 The kernel. **779 → 1139 assertions**, twelve foundation invariants holding, and two CLI changes

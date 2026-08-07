@@ -112,7 +112,31 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      nothing to do while one QA cycle ran. QA failures already have their own mechanism — they
      become `BUG-NNN-fix` tickets in step 1 — so blocking dependents a second time buys nothing and
      serializes the whole board behind its slowest gate.
-   - `docs/51-bugs.md` (if it exists) — for every open `S1` or `S2`, ensure a matching `BUG-NNN-fix` row exists on the board; if not, spawn `tech-manager` once with the instruction to create them, then re-read the board.
+   - **The register — every bug and every audit finding, with a status that is never blank.**
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . import-bugs --by qa-engineer
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . check
+     ```
+
+     `import-bugs` folds `docs/51-bugs.md` into `docs/90-register.jsonl` through the same `parseBugs`
+     `ship-gate.sh` already uses, so QA keeps writing the Markdown it always wrote and nothing is
+     lost by nobody reading it. `check` exits 1 while any item still owes an answer; that is a
+     **report** here (open bugs mid-sprint are what a sprint is for) and a **refusal** at ship.
+
+     For every open `S1`/`S2` still without a ticket, create a `BUG-NNN-fix` row and link it:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . link BUG-007 --ticket BUG-007-fix --by tech-manager
+     ```
+
+     **Why this replaced a sentence.** The instruction used to be "for every open S1 or S2, ensure a
+     matching row exists on the board" — with nothing that failed if it never happened. A bug with no
+     ticket is not a board row, so it is invisible to `board-doctor`, to `orchestrator round`, to
+     step 8's exit check (which accounts for every non-`done` ROW) and to the sprint summary. It is
+     closed by being unmentioned. `tech-manager.md` already records the cost at scale: ~70 findings
+     silently skipped in a real programme while four review rounds reported nothing wrong.
+     Deferring is fine and cheap — `DEFERRED` is terminal — it just has to be authored and reasoned.
 
 1a. **Route the finished wave's assumptions into the ledger.** For every agent that returned last
    round, each `ASSUMED, NOT RAISED` line in its `Assumptions & open questions` field becomes a real
@@ -151,11 +175,31 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    the live channel was used zero times, so every ambiguity was resolved by a guess and caught, if
    at all, in review. This step is where a guess becomes a decision before it becomes code.
 
-2. **Spawn developers in parallel.** Use the `parallel-orchestrator` skill, which now requires a
-   **git worktree per writing agent, created before the spawn** (`agent-isolation`), and serializes
-   any ticket pair that shares a file. Launch IC agents concurrently in a **single assistant
-   message** — one Task invocation per owner, each passed its worktree path and the full list of
-   tickets they're working this round.
+2. **Spawn developers in parallel.** Use the `parallel-orchestrator` skill, which requires a
+   **worktree per writing agent, leased before the spawn** (`agent-isolation`), and serializes any
+   ticket pair that shares a file. Launch IC agents concurrently in a **single assistant message** —
+   one Task invocation per owner, each passed its slot path and the full list of tickets they're
+   working this round.
+
+   **Lease one slot per OWNER, not one per ticket:**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease \
+     --owner ios-developer --tickets APP-001,APP-002 --pool 3
+   ```
+
+   **This is the fix for a contradiction that would have bitten the first real multi-ticket wave.**
+   `parallel-orchestrator` step 2 says one agent invocation per owner, batched; `agent-isolation`
+   said one worktree per TICKET; step 3 says each agent's prompt names *its* worktree path,
+   singular. One `ios-developer` owning three tickets was spawned once, given three worktrees, and
+   told to stand in one path that did not exist. Working all three in one tree makes every branch
+   carry its siblings' files — which `code-reviewer` check 9 correctly rejects, sending
+   `tech-manager` hunting a collision the orchestrator caused.
+
+   The unit of isolation was never the ticket; it is the **writer**. One agent working three tickets
+   one after another in its own slot cannot corrupt anyone: it cuts `feat/APP-001-slug`, commits,
+   cuts `feat/APP-002-slug` from the same base, commits. Branch-per-ticket is unchanged. Disk is now
+   bounded by the parallelism cap instead of by the backlog.
 
    **Claim each ticket before its agent is spawned**, so the board says who is working on what while
    they work rather than after they return:
@@ -166,10 +210,11 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 
    A refusal here means the ticket was not actually ready — read the reason and spawn nobody for it.
 
-   **Then run the isolation gate, and obey it.** Last command before the launch message:
+   **Then run the isolation gate, and obey it.** Last command before the launch message — and it
+   takes the **owners** you are about to spawn, because that is what now has a tree each:
 
    ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" APP-001 APP-002 APP-003
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" ios-developer android-developer
    ```
 
    Exit `1` → **REFUSED: spawn nobody.** It names the tickets with no worktree and prints the
@@ -253,13 +298,33 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      ```bash
      BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") \
        || { echo "$BASE"; echo "STOP: integration branch unresolved"; exit 2; }
+     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" --static <branch> "$BASE"
+     ```
+
+     **`--static` is the default per-ticket lane, and the reason is arithmetic.** `verify-done.sh`
+     runs the test command either in the agent's slot or in a `mktemp -d` worktree it then deletes.
+     Both are cold, and the second is cold forever. Three tickets bought three cold builds for a
+     signal no single feature branch can give: whether the MERGED tree works. Step 5 of this file
+     already argues exactly that about the runtime gate — "one app build per wave instead of one per
+     ticket, run on the merged tree" — and then paid for the per-ticket builds anyway.
+
+     `--static` verifies the half a branch can answer (it exists, it has commits, it changed files,
+     the diff is this ticket's) and exits **2** — because the tests genuinely have not run, and
+     CANNOT EVALUATE is the honest word. Record `verified_static`, which already unlocks review,
+     approval and the merge gate, already refuses `closed`, and already blocks `ship-gate.sh`. The
+     wave pass in step 5 is what runs the suite and earns the real `verified`.
+
+     **When to still run tests per ticket.** If the project's `fast` scope is genuinely scoped
+     (`./gradlew :module:test`, `swift test --filter Unit`) **and** `build-env.sh` reports the
+     caches apply, `fast` costs seconds and buys the developer earlier feedback — use it:
+
+     ```bash
      sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" fast
      ```
 
-     **`fast` and `full` resolve from `docs/team/project-profile.json` (F6) — prefer them to a
-     hardcoded command.** This step used to take one literal test command, which in practice was the
-     whole suite for every ticket, so a one-line change paid for the full matrix. Use `fast`
-     per-ticket and `full` on the last ticket of the round and before ship.
+     `fast` and `full` resolve from `docs/team/project-profile.json` (F6); never hardcode a command.
+     If `fast` is really the whole matrix, it is not a fast scope — use `--static` and fix the
+     profile.
 
      A scope the profile does not declare is **exit 2, with nothing substituted** — no default is
      invented, because a default test command makes "the tests ran" true of a command nobody chose.
@@ -416,8 +481,13 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      code is bad; read the message and have the reviewer finish the document.
      Then spawn `tech-manager` to run the Merge gate (see `agents/tech-manager.md`), passing the
      `$BASE` resolved in step 3. The gate **is** `board.mjs move APP-NNN merged --by tech-manager`,
-     which refuses without a non-owner `approved` and runs before any git command; on exit 0 the row
-     is `qa`.
+     which refuses without a non-owner `approved`; on exit 0 the row is `qa`.
+
+     **The gate no longer runs `git merge`, and that is the change.** It passes or refuses per
+     ticket, exactly as before. The git merges happen ONCE, for the whole wave, in step 5 —
+     `wave-integrate.mjs`. Per-ticket merging pushed the integration branch once per ticket (three
+     CI runs for a three-ticket wave, none of them read), and handed every conflict back to a cold
+     developer respawn for a rebase whose hunks the manager was already holding.
    - `REQUEST CHANGES` → `board.mjs move APP-NNN changes --by code-reviewer --verdict
      docs/53-reviews/APP-NNN-cycle-N.md`, then re-spawn the original developer **pointed at that
      file**, not at notes you are holding in context. You no longer have to remember to check the
@@ -441,11 +511,64 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    - A ticket going `blocked` here is exactly what strands its dependents — the CLI names them on
      the spot, and step 0 re-runs at the top of every round to catch the rest.
 
-4a. **Clean up worktrees.** After each merge, remove the ticket's worktree so the next round starts
-   clean: `git worktree remove .agent-wt/APP-NNN && git worktree prune`.
+4a. **Release the slot and reap the pool.** When an owner has no tickets left in flight, release its
+   lease and reclaim anything nothing is using:
 
-5. **QA pass — starting with the runtime gate.** Once a wave of tickets is in `qa`, run the
-   `runtime-gate` skill's script **on the integration branch, before spawning `qa-engineer`**:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
+   ```
+
+   **Do this on every terminal outcome, not only after a merge** — that was the whole defect. Removal
+   was specified in three places and all three were the merge path, so a `rejected`, a cap-converted
+   `blocked`, a `BLOCKED:` return or a crashed round left its tree behind forever, with no cap, no
+   budget and no reaper. Measured in the plugin's own repository, which contains no application code:
+   12 worktrees, 88 MB. An iOS project's worktrees also carry DerivedData.
+
+   The reaper derives liveness from the board (`in_progress`/`review`), so it cannot disagree with
+   it, and it **never** runs `--force`: a worktree with uncommitted changes is reported and left
+   alone. One `git stash` in a shared tree already cost 22 files of live work (DR4-027); an automatic
+   cleanup is that move with better manners. `orchestrator round` runs the same script read-only at
+   step 0 and BLOCKS the round if the pool is over its disk ceiling.
+
+5. **The wave integration pass — merge once, test once, push once.** Every ticket whose merge gate
+   cleared is sitting at `qa` with its branch unmerged. This is where the git merges happen, and it
+   is the only place the executable suite runs:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE"
+   ```
+
+   It merges every candidate `--no-ff` into `integration/wave-<N>` in its **own** worktree (never the
+   shared tree, never an agent's slot), runs the project's `full` scope ONCE on the merged result,
+   and prints what the outcome earns. Read its exit code:
+
+   - Exit `0` **GREEN** → the merged tree passes. Run the `board.mjs move APP-NNN verified` lines it
+     printed — that is what upgrades each ticket's `verified_static` and is the only thing that lets
+     them reach `closed`. Then land it with **one** push:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --push
+     ```
+
+     One push, one CI run for the whole wave, which `ci-status.mjs` reads at the top of the next
+     round (`orchestrator round`). **No agent ever triggers, re-runs or cancels a workflow.**
+   - Exit `1` **FAIL or CONFLICT** → **the wave does not advance** and no ticket gets a real
+     `verified`. A conflict aborts that one merge only and the rest continue, so a conflicting ticket
+     costs itself and not the wave; resolve a textual conflict in the integration tree per
+     `git-pr-strategy` §6, and send a behaviour/contract conflict back as a ticket to the owner of
+     that contract. For a failing suite, re-spawn only the owners the failure names — it prints a
+     **candidate list** derived from changed files and says plainly that a candidate list is not a
+     verdict. If no ticket's files appear in the failure, that is itself the finding: the wave broke
+     something no single ticket touched, which is the composition failure a per-ticket build
+     structurally cannot see. Route that to `tech-lead`, not to a developer.
+   - Exit `2` **CANNOT EVALUATE** → no `full` scope declared, or the suite could not run here.
+     Not a pass. Every ticket keeps its `verified_static`, `closed` stays refused, and
+     `ship-gate.sh` keeps blocking. The wave branch is kept so the merged tree can be built
+     somewhere that has the toolchain.
+
+   Then the runtime gate. **Once a wave of tickets is in `qa`, run the `runtime-gate` skill's script
+   on the integration branch, before spawning `qa-engineer`**:
 
    ```bash
    sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root .

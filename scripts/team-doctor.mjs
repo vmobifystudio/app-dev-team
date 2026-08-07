@@ -613,6 +613,18 @@ const DOC_WRITERS = new Map([
   // The dashboard's static export. Deliberately NOT 32-board-view.html: board-render already owns
   // 32-board-view.md, and two renderings sharing one name is DR4-020 — a second view nobody declared.
   ['docs/34-dashboard.html',            ['commands/app-dashboard.md']],
+  // The register: the index of everything the studio OWES, across bugs and audit findings. Written
+  // through scripts/register.mjs only — `qa-engineer` seeds it from its own docs/51-bugs.md with
+  // `import-bugs`, `tech-manager` files findings and decides their terminal status, and
+  // /app-build's step 1 runs the import every round. `.md` is the generated view of the `.jsonl`,
+  // the same relationship 31-board.md has to 31-board-events.jsonl.
+  //
+  // It exists because docs/51-bugs.md and docs/81-findings.md were the only two registers in this
+  // studio with no CLI, no vocabulary and no validator — and the only two that feed work back INTO
+  // the loop (OPS-004). An item with no ticket was invisible to every gate and got closed by being
+  // unmentioned.
+  ['docs/90-register.jsonl',            ['agents/qa-engineer.md', 'agents/tech-manager.md', 'commands/app-build.md']],
+  ['docs/90-register.md',               ['agents/tech-manager.md']],
   ['docs/40-api.md',                    ['agents/backend-developer.md']],
   ['docs/41-monetization.md',           ['agents/monetization-engineer.md']],
   ['docs/50-test-plan.md',              ['agents/qa-engineer.md']],

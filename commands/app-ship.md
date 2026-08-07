@@ -138,6 +138,12 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    What it deliberately does **not** do is decide for you. Read its notes:
 
    - `docs/51-bugs.md` — **any open `S1` or `S2` stops the release.**
+   - `docs/90-register.jsonl` — **the register: any item with no terminal status stops the release.**
+     This is a wider question than the bug count above, and deliberately so: an audit FINDING with no
+     ticket was invisible to every other check here, because it is not a bug row and not a board row.
+     Shipping with three `DEFERRED` S3 bugs is a fine release; shipping without knowing is the
+     failure. Give each one a decision and a reason — `node scripts/register.mjs status <ID>
+     DEFERRED --by <role> --reason "..."` — rather than a fix.
    - `docs/50-test-plan.md` — check the **exit criteria** QA wrote, and whether each row is marked
      executed or only reasoned. A test plan whose rows all say "not performed" is not a QA pass.
    - **`qa-engineer`'s ship recommendation is a first-class input, and it can differ from the
