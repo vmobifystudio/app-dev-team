@@ -58,7 +58,13 @@ them from the absence of an integration role rather than from a gate failing. Th
 - `import-bugs` folds QA's Markdown in through the same `parseBugs` `ship-gate.sh` already uses, so
   the table stays a source and stops being the register.
 
-**+59 assertions (1258 → 1317) and 9 mutations** (M30–M38), one per new refusal.
+**+64 assertions (1258 → 1322) and 10 mutations (M38–M47), all ten proven CAUGHT.** One of them,
+M46, SURVIVED its first real run: the ship-gate register assertion grepped for a sentence that
+`note()` prints in exactly the same words as `block()`, so demoting the blocker left it green. That
+is the whole reason this tool exists, found on the first run that could reach it. `mutate.sh` gained
+per-mutation `--only` SCOPES: it ran the whole 1300-assertion suite per mutation, so ten new ones
+cost ninety minutes and were therefore catalogued and left unproven — a check too slow to run is the
+exact defect this tool exists to find. `--full-suite` keeps the old behaviour for the nightly run.
 
 ## [3.0.0] — 2026-08-05
 

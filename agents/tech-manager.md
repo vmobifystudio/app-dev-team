@@ -92,12 +92,30 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add APP-001 \
   --acceptance "Given the store, When I submit text, Then it persists" --by tech-manager
 ```
 
-**If the ticket touches a named file, add `--file <path>`** (and `--change <kind>`, e.g. `billing`,
-`migration`, `auth`, if the title doesn't already say it). Risk is derived from the project's risk
-policy via `risk-router.mjs` — never hand-typed — and a ticket routed `high`/`critical` **cannot
-reach `review_requested`** without at least one `--invariant` recorded here at creation (repeatable:
-separate several with `;`). A ticket with no `--file` is unaffected; risk stays unknown rather than
-defaulting to safe. `--rollback <note>` records the recovery path for anything that isn't trivially
+**Declare the files the ticket touches: `--file <path>[,<path>...]`** (and `--change <kind>`, e.g.
+`billing`, `migration`, `auth`, if the title doesn't already say it). Take them from the impl-spec
+section the ticket's `--spec` names — that is the whole point of naming a spec anchor, and it is a
+reading rather than a guess. Risk is derived from the project's risk policy via `risk-router.mjs` —
+never hand-typed — and a ticket routed `high`/`critical` **cannot reach `review_requested`** without
+at least one `--invariant` recorded here at creation (repeatable: separate several with `;`).
+
+**A ticket with no `--file` is the one that collides.** `contention-check.mjs` runs on every dispatch
+and can only see the set declared here; with nothing declared it answers `CANNOT EVALUATE` — honest,
+and by default not fatal, because most legacy tickets predate the flag. So two agents get dispatched
+into the same file and find out at merge. The stated fallback (`parallel-orchestrator` 2b: list the
+files each ticket is *likely* to touch) is a prediction made by a role that has never opened the
+code, and the measured cost of getting it wrong is two "independent" tickets in one module producing
+add/add conflicts on all 8 files.
+
+`orchestrator round` names every ticket that declares none, every round. Once the board is clean, arm
+it — `"requireTicketFiles": true` in `.studio-policy.json` — and `dispatch-preflight` refuses an
+undeclared ticket at the spawn, where the fix is one flag, instead of at the merge, where it is a
+rebase. Correct an existing ticket with the array form, because a correction may NARROW a set:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 corrected --by tech-manager \
+  --detail '{"files":["app/Store.swift","app/StoreTests.swift"]}'
+``` `--rollback <note>` records the recovery path for anything that isn't trivially
 reversible — optional, but read it back before `/app-ship` on anything that touches stored data.
 
 ```

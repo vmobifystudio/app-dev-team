@@ -38,7 +38,7 @@
 # Usage:
 #   sh scripts/mutate.sh                 every mutation (~1 min per mutation — the whole suite runs)
 #   sh scripts/mutate.sh --list          print the catalogue and exit
-#   sh scripts/mutate.sh --only M04      one mutation
+#   sh scripts/mutate.sh --only M04      one mutation (or a list: --only M38,M39,M40)
 #   sh scripts/mutate.sh --sample 4      4 mutations, spread evenly across the catalogue (CI)
 #
 # Exit:
@@ -96,6 +96,7 @@ TAB=$(printf '\t')
 ONLY=""
 SAMPLE=""
 LIST=0
+FULL_SUITE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -104,6 +105,10 @@ while [ $# -gt 0 ]; do
     --only=*) ONLY="${1#--only=}"; shift ;;
     --sample) SAMPLE="${2:-}"; shift 2 || exit 2 ;;
     --sample=*) SAMPLE="${1#--sample=}"; shift ;;
+    # Ignore every catalogue scope and run the whole suite per mutation, as this script always did.
+    # The nightly `mutation-full.yml` uses it: a scope is a claim that no OTHER section could have
+    # caught the mutation, and once a quarter it is worth not taking that claim on trust.
+    --full-suite) FULL_SUITE=1; shift ;;
     -h|--help) sed -n '36,46p' "$0"; exit 0 ;;
     *) echo "mutate: unknown argument '$1'" >&2; exit 2 ;;
   esac
@@ -148,15 +153,6 @@ M26@@scripts/lib/messages.mjs@@if (decided.length && openQuestions(thread).lengt
 M27@@scripts/lib/messages.mjs@@if (mine.length) {@@if (false) {@@a second open question from one role is refused — escalate the first
 M28@@scripts/lib/messages.mjs@@if (spent >= MAX_PER_TICKET) {@@if (false) {@@the thirteenth message on one ticket is refused
 M29@@scripts/lib/messages.mjs@@m.expires && m.expires < today@@m.expires && m.expires > today@@an expired waiver is a finding, not a formality
-M30@@scripts/register.mjs@@if (NEEDS_REASON.has(status)@@if (false && NEEDS_REASON.has(status)@@DEFERRED with no --reason is REFUSED (a deferral without one is an omission)
-M31@@scripts/register.mjs@@if (status === 'FIXED' && !ticket) {@@if (false) {@@FIXED with no --ticket is REFUSED (nothing would be checkable against the board)
-M32@@scripts/worktree-reap.mjs@@dirty: state.live ? false : dirty(w.path)@@dirty: false@@a DIRTY orphan is reported, not reclaimed
-M33@@scripts/worktree-reap.mjs@@if (finalMb > MAX_DISK_MB) {@@if (false) {@@the disk ceiling BLOCKS when the pool exceeds it
-M34@@scripts/ci-status.mjs@@process.exit(ARMED ? code : 0);@@process.exit(0);@@armed, an unanswerable CI question is CANNOT EVALUATE — never a pass
-M35@@scripts/verify-done.sh@@[ "$STATIC" -eq 1 ] && TESTS_STATUS="deferred-to-wave"@@:@@...naming WHY the suite did not run, so it is not mistaken for a missing command
-M36@@scripts/worktree-slot.mjs@@if (!mine && others.length >= POOL) {@@if (false) {@@leasing past the pool size is REFUSED — that is the parallelism cap doing its job
-M37@@scripts/wave-integrate.mjs@@const green = test.status === 0 && !cannotRun;@@const green = true;@@a wave whose merged tree fails its suite is exit 1 — the wave does not advance
-M38@@scripts/ship-gate.sh@@    1) block "the register has item@@    1) note "the register has item@@ship-gate BLOCKS on a register item nobody has decided about
 M30@@scripts/lib/messages.mjs@@if (record.v !== SCHEMA_VERSION) {@@if (false) {@@a schema-v2 record makes board-doctor CANNOT EVALUATE, never a pass
 M31@@scripts/messages.mjs@@writeFileSync(md, renderMessages(messages));@@if (!existsSync(md)) writeFileSync(md, renderMessages(messages));@@a hand edit to the generated view is overwritten by the next render
 M32@@scripts/accessibility-scan.mjs@@&& !/accessibilityLabel/.test(block)@@&& false@@comment-only and unlabelled SwiftUI controls remain detectable
@@ -165,6 +161,16 @@ M34@@scripts/subscription-restore-scan.mjs@@&& !/Transaction\.currentEntitlement
 M35@@scripts/financial-constant-scan.mjs@@if (!findings.length)@@if (true)@@a bankers rounding implementation under a half-up rule blocks release
 M36@@scripts/requirements-conflict-scan.mjs@@if (prdQuota && archQuota && prdQuota !== archQuota)@@if (false)@@a quota conflict blocks release
 M37@@scripts/analytics-coverage-scan.mjs@@if (!missing.length)@@if (true)@@a missing P0 analytics event blocks release
+M38@@scripts/register.mjs@@if (NEEDS_REASON.has(status)@@if (false && NEEDS_REASON.has(status)@@DEFERRED with no --reason is REFUSED (a deferral without one is an omission)@@register: the two trackers
+M39@@scripts/register.mjs@@if (status === 'FIXED' && !ticket) {@@if (false) {@@FIXED with no --ticket is REFUSED (nothing would be checkable against the board)@@register: the two trackers
+M40@@scripts/worktree-reap.mjs@@dirty: state.live ? false : dirty(w.path)@@dirty: false@@a DIRTY orphan is reported, not reclaimed@@worktree-reap: the leak
+M41@@scripts/worktree-reap.mjs@@if (finalMb > MAX_DISK_MB) {@@if (false) {@@the disk ceiling BLOCKS when the pool exceeds it@@worktree-reap: the leak
+M42@@scripts/ci-status.mjs@@process.exit(ARMED ? code : 0);@@process.exit(0);@@armed, an unanswerable CI question is CANNOT EVALUATE — never a pass@@ci-status: the merge gate
+M43@@scripts/verify-done.sh@@[ "$STATIC" -eq 1 ] && TESTS_STATUS="deferred-to-wave"@@:@@...naming WHY the suite did not run, so it is not mistaken for a missing command@@verify-done --static
+M44@@scripts/worktree-slot.mjs@@if (!mine && others.length >= POOL) {@@if (false) {@@leasing past the pool size is REFUSED — that is the parallelism cap doing its job@@worktree-slot: one tree per WRITER
+M45@@scripts/wave-integrate.mjs@@const green = test.status === 0 && !cannotRun;@@const green = true;@@a wave whose merged tree fails its suite is exit 1 — the wave does not advance@@wave-integrate: merge once
+M46@@scripts/ship-gate.sh@@    1) block "the register has item@@    1) note "the register has item@@ship-gate BLOCKS on a register item nobody has decided about@@ship-gate reads the register
+M47@@scripts/dispatch-preflight.mjs@@if (policy.requireTicketFiles === true) {@@if (false) {@@...and ARMED, the same undeclared ticket is REFUSED at dispatch, not at merge@@requireTicketFiles
 CATALOGUE
 }
 
@@ -185,7 +191,7 @@ EXCLUDED
 if [ "$LIST" = "1" ]; then
   echo "MUTATION CATALOGUE"
   echo
-  catalogue_tsv | while IFS="$TAB" read -r id file old new expect; do
+  catalogue_tsv | while IFS="$TAB" read -r id file old new expect scope; do
     printf '%-5s %s\n' "$id" "$file"
     printf '      - %s\n' "$old"
     printf '      + %s\n' "$new"
@@ -201,9 +207,16 @@ fi
 # An unknown --only id is rejected HERE, before the baseline suite runs. Not only because a minute
 # of waiting to be told about a typo is rude: `scripts/test.sh` asserts on this path, and the copy's
 # suite would otherwise invoke a baseline run of its own, recursively, forever.
+# `--only` takes a COMMA-SEPARATED LIST, because proving a batch of new gates one invocation at a
+# time re-pays the baseline every time. Every id is validated before anything runs: being told about
+# a typo after four minutes of waiting is how a tool stops getting used.
 if [ -n "$ONLY" ]; then
-  catalogue | grep -q "^$ONLY@@" \
-    || { echo "mutate: no mutation with id '$ONLY'. Try --list." >&2; exit 2; }
+  ONLY_RE=""
+  echo "$ONLY" | tr ',' '\n' | while read -r _id; do
+    [ -n "$_id" ] || continue
+    catalogue | grep -q "^$_id@@" || { echo "mutate: no mutation with id '$_id'. Try --list." >&2; exit 3; }
+  done || exit 2
+  ONLY_RE=$(echo "$ONLY" | tr ',' '|' | sed 's/^/^(/; s/$/)\t/')
 fi
 
 # ---------------------------------------------------------------------------------------------
@@ -256,13 +269,55 @@ git -C "$WORK" init -q -b main . >/dev/null 2>&1 \
 # runs assert exactly the same set.
 export APP_TEAM_MUTATING=1
 
-# run_suite <logfile> — echoes the failure count ("?" if the suite never reported one).
+# run_suite <logfile> [scope] — echoes the failure count ("?" if the suite never reported one).
+#
+# SCOPES EXIST BECAUSE THIS TOOL WAS TOO SLOW TO USE, and a check nobody runs is the exact thing it
+# was built to find. Every mutation ran the whole 1300-assertion suite: ~4.5 minutes each, so nine
+# new mutations cost ninety minutes and were therefore catalogued and left unproven — a rule this
+# repository could not say could fail, which is the shape of defect the whole file exists to refuse.
+#
+# A scope is the `# --- <banner> ---` section of scripts/test.sh that holds the assertion this
+# mutation targets. Running only that section takes seconds.
+#
+# WHAT A SCOPE COSTS, said plainly: `test.sh --only` is documented as an accelerator and NOT the
+# gate, because a subset can miss an assertion elsewhere that would also have gone red. For mutation
+# testing that trade is the right way round — the question here is "can the assertion written for
+# this behaviour go red", which is precisely a question about ONE section. What a scope can hide is
+# the "CAUGHT, but not by its own assertion" verdict, since the other section that would have caught
+# it is not running. `--full-suite` turns scopes off, and the nightly full run uses it.
 run_suite() {
-  ( cd "$WORK" && sh scripts/test.sh ) >"$1" 2>&1
+  if [ -n "${2:-}" ]; then
+    ( cd "$WORK" && sh scripts/test.sh --only "$2" ) >"$1" 2>&1
+  else
+    ( cd "$WORK" && sh scripts/test.sh ) >"$1" 2>&1
+  fi
   awk 'match($0, /[0-9]+ passed, [0-9]+ failed/) {
          split(substr($0, RSTART, RLENGTH), a, " "); n = a[3]
        }
        END { print (n == "" ? "?" : n) }' "$1"
+}
+
+# A scope needs its OWN green baseline before any verdict from it can be believed. Sections inherit
+# setup from earlier ones, so a subset can fail for want of a fixture rather than for want of
+# correctness — test.sh says so on every `--only` invocation. If the scoped baseline is not green,
+# this falls back to the full suite for that mutation and SAYS SO: a scoped run on a red baseline
+# would report CAUGHT for every mutation and prove nothing.
+#
+# Echoes the scope to use (possibly empty, meaning "full suite").
+scope_baseline() {
+  _scope="$1"
+  [ -n "$_scope" ] || { echo ""; return 0; }
+  _key=$(printf '%s' "$_scope" | tr -c 'A-Za-z0-9' '-')
+  _log="$WORK/baseline-$_key.log"
+  if [ ! -f "$_log" ]; then
+    _f=$(run_suite "$_log" "$_scope")
+    if [ "$_f" != "0" ]; then
+      printf '%s' "FALLBACK" > "$WORK/scope-$_key.verdict"
+    else
+      printf '%s' "OK" > "$WORK/scope-$_key.verdict"
+    fi
+  fi
+  if [ "$(cat "$WORK/scope-$_key.verdict")" = "OK" ]; then echo "$_scope"; else echo ""; fi
 }
 suite_passed() {
   awk 'match($0, /[0-9]+ passed, [0-9]+ failed/) { split(substr($0, RSTART, RLENGTH), a, " "); n = a[1] }
@@ -274,25 +329,12 @@ echo "  repo: $REPO"
 echo "  copy: $WORK"
 echo
 
-printf 'baseline (unmutated suite) ... '
-BASE_FAIL=$(run_suite "$WORK/baseline.log")
-if [ "$BASE_FAIL" != "0" ]; then
-  echo "NOT GREEN"
-  echo
-  echo "CANNOT RUN: the suite reports $BASE_FAIL failure(s) before any mutation is applied."
-  echo "Every mutation would then read as CAUGHT for the wrong reason. Fix the suite first."
-  tail -n 20 "$WORK/baseline.log"
-  RC=2; exit 2
-fi
-echo "green — $(suite_passed "$WORK/baseline.log") assertions"
-echo
-
-# --- select --------------------------------------------------------------------------------------
+# --- select FIRST, so the baseline can be sized to what was actually asked for -------------------
 catalogue_tsv > "$WORK/cat.txt"
 TOTAL=$(grep -c . "$WORK/cat.txt")
 
 if [ -n "$ONLY" ]; then
-  grep "^$ONLY$TAB" "$WORK/cat.txt" > "$WORK/sel.txt"
+  grep -E "$ONLY_RE" "$WORK/cat.txt" > "$WORK/sel.txt"
 elif [ -n "$SAMPLE" ]; then
   # Spread across the catalogue rather than taking the first N: consecutive entries share target
   # files, and a sample that only ever probes one script tells CI nothing about the rest.
@@ -305,16 +347,66 @@ else
 fi
 SELECTED=$(grep -c . "$WORK/sel.txt")
 
+# THE FULL BASELINE IS SKIPPED WHEN EVERY SELECTED MUTATION IS SCOPED, and that is the whole speed
+# win. `--only M30` used to cost two full suites — one baseline, one mutated — for a verdict about a
+# single refusal in one file. With a scope, both runs are that section and the answer arrives in
+# seconds. The moment ONE selected mutation has no scope, the full baseline runs as before: a
+# mutation compared against a baseline nobody established is not a verdict.
+UNSCOPED=$(awk -F"$TAB" '$6 == "" { n++ } END { print n + 0 }' "$WORK/sel.txt")
+[ "$FULL_SUITE" = "1" ] && UNSCOPED=$SELECTED
+
+if [ "$UNSCOPED" -gt 0 ]; then
+  printf 'baseline (unmutated suite) ... '
+  BASE_FAIL=$(run_suite "$WORK/baseline.log")
+  if [ "$BASE_FAIL" != "0" ]; then
+    echo "NOT GREEN"
+    echo
+    echo "CANNOT RUN: the suite reports $BASE_FAIL failure(s) before any mutation is applied."
+    echo "Every mutation would then read as CAUGHT for the wrong reason. Fix the suite first."
+    tail -n 20 "$WORK/baseline.log"
+    RC=2; exit 2
+  fi
+  echo "green — $(suite_passed "$WORK/baseline.log") assertions"
+else
+  echo "baseline: per-scope only — every selected mutation names the test.sh section that must go red."
+  echo "  The whole suite is NOT the baseline for this run. Each scope is green-checked on its own"
+  echo "  before its mutation is applied, and a scope that is not green falls back to the full suite."
+  echo "  \`--full-suite\` forces the old behaviour; the nightly full catalogue uses it."
+fi
+echo
+
 CAUGHT=0
 SURVIVED=0
 SURVIVORS=""
 BLIND=""
 I=0
 
-while IFS="$TAB" read -r id file old new expect <&3; do
+while IFS="$TAB" read -r id file old new expect scope <&3; do
   [ -n "$id" ] || continue
   I=$((I + 1))
   printf '[%d/%d] %-5s %s\n' "$I" "$SELECTED" "$id" "$file"
+
+  # RESOLVE THE BASELINE BEFORE THE MUTATION IS APPLIED, NOT AFTER.
+  #
+  # This block sat below the substitution, so `scope_baseline` ran against the ALREADY-MUTATED copy
+  # and every scope reported "not green" — correctly, because the mutation was in it. The fallback
+  # then ran the full suite on the same mutated tree, found it red too, and reported CANNOT RUN.
+  # A baseline measured after the change is not a baseline; it is the change.
+  #
+  # Caught by reproducing the copy by hand and finding it green, which is the only reason the
+  # difference was visible at all: the tool was reporting a defect in the repo that was a defect in
+  # the tool. Scope results are cached per scope, so this costs one scoped run per distinct scope.
+  [ "$FULL_SUITE" = "1" ] && scope=""
+  USE_SCOPE=$(scope_baseline "$scope")
+  if [ -n "$scope" ] && [ -z "$USE_SCOPE" ]; then
+    echo "        NOTE: the scope '$scope' is not green on its own, so this mutation is judged"
+    echo "        against the WHOLE suite instead. A scoped verdict on a red scope proves nothing."
+    if [ ! -f "$WORK/baseline.log" ]; then
+      BASE_FAIL=$(run_suite "$WORK/baseline.log")
+      [ "$BASE_FAIL" = "0" ] || { echo "        CANNOT RUN: the full suite is not green either ($BASE_FAIL failing)."; RC=2; exit 2; }
+    fi
+  fi
+  [ -n "$USE_SCOPE" ] && printf '        scope: %s\n' "$USE_SCOPE"
 
   src="$REPO/$file"
   dst="$WORK/$file"
@@ -349,7 +441,7 @@ while IFS="$TAB" read -r id file old new expect <&3; do
   fi
   mv "$dst.mut" "$dst"
 
-  fails=$(run_suite "$WORK/run-$id.log")
+  fails=$(run_suite "$WORK/run-$id.log" "$USE_SCOPE")
   grep '^  FAIL  ' "$WORK/run-$id.log" | sed 's/^  FAIL  //' > "$WORK/labels-$id.txt"
 
   # Unconditional restore, whatever the verdict was.

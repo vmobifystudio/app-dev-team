@@ -7903,7 +7903,7 @@ assert_has "$TMP/wi1.txt" "NOT PUSHED" "...pushing nothing without --push: one p
 wave_mk 003 BAD; wave_drive 003
 ( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 2 ) >"$TMP/wi2.txt" 2>&1
 [ $? = 1 ] && ok "a wave whose merged tree fails its suite is exit 1 — the wave does not advance" \
-  || bad "a wave whose merged tree fails its suite is exit 1" "$(tail -4 "$TMP/wi2.txt")"
+  || bad "a wave whose merged tree fails its suite is exit 1 — the wave does not advance" "$(tail -4 "$TMP/wi2.txt")"
 assert_has "$TMP/wi2.txt" "CANDIDATE tickets" "...naming candidates from the changed-file map"
 assert_has "$TMP/wi2.txt" "APP-003" "...and the candidate is the ticket that actually broke it"
 assert_has "$TMP/wi2.txt" "not a verdict" "...stated as a heuristic, because attributing by feel is the alternative"
@@ -7934,13 +7934,72 @@ cp "$FIX/clean.md" "$SGR/docs/31-board.md" 2>/dev/null || printf '# board\n' > "
 ( cd "$SGR" && node "$HERE/register.mjs" --root . add AUD-031 --kind finding \
     --title "consent gate unenforceable in composition" --by security-reviewer ) >/dev/null 2>&1
 ( cd "$SGR" && sh "$HERE/ship-gate.sh" . ) >"$TMP/sgr.txt" 2>&1
-assert_has "$TMP/sgr.txt" "no terminal status" "ship-gate BLOCKS on a register item nobody has decided about"
+# ASSERT ON THE VERDICT, NOT ON THE SENTENCE. This grepped for "no terminal status", which
+# ship-gate's `note()` prints in exactly the same words as its `block()` — so demoting the register
+# check from a blocker to a note left the assertion green. Mutation M46 SURVIVED on the first run
+# that could reach it, which is the entire reason mutation testing exists: the assertion read fine,
+# named the right thing, and could not fail. The blocker prefix is what distinguishes them.
+assert_has "$TMP/sgr.txt" "BLOCKED  the register has item" "ship-gate BLOCKS on a register item nobody has decided about"
 ( cd "$SGR" && node "$HERE/register.mjs" --root . status AUD-031 WRONG-FINDING --by cto \
     --reason "the composition root wires the gated logger; re-checked on the merged tree" ) >/dev/null 2>&1
 ( cd "$SGR" && sh "$HERE/ship-gate.sh" . ) >"$TMP/sgr2.txt" 2>&1
-grep -q "no terminal status" "$TMP/sgr2.txt" \
+grep -q "BLOCKED  the register has item" "$TMP/sgr2.txt" \
   && bad "...and stops blocking once every item has been DECIDED (not necessarily fixed)" "still blocking" \
   || ok "...and stops blocking once every item has been DECIDED (not necessarily fixed)"
+
+
+# --- requireTicketFiles: contention stops resting on an optional field (OPS-007) -------------------
+#
+# contention-check.mjs IS wired into dispatch-preflight and works. What it can only ever see is the
+# file set a ticket declared AT CREATION — and tech-manager.md made declaring it conditional, so the
+# ordinary ticket declares nothing, the check answers CANNOT EVALUATE, and BOTH agents are dispatched
+# into the same file. The stated fallback ("list the files each ticket is LIKELY to touch") is a
+# prediction by a role that has never opened the code; the measured cost of it being wrong is two
+# "independent" tickets in one module producing add/add conflicts on all 8 files.
+#
+# Built on the BOOTSTRAPPED fixture above rather than on hand-written manifests. The first version
+# of this section wrote its own four manifests, dispatch-preflight failed on the first one, and every
+# assertion below it took an honest-skip branch — so the suite gained ONE assertion and the gate went
+# untested while looking tested. That is this file's own recurring defect (a check whose fixture
+# cannot reach it), caught here by the assertion count moving by 1 instead of 4.
+DPF="$TMP/dpf"; rm -rf "$DPF"; mkdir -p "$DPF/docs" "$DPF/src"
+( cd "$DPF" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm base ) >/dev/null 2>&1
+# APP-001 declares NO files — the ordinary ticket. APP-002 declares one, and is the control: the
+# gate must refuse what is undeclared, not refuse everything.
+( cd "$DPF" && node "$HERE/board.mjs" add APP-001 --title "declares nothing" --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+( cd "$DPF" && node "$HERE/board.mjs" add APP-002 --title "declares its files" --owner ios-developer --by tech-manager --file src/App.swift ) >/dev/null 2>&1
+( cd "$DPF" && node "$HERE/team-bootstrap.mjs" --root "$DPF" ) >/dev/null 2>&1
+
+DPRE() { ( cd "$DPF" && node "$HERE/dispatch-preflight.mjs" --root "$DPF" --ticket "$1" \
+  --context docs/team/context-manifest.json --schedule docs/team/schedule.json \
+  --capability docs/team/capabilities.json --risk docs/team/risk-policy.json \
+  --role ios-developer --operation write --path src/App.swift --file src/App.swift --change feature ); }
+
+# UNARMED MUST STAY NON-FATAL. Most tickets predate the flag, and refusing them all would make the
+# studio unusable to buy a guarantee it cannot offer — a gate its first user switches off.
+printf '{}\n' > "$DPF/.studio-policy.json"
+DPRE APP-001 >"$TMP/dpf-unarmed.txt" 2>&1
+grep -q '"status": "CLEAR"' "$TMP/dpf-unarmed.txt" \
+  && ok "unarmed, a ticket that declares no files still dispatches — legacy boards keep working" \
+  || bad "unarmed, a ticket that declares no files still dispatches" "$(head -3 "$TMP/dpf-unarmed.txt")"
+
+printf '{"requireTicketFiles": true}\n' > "$DPF/.studio-policy.json"
+assert_exit 1 "...and ARMED, the same undeclared ticket is REFUSED at dispatch, not at merge" \
+  sh -c 'cd "$1" && node "$2/dispatch-preflight.mjs" --root "$1" --ticket APP-001 \
+    --context docs/team/context-manifest.json --schedule docs/team/schedule.json \
+    --capability docs/team/capabilities.json --risk docs/team/risk-policy.json \
+    --role ios-developer --operation write --path src/App.swift --file src/App.swift --change feature' sh "$DPF" "$HERE"
+cp "$TMP/err" "$TMP/dpf-armed.txt" 2>/dev/null || true
+assert_has "$TMP/dpf-armed.txt" "requireTicketFiles" "...naming the policy flag that armed it"
+assert_has "$TMP/dpf-armed.txt" "corrected" "...and the exact correction that clears it"
+
+# THE CONTROL. A gate that refuses everything proves nothing about what it targets, and would be
+# indistinguishable here from `requireTicketFiles` simply breaking dispatch.
+DPRE APP-002 >"$TMP/dpf-declared.txt" 2>&1
+grep -q '"status": "CLEAR"' "$TMP/dpf-declared.txt" \
+  && ok "...while a ticket that DOES declare its files dispatches CLEAR under the same policy" \
+  || bad "...while a ticket that DOES declare its files dispatches CLEAR" "$(head -3 "$TMP/dpf-declared.txt")"
 
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER

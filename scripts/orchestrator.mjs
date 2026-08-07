@@ -429,6 +429,32 @@ function cmdRound() {
     }
   }
 
+  // TICKETS THAT DECLARE NO FILES (OPS-007). `contention-check.mjs` can only see the file set a
+  // ticket declared at creation, and declaring it is conditional — so the ORDINARY ticket has no
+  // collision protection and the printed word is an honest `CANNOT EVALUATE` that still lets both
+  // agents go. Reported here, every round, because the fix is one `--file` at planning time and
+  // costs nothing, while the same gap discovered at merge time costs a rebase and a cold respawn.
+  //
+  // Reported, not blocked: arming it is `.studio-policy.json: requireTicketFiles`, which
+  // `dispatch-preflight` enforces at the spawn. A round that refused every legacy ticket would be
+  // a gate its first user switches off.
+  {
+    const undeclared = [...tickets.values()]
+      .filter((t) => !TERMINAL.has(t.status) && t.status !== 'blocked')
+      .filter((t) => !(t.meta?.files || []).length)
+      .map((t) => t.id);
+    if (undeclared.length) {
+      process.stdout.write(
+        `  FILE SETS — ${undeclared.length} ticket(s) declare no files: ${undeclared.slice(0, 10).join(', ')}` +
+        `${undeclared.length > 10 ? ` … and ${undeclared.length - 10} more` : ''}\n` +
+        '    contention-check cannot judge these, so two agents can be dispatched into the same file\n' +
+        '    and find out at merge. Declare what each touches — `board.mjs add --file a,b` on a new\n' +
+        '    ticket, or `move <ID> corrected --detail \'{"files":["a","b"]}\'` on an existing one —\n' +
+        '    then set "requireTicketFiles": true once the board is clean, to keep it that way.\n\n'
+      );
+    }
+  }
+
   if (worst === 0 && move.stalled.length) {
     process.stdout.write(
       '  RESULT: BLOCKED — every precondition is clear and work is not moving.\n' +

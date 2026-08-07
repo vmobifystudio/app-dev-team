@@ -83,4 +83,10 @@ jobs:
       - name: Every gate in the catalogue must still bite
         # No `|| true`, no `continue-on-error`. A surviving mutation means a gate can be broken
         # without this repo noticing, which is a blocker rather than a warning.
-        run: sh scripts/mutate.sh
+        #
+        # `--full-suite` ignores every catalogue scope. A scope says "this section of test.sh is
+        # where the assertion for this mutation lives", which makes the local loop seconds instead
+        # of minutes — and it is a CLAIM, not a proof: it asserts no other section would have caught
+        # the mutation either. This job is the one place that does not take that claim on trust, and
+        # it is the only place that can still report "CAUGHT, but not by its own assertion".
+        run: sh scripts/mutate.sh --full-suite
