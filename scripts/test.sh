@@ -8272,6 +8272,140 @@ SLOTF="$TMP/slot-force"; rm -rf "$SLOTF"; mkdir -p "$SLOTF/docs"
 assert_exit 1 "--force no longer buys a second lease past the guard its own header calls the one that matters" \
   sh -c 'cd "$1" && node "$2/worktree-slot.mjs" --root . lease --owner ios-developer --tickets APP-009 --force' sh "$SLOTF" "$HERE"
 
+
+# --- N1/N9: one predicate for "has this shipped", swept across every reader ------------------------
+#
+# `['qa','done'].includes(status)` encoded a belief that stopped being true when the wave model split
+# the merge gate (permission) from the wave pass (fact). That belief has now produced three defects:
+# EE-001 (merge-reconcile called a pending wave a lying board, deadlocking the loop), B2 (a dependent
+# started against a branch without its dependency) and N1 (five readers telling a founder that gated
+# work had shipped). Patching the sixth site the same way would guarantee a seventh.
+assert_exit 0 "hasShipped: a landed ticket has shipped" \
+  node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"qa"})?0:1))'
+assert_exit 0 "...and a merge-gated one awaiting the wave has NOT (board-row spelling)" \
+  node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"qa",staticOnly:true})?1:0))'
+assert_exit 0 "...nor in the event-log spelling, so neither reader has to know which shape it holds" \
+  node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"qa",verifiedStatic:true})?1:0))'
+assert_exit 0 "...and `done` still counts, because it cannot be reached without the wave" \
+  node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"done"})?0:1))'
+
+# THE SWEEP IS THE POINT, not the predicate. A rule that exists and is called from one place is the
+# shape this repo keeps catching (§4 of the review: "a sweep is not done until a rule prevents
+# recurrence"). Every reader that answers "has it shipped" must ask the one function.
+SHIPREADERS=""
+for f in trace.mjs studio-dashboard.mjs messages-render.mjs board-doctor.mjs; do
+  grep -q "hasShipped" "$HERE/$f" || SHIPREADERS="$SHIPREADERS $f"
+done
+grep -q "hasShipped" "$HERE/../control-room/state.mjs" || SHIPREADERS="$SHIPREADERS control-room/state.mjs"
+[ -z "$SHIPREADERS" ] \
+  && ok "every reader that judges whether work shipped asks the one predicate" \
+  || bad "every reader that judges whether work shipped asks the one predicate" "still hand-rolling it:$SHIPREADERS"
+
+# And none of them may keep a private copy of the old test — that is how the sixth site appears.
+# merge-reconcile's CLAIMS_INTEGRATED is EXEMPT and the exemption is the interesting part: it is not
+# asking "has this shipped", it is selecting the POPULATION to examine — every ticket that claims its
+# code is integrated — and then splitting that population with `awaitingWave`. Same words, different
+# question. An exemption list that names why is a rule; one that names only files is a loophole.
+HANDROLLED=$( { grep -rn "new Set(\['qa', 'done'\])\|new Set(\['done', 'qa'\])" \
+    "$HERE"/*.mjs "$HERE/../control-room"/*.mjs 2>/dev/null || true; } \
+    | grep -v "VALID_STATUS\|STATUS_ORDER\|CLAIMS_INTEGRATED" | tr '\n' ' ')
+[ -z "$(printf '%s' "$HANDROLLED" | tr -d ' ')" ] \
+  && ok "...and no reader keeps a private ['qa','done'] set to drift from it" \
+  || bad "...and no reader keeps a private ['qa','done'] set to drift from it" "$HANDROLLED"
+
+# --- N5: one decision cannot close both a question and an escalation -------------------------------
+#
+# `raised.slice(decisionCount)` counted EVERY decision on the thread as closing an escalation,
+# including one that answered a question. A thread with one question, one escalation and one decision
+# reported ZERO unclosed escalations — so the founder was told nothing was waiting on them by the
+# command added to tell them it was. M51 mutates the exit wiring, not this arithmetic.
+NPAIR="$TMP/n5-pairing"; rm -rf "$NPAIR"; mkdir -p "$NPAIR/docs/team"
+( cd "$NPAIR" && git init -q . ) >/dev/null 2>&1
+npair() { ( cd "$NPAIR" && sh "$HERE/team-message.sh" "$@" ) >/dev/null 2>&1; }
+npair --from ios-developer --to tech-lead --ticket APP-001 --kind question --summary "Which error type for a failed toggle?"
+npair --from tech-manager --to ceo --ticket APP-001 --kind escalation --summary "scope conflict needs a founder call"
+npair --from tech-lead --to ios-developer --ticket APP-001 --kind decision --summary "TodoError wins" --artifact docs/22-impl-spec-ios.md
+
+( cd "$NPAIR" && node "$HERE/messages.mjs" open --escalations ) >"$TMP/n5a.txt" 2>&1
+[ $? = 1 ] \
+  && ok "a decision that answered a QUESTION does not also close an escalation" \
+  || bad "a decision that answered a QUESTION does not also close an escalation" "$(cat "$TMP/n5a.txt")"
+assert_has "$TMP/n5a.txt" "scope conflict" "...and the escalation is still named to the founder"
+
+npair --from ceo --to tech-manager --ticket APP-001 --kind decision --summary "cut the scope" --artifact docs/10-prd.md
+( cd "$NPAIR" && node "$HERE/messages.mjs" open --escalations ) >"$TMP/n5b.txt" 2>&1
+[ $? = 0 ] \
+  && ok "...and a second decision does close it — pairing is by count, oldest first, over one queue" \
+  || bad "...and a second decision does close it — pairing is by count, oldest first, over one queue" "$(cat "$TMP/n5b.txt")"
+
+# --- N8: --count prints a number and nothing else --------------------------------------------------
+#
+# /app-build step 1b recovered this by piping --json through `tr -dc` and a greedy `sed` — a regex
+# over prose summaries, in a runbook. The first version of --count printed the human report too,
+# which is not a count.
+( cd "$NPAIR" && node "$HERE/messages.mjs" open --count ) >"$TMP/n8.txt" 2>&1
+[ "$(wc -l < "$TMP/n8.txt" | tr -d ' ')" = "1" ] \
+  && ok "messages open --count prints exactly one line" \
+  || bad "messages open --count prints exactly one line" "$(cat "$TMP/n8.txt")"
+grep -qE '^[0-9]+$' "$TMP/n8.txt" \
+  && ok "...and that line is a bare number the runbook can use without a regex" \
+  || bad "...and that line is a bare number the runbook can use without a regex" "$(cat "$TMP/n8.txt")"
+grep -q "open --count" "$HERE/../commands/app-build.md" \
+  && ok "...and /app-build step 1b uses it instead of hand-parsing JSON" \
+  || bad "...and /app-build step 1b uses it instead of hand-parsing JSON"
+
+# --- N2: ambiguity is reported, never resolved by picking ------------------------------------------
+#
+# `mine[0]` with `allBranches` computed and never printed: a ticket with two unintegrated branches
+# integrated whichever sorted first, silently. And the match was a bare `includes`, so `APP-1` also
+# matched `feat/APP-12-…`. This file argues elsewhere that two disagreeing resolvers are worse than
+# one wrong one; an arbitrary pick is that failure with nobody to blame.
+NAMB="$TMP/n2-ambiguous"; rm -rf "$NAMB"; mkdir -p "$NAMB/docs/team" "$NAMB/docs/53-reviews"
+( cd "$NAMB" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  printf 'docs/\n' > .gitignore
+  printf 'Integration branch: main\n' > docs/23-git-strategy.md
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":"true"}}\n' > docs/team/project-profile.json
+  git add -A && git commit -qm init
+  git checkout -q -b feat/APP-1-login main && echo a > a.txt && git add a.txt && git commit -qm one
+  git checkout -q -b fix/APP-1-retry main && echo b > b.txt && git add b.txt && git commit -qm two
+  git checkout -q -b feat/APP-12-unrelated main && echo c > c.txt && git add c.txt && git commit -qm three
+  git checkout -q main
+  node "$HERE/board.mjs" add APP-1 --title amb --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-1 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-1 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-1 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-1 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-1-login\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 approved --by code-reviewer --verdict docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 merged --by tech-manager ) >/dev/null 2>&1
+
+( cd "$NAMB" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --dry-run ) >"$TMP/n2.txt" 2>&1
+assert_has "$TMP/n2.txt" "AMBIGUOUS" "a ticket with two unintegrated branches is REPORTED, not picked between"
+assert_has "$TMP/n2.txt" "feat/APP-1-login" "...naming both candidates so a human can resolve it"
+assert_has "$TMP/n2.txt" "fix/APP-1-retry" "...naming the second one too"
+grep -q "APP-12-unrelated" "$TMP/n2.txt" \
+  && bad "...and APP-1 does not match the branch of APP-12" "substring match struck again" \
+  || ok "...and APP-1 does not match the branch of APP-12"
+
+# --- N3: the kept integration worktree is somewhere the reaper protects ---------------------------
+grep -q "'.agent-wt', \`integration-wave-" "$HERE/wave-integrate.mjs" \
+  && ok "the integration worktree lives under .agent-wt, where the reaper can see it" \
+  || bad "the integration worktree lives under .agent-wt, where the reaper can see it"
+NKEEP="$TMP/n3-keep"; rm -rf "$NKEEP"; mkdir -p "$NKEEP/.agent-wt/integration-wave-9"
+( cd "$NKEEP" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init && rmdir .agent-wt/integration-wave-9 \
+  && git worktree add -q .agent-wt/integration-wave-9 -b integration/wave-9 ) >/dev/null 2>&1
+# A BOARD IS REQUIRED FOR THIS FIXTURE TO TEST ANYTHING. With no event log the reaper fails safe —
+# "nothing can be called an orphan without a board" — so the integration-worktree guard is never
+# reached and a mutation of it measures the fail-safe instead. One ticket is enough to make the
+# guard the only thing between `--apply` and a CLEAN kept wave tree.
+( cd "$NKEEP" && node "$HERE/board.mjs" add APP-001 --title t --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+( cd "$NKEEP" && node "$HERE/worktree-reap.mjs" --root . --apply ) >"$TMP/n3.txt" 2>&1
+[ -d "$NKEEP/.agent-wt/integration-wave-9" ] \
+  && ok "...and --apply never reaps it, because a kept wave tree is CLEAN and the dirty check would not save it" \
+  || bad "...and --apply never reaps it, because a kept wave tree is CLEAN and the dirty check would not save it"
+assert_has "$TMP/n3.txt" "integration worktree" "...it is reported and counted rather than silently kept"
+
 # --- an ok/bad pair must carry the SAME label ------------------------------------------------------
 #
 # `... && ok "long label" || bad "short label"` type-checks, reads fine, and quietly breaks mutation

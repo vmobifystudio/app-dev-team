@@ -24,7 +24,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
-import { parseBoard, parseMessages, isEmpty } from './lib/board.mjs';
+import { parseBoard, parseMessages, isEmpty, hasShipped } from './lib/board.mjs';
 
 // --- args ----------------------------------------------------------------------------------------
 const argv = process.argv.slice(2);
@@ -308,7 +308,9 @@ if (ONLY === 'all' || ONLY === 'trace') {
 
     // Shipped code with no analytics event. The KPI half of the vision is asserted by the feature
     // list and delivered by nothing; nobody finds out until the post-launch review has no numbers.
-    const shipped = new Set(tickets.filter((r) => r.status === 'done' || r.status === 'qa').map(featureOf).filter(Boolean));
+    // hasShipped, not a status test: a merge-gated ticket awaiting the wave has NOT shipped, and
+    // saying it has is how a founder is told a feature landed that is still on its own branch (N1).
+    const shipped = new Set(tickets.filter((r) => hasShipped(r)).map(featureOf).filter(Boolean));
     for (const f of shipped) {
       if (!nodes.has(f)) continue; // already reported as ticket_no_requirement
       const events = sourcedBy(f).filter((n) => n.kind === 'analytics');

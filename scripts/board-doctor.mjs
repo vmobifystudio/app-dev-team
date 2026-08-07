@@ -38,6 +38,7 @@ import {
   findBlockingAncestor,
   detectCycle,
   normalizeId,
+  hasShipped,
 } from './lib/board.mjs';
 import {
   parseMessageLog,
@@ -103,7 +104,7 @@ function diagnoseMessages(messages, rowsById, warnings) {
         ticketId,
         line: last._line,
         detail: `${open.length} of ${questions.length} question(s) on this ticket are unresolved — most recent: "${last.summary}" (asked of ${last.to.join(', ')}). ${
-          row && (row.status === 'qa' || row.status === 'done')
+          hasShipped(row)
             ? `The ticket has already reached "${row.status}" — it shipped on an unconfirmed assumption.`
             : 'The owner is deciding without it.'
         }`,

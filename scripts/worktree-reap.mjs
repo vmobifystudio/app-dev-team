@@ -32,10 +32,17 @@
  *
  * WHAT COUNTS AS LIVE, and why it is derived rather than declared: a slot is live while the board
  * says a ticket it holds is `in_progress` or `review`. Those are the two states in which a developer
- * or a reviewer may still need the tree. `qa`/`done`/`blocked`/`todo` do not need one — a merged
- * ticket's work is on the integration branch, and a blocked ticket is not being worked. Deriving it
- * from the event log means the reaper cannot disagree with the board; a hand-maintained list of
- * "active worktrees" would be a second source of truth for the one thing the board already knows.
+ * or a reviewer may still need the TREE. Deriving it from the event log means the reaper cannot
+ * disagree with the board; a hand-maintained list of "active worktrees" would be a second source of
+ * truth for the one thing the board already knows.
+ *
+ * THIS USED TO SAY "a merged ticket's work is on the integration branch" (N9). Under the wave model
+ * that is false: a `qa` ticket is merge-GATED and its code may not be integrated until the wave
+ * runs. The behaviour here is still correct — a branch ref survives its worktree, so reclaiming the
+ * tree of a gated ticket loses nothing, and `wave-integrate` reads branches rather than worktrees.
+ * But the sentence was the exact belief that produced EE-001 and B2, still written down as true,
+ * and a comment that teaches the next reader a false rule is how a class recurs. `hasShipped()` in
+ * `lib/board.mjs` is the one predicate that answers it.
  *
  * Usage:
  *   worktree-reap.mjs [--root <path>] [--dir .agent-wt] [--apply] [--max-disk-mb N] [--json]
@@ -139,6 +146,21 @@ if (existsSync(SLOTS)) {
 }
 
 function liveness(name) {
+  // AN INTEGRATION WORKTREE IS NEVER AUTO-REAPED.
+  //
+  // `wave-integrate.mjs` keeps `.agent-wt/integration-wave-N` on every non-green outcome, and tells
+  // the operator the merged tree is preserved so it can be built somewhere with a toolchain. It
+  // lived in os.tmpdir(), where this reaper could not see it, so it was neither counted nor
+  // protected and the OS could purge it (N3). Moving it here fixed that and created a worse
+  // problem: a kept wave tree is CLEAN — its merges are committed — so the dirty check would not
+  // have stopped `--apply` from deleting the one artifact the message promised.
+  //
+  // So it is reported, counted against the ceiling, and removed only by a human who knows what it
+  // holds. That is the same reasoning as the dirty-orphan rule: this reaper does not destroy work
+  // nobody has read.
+  if (/^integration-wave-/.test(name)) {
+    return { live: true, why: 'an integration worktree — kept for inspection, counted, never auto-reaped. Remove it deliberately once you know what it holds' };
+  }
   if (!boardKnown) return { live: true, why: 'no event log — nothing can be called an orphan without a board' };
   if (live.has(key(name))) return { live: true, why: `ticket ${name} is in flight` };
   const lease = leases[name];

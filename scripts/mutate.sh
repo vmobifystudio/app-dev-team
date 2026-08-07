@@ -182,6 +182,12 @@ M56@@scripts/register.mjs@@if (refusal) { downgraded.push@@if (false) { downgrad
 M57@@scripts/worktree-reap.mjs@@const totalMb = poolMb + cacheMb;@@const totalMb = poolMb;@@...so a cache over the ceiling BLOCKS, with no worktrees involved at all@@B4/B5/B6
 M58@@scripts/ci-status.mjs@@const headline = ARMED || code === 0 ? state : `ADVISORY (${state})`;@@const headline = state;@@unarmed, ci-status says ADVISORY on line 1 rather than a verdict it is not enforcing@@B4/B5/B6
 M59@@scripts/worktree-slot.mjs@@  if (mine) {@@  if (mine && !flags.force) {@@--force no longer buys a second lease past the guard its own header calls the one that matters@@B4/B5/B6
+M60@@scripts/lib/board.mjs@@  return !(row.staticOnly === true || row.verifiedStatic === true);@@  return true;@@...and a merge-gated one awaiting the wave has NOT (board-row spelling)@@N1/N9: one predicate
+M61@@scripts/messages.mjs@@if (m.kind === 'decision' && pending.length) pending.shift();@@if (m.kind === 'decision') { const j = pending.findIndex((x) => x.kind === 'escalation'); if (j >= 0) pending.splice(j, 1); }@@a decision that answered a QUESTION does not also close an escalation@@N5: one decision
+M62@@scripts/messages.mjs@@if (options.count) { process.stdout.write(`${open.length}\n`); return 0; }@@if (false) { process.stdout.write(`${open.length}\n`); return 0; }@@...and that line is a bare number the runbook can use without a regex@@N8: --count
+M63@@scripts/wave-integrate.mjs@@  if (outstanding.length > 1) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }@@  if (false) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }@@a ticket with two unintegrated branches is REPORTED, not picked between@@N2: ambiguity
+M64@@scripts/wave-integrate.mjs@@  const after = branch[i + String(id).length];@@  const after = undefined;@@...and APP-1 does not match the branch of APP-12@@N2: ambiguity
+M65@@scripts/worktree-reap.mjs@@  if (/^integration-wave-/.test(name)) {@@  if (false) {@@...and --apply never reaps it, because a kept wave tree is CLEAN and the dirty check would not save it@@N3: the kept
 CATALOGUE
 }
 

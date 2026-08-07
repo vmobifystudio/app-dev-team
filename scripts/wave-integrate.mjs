@@ -57,10 +57,9 @@
  *   2  CANNOT EVALUATE — no base, no candidates, no test command declared, or the suite could not be
  *      executed here. Never a pass: a wave nobody could test is not a tested wave.
  */
-import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
-import { dirname, resolve, join } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { parseArgs } from './lib/args.mjs';
@@ -118,29 +117,69 @@ try { tickets = reduce(parseEventLog(readFileSync(LOG, 'utf8')).events).tickets;
 catch (e) { die(2, `cannot read the event log: ${e.message}`); }
 
 const branches = (gitTry(['branch', '--format=%(refname:short)']).out || '').split('\n').filter(Boolean);
+
+/**
+ * Branch matching, and the two ways the first version got it wrong (N2).
+ *
+ * It was `b.toLowerCase().includes(id.toLowerCase())`, which matches `APP-1` inside
+ * `feat/APP-12-login` — so a wave could integrate a ticket nobody asked for. The id must be
+ * followed by a non-alphanumeric character or the end of the string.
+ *
+ * And it then took `mine[0]`, computing `allBranches` and never printing it. A ticket with
+ * `feat/APP-001-login` and `fix/APP-001-retry` integrated whichever sorted first, silently. This
+ * file argues elsewhere that "two resolvers that disagree is worse than either being wrong"; an
+ * arbitrary pick is that failure with no second resolver to blame. Ambiguity is now REPORTED and
+ * the ticket is held out of the wave, because the one thing worse than not integrating a ticket is
+ * integrating the wrong half of it.
+ */
+const matchesTicket = (branch, id) => {
+  const i = branch.toLowerCase().indexOf(String(id).toLowerCase());
+  if (i < 0) return false;
+  const after = branch[i + String(id).length];
+  return after === undefined || !/[a-z0-9]/i.test(after);
+};
+
 const candidates = [];
 const noBranch = [];
+const ambiguous = [];
 for (const t of tickets.values()) {
   if (t.status !== 'qa') continue;
-  const mine = branches.filter((b) => b.toLowerCase().includes(String(t.id).toLowerCase()));
+  const mine = branches.filter((b) => matchesTicket(b, t.id));
   if (!mine.length) { noBranch.push(t.id); continue; }
-  const already = mine.some((b) => gitTry(['merge-base', '--is-ancestor', b, BASE]).ok);
-  if (already) continue;
-  candidates.push({ id: t.id, branch: mine[0], allBranches: mine });
+  const already = mine.filter((b) => gitTry(['merge-base', '--is-ancestor', b, BASE]).ok);
+  // `already` used to be `.some()`: ANY matching branch being an ancestor skipped the ticket, so a
+  // stale `fix/APP-001-retry` that had merged months ago hid an unintegrated `feat/APP-001-login`.
+  const outstanding = mine.filter((b) => !already.includes(b));
+  if (!outstanding.length) continue;
+  if (outstanding.length > 1) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }
+  candidates.push({ id: t.id, branch: outstanding[0], allBranches: mine });
 }
+
+const reportAmbiguous = () => {
+  if (!ambiguous.length) return;
+  process.stdout.write(
+    `\n  AMBIGUOUS — ${ambiguous.length} ticket(s) have more than one unintegrated branch, and this\n` +
+    '  will not pick for you:\n' +
+    ambiguous.map((a) => `      ${a.id}: ${a.branches.join(', ')}\n`).join('') +
+    '    Merge or delete the one that is not the candidate, then re-run. Integrating an arbitrary\n' +
+    '    half of a ticket is worse than integrating none of it.\n'
+  );
+};
 
 if (!candidates.length) {
   process.stdout.write(
     `WAVE ${WAVE}: nothing to integrate into ${BASE}.\n` +
-    `  ${[...tickets.values()].filter((t) => t.status === 'qa').length} ticket(s) are at \`qa\`; every one is either already an ancestor of ${BASE} or has no branch.\n` +
+    `  ${[...tickets.values()].filter((t) => t.status === 'qa').length} ticket(s) are at \`qa\`; each is already an ancestor of ${BASE}, has no branch, or is ambiguous below.\n` +
     (noBranch.length ? `  NO BRANCH FOUND: ${noBranch.join(', ')} — reported, never assumed merged (merge-reconcile.mjs's rule).\n` : '')
   );
+  reportAmbiguous();
   process.exit(2);
 }
 
 process.stdout.write(`WAVE ${WAVE} — ${candidates.length} ticket(s) to integrate into ${BASE}\n\n`);
 for (const c of candidates) process.stdout.write(`  ${c.id.padEnd(16)} ${c.branch}\n`);
 if (noBranch.length) process.stdout.write(`\n  NO BRANCH FOUND (not integrated, not assumed merged): ${noBranch.join(', ')}\n`);
+reportAmbiguous();
 
 if (flags['dry-run']) {
   process.stdout.write('\n  --dry-run: nothing was touched.\n');
@@ -154,7 +193,16 @@ if (flags['dry-run']) {
 // collision this whole plugin exists to prevent, committed by the one process that holds every
 // branch at once.
 const WAVE_BRANCH = `integration/wave-${WAVE}`;
-const WT = mkdtempSync(join(tmpdir(), `wave-${WAVE}-`));
+
+// INSIDE `.agent-wt/`, NOT in os.tmpdir() (N3).
+//
+// On every non-green outcome this sets `keep = true` and tells the operator the merged tree is
+// preserved "so it can be built somewhere that has the toolchain". In tmpdir that promise is not
+// kept: `worktree-reap` never sees the tree (it only walks `.agent-wt/`), so it is neither counted
+// against the disk ceiling nor protected by the dirty check — and the OS may purge the one artifact
+// the message exists to preserve. Under `.agent-wt/` the reaper counts it, reports it, and refuses
+// to remove it while it holds uncommitted work.
+const WT = resolve(ROOT, '.agent-wt', `integration-wave-${WAVE}`);
 rmSync(WT, { recursive: true, force: true });   // `git worktree add` wants to create it itself
 
 let created = false;

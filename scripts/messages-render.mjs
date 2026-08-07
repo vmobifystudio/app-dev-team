@@ -36,7 +36,7 @@
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { parseBoard, parseMessages } from './lib/board.mjs';
+import { parseBoard, parseMessages, hasShipped } from './lib/board.mjs';
 import {
   MAX_PER_ROLE,
   MAX_PAIR,
@@ -56,7 +56,8 @@ import {
   staleAssumptions,
 } from './lib/messages.mjs';
 
-const SHIPPED_STATUS = new Set(['qa', 'done']);
+// SHIPPED_STATUS was `new Set(['qa','done'])`. `qa` alone cannot tell a landed ticket from one the
+// merge gate passed and the wave has not run — see lib/board.mjs hasShipped (N1).
 
 let useColor = process.stdout.isTTY && !process.argv.includes('--no-color');
 const c = (code, text) => (useColor ? `[${code}m${text}[0m` : text);
@@ -114,7 +115,8 @@ function buildModel(messages, boardText) {
   const rowsById = new Map();
   if (boardText) {
     for (const row of parseBoard(boardText).rows) {
-      rowsById.set(row.id.toUpperCase(), (row.status || '').toLowerCase().trim());
+      // The ROW, not its status word: `hasShipped` needs `staticOnly` too.
+      rowsById.set(row.id.toUpperCase(), { ...row, status: (row.status || '').toLowerCase().trim() });
     }
   }
 
@@ -123,9 +125,10 @@ function buildModel(messages, boardText) {
   const followUps = [];
   for (const [ticketId, thread] of threads) {
     if (ticketId === '(no ticket)') continue;
-    const status = rowsById.get(ticketId.toUpperCase()) ?? null;
+    const row = rowsById.get(ticketId.toUpperCase()) ?? null;
+    const status = row?.status ?? null;
     for (const q of openQuestions(thread)) {
-      open.push({ ...q, status, shipped: status !== null && SHIPPED_STATUS.has(status) });
+      open.push({ ...q, status, shipped: hasShipped(row) });
     }
     for (const message of openFollowUps(thread).filter((m) => m.kind !== 'question')) {
       followUps.push({ ...message, status, ticketId });

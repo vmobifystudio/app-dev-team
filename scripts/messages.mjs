@@ -18,7 +18,7 @@
  *   messages.mjs migrate [--ledger <docs/team/messages.md>] [--force]
  *   messages.mjs render  [--ledger <docs/team/messages.md>]
  *   messages.mjs channels [--ledger ...]              # every channel the log can produce
- *   messages.mjs open [--was <n>] [--escalations] [--json] [--ledger ...]
+ *   messages.mjs open [--was <n>] [--escalations] [--count] [--json] [--ledger ...]
  *                     # what still owes an answer. `--was <n>` exits 1 if the count did not fall
  *                     # across a Q&A batch (EE-003); `--escalations` exits 1 while any escalation
  *                     # is unclosed, which is the founder's half of the channel (EE-004).
@@ -128,7 +128,7 @@ const FLAGS = new Set([
   '--requirements', '--channel', '--project', '--by', '--title', '--expires', '--owner',
   '--confidence', '--validate-by', '--was',
 ]);
-const BOOLEANS = new Set(['--blocking', '--force', '--quiet', '--json', '--escalations']);
+const BOOLEANS = new Set(['--blocking', '--force', '--quiet', '--json', '--escalations', '--count']);
 
 function parseArgs(argv) {
   const out = {};
@@ -550,14 +550,38 @@ function main() {
       const open = [];
       for (const thread of byThread.values()) open.push(...pairQuestions(thread).open);
 
-      // An escalation is closed by a `decision` on the same thread — the same pairing rule the
-      // renderer's DELIVERY block uses, so there is one answer to "is this still open" and not two.
+      // ONE ORDERED WALK, because a `decision` can close either kind and counting them separately
+      // double-spends them.
+      //
+      // This was `raised.slice(decisionCount)` — every `decision` on the thread treated as closing
+      // an escalation, including one that answered a question. A thread with one question, one
+      // escalation and one decision reported ZERO unclosed escalations, so the founder was told
+      // nothing was waiting on them by the very command added to tell them it was (N5). And M51
+      // mutates the exit wiring rather than this arithmetic, so it was unproven either way.
+      //
+      // `team-protocol`'s rule is "pairing is by count, oldest first". Applied to one queue holding
+      // both kinds, that is: `answer` closes the oldest open QUESTION; `decision` closes the oldest
+      // open item of either kind. A resolution can then only ever discharge one obligation.
       const escalations = [];
       for (const thread of byThread.values()) {
-        const raised = thread.filter((m) => m.kind === 'escalation');
-        const decided = thread.filter((m) => m.kind === 'decision').length;
-        escalations.push(...raised.slice(decided));
+        const pending = [];
+        for (const m of thread) {
+          if (m.kind === 'question' || m.kind === 'escalation') { pending.push(m); continue; }
+          if (m.kind === 'answer') {
+            const i = pending.findIndex((x) => x.kind === 'question');
+            if (i >= 0) pending.splice(i, 1);
+            continue;
+          }
+          if (m.kind === 'decision' && pending.length) pending.shift();
+        }
+        escalations.push(...pending.filter((m) => m.kind === 'escalation'));
       }
+
+      // `--count` prints the number and NOTHING else, so it must short-circuit before the report —
+      // placed after it, the caller got the human block and the number, which is not a count.
+      // /app-build step 1b was piping `--json` through `tr -dc` and a greedy `sed` to recover this,
+      // a regex over prose summaries, in a runbook (N8).
+      if (options.count) { process.stdout.write(`${open.length}\n`); return 0; }
 
       if (options.json) {
         process.stdout.write(`${JSON.stringify({

@@ -5,6 +5,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+**Review round 2 — the non-blocking findings that were about to become blocking ones.**
+
+- **N1/N9 — `['qa','done'].includes(status)` has now produced three defects, so it became one
+  predicate.** EE-001 (merge-reconcile deadlocked the loop), B2 (a dependent started against a
+  branch without its dependency), and five readers still telling a founder that gated work had
+  shipped. `lib/board.mjs` `hasShipped(row)` is the single answer, swept across `trace.mjs`,
+  `studio-dashboard.mjs`, `control-room/state.mjs`, `messages-render.mjs` and `board-doctor.mjs`, and
+  an assertion now fails if any reader hand-rolls the set again. `merge-reconcile`'s
+  `CLAIMS_INTEGRATED` is exempt **with its reason recorded**: it selects the population to examine,
+  which is a different question in the same words.
+- **N5 — one `decision` closed both a question and an escalation.** `raised.slice(decisionCount)`
+  counted every decision as closing an escalation, so a thread with one question, one escalation and
+  one decision reported **zero** unclosed escalations: the founder was told nothing was waiting on
+  them, by the command added to tell them it was. Now one ordered walk over a single queue —
+  `answer` closes the oldest question, `decision` closes the oldest item of either kind.
+- **N2 — `wave-integrate` picked a branch arbitrarily.** `mine[0]`, with `allBranches` computed and
+  never printed, and a bare `includes` that matched `APP-1` inside `feat/APP-12-…`. Ambiguity is now
+  reported and the ticket held out of the wave. Found while fixing it: the report sat *after* the
+  no-candidates early exit, so a wave whose only candidates were ambiguous printed "nothing to
+  integrate" and dropped them silently — N2's own failure, reproduced inside its fix.
+- **N3 — the kept integration worktree lived in `os.tmpdir()`**, where the reaper could not count or
+  protect it and the OS could purge the one artifact the message promised. Moved under `.agent-wt/`,
+  which created the opposite risk: a kept wave tree is CLEAN, so the dirty check would not have
+  stopped `--apply`. Integration worktrees are now never auto-reaped.
+- **N8 — the runbook hand-parsed JSON with a greedy regex.** `messages.mjs open --count`.
+
+**+19 assertions (1343 -> 1362), 0 failing. 27/27 PR mutations CAUGHT (M38-M65), none by the wrong
+assertion.** Two more of my own defects caught by the mutation tester rather than by review: a
+`--count` that printed the report as well as the number, and an N3 fixture with no board, where the
+reaper's fail-safe meant the guard under test was never reached.
+
+
 **Review round.** `code-reviewer` returned REQUEST CHANGES on this branch with six blocking
 findings, two of them found by executing rather than reading. All six are fixed here, each with an
 assertion and a mutation that proves the assertion can go red.

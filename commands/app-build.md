@@ -163,7 +163,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    **Then prove the batch answered something** — read the count before you spawn, pass it back after:
 
    ```bash
-   BEFORE=$(node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --json | tr -dc '0-9:,{}"a-z ' | sed -n 's/.*"open": *\([0-9]*\).*/\1/p')
+   BEFORE=$(node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --count)
    # ... spawn tech-lead ONCE with the whole batch ...
    node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --was "$BEFORE"
    ```
