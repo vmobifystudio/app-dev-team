@@ -1158,6 +1158,26 @@ Every open item is specified with a reproduction: dry run 4 in
   `/private/tmp` symlink trap `spawn-gate.sh`'s own header already named: resolving a not-yet-created
   target directory naively made a same-worktree write read as cross-worktree. Caught by testing a
   brand-new subdirectory, fixed by walking up to the nearest existing ancestor before resolving.
+- **H8 — a real `tech-manager` agent orchestrating a real REQUEST CHANGES retry, 2026-08-08**
+  (`docs/dry-runs/2026-08-08-h8-tech-manager-orchestrated-retry.md`). H7 tested the IC and reviewer
+  roles for real but had this session playing tech-manager by hand; H8 spawned a real
+  `app-dev-team:tech-manager` agent, handed it one ticket (`truncate(str, maxLen)`, spec written to
+  make a plausible off-by-one mistake without rigging the outcome), and let it run its own process —
+  dispatch, verify, request review, and, if needed, route a real retry — using its own role file and
+  the plugin's own scripts. The review's cycle-0 finding was genuine, not staged: `maxLen <= 0` sent
+  `slice`'s negative-offset-from-end behavior into inverting the truncation, returning a *longer*
+  string as `maxLen` shrank; the developer's own 17 tests never exercised it (all used `maxLen >= 2`).
+  The retry produced a real fix, proved against its own regression before applying it (17/3 on
+  unfixed code, reproducing the reviewer's numbers, then 20/20 fixed); the re-review did not
+  rubber-stamp it — it independently reverted the guard, reproduced the 17/3 failure by hand, and
+  added two of its own mutations. Also found before the real test began: the leased worktree was cut
+  before this session's spec edits landed on the fixture's `main`, so it was genuinely missing the
+  ticket's spec section — the developer correctly `BLOCKED` rather than guessing, `ic-workflow`'s
+  read-order rule holding under an unplanned failure, not just the documented case. Honest cost note
+  in the write-up: 295 minutes of session wall-clock end to end, but only ~10.8 minutes is the sum
+  of the five subagents' own reported compute time — the gap is this test's own harness shape
+  (`tech-manager` spawned as a subagent needing explicit wake-ups, not the top-level driver a real
+  `/app-build` round would use), not a claim about what a live round costs.
 
 ---
 
