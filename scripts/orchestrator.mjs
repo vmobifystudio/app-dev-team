@@ -432,6 +432,45 @@ function cmdRound() {
     }
   }
 
+  // VERIFIED-STATIC ODOMETER (OPS-013). Per-ticket verification is static-only by design (see
+  // `knowledge/git-workflow.md`'s wave model) and a wave landing green upgrades it to real
+  // `verified`. Nothing counted how many tickets were CURRENTLY sitting on the static-only promise
+  // rather than the executed one — `round-journal.mjs` records rounds/spawns/retries but has no
+  // field for this, so a sprint could carry a growing pile of never-actually-run suites and nobody
+  // would see the number until asked. Reported here, every round; not blocked, because static-only
+  // is legitimate mid-wave — it is only a problem if it never clears.
+  {
+    const staticOnly = [...tickets.values()].filter((t) => t.verifiedStatic === true).map((t) => t.id);
+    if (staticOnly.length) {
+      process.stdout.write(
+        `  VERIFIED STATIC — ${staticOnly.length} ticket(s) have not had the executable suite run yet: ` +
+        `${staticOnly.slice(0, 10).join(', ')}${staticOnly.length > 10 ? ` … and ${staticOnly.length - 10} more` : ''}\n` +
+        '    Cleared by a green `wave-integrate.mjs` for the wave each belongs to. If this count is not\n' +
+        '    shrinking round over round, waves are not landing — that is the thing to chase, not the flag.\n\n'
+      );
+    }
+  }
+
+  // CROSS-TICKET REVIEW PATTERNS (OPS-014). Code review is per-ticket, so three tickets failing
+  // review on the same underlying spec defect each burn their own retry with no correlation, even
+  // though every verdict is already on disk in `docs/53-reviews/`. Report-only: a shared blocking
+  // file across tickets is a lead for a human or tech-manager, never a block on its own.
+  {
+    const scan = spawnSync(process.execPath, [resolve(HERE_SCRIPTS, 'review-pattern-scan.mjs'), '--root', ROOT, '--json'], { cwd: ROOT, encoding: 'utf8' });
+    if (scan.status === 0) {
+      try {
+        const parsed = JSON.parse(scan.stdout);
+        if (parsed.evaluated && parsed.patterns?.length) {
+          process.stdout.write(`  REVIEW PATTERNS — ${parsed.patterns.length} file(s) have blocked more than one ticket\n`);
+          for (const p of parsed.patterns.slice(0, 5)) {
+            process.stdout.write(`    ${p.file} -> ${p.tickets.join(', ')}\n`);
+          }
+          process.stdout.write('    Same file, multiple tickets — worth checking for one shared root cause before a\n    further ticket retries into it blind (review-pattern-scan.mjs for the full list).\n\n');
+        }
+      } catch { /* an unparsable scan is not this reporter's failure */ }
+    }
+  }
+
   // TICKETS THAT DECLARE NO FILES (OPS-007). `contention-check.mjs` can only see the file set a
   // ticket declared at creation, and declaring it is conditional — so the ORDINARY ticket has no
   // collision protection and the printed word is an honest `CANNOT EVALUATE` that still lets both

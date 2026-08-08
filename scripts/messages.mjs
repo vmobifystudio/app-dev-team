@@ -31,8 +31,10 @@
 
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-import { parseMessages } from './lib/board.mjs';
+import { parseMessages, readBoard } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
 import {
   SCHEMA_VERSION,
@@ -309,6 +311,39 @@ function cmdSend(options) {
   appendMessage(paths.jsonl, candidate);
   const { messages: after } = readLog(paths, { quiet: true });
   writeView(paths, after);
+
+  // OPS-009 (adversarial-operations-review). An `answer` resolving a `question` about a ticket that
+  // has already reached `qa`/`done` is a correction arriving AFTER the code shipped — the assumption
+  // it corrects is already merged, and until now nothing downstream re-opened anything: the
+  // correction just sat in the message ledger. Never refuse the send for this (post-hoc information
+  // is still worth having), but stop letting it be silent — file it on the register, the one place
+  // whose own rule is "nothing owed may lack a terminal status".
+  if (candidate.kind === 'answer' && candidate.ticket !== TICKETLESS) {
+    const boardPath = resolve(dirname(dirname(dirname(paths.md))), 'docs/31-board.md');
+    if (existsSync(boardPath)) {
+      try {
+        const { board } = readBoard(readFileSync(boardPath, 'utf8'));
+        const row = board.rows.find((r) => r.id === candidate.ticket);
+        if (row && ['qa', 'done'].includes(String(row.status))) {
+          const regId = `ASM-${String(candidate.id).replace(/^MSG-0*/, '') || '0'}`;
+          const registerScript = resolve(dirname(fileURLToPath(import.meta.url)), 'register.mjs');
+          const add = spawnSync(process.execPath, [
+            registerScript, '--root', dirname(dirname(boardPath)),
+            'add', regId,
+            '--kind', 'assumption',
+            '--title', `Late answer on shipped ${candidate.ticket}: ${candidate.summary}`.slice(0, 200),
+            '--by', candidate.from,
+            '--ticket', candidate.ticket,
+          ], { encoding: 'utf8' });
+          if (add.status === 0) {
+            process.stdout.write(`NOTE: ${candidate.ticket} is already ${row.status} — filed ${regId} on the register (register.mjs check) so this does not sit silently answered.\n`);
+          } else {
+            process.stderr.write(`messages: could not auto-file a register item for the late answer on ${candidate.ticket} (register.mjs exited ${add.status}); file one by hand.\n${add.stdout || ''}${add.stderr || ''}`);
+          }
+        }
+      } catch { /* a board that will not parse is not this command's failure to report */ }
+    }
+  }
 
   process.stdout.write(
     `SENT: ${candidate.id} ${candidate.from} -> ${candidate.to.join(', ')} ` +

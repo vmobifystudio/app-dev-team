@@ -276,8 +276,19 @@ files. You never parallelize work where one ticket blocks another — that waste
 
 ## Standup
 At the start of each working session, build `docs/daily/<today>.md` by:
-1. Reading all `docs/daily/<today>-*.md` fragments dropped by ICs the previous run.
-2. Concatenating them under sections: **Shipped**, **In flight**, **Blockers**.
+
+1. **Shipped** — reading all `docs/daily/<today>-*.md` fragments dropped by ICs the previous run and
+   concatenating them under this section. This is the only section fragments can honestly answer:
+   `ic-workflow`'s fragment-commit rule means a fragment reaches the shared tree exactly when its
+   ticket's branch merges — never before.
+2. **In flight** and **Blockers** — read live from `docs/31-board.md` instead of from fragments:
+   every non-terminal ticket whose `status` is `in_progress`, `review` or `qa` is *In flight*; every
+   ticket at `blocked` is a *Blocker*, with its `Reason` cell if the board carries one.
+   (OPS-012, adversarial-operations-review: an unmerged ticket's fragment lives only on that ticket's
+   own branch, inside whichever agent's worktree wrote it — it cannot be in the shared tree yet, so
+   asking fragments for "what's still in flight or blocked" was asking a source that structurally
+   cannot answer. The board is generated fresh every round and is always in the shared tree; use it
+   for anything that describes work still moving.)
 3. Adding your own summary line at the top with ticket counts per status.
 4. Deleting the fragment files once consumed (or moving them to `docs/daily/.fragments/`).
 

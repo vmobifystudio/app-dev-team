@@ -414,4 +414,24 @@ const push = gitTry(['push', 'origin', BASE], { cwd: ROOT });
 process.stdout.write(push.ok
   ? `\n  PUSHED ${BASE} — one push, one CI run for the wave. Read it next round with ci-status.mjs.\n`
   : `\n  PUSH FAILED:\n${push.out.split('\n').map((l) => `    ${l}`).join('\n')}\n  ${BASE} is fast-forwarded locally; nothing was rewritten.\n`);
+
+// Future Conflict #1 (adversarial-operations-review): `orchestrator round` runs merge-reconcile.mjs
+// at ROUND START, but drift can happen at the moment the wave lands too — the same fetch/ff/push
+// sequence above is a second window between "the board believes this is merged" and "git agrees".
+// Running the same reconciliation here, once, right after the ref actually moved, closes that
+// window at the source instead of waiting for it to surface a round later.
+if (push.ok) {
+  const reconcile = spawnSync(
+    process.execPath,
+    [resolve(HERE, 'merge-reconcile.mjs'), '--root', ROOT, '--base', BASE],
+    { cwd: ROOT, encoding: 'utf8' }
+  );
+  process.stdout.write(`\n  merge-reconcile (post-wave):\n${(reconcile.stdout || '').split('\n').map((l) => `    ${l}`).join('\n')}\n`);
+  if (reconcile.status !== 0) {
+    process.stdout.write(
+      `  merge-reconcile exited ${reconcile.status} after the push that just landed ${WAVE_BRANCH} on ${BASE}.\n` +
+      '  The wave itself is pushed; treat this as a hand-off to the next round, not a failed push.\n'
+    );
+  }
+}
 process.exit(push.ok ? 0 : 1);

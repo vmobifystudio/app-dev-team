@@ -4169,6 +4169,64 @@ grep -q 'STALLED APP-001 \[qa\]' "$TMP/out" \
   || bad "a ticket parked at qa while the board moves on IS stalled — merged is not done" \
          "TERMINAL must be ['done'] alone; qa still owes qa_passed and closed"
 
+# --- OPS-013: the verified_static odometer ---------------------------------------------------------
+#
+# `round-journal.mjs` counts rounds/spawns/retries but had no field for how many tickets are
+# currently carrying the STATIC-only promise (no executable suite has run for them yet). Reported
+# by `orchestrator.mjs round`, every round: not blocking (static-only is legitimate mid-wave), but no
+# longer invisible.
+VSO="$TMP/verified-static-odometer"; rm -rf "$VSO"; mkdir -p "$VSO/docs/53-reviews" "$VSO/docs/team"
+( cd "$VSO" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm b ) >/dev/null 2>&1
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo ok","full":"echo ok"}}\n' \
+  > "$VSO/docs/team/project-profile.json"
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\n## Not checked\nNothing.\n' > "$VSO/docs/53-reviews/v.md"
+VB() { ( cd "$VSO" && node "$BD" "$@" ) >/dev/null 2>&1; }
+VB add APP-060 --title t --owner ios-developer --by tech-manager
+VB move APP-060 claimed --by ios-developer
+VB move APP-060 done_reported --by ios-developer
+VB move APP-060 verified_static --by tech-manager --detail d
+VB move APP-060 review_requested --by ios-developer
+VB move APP-060 started --by code-reviewer
+VB move APP-060 approved --by code-reviewer --verdict "$VSO/docs/53-reviews/v.md"
+VB move APP-060 merged --by tech-manager
+( cd "$VSO" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'VERIFIED STATIC — 1 ticket' "a ticket still carrying verified_static is counted, every round"
+assert_has "$TMP/out" 'APP-060' "...naming it"
+
+# THE MIRROR CASE: a ticket verified for real (the suite actually ran) must NOT show up here — an
+# odometer that also counts the honest ones would make the number meaningless.
+( cd "$MOVQ" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out2" 2>&1
+grep -q 'VERIFIED STATIC' "$TMP/out2" \
+  && bad "a ticket verified for real (not static-only) is not counted on the odometer" "$(grep 'VERIFIED STATIC' "$TMP/out2")" \
+  || ok "a ticket verified for real (not static-only) is not counted on the odometer"
+
+# --- OPS-014: cross-ticket review-finding pattern scan ----------------------------------------------
+#
+# Code review is per-ticket, so two tickets independently failing on the same underlying file get no
+# correlation — each burns its own retry rediscovering it. `review-pattern-scan.mjs` groups blocking
+# findings by the file they name; `orchestrator.mjs round` surfaces a shared one.
+RPS="$TMP/review-pattern"; rm -rf "$RPS"; mkdir -p "$RPS/docs/53-reviews"
+printf '## REQUEST CHANGES: APP-070\n\n## Blocking\n\n### 1. `src/Shared.kt:10` — wrong token\n\nDetail.\n' \
+  > "$RPS/docs/53-reviews/APP-070-cycle-0.md"
+printf '## REQUEST CHANGES: APP-071\n\n## Blocking\n\n### 1. `src/Shared.kt:22` — same wrong token, different line\n\nDetail.\n' \
+  > "$RPS/docs/53-reviews/APP-071-cycle-0.md"
+printf '## APPROVED: APP-072\n\nNothing to see here.\n' \
+  > "$RPS/docs/53-reviews/APP-072-cycle-0.md"
+node "$HERE/review-pattern-scan.mjs" --root "$RPS" >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'src/Shared.kt' "two tickets blocking on the same file are correlated"
+assert_has "$TMP/out" 'APP-070, APP-071' "...naming both tickets, in order"
+node "$HERE/review-pattern-scan.mjs" --root "$RPS" --json >"$TMP/out.json" 2>&1
+grep -q '"patterns":\[{"file":"src/Shared.kt"' "$TMP/out.json" \
+  && ok "...and the machine-readable form carries the same finding" \
+  || bad "...and the machine-readable form carries the same finding" "$(cat "$TMP/out.json")"
+
+# Reuse VSO (already a working orchestrator-round fixture) to prove `round` itself wires the scan
+# in, not only the standalone script.
+cp "$RPS/docs/53-reviews/APP-070-cycle-0.md" "$RPS/docs/53-reviews/APP-071-cycle-0.md" "$VSO/docs/53-reviews/"
+( cd "$VSO" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'REVIEW PATTERNS' "orchestrator round itself surfaces a cross-ticket review pattern, not only the standalone scan"
+
 # --- PF-002: corrupt data returned as empty ------------------------------------------------------
 #
 # THE FIRST PRODUCT DEFECT CLASS THIS STUDIO CAN DETECT. Across six dry runs not one product defect
@@ -8224,6 +8282,45 @@ assert_has "$TMP/mo4.txt" "these are the founder's" "...marked as the founder's,
 [ $? = 0 ] && ok "...and the pre-existing commands still exit 0 through the same return path" \
   || bad "...and the pre-existing commands still exit 0 through the same return path"
 
+# --- OPS-009: an answer that resolves a question on an ALREADY-SHIPPED ticket is not silent -------
+#
+# A `question`/`answer` pair about a ticket that reached `qa`/`done` is a correction arriving after
+# the code shipped: the assumption it corrects is already merged, and nothing downstream re-opened
+# anything for it — the correction sat inertly in the message ledger. `messages.mjs send` now auto-
+# files a register item for exactly this shape, without refusing the send itself.
+OPS9="$TMP/ops9-late-answer"; rm -rf "$OPS9"; mkdir -p "$OPS9/docs/53-reviews"
+( cd "$OPS9" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  node "$HERE/board.mjs" add APP-050 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-050 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-050 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-050 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-050 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-050-cycle-0.md
+  node "$HERE/board.mjs" move APP-050 approved --by code-reviewer --verdict docs/53-reviews/APP-050-cycle-0.md
+  node "$HERE/board.mjs" move APP-050 merged --by tech-manager ) >/dev/null 2>&1
+OPS9_STATUS=$( cd "$OPS9" && node "$HERE/board.mjs" show APP-050 --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);process.stdout.write(j["APP-050"].status)})' )
+[ "$OPS9_STATUS" = "qa" ] || bad "OPS-009 fixture: APP-050 reached qa before the answer is sent" "got $OPS9_STATUS"
+( cd "$OPS9" && sh "$HERE/team-message.sh" --from ios-developer --to tech-lead --ticket APP-050 --kind question --summary "does the cache ever expire?" ) >/dev/null 2>&1
+( cd "$OPS9" && sh "$HERE/team-message.sh" --from tech-lead --to ios-developer --ticket APP-050 --kind answer \
+    --summary "no — turns out it never expires, contradicts the shipped assumption" --artifact docs/22-impl-spec-ios.md ) >"$TMP/ops9.txt" 2>&1
+assert_has "$TMP/ops9.txt" "filed ASM-" "an answer on an already-shipped ticket says it filed a register item"
+( cd "$OPS9" && node "$HERE/register.mjs" show --json ) >"$TMP/ops9reg.json" 2>&1
+grep -q '"kind": "assumption"' "$TMP/ops9reg.json" \
+  && ok "...and the register actually carries an OPEN assumption item for it" \
+  || bad "...and the register actually carries an OPEN assumption item for it" "$(cat "$TMP/ops9reg.json")"
+
+# The mirror case: an answer on a ticket still IN PROGRESS is ordinary team traffic, not a late
+# correction — nothing should be filed for it.
+OPS9B="$TMP/ops9b-in-progress"; rm -rf "$OPS9B"; mkdir -p "$OPS9B"
+( cd "$OPS9B" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  node "$HERE/board.mjs" add APP-051 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-051 claimed --by ios-developer ) >/dev/null 2>&1
+( cd "$OPS9B" && sh "$HERE/team-message.sh" --from ios-developer --to tech-lead --ticket APP-051 --kind question --summary "which enum?" ) >/dev/null 2>&1
+( cd "$OPS9B" && sh "$HERE/team-message.sh" --from tech-lead --to ios-developer --ticket APP-051 --kind answer \
+    --summary "TodoError wins" --artifact docs/22-impl-spec-ios.md ) >"$TMP/ops9b.txt" 2>&1
+grep -q "filed ASM-" "$TMP/ops9b.txt" \
+  && bad "an answer on an in-progress ticket files nothing on the register" "$(cat "$TMP/ops9b.txt")" \
+  || ok "an answer on an in-progress ticket files nothing on the register"
 
 # --- B1: --push must land on $BASE, not on whatever is checked out --------------------------------
 #
@@ -8270,6 +8367,13 @@ WP_SCRATCH=$( cd "$WP" && git rev-parse scratch/operator )
 [ "$WP_ORIGIN" = "$WP_WAVE" ] \
   && ok "...and the push actually reached origin" \
   || bad "...and the push actually reached origin" "origin/develop=$WP_ORIGIN wave=$WP_WAVE"
+
+# Future Conflict #1 (adversarial-operations-review): merge-reconcile.mjs ran at ROUND START only,
+# so drift introduced by the wave's own fetch/ff/push sequence went unnoticed until the next round.
+# --push now runs it again immediately after the ref moves, closing the same window one call sooner.
+grep -q "merge-reconcile (post-wave)" "$TMP/wp.txt" \
+  && ok "--push runs merge-reconcile.mjs again right after the wave lands (Future Conflict #1)" \
+  || bad "--push runs merge-reconcile.mjs again right after the wave lands (Future Conflict #1)" "$(tail -6 "$TMP/wp.txt")"
 
 # --- B2: a dependency is satisfied by INTEGRATION, not by permission ------------------------------
 #

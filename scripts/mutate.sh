@@ -194,6 +194,10 @@ M68@@scripts/register.mjs@@  if (errors.length) die(2,@@  if (false) die(2,@@...
 M69@@scripts/report-check.mjs@@if (fragmentTruth?.ok === false) {@@if (false) {@@...naming it a false claim, not a missing field@@presence is not truth
 M70@@scripts/spawn-prompt.mjs@@const missing = contract.fields.filter((f) => !text.includes(f));@@const missing = [];@@verify REFUSES the exact prompt shape that produced H5's 0-of-6 result@@spawn-prompt
 M71@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$HEAD" ] && [ "$HEAD" = "$DECLARED" ]; then@@if false; then@@on the integration branch: BLOCKS the exact H6 shape (git merge --no-ff)
+M72@@scripts/wave-integrate.mjs@@if (push.ok) {@@if (false) {@@Future Conflict #1: post-wave merge-reconcile never runs, the drift window stays open a round longer@@B1: --push must land
+M73@@scripts/orchestrator.mjs@@const staticOnly = [...tickets.values()].filter((t) => t.verifiedStatic === true).map((t) => t.id);@@const staticOnly = [];@@OPS-013: the verified_static odometer silently reports zero regardless of the board@@OPS-013: the verified_static
+M74@@scripts/messages.mjs@@if (candidate.kind === 'answer' && candidate.ticket !== TICKETLESS) {@@if (false) {@@OPS-009: a late answer on an already-shipped ticket never files a register item again
+M75@@scripts/review-pattern-scan.mjs@@.filter(([, tickets]) => tickets.size >= 2)@@.filter(([, tickets]) => tickets.size >= 99)@@OPS-014: two tickets blocking on the same file are no longer correlated@@OPS-014: cross-ticket
 CATALOGUE
 }
 
