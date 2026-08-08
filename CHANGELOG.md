@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+**EE-002 — the S1 the last review filed and this PR had not addressed.** `app-build.md`'s wave
+integration, worktree-reap, mid-sprint Q&A and CI sections repeated reasoning that already lives
+verbatim in the scripts' own headers (`wave-integrate.mjs`, `worktree-reap.mjs`, `messages.mjs`,
+`ci-status.mjs`). Moved to pointers with a compact exit-code table where useful; `commands/app-build.md`
+774 -> 750 lines, `knowledge/git-workflow.md`'s CI section 27 -> 6 lines. No suite assertion depended
+on the trimmed prose — 1405/1405 still pass.
+
+
 **H6 — a real 3-ticket sprint, agent-driven, counted end to end.** Not a fixture check: one
 `ios-developer` agent (one leased slot, three tickets, sequential — the real shape once the
 fixture revealed a shared owner), three real spawned `code-reviewer` agents, a real

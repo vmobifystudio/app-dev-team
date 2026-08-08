@@ -168,16 +168,10 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --was "$BEFORE"
    ```
 
-   Exit `1` → **the batch answered nothing.** `tech-lead` wrote prose instead of ledger rows and the
-   next wave is about to inherit the same guesses: re-spawn it requiring one `answer` row per
-   question it can settle and ONE `escalation` for the rest, and do not proceed to step 2. This was
-   the sentence "re-render and confirm the count actually fell" with nothing checking it — the exact
-   shape `report-check.mjs` exists to catch one step below.
-
-   **Why this sits here and not later:** a question answered after the wave is spawned is answered
-   too late — the developer has already decided. Measured across three dry runs and ten agent-runs,
-   the live channel was used zero times, so every ambiguity was resolved by a guess and caught, if
-   at all, in review. This step is where a guess becomes a decision before it becomes code.
+   Exit `1` → **the batch answered nothing.** `tech-lead` wrote prose instead of ledger rows: re-spawn
+   it requiring one `answer` row per question it can settle and ONE `escalation` for the rest, and do
+   not proceed to step 2. Why this step exists and sits here rather than later (the "zero times in
+   ten agent-runs" measurement): `scripts/messages.mjs`'s `open` docstring.
 
 2. **Spawn developers in parallel.** Use the `parallel-orchestrator` skill, which requires a
    **worktree per writing agent, leased before the spawn** (`agent-isolation`), and serializes any
@@ -535,46 +529,28 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    ```
 
    **Every terminal outcome, not only a merge** — `rejected`, a cap-converted `blocked`, a
-   `BLOCKED:` return, a crashed round. The reaper derives liveness from the board and **never**
-   `--force`s: a dirty worktree is reported and left alone, because that is somebody's unseen work.
-   `orchestrator round` runs it read-only at step 0 and BLOCKS on the disk ceiling. Measured cost of
-   the old merge-only rule: `scripts/worktree-reap.mjs` header.
+   `BLOCKED:` return, a crashed round. `orchestrator round` runs it read-only at step 0 and BLOCKS on
+   the disk ceiling. Why (`--force` is never used; the old merge-only rule's measured cost):
+   `scripts/worktree-reap.mjs` header.
 
 5. **The wave integration pass — merge once, test once, push once.** Every ticket whose merge gate
    cleared is sitting at `qa` with its branch unmerged. This is where the git merges happen, and it
-   is the only place the executable suite runs:
+   is the only place the executable suite runs. Full account of why (candidate-list heuristic,
+   conflict policy, the `AWAITING INTEGRATION` distinction) in `scripts/wave-integrate.mjs`'s own
+   header — read that once, not here every time.
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE"
    ```
 
-   It merges every candidate `--no-ff` into `integration/wave-<N>` in its **own** worktree (never the
-   shared tree, never an agent's slot), runs the project's `full` scope ONCE on the merged result,
-   and prints what the outcome earns. Read its exit code:
+   | Exit | Meaning | Do |
+   |---|---|---|
+   | `0` GREEN | merged tree passes | run the `board.mjs move APP-NNN verified` lines it printed, then `wave-integrate.mjs --wave <N> --push` (one push, one CI run — never trigger/re-run/cancel a workflow yourself) |
+   | `1` FAIL/CONFLICT | wave does not advance | re-spawn only the owners the printed candidate list names; a textual conflict is yours to resolve (`git-pr-strategy` §6), a behaviour/contract one goes to that contract's owner as a ticket |
+   | `2` CANNOT EVALUATE | no `full` scope, or the suite could not run | not a pass; every ticket keeps `verified_static`, `closed` stays refused |
 
-   - Exit `0` **GREEN** → the merged tree passes. Run the `board.mjs move APP-NNN verified` lines it
-     printed — that is what upgrades each ticket's `verified_static` and is the only thing that lets
-     them reach `closed`. Then land it with **one** push:
-
-     ```bash
-     node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --push
-     ```
-
-     One push, one CI run for the whole wave, which `ci-status.mjs` reads at the top of the next
-     round (`orchestrator round`). **No agent ever triggers, re-runs or cancels a workflow.**
-   - Exit `1` **FAIL or CONFLICT** → **the wave does not advance** and no ticket gets a real
-     `verified`. A conflict aborts that one merge and the rest continue: resolve a textual one in the
-     integration tree (`git-pr-strategy` §6), send a behaviour/contract one back as a ticket to the
-     owner of that contract. For a failing suite, re-spawn only the owners its **candidate list**
-     names — a candidate list is a filename heuristic, not a verdict. If no ticket's files appear at
-     all, the wave broke something no single ticket touched: that is the composition failure a
-     per-ticket build cannot see, and it goes to `tech-lead`, not a developer.
-   - Exit `2` **CANNOT EVALUATE** → no `full` scope declared, or the suite could not run here. Not a
-     pass. Every ticket keeps `verified_static`, `closed` stays refused, `ship-gate.sh` keeps
-     blocking, and the wave branch is kept so the merged tree can be built where the toolchain is.
-   - **A non-green wave is a normal outcome, not a stuck loop.** `merge-reconcile` reports those
-     tickets as `AWAITING INTEGRATION` rather than as a board that is lying, so the next round starts
-     normally. It did not, for one commit: see `scripts/merge-reconcile.mjs`.
+   A non-green wave is a normal outcome, not a stuck loop — `merge-reconcile` reports those tickets
+   as `AWAITING INTEGRATION`, never as a lying board.
 
    Then the runtime gate. **Once a wave of tickets is in `qa`, run the `runtime-gate` skill's script
    on the integration branch, before spawning `qa-engineer`**:

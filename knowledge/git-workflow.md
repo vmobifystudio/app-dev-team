@@ -97,29 +97,12 @@ choice in `docs/23-git-strategy.md`.
 - A clean build + green tests is a hard merge gate. Flagship apps also require a CTO/code-review
   agent pass (zero Critical + zero Important) before merge.
 
-**How that sentence is actually enforced, because for a long time it was not.** The merge gate
-(`board.mjs move <ID> merged`) reads one thing: a non-owner `approved`. It reads nothing on the
-server, and nothing else did either — a grep of the whole plugin for a CI-status read found two
-hits, both in `repo-controls.sh`, which only *reports* whether branch protection is configured. So
-on every project where the user had not personally set protection, work merged with CI never
-consulted in either direction.
-
-Two mechanisms close it, and neither puts an agent in a polling loop:
-
-- **`scripts/ci-status.mjs`** reads the last completed workflow conclusion for the integration
-  branch (`gh run list`, read-only) at the **top of every round**, via `orchestrator round`. A red
-  base stops the studio before it piles another wave on top of it. It is armed per project with
-  `"requireCiGreen": true` in `.studio-policy.json` — a project with no `gh`, no remote or no CI is
-  unaffected, because a gate that deadlocks ordinary projects is a gate its first user switches off.
-  An environmental failure can be waived in `docs/team/ci-waiver.json`, and the waiver **names the
-  commit SHA it forgives**, so it expires on the next push instead of quietly covering the next real
-  failure.
-- **One push per wave.** `wave-integrate.mjs --push` is the only thing that pushes the integration
-  branch, so there is exactly one CI run per wave and exactly one reader of it. Per-ticket merging
-  used to start one run per ticket, on macOS runners for iOS, all superseded and none read.
-
-**No agent may trigger, re-run or cancel a workflow.** CI spend is the operator's; a studio that can
-start its own builds can spend without limit.
+**How that sentence is enforced.** `scripts/ci-status.mjs` reads the last completed workflow
+conclusion for the integration branch (read-only) at the top of every round; `wave-integrate.mjs
+--push` is the only thing that pushes it, so there is one CI run per wave and one reader. Opt-in per
+project (`"requireCiGreen": true` in `.studio-policy.json`), waivers pinned to a commit SHA. **No
+agent may trigger, re-run or cancel a workflow.** Full argument — why round-start rather than
+merge-time, why opt-in, the waiver design — is in `ci-status.mjs`'s own header.
 
 ## Secrets — never in the repo
 
