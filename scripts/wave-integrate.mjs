@@ -285,7 +285,15 @@ const testOut = `${test.stdout || ''}${test.stderr || ''}`;
 // and a failing assertion are different sentences, and conflating them sends developers to fix bugs
 // that do not exist (DR4-001).
 const CANNOT_RUN = /command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|GradleWrapperMain|permission denied/i;
-const RAN = /test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|[0-9]+ (passing|failing)/i;
+// FOUND BY RUNNING A REAL WAVE (H7, 2026-08-08): a project on Node's built-in test runner
+// (`node --test`, the platform default for a `cli`/`library` project, and this plugin's own
+// language) printed its real TAP summary — `# tests 12`, `# pass 12`, `# fail 0` — and every
+// alternative below failed to match it: the number sits AFTER "tests"/"pass"/"fail", not before, so
+// the "N test(s) ... pass/fail" shape this regex was built around never fires. A wave that had
+// genuinely gone green reported CANNOT EVALUATE instead, over evidence sitting in the very output
+// being scanned. Fixed by recognizing the TAP summary line shape directly, not by widening the
+// existing alternatives (which would risk matching prose that merely mentions "tests" or "pass").
+const RAN = /test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|[0-9]+ (passing|failing)|^#\s*(tests|pass|fail)\s+[0-9]+/im;
 const cannotRun = test.status === 126 || test.status === 127 || CANNOT_RUN.test(testOut) || !RAN.test(testOut);
 const green = test.status === 0 && !cannotRun;
 

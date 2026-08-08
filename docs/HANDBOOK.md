@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 74 top-level scripts (+18 shared libs) · 10 knowledge packs · 1424 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 74 top-level scripts (+18 shared libs) · 10 knowledge packs · 1436 assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
 drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
@@ -1099,6 +1099,51 @@ wants. That is what the human gates and real users are still for, and no script 
 Every open item is specified with a reproduction: dry run 4 in
 `docs/research/2026-07-29-dry-run-4-findings.md`, dry run 5 in
 `docs/research/2026-07-30-dry-run-5-findings.md`.
+
+- **Operations-review closure batch, 2026-08-08.** `docs/reviews/2026-08-07-adversarial-operations-review.md`
+  rated the studio's unattended-operation readiness 3/10. Closed since, in order: OPS-001–008 and
+  the wave model itself (per-ticket static verification, one merge/build/test per wave — see
+  `knowledge/git-workflow.md`), then OPS-009 (an `answer` that resolves a `question` about an
+  already-`qa`/`done` ticket auto-files a register `assumption` item), OPS-012 (`tech-manager`'s
+  Standup sources *In flight*/*Blockers* from the live board, not daily fragments, which structurally
+  cannot exist yet for unmerged work), OPS-013 (a `verified_static` odometer reported every round by
+  `orchestrator round`, and — 2026-08-08 — given real teeth: `round-journal.mjs check` blocks once
+  the count has stayed above zero and non-decreasing for 3 reported rounds), OPS-014
+  (`review-pattern-scan.mjs` correlates `REQUEST CHANGES` findings across tickets by the file they
+  block on), and Future Conflict #1 (`wave-integrate.mjs --push` re-runs `merge-reconcile.mjs`
+  immediately after the ref moves, not only at the next round's start). OPS-010 (batch code review)
+  and OPS-011 (warm-context developer retries) were deliberately DEFERRED rather than built —
+  reasoning recorded on the register (`docs/90-register.jsonl`), not silently dropped.
+  An independent adversarial re-rating (run by a separate session with no access to this one's
+  claims, instructed to verify by executing code rather than reading it) then rated the result 5/10
+  and found two real gaps in what had just landed: the merge-block hook
+  (`hooks/block-shared-tree-destructive-git.sh`) only recognized literal `git merge`, so
+  `git push origin HEAD:main`, `git fetch . feat/x:main` (wave-integrate.mjs's own mechanism, run by
+  hand), and `git branch -f main feat/x` all moved the integration branch's ref undetected —
+  reproducing H6's governance-bypass class through a different git verb; and `scripts/test.sh` itself
+  carried an unescaped backtick pair in a double-quoted assertion label, so the suite was silently
+  swallowing a shell syntax error every run while still reporting N/N green. Both fixed same-day, the
+  hook extended to block all four ref-writing forms plus `update-ref`, the suite given a self-check
+  that fails loud if the same class of defect recurs.
+- **H7 — a real, parallel, two-agent sprint, 2026-08-08** (`docs/dry-runs/2026-08-08-h7-real-parallel-sprint.md`,
+  the first true concurrent multi-agent test since the wave model shipped — H6 had been corrected
+  mid-setup to one sequential agent). Two independent tickets, two real developer agents spawned in
+  the same message, each in its own leased worktree: both claimed, worked, committed and reported
+  with zero collision and zero stall — the specific 11-of-19 failure mode the original review
+  measured did not recur here. Two independent `code-reviewer` spawns re-ran the tests themselves
+  (one reintroduced four mutants by hand and watched three go red) before approving; the wave merged
+  both branches with the predicted zero conflicts; no governance rule was bypassed. Running it for
+  real, rather than against a hand-written fixture, found two live defects no unit test had reached:
+  `wave-integrate.mjs` and `scripts/verify-done.sh` both reported a genuinely green `node --test` run
+  (this plugin's own language, its documented `cli`/`library` platform default) as `CANNOT EVALUATE`,
+  because their ran-evidence regexes expected a test count before the noun ("N tests... pass") and
+  Node's own TAP summary puts it after (`# tests N`) — fixed in both files, one of the two found
+  independently by the IC agent itself, which correctly declined to edit a plugin script outside its
+  ticket's surface and recorded the finding in its daily fragment instead. The same run produced this
+  repository's first *measured* (not estimated) wave cost: 14.6 minutes wall-clock, 4 agent spawns,
+  0 retries, ~0 MB disk, from `docs/31-board-events.jsonl` timestamps rather than from reading the
+  process — E6 of the original review's cost/economics section, on one small wave. E1–E5 (a larger
+  sprint, more tickets, a designed-to-fail-review ticket, real dollar/token cost) remain open.
 
 ---
 

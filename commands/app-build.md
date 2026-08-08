@@ -699,8 +699,16 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      --tickets APP-001,APP-002 --verdicts approved=1,changes=1 \
      --agents ios-developer=2,code-reviewer=1 \
      --spawns <how many agents you launched> --retries <re-spawns> \
-     --refusals <CLI/gate exit-1s this round> --wall-clock-sec <seconds>
+     --refusals <CLI/gate exit-1s this round> --wall-clock-sec <seconds> \
+     --verified-static <the number from step 0's "VERIFIED STATIC — N ticket(s)" line, or omit it
+                         if that line did not print — 0 tickets is a real reading, no line at all is not>
    ```
+
+   `--verified-static` is what gives OPS-013's odometer teeth: without it, `orchestrator round`
+   prints the count every round and nothing stops the loop when it stalls instead of shrinking.
+   `round-journal.mjs check` — already run at the top of every round via step 0's `budget` line —
+   blocks once that count has stayed above zero and non-decreasing for 3 consecutive reported
+   rounds. Read it from step 0's own printed line; do not recompute it.
 
    Then print the `BUDGET:` line from step 0a in the standup, so the spend is visible before it is a
    problem rather than at the moment it stops the run.

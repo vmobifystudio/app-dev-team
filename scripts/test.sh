@@ -3014,6 +3014,49 @@ assert_has "$TMP/rj3.txt" '\$2.50' "...and prints a real figure once one is actu
 assert_exit 1 "the spend ceiling applies once spend is reported" \
   node "$RJ" check --journal "$J" --max-spend-usd 1
 
+# --- OPS-013's odometer, given teeth ----------------------------------------------------------
+#
+# `orchestrator round` printed the verified_static count every round and nothing read it — an
+# unattended operator would watch a growing number scroll by with nothing stopping the loop. This
+# is the enforcement half: `--verified-static N` on `append` records the reading; `check` blocks
+# once it has stayed above zero and NON-DECREASING for the last N reported rounds — waves stopped
+# landing, not merely mid-flight.
+STALL="$TMP/stall.jsonl"
+node "$RJ" append --journal "$STALL" --round 1 --verified-static 2 >/dev/null 2>&1
+node "$RJ" append --journal "$STALL" --round 2 --verified-static 2 >/dev/null 2>&1
+node "$RJ" append --journal "$STALL" --round 3 --verified-static 3 >/dev/null 2>&1
+node "$RJ" check --journal "$STALL" >"$TMP/rjstall.txt" 2>&1
+assert_exit 1 "verified_static that never shrinks across 3 rounds blocks the next round" \
+  node "$RJ" check --journal "$STALL"
+assert_has "$TMP/rjstall.txt" "verified_static has not shrunk in 3 rounds" "...naming the stall, not just a generic ceiling"
+assert_has "$TMP/rjstall.txt" "r1:2 -> r2:2 -> r3:3" "...and showing the actual sequence that proves it"
+
+SHRINK="$TMP/shrink.jsonl"
+node "$RJ" append --journal "$SHRINK" --round 1 --verified-static 3 >/dev/null 2>&1
+node "$RJ" append --journal "$SHRINK" --round 2 --verified-static 2 >/dev/null 2>&1
+node "$RJ" append --journal "$SHRINK" --round 3 --verified-static 1 >/dev/null 2>&1
+assert_exit 0 "...but a shrinking count, even round to round, does not" node "$RJ" check --journal "$SHRINK"
+
+ZEROSTATIC="$TMP/zerostatic.jsonl"
+node "$RJ" append --journal "$ZEROSTATIC" --round 1 --verified-static 0 >/dev/null 2>&1
+node "$RJ" append --journal "$ZEROSTATIC" --round 2 --verified-static 0 >/dev/null 2>&1
+node "$RJ" append --journal "$ZEROSTATIC" --round 3 --verified-static 0 >/dev/null 2>&1
+assert_exit 0 "...nor does three rounds sitting at zero — zero is the healthy state, not a stall" \
+  node "$RJ" check --journal "$ZEROSTATIC"
+
+SPARSE="$TMP/sparse.jsonl"
+node "$RJ" append --journal "$SPARSE" --round 1 --verified-static 5 >/dev/null 2>&1
+node "$RJ" append --journal "$SPARSE" --round 2 --verified-static 5 >/dev/null 2>&1
+assert_exit 0 "...and fewer than 3 reported rounds is not enough data to call it a stall" \
+  node "$RJ" check --journal "$SPARSE"
+
+UNREPORTED="$TMP/unreported.jsonl"
+node "$RJ" append --journal "$UNREPORTED" --round 1 --spawns 1 >/dev/null 2>&1
+node "$RJ" append --journal "$UNREPORTED" --round 2 --spawns 1 >/dev/null 2>&1
+node "$RJ" append --journal "$UNREPORTED" --round 3 --spawns 1 >/dev/null 2>&1
+assert_exit 0 "...and a project that never reports the odometer at all is not treated as stuck at zero" \
+  node "$RJ" check --journal "$UNREPORTED"
+
 # Wiring: journaled but never checked is a metric nobody reads; checked but never surfaced is a
 # spend you first see when it stops you.
 # THE GUARANTEE IS UNCHANGED; WHERE IT IS SATISFIED MOVED. This used to grep app-build.md for a
@@ -3707,6 +3750,21 @@ ok "a zero exit with no ran-evidence is CANNOT EVALUATE, not tests=green"
 [ $? = 0 ] && grep -q "tests=green" "$TMP/vdg2.txt" \
   && ok "...and output that PROVES a suite ran green still verifies" \
   || bad "...and output that PROVES a suite ran green still verifies" "$(head -2 "$TMP/vdg2.txt")"
+
+# --- Node's built-in test runner's TAP summary was invisible to the ran-evidence check -----------
+#
+# FOUND BY RUNNING A REAL WAVE (H7, 2026-08-08): `node --test` — the default for this plugin's own
+# `cli`/`library` projects, and this plugin's own language — prints `# tests N` / `# pass N` /
+# `# fail N`, count AFTER the noun. Every prior alternative expected the count BEFORE ("N tests ...
+# pass/fail"), so a project on Node's own test runner was structurally un-passable at this gate — a
+# green suite reported CANNOT EVALUATE over evidence sitting in the very log being scanned. Found
+# independently twice in one wave: by the IC agent working the ticket (who correctly did not touch
+# the plugin script and recorded it in the daily fragment instead) and by wave-integrate.mjs hitting
+# the identical regex-shape gap in its own copy of this check.
+( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "printf '# tests 6\n# pass 6\n# fail 0\n'" ) >"$TMP/vdg3.txt" 2>/dev/null
+[ $? = 0 ] && grep -q "tests=green" "$TMP/vdg3.txt" \
+  && ok "...and Node's own \`node --test\` TAP summary (count after the noun) verifies too" \
+  || bad "...and Node's own \`node --test\` TAP summary (count after the noun) verifies too" "$(head -2 "$TMP/vdg3.txt")"
 
 # --- the integration branch resolver's input was never written by anyone ------------------------
 # `grep -rn "Integration branch" agents/ skills/ commands/` returned NOTHING: no role was told to
@@ -4895,6 +4953,19 @@ sh "$HERE/spawn-gate.sh" --dir >"$TMP/sg-dir.txt" 2>&1
   && ok "spawn-gate --dir with no value says CANNOT EVALUATE instead of exiting silently" \
   || bad "spawn-gate --dir with no value says CANNOT EVALUATE instead of exiting silently" "$(cat "$TMP/sg-dir.txt")"
 assert_has "$TMP/sg-dir.txt" "CANNOT EVALUATE" "...in the same shape as every other exit-2 path here"
+
+# --- the usage text must name what the CLI actually takes ------------------------------------------
+#
+# The slot model moved from per-ticket to per-owner worktrees (OPS-005) and this file's own REFUSED
+# message already says "PASS OWNERS, NOT TICKETS" — but the usage COMMENT at the top of the file,
+# and the zero-args error path, still said `<TICKET-ID>` after that move, and nobody had actually
+# called the CLI bare since. Caught by an adversarial re-review running it for real, not by reading
+# the comment.
+sh "$HERE/spawn-gate.sh" >"$TMP/sg-noargs.txt" 2>&1
+assert_has "$TMP/sg-noargs.txt" "OWNER" "the zero-args usage text names an OWNER, not a ticket"
+grep -q "TICKET-ID" "$HERE/spawn-gate.sh" \
+  && bad "no stale TICKET-ID wording survives anywhere in the file" "$(grep -n TICKET-ID "$HERE/spawn-gate.sh")" \
+  || ok "no stale TICKET-ID wording survives anywhere in the file"
 
 # --- a scheme name was matched as a REGEX --------------------------------------------------------
 # `grep -qx -- "$SCHEME_OPT"` made `--scheme '.*'` match any line, so runtime-gate accepted a scheme
@@ -8123,6 +8194,37 @@ assert_has "$TMP/wi3.txt" "Nothing here picks a side" "...and the script never r
 # Re-running the same wave number would merge on top of the previous result and report it as fresh.
 ( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 3 ) >"$TMP/wi4.txt" 2>&1
 assert_has "$TMP/wi4.txt" "already exists" "re-running a wave number is refused rather than silently re-integrating"
+
+# --- Node's built-in test runner's TAP summary was invisible to the ran-evidence check -----------
+#
+# FOUND BY RUNNING A REAL WAVE (H7, 2026-08-08), against a genuine `node --test` project: the TAP
+# summary (`# tests N` / `# pass N` / `# fail N`, count AFTER the noun) matched none of the RAN
+# alternatives, which all expect the count BEFORE ("N tests ... pass/fail") — a wave that had
+# actually gone green reported CANNOT EVALUATE over evidence sitting in the very output being
+# scanned. verify-done.sh carried the identical regex-shape gap, found independently by the IC agent
+# working the ticket; both are fixed together.
+WIT="$TMP/wave-tap"; rm -rf "$WIT"; mkdir -p "$WIT/docs/team" "$WIT/docs/53-reviews"
+cat > "$WIT/docs/team/project-profile.json" <<'PPJSON'
+{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"echo '# tests 1'; echo '# pass 1'; echo '# fail 0'","full":"echo '# tests 1'; echo '# pass 1'; echo '# fail 0'"}}
+PPJSON
+( cd "$WIT" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf 'docs/\n' > .gitignore \
+  && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
+  && git add -A && git commit -q -m init \
+  && git checkout -q -b feat/APP-901 main && echo x > f.txt && git add f.txt && git commit -q -m APP-901 \
+  && git checkout -q main
+  node "$HERE/board.mjs" add APP-901 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-901 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-901 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-901 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-901 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-901\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-901-cycle-0.md
+  node "$HERE/board.mjs" move APP-901 approved --by code-reviewer --verdict docs/53-reviews/APP-901-cycle-0.md
+  node "$HERE/board.mjs" move APP-901 merged --by tech-manager ) >/dev/null 2>&1
+( cd "$WIT" && node "$HERE/wave-integrate.mjs" --root . --wave 1 ) >"$TMP/wit.txt" 2>&1
+[ $? = 0 ] && ok "a wave whose suite is Node's own \`node --test\` TAP summary is recognized as GREEN" \
+  || bad "a wave whose suite is Node's own \`node --test\` TAP summary is recognized as GREEN" "$(tail -8 "$TMP/wit.txt")"
+assert_has "$TMP/wit.txt" "WAVE RESULT: GREEN" "...not CANNOT EVALUATE over evidence already in the log"
 
 # --- ship-gate reads the register (OPS-004) --------------------------------------------------------
 #

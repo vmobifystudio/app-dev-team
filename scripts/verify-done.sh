@@ -224,7 +224,15 @@ classify_test_outcome() {
     CANNOT_EVAL_WHY="the output names a missing or unusable toolchain, not a failing assertion"
     return 1
   fi
-  if grep -Eqi 'test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|expectation|[0-9]+ (passing|failing)|✗|✘' "$TEST_LOG"; then
+  # FOUND BY RUNNING A REAL WAVE (H7, 2026-08-08): a `node --test` project — the platform default
+  # for this plugin's own `cli`/`library` projects, and this plugin's own language — prints its TAP
+  # summary as `# tests N` / `# pass N` / `# fail N`, count AFTER the noun. Every alternative above
+  # was built around "N test(s) ... pass/fail", count BEFORE, so it never matched: a suite that ran
+  # green reported CANNOT EVALUATE over evidence sitting in the log being scanned. Found first by
+  # the agent working the ticket itself (recorded in its daily fragment, ticket surface untouched,
+  # correctly deferred to tech-manager) and independently by a wave-integrate.mjs run that hit the
+  # identical regex-shape gap in that file; both are fixed together rather than one at a time.
+  if grep -Eqi 'test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|expectation|[0-9]+ (passing|failing)|✗|✘|^#[[:space:]]*(tests|pass|fail)[[:space:]]+[0-9]+' "$TEST_LOG"; then
     return 0
   fi
   CANNOT_EVAL_WHY="the output carries no evidence that a test suite ran at all (exit $TEST_RC, $(wc -l <"$TEST_LOG" | tr -d ' ') line(s) of output)"

@@ -16,10 +16,16 @@
  *   round-journal.mjs append --round N [--tickets A,B] [--verdicts approved=2,changes=1]
  *                            [--agents ios-developer=2,qa-engineer=1]
  *                            [--retries N] [--refusals N] [--spawns N] [--wall-clock-sec N]
- *                            [--spend-usd N] [--note "..."]
+ *                            [--spend-usd N] [--verified-static N] [--note "..."]
  *   round-journal.mjs show   [--json]
  *   round-journal.mjs check  [--max-rounds N] [--max-spawns N] [--max-retries N] [--max-spend-usd N]
- *                            [--max-agent-spawns N]
+ *                            [--max-agent-spawns N] [--max-static-stall-rounds N]
+ *
+ * `--verified-static N` records that round's odometer reading (OPS-013: how many tickets currently
+ * carry `verified_static` rather than a real, executed `verified`) — `orchestrator round` prints
+ * the number, this is what gives it teeth: `check` blocks once the reading has stayed above zero
+ * and non-decreasing for `--max-static-stall-rounds` (default 3) consecutive reported rounds, the
+ * signal that waves have stopped landing rather than merely being mid-flight.
  *
  * Ceilings: flag > env (APP_TEAM_MAX_ROUNDS, _SPAWNS, _RETRIES, _SPEND_USD, _AGENT_SPAWNS) > default.
  *
@@ -40,7 +46,7 @@ import { parseArgs as parseArgv } from './lib/args.mjs';
 import { readStop, STOP_FILE } from './lib/stop.mjs';
 
 const DEFAULT_JOURNAL = 'docs/33-rounds.jsonl';
-const DEFAULTS = { rounds: 12, spawns: 60, retries: 30, spendUsd: null, agentSpawns: 20 };
+const DEFAULTS = { rounds: 12, spawns: 60, retries: 30, spendUsd: null, agentSpawns: 20, staticStallRounds: 3 };
 
 const die = (code, message) => {
   process.stderr.write(`round-journal: ${message}\n`);
@@ -56,8 +62,9 @@ const die = (code, message) => {
  */
 const VALUE_FLAGS = new Set([
   'round', 'tickets', 'verdicts', 'retries', 'refusals', 'spawns', 'agents',
-  'wall-clock-sec', 'spend-usd', 'note', 'journal',
+  'wall-clock-sec', 'spend-usd', 'note', 'journal', 'verified-static',
   'max-rounds', 'max-spawns', 'max-retries', 'max-spend-usd', 'max-agent-spawns',
+  'max-static-stall-rounds',
 ]);
 const KNOWN_FLAGS = new Set([...VALUE_FLAGS, 'json']);
 
@@ -161,7 +168,36 @@ const ceilings = (flags) => ({
         ? num(process.env.APP_TEAM_MAX_SPEND_USD, null)
         : DEFAULTS.spendUsd,
   agentSpawns: num(flags['max-agent-spawns'], num(process.env.APP_TEAM_MAX_AGENT_SPAWNS, DEFAULTS.agentSpawns)),
+  staticStallRounds: num(
+    flags['max-static-stall-rounds'],
+    num(process.env.APP_TEAM_MAX_STATIC_STALL_ROUNDS, DEFAULTS.staticStallRounds),
+  ),
 });
+
+/**
+ * OPS-013's odometer had no teeth: `orchestrator round` printed the verified_static count every
+ * round and nothing read it — an operator running unattended would see a growing number scroll by
+ * in stdout with nothing stopping the loop. This is the enforcement half. `--verified-static <n>`
+ * on `append` records one round's reading; `check` looks at the most recent N readings (default 3,
+ * `--max-static-stall-rounds` / `APP_TEAM_MAX_STATIC_STALL_ROUNDS`) and blocks if the count is
+ * NON-DECREASING across all of them while staying above zero — waves are not landing, and the
+ * static-only promise is piling up rather than clearing. A round that never reported the odometer
+ * at all (older journals, or a project that hasn't adopted OPS-013 yet) has no data to stall on:
+ * `null` entries are skipped rather than treated as zero, so absence of data never reads as "stuck
+ * at zero" — the same distinction `spendUsd: null` already draws in this file.
+ */
+const staticStall = (rounds, cap) => {
+  const readings = rounds
+    .filter((r) => r.verifiedStatic !== null && r.verifiedStatic !== undefined)
+    .map((r) => ({ round: r.round, n: num(r.verifiedStatic) }));
+  if (readings.length < cap) return null;
+  const window = readings.slice(-cap);
+  if (!window.every((w) => w.n > 0)) return null;
+  for (let i = 1; i < window.length; i += 1) {
+    if (window[i].n < window[i - 1].n) return null; // it shrank somewhere in the window — not a stall
+  }
+  return window;
+};
 
 const cmdAppend = (flags, path) => {
   const round = num(flags.round, null);
@@ -179,11 +215,17 @@ const cmdAppend = (flags, path) => {
     wallClockSec: count('--wall-clock-sec', flags['wall-clock-sec'] ?? 0),
     // null, not 0: "not measurable in this harness" and "cost nothing" are different claims.
     spendUsd: flags['spend-usd'] === undefined ? null : num(flags['spend-usd'], null),
+    // null, not 0: "the odometer wasn't reported this round" and "zero tickets are static-only"
+    // are different claims — the same distinction spendUsd already draws.
+    verifiedStatic: flags['verified-static'] === undefined ? null : count('--verified-static', flags['verified-static']),
     note: typeof flags.note === 'string' ? flags.note : '',
   };
   mkdirSync(dirname(path), { recursive: true });
   appendFileSync(path, `${JSON.stringify(entry)}\n`);
-  process.stdout.write(`ROUND ${round} journaled: ${entry.tickets.length} tickets, ${entry.spawns} spawns, ${entry.retries} retries, ${entry.refusals} refusals\n`);
+  process.stdout.write(
+    `ROUND ${round} journaled: ${entry.tickets.length} tickets, ${entry.spawns} spawns, ${entry.retries} retries, ${entry.refusals} refusals` +
+      `${entry.verifiedStatic === null ? '' : `, ${entry.verifiedStatic} verified_static`}\n`,
+  );
   process.exit(0);
 };
 
@@ -242,6 +284,12 @@ const cmdCheck = (flags, path) => {
   if (t.retries >= caps.retries) breached.push(`retries ${t.retries} / ${caps.retries}`);
   if (caps.spendUsd !== null && t.spendReported && t.spendUsd >= caps.spendUsd) {
     breached.push(`spend $${t.spendUsd.toFixed(2)} / $${caps.spendUsd.toFixed(2)}`);
+  }
+  const stall = staticStall(rounds, caps.staticStallRounds);
+  if (stall) {
+    breached.push(
+      `verified_static has not shrunk in ${stall.length} rounds (${stall.map((w) => `r${w.round}:${w.n}`).join(' -> ')})`,
+    );
   }
 
   const spendLine = t.spendReported
