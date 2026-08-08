@@ -198,6 +198,7 @@ M72@@scripts/wave-integrate.mjs@@if (push.ok) {@@if (false) {@@--push runs merge
 M73@@scripts/orchestrator.mjs@@const staticOnly = [...tickets.values()].filter((t) => t.verifiedStatic === true).map((t) => t.id);@@const staticOnly = [];@@a ticket still carrying verified_static is counted, every round@@OPS-013: the verified_static
 M74@@scripts/messages.mjs@@if (candidate.kind === 'answer' && candidate.ticket !== TICKETLESS) {@@if (false) {@@an answer on an already-shipped ticket says it filed a register item
 M75@@scripts/review-pattern-scan.mjs@@.filter(([, tickets]) => tickets.size >= 2)@@.filter(([, tickets]) => tickets.size >= 99)@@two tickets blocking on the same file are correlated@@OPS-014: cross-ticket
+M76@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$REFBLOCK" ]; then@@if false; then@@a push refspec ending :main is blocked, even from a different branch entirely
 CATALOGUE
 }
 
@@ -213,6 +214,7 @@ runtime-gate.sh — the xcodebuild / gradle invocations themselves@@Same reason.
 ship-gate.sh — the malformed-WAIVED: branch@@No fixture reaches it. Mutating it would report SURVIVED, but the cause is a missing fixture, not a decorative assertion. Write the fixture first, then add the mutation; reporting it as a hole today would be a false alarm, which is how a tool like this gets switched off.
 wave-integrate.mjs — the post-push confirmation that $BASE actually moved@@No fixture reaches it. `git fetch . <wave>:<base>` either advances the ref or fails, so the branch where the fetch SUCCEEDS and the ref is still elsewhere cannot be constructed — mutating it reports SURVIVED for want of a fixture rather than for want of an assertion. It is kept in the code because the defect it guards against (B1) shipped once already: --push printed PUSHED for a branch that never moved. A confirmation is cheap; believing an exit code twice is not.
 network-dependent assertions@@There are none in this suite, deliberately. If one is ever added it belongs on this list rather than in the score, because a mutation caught only when the network is up is not caught.
+test.sh — the unescaped-backtick self-check@@The only mutation that would prove this is reintroducing the exact defect it guards (an unescaped backtick pair in a double-quoted label), and that defect is a shell command-substitution error at the point the mutated test.sh copy tries to construct that argument — the nested suite process crashes before it can print a "N passed, M failed" line, so `run_suite` reports CANNOT RUN rather than a clean FAIL for this assertion, and mutate.sh's own crash handling aborts the whole run rather than scoring one mutation. Proven correct by hand instead (both directions): reintroducing the fixed backtick line is caught, the clean file is not flagged.
 EXCLUDED
 }
 

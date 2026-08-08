@@ -114,6 +114,24 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 # integration branch — which is exactly the qa-engineer's `git merge --no-ff -m "..." <branch>`
 # that started this. Gating on the literal `--ff-only` flag, rather than trying to compute whether
 # history WOULD allow a fast-forward, keeps this a static check with no side effects.
+# Resolved unconditionally, once, and used by every ref-aware check below — not only the merge
+# check. Moving this out of the `MERGE_CMD` branch is deliberate: the ref-writing bypasses further
+# down (push/fetch refspec, branch -f, update-ref) need $DECLARED too, and none of them contain the
+# word "merge", so gating this resolution on MERGE_CMD left them with an empty $DECLARED and nothing
+# to compare against.
+#
+# Mirror scripts/integration-branch.sh's own resolution — declared in docs/23-git-strategy.md
+# (or docs/20-architecture.md), falling back to `main` only when no such doc exists at all. Kept
+# deliberately minimal and dependency-free rather than shelling out to that script, because this
+# hook must not assume any repo-relative path (like $CLAUDE_PLUGIN_ROOT) is set in its own process.
+DECLARED=""
+for doc in "$ROOT/docs/23-git-strategy.md" "$ROOT/docs/20-architecture.md"; do
+  [ -f "$doc" ] || continue
+  DECLARED=$(sed -nE 's/.*[Ii]ntegration branch[[:space:]]*(:|=|—|–|-|\||is)[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\2/p' "$doc" | head -n 1)
+  [ -n "$DECLARED" ] && break
+done
+[ -n "$DECLARED" ] || DECLARED="main"
+
 case "$CMD" in
   *"--ff-only"*) MERGE_CMD=0 ;;
   *"git merge"*) MERGE_CMD=1 ;;
@@ -121,18 +139,6 @@ case "$CMD" in
 esac
 if [ "$MERGE_CMD" = "1" ]; then
   HEAD=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-  # Mirror scripts/integration-branch.sh's own resolution — declared in docs/23-git-strategy.md
-  # (or docs/20-architecture.md), falling back to `main` only when no such doc exists at all. Kept
-  # deliberately minimal and dependency-free rather than shelling out to that script, because this
-  # hook must not assume any repo-relative path (like $CLAUDE_PLUGIN_ROOT) is set in its own process.
-  DECLARED=""
-  for doc in "$ROOT/docs/23-git-strategy.md" "$ROOT/docs/20-architecture.md"; do
-    [ -f "$doc" ] || continue
-    DECLARED=$(sed -nE 's/.*[Ii]ntegration branch[[:space:]]*(:|=|—|–|-|\||is)[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\2/p' "$doc" | head -n 1)
-    [ -n "$DECLARED" ] && break
-  done
-  [ -n "$DECLARED" ] || DECLARED="main"
-
   if [ -n "$HEAD" ] && [ "$HEAD" = "$DECLARED" ]; then
     cat >&2 <<EOF
 BLOCKED — a raw \`git merge\` directly onto the integration branch (\`$DECLARED\`).
@@ -156,6 +162,53 @@ Instead:
 EOF
     exit 2
   fi
+fi
+
+# --- ref-writing bypasses of the merge check above ------------------------------------------------
+#
+# FOUND BY ADVERSARIAL RE-REVIEW (2026-08-08), by probing the check above with commands that move
+# the integration branch's REF without ever calling `git merge`. All three exited 0 against it,
+# because it only recognizes the literal words `git merge` — and none of the three need the
+# integration branch checked out in THIS tree at all, so the `HEAD == $DECLARED` precondition that
+# gates the merge check above is irrelevant here by construction:
+#
+#   git push origin HEAD:main             moves the REMOTE ref via a refspec, no merge command
+#   git fetch . feat/x:main                moves the LOCAL ref directly — this is wave-integrate.mjs's
+#                                           own sanctioned mechanism (`git fetch . src:dst`), run by
+#                                           hand instead of through its checks and its board record
+#   git branch -f main feat/x              force-moves the branch pointer, no merge object at all
+#   git update-ref refs/heads/main <sha>   the same move, spelled at the plumbing layer
+#
+# Each reproduces H6's exact class: unreviewed code lands on the branch every ticket builds from,
+# with no review_requested, no approved, no merged event — without the word "merge" ever appearing.
+NORM_REF=$(printf '%s' "$CMD" | tr -s ' ')
+REFBLOCK=""
+case "$NORM_REF" in
+  *"git push "*":$DECLARED"|*"git push "*":$DECLARED "*)
+    REFBLOCK="a push refspec ending :$DECLARED moves the integration branch's ref on the remote — no merge, no board event" ;;
+  *"git fetch "*":$DECLARED"|*"git fetch "*":$DECLARED "*)
+    REFBLOCK="a fetch refspec ending :$DECLARED moves the integration branch's LOCAL ref directly — this is wave-integrate.mjs's own mechanism, run by hand instead of through it" ;;
+  *"git branch -f $DECLARED"|*"git branch -f $DECLARED "*|*"git branch -M $DECLARED"|*"git branch -M $DECLARED "*)
+    REFBLOCK="git branch -f/-M force-moves $DECLARED's pointer directly — no merge object, no history check" ;;
+  *"update-ref refs/heads/$DECLARED"*)
+    REFBLOCK="git update-ref moves $DECLARED's pointer at the plumbing layer — the same effect as branch -f" ;;
+esac
+if [ -n "$REFBLOCK" ]; then
+  cat >&2 <<EOF
+BLOCKED — a git command that moves the integration branch's ref (\`$DECLARED\`) without a merge,
+a review, or wave-integrate.mjs.
+
+  command : $CMD
+  why     : $REFBLOCK
+            Measured live (H6, 2026-08-07) for the merge form of this; this is the same class
+            reached through a different git verb — found by adversarial re-review, not by an
+            incident, which is the point of looking before one happens.
+
+Instead:
+  - land a whole wave         node scripts/wave-integrate.mjs --wave <N> [--push]
+  - move it by hand?          git checkout $DECLARED && git merge --ff-only <wave-branch> && git push origin $DECLARED
+EOF
+  exit 2
 fi
 
 # --- is there anything here to destroy? ---------------------------------------------------------

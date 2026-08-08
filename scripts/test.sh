@@ -3030,7 +3030,7 @@ grep -qE 'round-journal\.mjs" check|orchestrator\.mjs" round' "$HERE/../commands
 grep -q "round-journal.mjs" "$HERE/orchestrator.mjs" \
   && ok "...and the round command it delegates to actually checks the budget" \
   || bad "...and the round command it delegates to actually checks the budget" \
-         "app-build now delegates to `orchestrator round`; if that stops checking the budget, the ceiling is gone"
+         "app-build now delegates to \`orchestrator round\`; if that stops checking the budget, the ceiling is gone"
 grep -q 'round-journal.mjs" append' "$HERE/../commands/app-build.md" \
   && ok "...and journals the round before looping" \
   || bad "...and journals the round before looping"
@@ -3557,6 +3557,25 @@ assert_exit 0 "...but ALLOWS --ff-only — wave-integrate.mjs's own documented f
 ( cd "$HKM" && git checkout -q -b feat/x main ) >/dev/null 2>&1
 assert_exit 0 "...and a merge on a FEATURE branch (not the integration branch) is untouched" \
   hkm "git merge --no-ff main"
+
+# Ref-writing bypasses of the merge check above (adversarial re-review, 2026-08-08): none of these
+# contain the word "merge", and none require the integration branch checked out in THIS tree — the
+# whole point of them, since the merge check's precondition is HEAD == the integration branch and
+# these three do not need that to be true to move the branch's ref anyway. Still on feat/x here,
+# deliberately: a bypass that only worked from feat/x would defeat its own purpose.
+assert_exit 2 "a push refspec ending :main is blocked, even from a different branch entirely" \
+  hkm "git push origin HEAD:main"
+assert_exit 2 "a fetch refspec ending :main is blocked — wave-integrate.mjs's own mechanism, run by hand" \
+  hkm "git fetch . feat/x:main"
+assert_exit 2 "git branch -f moving main's pointer directly is blocked" \
+  hkm "git branch -f main feat/x"
+assert_exit 2 "git update-ref moving main's pointer at the plumbing layer is blocked" \
+  hkm "git update-ref refs/heads/main abc123"
+# False-positive check: a similarly-prefixed branch name must not trip a substring match.
+assert_exit 0 "...but a push to a DIFFERENT branch that merely starts with the same name is not" \
+  hkm "git push origin feat/x:mainline"
+assert_exit 0 "...and the documented safe landing sequence (checkout, ff-only merge, push) still works" \
+  hkm "git checkout main && git merge --ff-only integration/wave-1 && git push origin main"
 rm -rf "$HKM"
 
 rm -rf "$HKD"
@@ -8507,7 +8526,7 @@ assert_exit 0 "...and a merge-gated one awaiting the wave has NOT (board-row spe
   node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"qa",staticOnly:true})?1:0))'
 assert_exit 0 "...nor in the event-log spelling, so neither reader has to know which shape it holds" \
   node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"qa",verifiedStatic:true})?1:0))'
-assert_exit 0 "...and `done` still counts, because it cannot be reached without the wave" \
+assert_exit 0 "...and \`done\` still counts, because it cannot be reached without the wave" \
   node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"done"})?0:1))'
 
 # THE SWEEP IS THE POINT, not the predicate. A rule that exists and is called from one place is the
@@ -8704,6 +8723,38 @@ MISMATCHED=$(awk '
 [ -z "$MISMATCHED" ] \
   && ok "every ok/bad pair in this file carries the same label" \
   || bad "every ok/bad pair in this file carries the same label" "$MISMATCHED"
+
+# --- an unescaped backtick pair inside a double-quoted label is a live bug, not decoration ---------
+#
+# `"...and \`done\` still counts..."` written WITHOUT the backslashes is not a stylistic choice — sh
+# still runs command substitution on backticks inside double quotes, so that label tried to execute
+# a program named `done`. Found by an adversarial re-review reading this file's own stderr: a
+# `syntax error near unexpected token 'done'` and a leaked `fatal: not a git repository` sitting in
+# the middle of a run this suite still called 1417/1417 green, because the stray subshell's failure
+# never touched this script's own exit code. A suite whose whole pitch is "it can go red" emitting a
+# shell error it does not notice is exactly the class this file exists to stop — in itself this time.
+BACKTICKED=$(awk '
+  /^[[:space:]]*#/ { next }
+  # Gated on the known assertion call sites, not every double-quoted string in the file: a fully
+  # general shell tokenizer is not worth writing in awk, and scanning every line found two false
+  # positives on its first run — a grep character class that legitimately mixes quote styles, and
+  # this very check quoting a backtick as an awk string literal inside a single-quoted script,
+  # which the outer shell never evaluates at all. Real label call sites are what matters here.
+  !/ok "|bad "|assert_exit |assert_has |assert_finding /  { next }
+  {
+    line = $0; n = 0
+    while (match(line, /"[^"]*"/)) {
+      seg = substr(line, RSTART, RLENGTH)
+      gsub(/\\`/, "", seg)
+      if (index(seg, "`")) n++
+      line = substr(line, RSTART + RLENGTH)
+    }
+    if (n) printf "  line %d: %s\n", NR, $0
+  }
+' "$0")
+[ -z "$BACKTICKED" ] \
+  && ok "no double-quoted label carries an unescaped backtick that would run as a command" \
+  || bad "no double-quoted label carries an unescaped backtick that would run as a command" "$BACKTICKED"
 
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER
