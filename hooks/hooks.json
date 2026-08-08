@@ -9,6 +9,33 @@
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/block-shared-tree-destructive-git.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/block-cross-worktree-write.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/block-cross-worktree-write.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/block-cross-worktree-write.sh\""
+          }
+        ]
       }
     ]
   }

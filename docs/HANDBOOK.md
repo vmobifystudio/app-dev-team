@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 74 top-level scripts (+18 shared libs) · 10 knowledge packs · 1436 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 74 top-level scripts (+18 shared libs) · 10 knowledge packs · 1445 assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
 drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
@@ -1144,6 +1144,20 @@ Every open item is specified with a reproduction: dry run 4 in
   0 retries, ~0 MB disk, from `docs/31-board-events.jsonl` timestamps rather than from reading the
   process — E6 of the original review's cost/economics section, on one small wave. E1–E5 (a larger
   sprint, more tickets, a designed-to-fail-review ticket, real dollar/token cost) remain open.
+- **A second isolation boundary closed, 2026-08-08: cross-worktree writes.**
+  `block-shared-tree-destructive-git.sh` closes DR4-027 (two writers, one shared checkout, 22 files
+  lost to a `git reset`) at the git-command layer. Nothing closed the identical collision at the
+  Write/Edit layer: an agent standing in its own worktree could reach straight into a *sibling*
+  worktree (`.agent-wt/<other-owner>/...`) and overwrite that owner's in-progress file directly — no
+  git command involved, so the git-layer hook never saw it. `agent-isolation` and `ic-workflow` both
+  say this in prose ("never leave your worktree", "another IC's code... is somebody else's"); this
+  repo's own measured lesson (H6) is that prose does not stop an agent. New PreToolUse hook
+  `hooks/block-cross-worktree-write.sh`, wired to `Write`/`Edit`/`MultiEdit`, refuses a write whose
+  resolved target falls inside a worktree other than the caller's own — including a shared-tree
+  agent reaching into any worktree at all. Its first version had the same macOS `/tmp` →
+  `/private/tmp` symlink trap `spawn-gate.sh`'s own header already named: resolving a not-yet-created
+  target directory naively made a same-worktree write read as cross-worktree. Caught by testing a
+  brand-new subdirectory, fixed by walking up to the nearest existing ancestor before resolving.
 
 ---
 

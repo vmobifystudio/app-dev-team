@@ -3623,6 +3623,47 @@ rm -rf "$HKM"
 
 rm -rf "$HKD"
 
+# --- cross-worktree-write hook: DR4-027's collision, at the Write/Edit layer -----------------------
+#
+# `block-shared-tree-destructive-git.sh` closes DR4-027 at the git-command layer (a repo-wide
+# destructive command on a dirty shared tree). Nothing closed the same collision at the FILE layer:
+# an agent standing in its OWN worktree could use Write/Edit/MultiEdit to reach straight into a
+# SIBLING worktree and overwrite that owner's in-progress file directly — no git command involved,
+# so the git-layer hook never sees it. Found by adversarial re-review asking the question this
+# repo's own H6 lesson implies ("agent-isolation says never leave your worktree — is that prose, or
+# enforced?") and confirmed by testing it, not by reading the prose.
+CWH="$HERE/../hooks/block-cross-worktree-write.sh"
+CWT=$(mktemp -d); mkdir -p "$CWT/.agent-wt/ios-developer/src" "$CWT/.agent-wt/android-developer/src"
+cwh() {  # <cwd (abs)> <target file_path> — mirrors the destructive-git hook's own hk() helper
+  ( cd "$1" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"x"}}' "$2" | sh "$CWH" )
+}
+assert_exit 0 "writing inside your OWN worktree is allowed" \
+  cwh "$CWT/.agent-wt/ios-developer" "$CWT/.agent-wt/ios-developer/src/mine.js"
+assert_exit 2 "writing into a SIBLING worktree is blocked" \
+  cwh "$CWT/.agent-wt/ios-developer" "$CWT/.agent-wt/android-developer/src/other.js"
+assert_exit 2 "...and so is the shared tree reaching into ANY agent's worktree — it has no more business there than a sibling does" \
+  cwh "$CWT" "$CWT/.agent-wt/ios-developer/src/mine.js"
+assert_exit 0 "...but the shared tree writing to the shared tree is untouched" \
+  cwh "$CWT" "$CWT/README.md"
+assert_exit 0 "a relative path resolves against the caller's own cwd, not misjudged as outside it" \
+  cwh "$CWT/.agent-wt/ios-developer" "src/newfile.js"
+# THE macOS SYMLINK TRAP, CAUGHT BY TESTING IT: `/tmp` is itself a symlink to `/private/tmp` on
+# macOS (spawn-gate.sh's own header names the identical trap in `git worktree list` output). A
+# naive `cd $(dirname target) && pwd -P` fails when that directory does not exist yet — Write
+# creates new files, sometimes in a brand-new subdirectory — and the fallback to the unresolved
+# path then compared a `/tmp/...` string against a `/private/tmp/...` `$(pwd -P)`, misreading a
+# same-worktree write as cross-worktree. First version of this hook had exactly that bug.
+assert_exit 0 "a new subdirectory that doesn't exist yet, inside your own worktree, is still allowed" \
+  cwh "$CWT/.agent-wt/ios-developer" "$CWT/.agent-wt/ios-developer/newdir/newfile.js"
+assert_exit 2 "...and the same new-subdirectory shape into a sibling worktree is still blocked" \
+  cwh "$CWT/.agent-wt/ios-developer" "$CWT/.agent-wt/android-developer/a/b/c/deep.js"
+( cd "$CWT/.agent-wt/ios-developer" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"x"}}' "$CWT/.agent-wt/android-developer/src/other.js" | sh "$CWH" ) >"$TMP/cwh1.txt" 2>&1
+assert_has "$TMP/cwh1.txt" "DR4-027" "the refusal names the incident this class of collision reproduces"
+echo 'not json' | sh "$CWH" >/dev/null 2>&1
+[ $? = 0 ] && ok "an unparseable payload fails open, same rule as the git-layer hook" \
+            || bad "an unparseable payload fails open, same rule as the git-layer hook"
+rm -rf "$CWT"
+
 echo "gates that could not fire"
 # --------------------------------------------------------------------------------------------
 # Every assertion below is a gate that was proven, by execution, to be incapable of catching the
