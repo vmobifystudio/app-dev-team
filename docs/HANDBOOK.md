@@ -1178,6 +1178,26 @@ Every open item is specified with a reproduction: dry run 4 in
   of the five subagents' own reported compute time — the gap is this test's own harness shape
   (`tech-manager` spawned as a subagent needing explicit wake-ups, not the top-level driver a real
   `/app-build` round would use), not a claim about what a live round costs.
+- **H9 — a real Android toolchain and the full multi-role pipeline, 2026-08-09**
+  (`docs/dry-runs/2026-08-09-h9-android-toolchain-and-full-pipeline.md`). H7/H8 had only ever run against
+  Node; H9 pointed the studio at a real (non-Node) platform — a real JDK 21, a real Android SDK, and a real
+  emulator AVD, found on this machine rather than assumed absent — and ran five distinct role agents
+  (cpo, tech-lead, two developer attempts, two independent reviewers) plus this session as tech-manager
+  through two real tickets concurrently, per the user's explicit steer to prioritize breadth of role
+  demonstration over more toolchain depth. Both tickets reached `closed` through the real board state
+  machine, wave-integrated against a real emulator run (`Finished 3 tests on baby_growth_test(AVD) - 16`,
+  `BUILD SUCCESSFUL`). Two more real defects found by running it, not by inspection: (1) cpo and tech-lead
+  had written real SRS/PRD/impl-spec content to the shared tree but never committed it, so `git worktree
+  add` (which snapshots the last commit, never the live working tree) handed the next developer an empty
+  view — it correctly `BLOCKED` rather than guessing; fixed by a new `house-conventions` rule (shared-tree
+  writers commit before hand-off — this skill is referenced by 26 of 30 role files) and a new dirty-tree
+  warning on `worktree-slot.mjs lease` (excluding `docs/team/`'s own routine state churn, which would
+  otherwise fire on nearly every call); (2) a third RAN-evidence regex gap, same class as H7/H8's two
+  TAP-format gaps but a different shape — `wave-integrate.mjs`/`verify-done.sh` didn't recognize AGP's own
+  `connectedAndroidTest` completion line (`Finished N tests on <device>`), so a genuinely green emulator run
+  still scored `CANNOT EVALUATE`. Both fixes proven with a live `test.sh` fixture and a `mutate.sh` mutation
+  that reverts each fix and expects red (`M80`/`M81`; `M77`/`M78`'s anchors widened after the new regex
+  alternative drifted them). Full suite: 1451 passed, 0 failed. Mutation run: 4/4 caught.
 
 ---
 
