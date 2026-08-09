@@ -16,6 +16,7 @@
 import { useState, type ReactNode } from 'react';
 import type { ActionResult, Field, Item, Section, Status } from './types';
 import { IconByStatus, CheckCircleIcon, AlertTriangleIcon, HelpCircleIcon } from './icons';
+import { personaFor } from './personas';
 
 export function StatusBadge({ status, count }: { status: Status; count?: number }) {
   const label =
@@ -59,6 +60,7 @@ export function Avatar({
   variant?: 'off' | 'unassigned';
 }) {
   const h = hue(name || '?');
+  const persona = variant ? null : personaFor(name || '');
   return (
     <span
       className={`avatar${variant ? ` ${variant}` : ''}`}
@@ -75,7 +77,9 @@ export function Avatar({
               color: `hsl(${h} 55% 29%)`,
             }
       }
-      title={name}
+      // The real role slug is always the name shown in the layout next to this avatar — this is
+      // just a hover aside, never a replacement for the identifier the log actually uses.
+      title={persona ? `${persona.name} — ${name}` : name}
     >
       {variant === 'unassigned' ? '?' : initials(name || '?')}
     </span>

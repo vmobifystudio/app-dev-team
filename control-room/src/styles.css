@@ -273,6 +273,10 @@ table.roster tr[data-state="off"] { background: var(--surface-footer); }
 table.roster tr[data-state="off"] td { color: var(--text-3); }
 table.roster tr[data-state="off"] .rolecell b, table.roster tr[data-state="off"] .rolecell { color: var(--text-3); }
 .rolecell { display: flex; align-items: center; gap: 10px; }
+.rolenames { display: flex; flex-direction: column; gap: 1px; }
+.rolename { display: inline-flex; align-items: center; gap: 5px; font-weight: 550; }
+.rolename svg { color: var(--text-3); flex: 0 0 auto; }
+table.roster tr[data-state="off"] .rolename svg { display: none; }
 
 /* ---------- avatar ---------- */
 .avatar {

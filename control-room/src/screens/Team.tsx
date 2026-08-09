@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import type { TeamScreen } from '../types';
 import { SectionCard, Avatar } from '../ui';
+import { personaFor } from '../personas';
 
 const STATES = ['active', 'conditional', 'off'] as const;
 
@@ -71,12 +72,26 @@ export default function Team({ screen, query = '' }: { screen: TeamScreen; query
             </tr>
           </thead>
           <tbody>
-            {roles.map((role) => (
+            {roles.map((role) => {
+              const persona = personaFor(role.role);
+              return (
               <tr key={role.role} data-state={role.state}>
-                <td className="mono">
+                <td>
                   <span className="rolecell">
                     <Avatar name={role.role} size={24} variant={role.state === 'off' ? 'off' : undefined} />
-                    {role.role}
+                    <span className="rolenames">
+                      {persona ? (
+                        <>
+                          <span className="rolename">
+                            {persona.name}
+                            {role.state !== 'off' ? <persona.sigil size={13} /> : null}
+                          </span>
+                          <span className="mono faint">{role.role}</span>
+                        </>
+                      ) : (
+                        <span className="mono">{role.role}</span>
+                      )}
+                    </span>
                   </span>
                 </td>
                 <td>
@@ -90,7 +105,8 @@ export default function Team({ screen, query = '' }: { screen: TeamScreen; query
                 <td>{role.logActions}</td>
                 <td className="reason">{role.reason || <span className="dim">NO REASON RECORDED</span>}</td>
               </tr>
-            ))}
+              );
+            })}
             {!roles.length ? (
               <tr>
                 <td colSpan={5} className="dim" style={{ padding: '16px 20px' }}>
