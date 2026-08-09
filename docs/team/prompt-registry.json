@@ -60,13 +60,13 @@
     },
     {
       "id": "code-reviewer",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "owner": "code-reviewer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-04",
+      "validated_on": "2026-08-05",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.1",
-      "content_hash": "9d1f28708621f21b5a43b874599e8d8b268e5e2c1313f6a77128b308958512ba"
+      "rollback_version": "1.0.2",
+      "content_hash": "506f920c5f263af940be9aed00fc069f4682e3b48d55b05789edaff6a72b3e2f"
     },
     {
       "id": "cpo",
@@ -180,13 +180,13 @@
     },
     {
       "id": "qa-engineer",
-      "version": "1.0.1",
+      "version": "1.0.3",
       "owner": "qa-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
+      "validated_on": "2026-08-07",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.0",
-      "content_hash": "3ceeffa81d49c42c185b9709fde7c51b1a07ff3c2f8777c8171aec322410e202"
+      "rollback_version": "1.0.2",
+      "content_hash": "0e9f4e96cc41d1144895c24d4933468d69f82344123d97c684904d83ecbef18e"
     },
     {
       "id": "red-team-agent",
@@ -250,13 +250,13 @@
     },
     {
       "id": "tech-manager",
-      "version": "1.0.0",
+      "version": "1.0.5",
       "owner": "tech-manager",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "38987f1b8e3828ea79494ecad2954673bbd9c41b87c5a27b3a932759cc9c94c8"
+      "validated_on": "2026-08-08",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.4",
+      "content_hash": "9cc98f57cae21df0dbc0801f9295e35e489ca99deb63c781666b57fa79638660"
     },
     {
       "id": "test-automation-engineer",

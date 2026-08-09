@@ -6,10 +6,16 @@
  * rows in the UI would recreate exactly the state the file was written to prevent. Every role gets
  * a row here for the same reason it gets a row there.
  */
+import { useState } from 'react';
 import type { TeamScreen } from '../types';
-import { SectionCard } from '../ui';
+import { SectionCard, Avatar } from '../ui';
+import { personaFor } from '../personas';
 
-export default function Team({ screen }: { screen: TeamScreen }) {
+const STATES = ['active', 'conditional', 'off'] as const;
+
+export default function Team({ screen, query = '' }: { screen: TeamScreen; query?: string }) {
+  const [stateFilter, setStateFilter] = useState<string>('');
+
   if (screen.status === 'unavailable' && !screen.roles.length) {
     return (
       <>
@@ -24,16 +30,28 @@ export default function Team({ screen }: { screen: TeamScreen }) {
   const byState = { active: 0, conditional: 0, off: 0 } as Record<string, number>;
   for (const role of screen.roles) byState[role.state] = (byState[role.state] ?? 0) + 1;
 
+  const q = query.trim().toLowerCase();
+  const roles = screen.roles.filter(
+    (r) => (!stateFilter || r.state === stateFilter) && (!q || r.role.toLowerCase().includes(q))
+  );
+
   return (
     <>
       <div className="headline">
         <div>
           <span className="dim">tier</span>
           <b>{screen.tier || 'not recorded'}</b>
-          <span className="dim">
-            product type: {screen.productType || 'not recorded'} · {byState.active} active · {byState.conditional} conditional ·{' '}
-            {byState.off} off
-          </span>
+          <span className="dim">product type: {screen.productType || 'not recorded'}</span>
+        </div>
+        <div className="channels">
+          <button className={stateFilter === '' ? 'on' : ''} onClick={() => setStateFilter('')}>
+            all ({screen.roles.length})
+          </button>
+          {STATES.map((s) => (
+            <button key={s} className={stateFilter === s ? 'on' : ''} onClick={() => setStateFilter(s)}>
+              {s} ({byState[s] ?? 0})
+            </button>
+          ))}
         </div>
       </div>
       <p className="swept top">swept: {screen.swept}</p>
@@ -54,9 +72,28 @@ export default function Team({ screen }: { screen: TeamScreen }) {
             </tr>
           </thead>
           <tbody>
-            {screen.roles.map((role) => (
+            {roles.map((role) => {
+              const persona = personaFor(role.role);
+              return (
               <tr key={role.role} data-state={role.state}>
-                <td className="mono">{role.role}</td>
+                <td>
+                  <span className="rolecell">
+                    <Avatar name={role.role} size={24} variant={role.state === 'off' ? 'off' : undefined} />
+                    <span className="rolenames">
+                      {persona ? (
+                        <>
+                          <span className="rolename">
+                            {persona.name}
+                            {role.state !== 'off' ? <persona.sigil size={13} /> : null}
+                          </span>
+                          <span className="mono faint">{role.role}</span>
+                        </>
+                      ) : (
+                        <span className="mono">{role.role}</span>
+                      )}
+                    </span>
+                  </span>
+                </td>
                 <td>
                   <span className={`tag state-${role.state}`}>{role.state}</span>
                 </td>
@@ -68,7 +105,15 @@ export default function Team({ screen }: { screen: TeamScreen }) {
                 <td>{role.logActions}</td>
                 <td className="reason">{role.reason || <span className="dim">NO REASON RECORDED</span>}</td>
               </tr>
-            ))}
+              );
+            })}
+            {!roles.length ? (
+              <tr>
+                <td colSpan={5} className="dim" style={{ padding: '16px 20px' }}>
+                  no role matches this filter
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

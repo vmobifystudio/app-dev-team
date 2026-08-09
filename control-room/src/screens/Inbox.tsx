@@ -9,7 +9,8 @@
  * between an inbox and a page that makes up advice. This UI never composes a recommendation.
  */
 import type { InboxItem, Screen, State } from '../types';
-import { ActionForm, StatusBadge } from '../ui';
+import { ActionForm, StatusBadge, Avatar } from '../ui';
+import { IconByKind, AlertOctagonIcon } from '../icons';
 
 export default function Inbox({ screen, state, onDone }: { screen: Screen; state: State; onDone: () => void }) {
   const section = screen.sections[0];
@@ -33,13 +34,19 @@ export default function Inbox({ screen, state, onDone }: { screen: Screen; state
       ) : items.length === 0 ? (
         <p className="verdict clear">CLEAR — {section?.clearNote}</p>
       ) : (
-        items.map((item) => (
+        items.map((item) => {
+          const KindGlyph = IconByKind[item.kind] ?? AlertOctagonIcon;
+          return (
           <section className="decision card" data-status="attention" key={`${item.kind}-${item.id}-${item.since}`}>
             <header>
-              <span className={`tag ${item.kind}`}>{item.kind.replace(/_/g, ' ')}</span>
+              <span className={`tag ${item.kind}`}>
+                <KindGlyph size={10} />
+                {item.kind.replace(/_/g, ' ')}
+              </span>
               <span className="mono id">{item.id}</span>
               <h3>{item.title}</h3>
-              <span className="dim mono">
+              <span className="dim mono" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
+                <Avatar name={item.owner || '?'} size={20} />
                 {item.owner} · since {item.since}
               </span>
             </header>
@@ -65,7 +72,8 @@ export default function Inbox({ screen, state, onDone }: { screen: Screen; state
               <p className="dim">actions are disabled on this control room</p>
             )}
           </section>
-        ))
+          );
+        })
       )}
     </>
   );

@@ -15,11 +15,88 @@
  */
 import { useState, type ReactNode } from 'react';
 import type { ActionResult, Field, Item, Section, Status } from './types';
+import { IconByStatus, CheckCircleIcon, AlertTriangleIcon, HelpCircleIcon } from './icons';
+import { personaFor } from './personas';
 
 export function StatusBadge({ status, count }: { status: Status; count?: number }) {
   const label =
     status === 'attention' ? `${count ?? ''} need attention`.trim() : status === 'unavailable' ? 'cannot evaluate' : status;
-  return <span className={`badge ${status}`}>{label}</span>;
+  const Glyph = IconByStatus[status];
+  return (
+    <span className={`badge ${status}`}>
+      {Glyph ? <Glyph size={12} /> : null}
+      {label}
+    </span>
+  );
+}
+
+/**
+ * A deterministic colored initial-circle for a name — "who" at a glance, in a list of many.
+ * The hue is derived from the name itself (a simple string hash), so the same person always gets
+ * the same color across every screen without a lookup table or a config file to keep in sync.
+ */
+function hue(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+function initials(name: string): string {
+  const parts = name.replace(/[_-]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/** `off` renders neutral grey; `unassigned` renders as a red `?` — the absence of an owner is a
+ * finding, not a person, so it does not get a hashed identity color like everyone else. */
+export function Avatar({
+  name,
+  size = 26,
+  variant,
+}: {
+  name: string;
+  size?: number;
+  variant?: 'off' | 'unassigned';
+}) {
+  const h = hue(name || '?');
+  const persona = variant ? null : personaFor(name || '');
+  return (
+    <span
+      className={`avatar${variant ? ` ${variant}` : ''}`}
+      style={
+        variant
+          ? { width: size, height: size, fontSize: Math.max(10, size * 0.4) }
+          : {
+              width: size,
+              height: size,
+              fontSize: Math.max(10, size * 0.4),
+              // 32% lightness on the fill's own hue leaves several hues at 4.4:1, below AA at these
+              // sizes; 29% clears every hue.
+              background: `hsl(${h} 70% 92%)`,
+              color: `hsl(${h} 55% 29%)`,
+            }
+      }
+      // The real role slug is always the name shown in the layout next to this avatar — this is
+      // just a hover aside, never a replacement for the identifier the log actually uses.
+      title={persona ? `${persona.name} — ${name}` : name}
+    >
+      {variant === 'unassigned' ? '?' : initials(name || '?')}
+    </span>
+  );
+}
+
+/** A compact, full-width statement of a swept population and its result — used where a whole
+ * screen (not one card) needs a single verdict line, e.g. Team's roster summary. */
+export function VerdictBar({ status, children }: { status: Status; children: ReactNode }) {
+  const Glyph = status === 'attention' ? AlertTriangleIcon : status === 'unavailable' ? HelpCircleIcon : CheckCircleIcon;
+  const cls = status === 'unavailable' ? 'cannot' : status === 'attention' ? 'attention' : '';
+  return (
+    <div className={`verdictbar${cls ? ` ${cls}` : ''}`}>
+      <Glyph size={14} />
+      {children}
+    </div>
+  );
 }
 
 export function SectionCard({ section, children }: { section: Section; children?: ReactNode }) {

@@ -63,6 +63,7 @@ import {
   renderBoard,
   deriveMetrics,
 } from './lib/events.mjs';
+import { VERDICT_EVENTS, readVerdict } from './lib/verdict.mjs';
 
 const DEFAULT_LOG = 'docs/31-board-events.jsonl';
 const DEFAULT_BOARD = 'docs/31-board.md';
@@ -122,11 +123,25 @@ function resolveId(tickets, id) {
  * with no dashboard involved, so validating at any one caller would have left every other open.
  *
  * `--name=value` still works; a value-taking flag with no token after it is exit 2, not `true`.
+ *
+ * THIS SET MUST NAME EVERY VALUE-TAKING FLAG THIS FILE READS, and it did not. `evidence`,
+ * `context`, `run`, `attempt` and `lease-seconds` were all read as values and none were declared,
+ * so each was the original hole reopened: `--evidence "--board=<path>"` set `evidence` to `true`
+ * and `board` to an arbitrary path. That approval path failed safe only by accident of ordering —
+ * `bindApprovalEvidence` rejects the missing evidence file before `writeView` runs — and `--run` /
+ * `--attempt` forward straight into `run-ledger.mjs`'s argv, where no such accident protects them.
+ *
+ * The fix belongs here and only here: five call sites each checking their own argument is the
+ * shape that produced the byte-identical copy of this bug in `round-journal.mjs`. When you add a
+ * flag that takes a value, add it to this set in the same edit — `assert_declared_value_flags` in
+ * scripts/test.sh cross-checks the set against every `flags.X` this file reads, so a new
+ * undeclared one fails the suite rather than waiting for a probe.
  */
 const VALUE_FLAGS = new Set([
   'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
   'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root', 'base', 'actor', 'actor-token',
+  'evidence', 'context', 'run', 'attempt', 'lease-seconds', 'verdict',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
@@ -711,6 +726,24 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     }
   }
 
+  // THE REVIEW'S OUTPUT CONTRACT, checked before the append that records its conclusion.
+  //
+  // It sits AFTER `validate` on purpose. A caller whose transition is illegal, or who lacks the
+  // capability to write this event at all, must hear THAT first — a reviewer told to go write a
+  // verdict document for a ticket they were never allowed to approve is sent to do work that
+  // cannot help. "Before believing a refusal, name the layer you expected it from" cuts both ways:
+  // the layers have to fire in the order that makes the message actionable.
+  if (VERDICT_EVENTS.has(name)) {
+    const v = readVerdict(flags.verdict, name, ticket);
+    if (!v.ok) {
+      process.stderr.write(`board: refused ${ticket} ${name} — ${v.reason}\n`);
+      process.exit(v.code || 1);
+    }
+    event.detail = typeof event.detail === 'object' && event.detail
+      ? { ...event.detail, ...v.detail }
+      : { note: event.detail || undefined, ...v.detail };
+  }
+
   if (name === 'approved' && flags.bind) {
     const bound = bindApprovalEvidence(flags);
     if (!bound.ok) {
@@ -1039,9 +1072,48 @@ function cmdMigrate(pathArg, flags, paths) {
 
 // --------------------------------------------------------------------------------------------
 
+/**
+ * How many positional arguments each command takes, past the command word itself.
+ *
+ * AN EXTRA POSITIONAL USED TO BE SILENTLY DISCARDED. `board.mjs add APP-001 "Foundation"` — the
+ * obvious spelling, and the one `docs/RESUME.md`'s standing probe used for weeks — recorded
+ * `title: ""`, because the title is `--title` and `"Foundation"` went into `rest[1]` where nothing
+ * read it. The command exited 0 and the board rendered `—` in the Title column forever.
+ *
+ * That is the quiet half of the argument-injection class already fixed in VALUE_FLAGS: there the
+ * problem was a value read as a flag, here it is a value read as nothing at all. Both end with the
+ * CLI reporting success for an instruction it did not carry out, which is the failure mode this
+ * whole repository is built to refuse.
+ *
+ * Checked BEFORE the lock and before any append: refusing a malformed invocation must not first
+ * take a lock or write an event.
+ */
+const EXPECTED_POSITIONALS = {
+  add: { max: 1, usage: 'add <ID> --title "..." [--owner R] [--feature F-001] ...' },
+  move: { max: 2, usage: 'move <ID> <event> --by <role> [--detail "..."]' },
+  assign: { max: 1, usage: 'assign <ID> --to <role>' },
+  show: { max: 1, usage: 'show [ID] [--json]' },
+  render: { max: 0, usage: 'render' },
+  verify: { max: 0, usage: 'verify' },
+  migrate: { max: 1, usage: 'migrate [path/to/31-board.md] [--out log.jsonl]' },
+};
+
 function main() {
   const { flags, positional } = parseArgs(process.argv.slice(2));
   const [command, ...rest] = positional;
+
+  const arity = EXPECTED_POSITIONALS[command];
+  if (arity && rest.length > arity.max) {
+    const extra = rest.slice(arity.max);
+    die(
+      1,
+      `${command} takes ${arity.max} positional argument(s); got ${rest.length}.\n` +
+        `  Ignored: ${extra.map((a) => JSON.stringify(a)).join(' ')}\n` +
+        `  usage: ${arity.usage}\n` +
+        '  Every field past the ID is a NAMED flag. An extra positional was silently discarded until\n' +
+        '  now, so `add APP-001 "My title"` recorded an empty title and still exited 0.'
+    );
+  }
   const paths = {
     log: typeof flags.log === 'string' ? resolve(process.cwd(), flags.log) : resolve(projectRoot(flags), DEFAULT_LOG),
     board: typeof flags.board === 'string' ? resolve(process.cwd(), flags.board) : resolve(projectRoot(flags), DEFAULT_BOARD),
@@ -1100,6 +1172,7 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
   switch (command) {
     case 'add':
       return cmdAdd(rest[0], flags, paths, idempotencyKey);
+    // (arity is checked above, before the lock — see EXPECTED_POSITIONALS)
     case 'move':
       return cmdMove(rest[0], rest[1], flags, paths, idempotencyKey);
     case 'assign':

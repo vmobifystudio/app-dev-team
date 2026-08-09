@@ -10,40 +10,75 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
 ## Steps
 
-1. **Sanity check the board.** Run the board doctor — a release is the worst possible moment to
-   discover a stranded ticket:
+1. **Bind the artifact, then run every mechanical precondition as ONE command.**
+
+   First bind what you are about to ship to the commit that passed. Everything else here reasons
+   about a COMMIT; until the binary is bound to it, "readiness: PASS" is a true statement about
+   source and silent about the file you hand to a store:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
+     --artifact <path to the built .ipa/.aab> --platform ios|android --variant release \
+     --by release-manager
    ```
 
-   Exit `1` → stop. Then read `docs/31-board.md`: if anything is `todo`, `in_progress`, or `review`,
-   stop and tell the user "Sprint isn't done — run `/app-build` first."
+   This step stays explicit because only you know the artifact path — guessing it would be inventing
+   the subject of the whole release. A build from a dirty tree records as such and reads STALE
+   forever after; that is not a bug to work around.
 
-1a. **Run the ship gate.** These preconditions are a script, not prose to improvise — improvising
-   them produced three silent, confident failures in one session (a guard that could not fail, a
-   field-index mistake, a regex that reported zero open S1/S2 bugs while two were open; see
-   `defect-hunting`):
+   Then:
 
    ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/ship-gate.sh" . --record
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" ship
    ```
 
-   `--record` writes this verdict to `docs/team/ship-gate-verdict.json` so the control room's
-   Mission Control panel can defer to it instead of only sweeping ticket/bug state — dry run 5
-   (Android fixture) found that narrower sweep could say `clear` while this gate had just returned
-   BLOCKED.
+   That runs the board doctor, the ONE readiness reducer (which now includes the artifact you just
+   bound) and `ship-gate.sh`, in order, worst answer wins. They were three separate steps each
+   ending in "read the exit code"; the discipline of running all three, every time, is exactly what
+   a 328-line file erodes.
 
-   - Exit `0` → **CLEAR.** Continue.
-   - Exit `1` → **BLOCKED by a real condition** — an open S1/S2, a ticket still in flight
-     (including `blocked`), a QA hold. Print its blockers verbatim and stop.
-   - Exit `2` → **CANNOT EVALUATE.** A required input is missing or unparseable. The gate prints one
-     missing input per line; **surface those lines verbatim** under
-     `SHIP GATE: CANNOT EVALUATE` at the top of your output. This is a stop that names what is
-     absent — never a pass, and never an unrecoverable error.
+   - Exit `0` → continue to the runtime gate below.
+   - Exit `1` → **do not release.** It names which precondition. **STALE is not a failure** —
+     nothing says the product is broken, it says nobody checked THIS candidate. Re-run the gates it
+     names, or rebuild and re-record.
+   - Exit `2` → **CANNOT EVALUATE, also not a pass.** A gate has never run, or no artifact was
+     recorded, so what would be uploaded is UNKNOWN.
 
-   On exit `2`, offer the user exactly two ways forward per missing input, and take the one they
-   choose:
+   Confirm the gate results still describe this candidate rather than last Tuesday's:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/evidence-check.mjs" \
+     --result docs/team/journey-result.json --head "$(git rev-parse HEAD)"
+   ```
+
+   Every gate answers at a moment and then stops thinking. `journey-gate` says PASS, three commits
+   land, and the PASS sits there green describing a candidate that no longer exists. Nobody lied;
+   the verdict outlived its subject. Exit `1` → re-run the gate rather than reasoning about how
+   little changed.
+
+   **`orchestrator ship` submits and publishes nothing** — that boundary is constitutional (I-12).
+   It reports; you and the user decide.
+
+1a. **If step 1 reported the ship gate as BLOCKED or CANNOT EVALUATE — resolve it here.**
+
+   Do **not** re-run `ship-gate.sh` by hand: `orchestrator ship` already ran it (with `--record`, so
+   `docs/team/ship-gate-verdict.json` is written for the control room's Mission Control panel — dry
+   run 5 found its narrower sweep could say `clear` while this gate had just returned BLOCKED).
+   Running it twice invites acting on the older of two answers.
+
+   These preconditions are a script, not prose to improvise — improvising them produced three
+   silent, confident failures in one session (a guard that could not fail, a field-index mistake, a
+   regex that reported zero open S1/S2 bugs while two were open; see `defect-hunting`).
+
+   - **BLOCKED** → a real condition: an open S1/S2, a ticket still in flight (including `blocked`),
+     a QA hold. Print its blockers verbatim and stop.
+   - **CANNOT EVALUATE** → a required input is missing or unparseable. The gate prints one missing
+     input per line; **surface those lines verbatim** under `SHIP GATE: CANNOT EVALUATE` at the top
+     of your output. This is a stop that names what is absent — never a pass, and never an
+     unrecoverable error.
+
+   On CANNOT EVALUATE, offer the user exactly two ways forward per missing input, and take the one
+   they choose (then re-run `orchestrator ship`, not the gate alone):
 
    1. **Produce it.** Name the owning role and spawn it. A brownfield project reaching `/app-ship`
       without `docs/50-test-plan.md` has simply never run a QA wave — that file is only ever written
@@ -103,6 +138,12 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    What it deliberately does **not** do is decide for you. Read its notes:
 
    - `docs/51-bugs.md` — **any open `S1` or `S2` stops the release.**
+   - `docs/90-register.jsonl` — **the register: any item with no terminal status stops the release.**
+     This is a wider question than the bug count above, and deliberately so: an audit FINDING with no
+     ticket was invisible to every other check here, because it is not a bug row and not a board row.
+     Shipping with three `DEFERRED` S3 bugs is a fine release; shipping without knowing is the
+     failure. Give each one a decision and a reason — `node scripts/register.mjs status <ID>
+     DEFERRED --by <role> --reason "..."` — rather than a fix.
    - `docs/50-test-plan.md` — check the **exit criteria** QA wrote, and whether each row is marked
      executed or only reasoned. A test plan whose rows all say "not performed" is not a QA pass.
    - **`qa-engineer`'s ship recommendation is a first-class input, and it can differ from the

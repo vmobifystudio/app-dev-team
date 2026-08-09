@@ -523,15 +523,43 @@ function validateTransition(tickets, candidate) {
 
   switch (name) {
     case 'claimed': {
+      /**
+       * A DEPENDENCY IS SATISFIED WHEN ITS CODE IS INTEGRATED, AND `merged` STOPPED MEANING THAT.
+       *
+       * This gated on the existence of a `merged` event, which was exactly right while the merge
+       * gate was followed by `git merge` in the same breath. The wave model split them: `merged` is
+       * now PERMISSION and `wave-integrate.mjs` is the FACT. So a dependent became claimable the
+       * moment its dependency was approved — and its slot was cut from an integration branch that
+       * did not contain the code it depends on. The developer then builds against an absent API,
+       * and the first thing that notices is the wave that fails to compile.
+       *
+       * `verifiedStatic` is the same signal `merge-reconcile.mjs` uses, and for the same reason: it
+       * is true exactly while a merge-gated ticket is still waiting for the wave, and the wave's
+       * green is what clears it. A project that merges per ticket never sets it, so its dependents
+       * unblock the instant the gate passes, precisely as before.
+       *
+       * Found in review of the commit that introduced the split (B2) — the same class as the
+       * `merge-reconcile` deadlock, in the second reader of the same event.
+       */
       const unmet = state.dependsOn.filter((depId) => {
         const dep = tickets.get(key(depId));
         if (!dep) return true;
-        return !dep.events.some((e) => e.event === 'merged');
+        if (!dep.events.some((e) => e.event === 'merged')) return true;
+        return dep.verifiedStatic === true;
       });
       if (unmet.length) {
         return {
           ok: false,
-          reason: `${id} depends on ${unmet.join(', ')}, which ${unmet.length > 1 ? 'have' : 'has'} not merged`,
+          // The two causes need different actions, so the message names which one it is: a
+          // dependency nobody has approved yet is waiting on the pod, and one that is merge-gated
+          // but not integrated is waiting on the wave. "has not merged" was true of both and
+          // actionable for neither once the wave model split them.
+          reason: `${id} depends on ${unmet.map((depId) => {
+            const dep = tickets.get(key(depId));
+            return dep && dep.verifiedStatic === true
+              ? `${depId} (merge-gated, awaiting the wave — run wave-integrate.mjs)`
+              : String(depId);
+          }).join(', ')}, whose code is not on the integration branch`,
           legal: legal.filter((e) => e !== 'claimed'),
         };
       }

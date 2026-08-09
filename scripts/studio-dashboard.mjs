@@ -57,7 +57,7 @@ import { dirname, join, resolve, relative } from 'node:path';
 
 import { parseArgs } from './lib/args.mjs';
 import { redact } from './lib/redact.mjs';
-import { parseMessages, pairQuestions, isEmpty, normalizeId } from './lib/board.mjs';
+import { parseMessages, pairQuestions, isEmpty, normalizeId, hasShipped } from './lib/board.mjs';
 import { deriveMetrics } from './lib/events.mjs';
 // The whitelist and the read layer are SHARED with control-room/ — see the header of each. Two
 // copies of either is two sets of rules about one board, and the copies drift silently.
@@ -386,7 +386,9 @@ function panelProvenance(model, root) {
 // panel 5 — QUESTION -> ANSWER -> DELIVERY
 // ---------------------------------------------------------------------------------------------
 
-const SHIPPED = new Set(['qa', 'done']);
+// SHIPPED was `new Set(['qa','done'])`. `qa` now covers both "the wave landed this" and "the gate
+// passed and the wave has not run", and only the first has shipped — so the question needs the ROW,
+// not the status word. One predicate for all five readers: lib/board.mjs hasShipped (N1).
 
 function panelQuestions(model, messagesSource) {
   if (!messagesSource.ok) {
@@ -421,7 +423,9 @@ function panelQuestions(model, messagesSource) {
   let answeredCount = 0;
   for (const [ticketId, thread] of threads) {
     if (ticketId === '(no ticket)') continue;
-    const status = model.byId.get(normalizeId(ticketId))?.status ?? null;
+    const row = model.byId.get(normalizeId(ticketId)) ?? null;
+    const status = row?.status ?? null;
+    const shipped = hasShipped(row);
     const { open, answered } = pairQuestions(thread);
 
     for (const q of open) {
@@ -433,10 +437,10 @@ function panelQuestions(model, messagesSource) {
         question: q.summary,
         asked: q.timestamp,
         reason:
-          status && SHIPPED.has(status)
+          shipped
             ? `still open while the ticket is ${status} — it shipped on an unconfirmed assumption`
             : 'open — a question nobody answered is how a guess becomes shipped behaviour',
-        shipped: Boolean(status && SHIPPED.has(status)),
+        shipped,
         actionable: true,
       });
     }

@@ -76,6 +76,141 @@ CMD=$(printf '%s' "$PAYLOAD" | tr '\n' ' ' | awk '
 
 case "$CMD" in *git*) ;; *) exit 0 ;; esac
 
+# Resolved once, used by both checks below. Not a git repository -> nothing here to guard.
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+
+# --- a raw `git merge` INTO the integration branch, by anyone at all ------------------------------
+#
+# FOUND BY RUNNING A REAL SPRINT (H6, 2026-08-07). A `qa-engineer` agent, told in its own role file
+# "you never merge your own work — tech-manager merges", ran `git merge --no-ff` directly onto
+# `main` anyway. No board event backed it — no `review_requested`, no `approved`, no `merged` — so
+# the work landed on the branch every other ticket builds from with zero provenance and zero review.
+# `board.mjs` could not have stopped this: the rule it enforces is which EVENTS may be appended to
+# the log, and this command never touched the log at all. It is DR4-027's shape at the git layer —
+# a rule that was prose, defeated by an agent with a shell — caught by the same kind of hook that
+# closed that one.
+#
+# THIS IS NOT A ROLE CHECK, because a hook has no reliable signal for which subagent is running —
+# the payload carries a command, not an identity. It is a PATTERN check, and the pattern it refuses
+# is one this repository has independently decided is always wrong now, for anyone: merging
+# directly into the checked-out integration branch via `git merge`. `wave-integrate.mjs` used to do
+# exactly this — `git merge --ff-only` on the live checkout — and B1 (the review that shipped
+# alongside this hook) replaced it with a ref update precisely because merging into a checkout you
+# might not even be standing on is unsafe. If the studio's OWN merge tool no longer does this, an
+# agent should not be doing it by hand either — regardless of role.
+#
+# So this fires whenever: (a) the command contains `git merge`, (b) it is NOT `--ff-only`, and
+# (c) the branch currently checked out in this tree is the project's DECLARED integration branch.
+#
+# `--ff-only` IS SPECIFICALLY EXEMPT, and that took a second pass to get right. `wave-integrate.mjs`
+# prints exactly one documented manual fallback — `git checkout $BASE && git merge --ff-only
+# $WAVE_BRANCH && git push origin $BASE` — for landing an already-vetted, fully-tested wave onto
+# the integration branch by hand. Running the first version of THIS hook against that exact command
+# (while landing H6's own wave) blocked it: a fast-forward-only merge cannot create a merge commit,
+# cannot lose history, and cannot land anything that was not already a strict descendant of HEAD —
+# it is the same operation `wave-integrate.mjs`'s own `git fetch . src:dst` performs, in a git
+# subcommand that happens to be spelled `merge`. The risk this hook exists to stop is a `--no-ff`
+# (or plain) merge that FABRICATES a merge commit combining an unreviewed branch into the
+# integration branch — which is exactly the qa-engineer's `git merge --no-ff -m "..." <branch>`
+# that started this. Gating on the literal `--ff-only` flag, rather than trying to compute whether
+# history WOULD allow a fast-forward, keeps this a static check with no side effects.
+# Resolved unconditionally, once, and used by every ref-aware check below — not only the merge
+# check. Moving this out of the `MERGE_CMD` branch is deliberate: the ref-writing bypasses further
+# down (push/fetch refspec, branch -f, update-ref) need $DECLARED too, and none of them contain the
+# word "merge", so gating this resolution on MERGE_CMD left them with an empty $DECLARED and nothing
+# to compare against.
+#
+# Mirror scripts/integration-branch.sh's own resolution — declared in docs/23-git-strategy.md
+# (or docs/20-architecture.md), falling back to `main` only when no such doc exists at all. Kept
+# deliberately minimal and dependency-free rather than shelling out to that script, because this
+# hook must not assume any repo-relative path (like $CLAUDE_PLUGIN_ROOT) is set in its own process.
+DECLARED=""
+for doc in "$ROOT/docs/23-git-strategy.md" "$ROOT/docs/20-architecture.md"; do
+  [ -f "$doc" ] || continue
+  DECLARED=$(sed -nE 's/.*[Ii]ntegration branch[[:space:]]*(:|=|—|–|-|\||is)[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\2/p' "$doc" | head -n 1)
+  [ -n "$DECLARED" ] && break
+done
+[ -n "$DECLARED" ] || DECLARED="main"
+
+case "$CMD" in
+  *"--ff-only"*) MERGE_CMD=0 ;;
+  *"git merge"*) MERGE_CMD=1 ;;
+  *) MERGE_CMD=0 ;;
+esac
+if [ "$MERGE_CMD" = "1" ]; then
+  HEAD=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+  if [ -n "$HEAD" ] && [ "$HEAD" = "$DECLARED" ]; then
+    cat >&2 <<EOF
+BLOCKED — a raw \`git merge\` directly onto the integration branch (\`$DECLARED\`).
+
+  command : $CMD
+  why     : merging straight onto the checkout every other ticket builds from leaves no board
+            record — no review_requested, no approved, no merged event — so the work lands with
+            zero provenance and zero review. Measured live (H6, 2026-08-07): a qa-engineer agent
+            did exactly this, bypassing code-reviewer and the tech-manager merge gate entirely.
+
+This studio's own merge tool no longer merges into a live checkout for the same reason
+(wave-integrate.mjs updates the ref instead) — an agent should not do it by hand either.
+
+Instead:
+  - land a whole wave                     node scripts/wave-integrate.mjs --wave <N> [--push]
+  - landing a wave branch by hand?        git merge --ff-only <wave-branch>   (fast-forward only —
+                                           this is the one form that IS allowed here, because it
+                                           cannot fabricate a merge commit or lose history)
+  - resolving a real conflict by hand?    do it in a DEDICATED worktree
+                                           (.agent-wt/integration-wave-N), never on this checkout
+EOF
+    exit 2
+  fi
+fi
+
+# --- ref-writing bypasses of the merge check above ------------------------------------------------
+#
+# FOUND BY ADVERSARIAL RE-REVIEW (2026-08-08), by probing the check above with commands that move
+# the integration branch's REF without ever calling `git merge`. All three exited 0 against it,
+# because it only recognizes the literal words `git merge` — and none of the three need the
+# integration branch checked out in THIS tree at all, so the `HEAD == $DECLARED` precondition that
+# gates the merge check above is irrelevant here by construction:
+#
+#   git push origin HEAD:main             moves the REMOTE ref via a refspec, no merge command
+#   git fetch . feat/x:main                moves the LOCAL ref directly — this is wave-integrate.mjs's
+#                                           own sanctioned mechanism (`git fetch . src:dst`), run by
+#                                           hand instead of through its checks and its board record
+#   git branch -f main feat/x              force-moves the branch pointer, no merge object at all
+#   git update-ref refs/heads/main <sha>   the same move, spelled at the plumbing layer
+#
+# Each reproduces H6's exact class: unreviewed code lands on the branch every ticket builds from,
+# with no review_requested, no approved, no merged event — without the word "merge" ever appearing.
+NORM_REF=$(printf '%s' "$CMD" | tr -s ' ')
+REFBLOCK=""
+case "$NORM_REF" in
+  *"git push "*":$DECLARED"|*"git push "*":$DECLARED "*)
+    REFBLOCK="a push refspec ending :$DECLARED moves the integration branch's ref on the remote — no merge, no board event" ;;
+  *"git fetch "*":$DECLARED"|*"git fetch "*":$DECLARED "*)
+    REFBLOCK="a fetch refspec ending :$DECLARED moves the integration branch's LOCAL ref directly — this is wave-integrate.mjs's own mechanism, run by hand instead of through it" ;;
+  *"git branch -f $DECLARED"|*"git branch -f $DECLARED "*|*"git branch -M $DECLARED"|*"git branch -M $DECLARED "*)
+    REFBLOCK="git branch -f/-M force-moves $DECLARED's pointer directly — no merge object, no history check" ;;
+  *"update-ref refs/heads/$DECLARED"*)
+    REFBLOCK="git update-ref moves $DECLARED's pointer at the plumbing layer — the same effect as branch -f" ;;
+esac
+if [ -n "$REFBLOCK" ]; then
+  cat >&2 <<EOF
+BLOCKED — a git command that moves the integration branch's ref (\`$DECLARED\`) without a merge,
+a review, or wave-integrate.mjs.
+
+  command : $CMD
+  why     : $REFBLOCK
+            Measured live (H6, 2026-08-07) for the merge form of this; this is the same class
+            reached through a different git verb — found by adversarial re-review, not by an
+            incident, which is the point of looking before one happens.
+
+Instead:
+  - land a whole wave         node scripts/wave-integrate.mjs --wave <N> [--push]
+  - move it by hand?          git checkout $DECLARED && git merge --ff-only <wave-branch> && git push origin $DECLARED
+EOF
+  exit 2
+fi
+
 # --- is there anything here to destroy? ---------------------------------------------------------
 #
 # The first version gated on agent worktrees existing (.agent-wt/, .claude/worktrees/). The security
@@ -91,7 +226,6 @@ case "$CMD" in *git*) ;; *) exit 0 ;; esac
 #
 # A clean tree keeps every command, so this still cannot fire on everything. That matters: a gate
 # that refuses constantly gets switched off, and a switched-off gate protects nothing.
-ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 DIRTY=$(git status --porcelain -uall 2>/dev/null | head -n 1)
 [ -n "$DIRTY" ] || exit 0
 

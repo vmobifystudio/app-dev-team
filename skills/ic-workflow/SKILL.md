@@ -155,6 +155,10 @@ to trust a file.
 
 - You never edit the architecture or impl spec. If the spec is wrong, you write a blocker note and
   stop.
-- You never merge your own work. `code-reviewer` reviews; `tech-manager` merges.
+- You never merge your own work. `code-reviewer` reviews; `tech-manager` merges. **This is not only a
+  rule you are told — `hooks/block-shared-tree-destructive-git.sh` refuses a raw `git merge` (other
+  than `--ff-only`) while your tree has the integration branch checked out.** Measured live, H6
+  (2026-08-07): a `qa-engineer` agent had this exact sentence in its own role file and ran the merge
+  anyway. The hook exists because the sentence alone did not stop it.
 - You never write outside your ticket's surface. Another IC's code, another platform's tree, and a
   file you were not assigned are all somebody else's — if your change needs one, say so and stop.

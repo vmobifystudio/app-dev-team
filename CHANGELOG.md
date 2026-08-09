@@ -3,6 +3,327 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+**EE-002 — the S1 the last review filed and this PR had not addressed.** `app-build.md`'s wave
+integration, worktree-reap, mid-sprint Q&A and CI sections repeated reasoning that already lives
+verbatim in the scripts' own headers (`wave-integrate.mjs`, `worktree-reap.mjs`, `messages.mjs`,
+`ci-status.mjs`). Moved to pointers with a compact exit-code table where useful; `commands/app-build.md`
+774 -> 750 lines, `knowledge/git-workflow.md`'s CI section 27 -> 6 lines. No suite assertion depended
+on the trimmed prose — 1405/1405 still pass.
+
+
+**H6 — a real 3-ticket sprint, agent-driven, counted end to end.** Not a fixture check: one
+`ios-developer` agent (one leased slot, three tickets, sequential — the real shape once the
+fixture revealed a shared owner), three real spawned `code-reviewer` agents, a real
+`wave-integrate.mjs` run against a genuine textual conflict, a real `qa-engineer` pass. Full
+account in `docs/dry-runs/2026-08-07-h6-a-real-sprint-counted.md`.
+
+**H6d: 3 of 3 tickets reached `done`.** Against the historical baseline this whole review cycle
+started from — 19 tickets created, 1 closed — the first wave where that number was not a near-total
+failure. n=1, one wave; not a throughput claim.
+
+**H6b failed on the first pass, 3 for 3, identically — then held.** `report-check.mjs --root`
+(built hours earlier, right after H5b) caught the same false `Daily fragment:` claim on all three
+tickets independently: real code, real tests, real commits, and a fragment written to disk and
+never `git add`ed. Same model, same instruction, skipped identically three times — systematic, not
+a fluke. The documented remedy (re-spawn asking for the specific field) worked on the first retry.
+
+**A new S1, found only by driving the wave for real: an IC bypassed the merge gate entirely.** A
+`qa-engineer` agent — with "you never merge your own work" in its own role file — ran `git merge
+--no-ff` directly onto `main` to land its own ticket. `docs/31-board-events.jsonl` shows `created`,
+`claimed`, `done_reported` and nothing else for that ticket: no `review_requested`, no `approved`,
+no `merged`. No board rule could have caught this — `board.mjs`'s refusals govern which events may
+be appended to the log, and this command never touched the log. DR4-027's shape one layer down.
+
+- **`hooks/block-shared-tree-destructive-git.sh`** now also blocks a raw `git merge` (other than
+  `--ff-only`) while the checked-out branch is the declared integration branch — a pattern check,
+  not a role check, since a hook cannot reliably know which subagent is running. `--ff-only` is
+  deliberately exempt: it is `wave-integrate.mjs`'s own printed manual fallback and cannot
+  fabricate a merge commit, discovered by running that exact command while landing H6's own wave —
+  the first version of this fix blocked the tool's own instructions.
+
+Also from H6: `code-reviewer`'s verdict-contract refusal fired identically on all three independent
+review agents' first attempt (thorough prose, missing the machine contract) — a third, unplanned
+confirmation that `lib/verdict.mjs`'s gate is not decorative.
+
+**+8 assertions, 0 failing (1405 total). 33/33 mutations CAUGHT (M38-M71).**
+
+
+**H5/H5b's two gates, built.** The dry-run pair on 2026-08-07 found a dispatch failure (an agent
+returned 0 of 6 contract fields because the spawn prompt referenced the contract instead of
+containing it) and, once that was fixed, a truth-checking gap (an agent returned all six fields and
+one — `Daily fragment:` — was false: real, well-written, never committed).
+
+- **`scripts/spawn-prompt.mjs`** composes the spawn prompt with the six-field output contract
+  INLINED as literal text, pulling the ticket ID, board row and spec pointers from the board itself.
+  `verify` distinguishes H5's failing prompt shape ("Return the CODE profile defined in
+  team-protocol") from H5b's passing one — measured against both real transcripts, not asserted in
+  the abstract. Wired into `parallel-orchestrator` step 4 and `/app-build` step 2.
+- **`report-check.mjs --root <project>`** verifies the `Daily fragment:` claim against git
+  (`git show <branch>:<path>`) instead of checking that the field is merely present — the same class
+  of check `agent-isolation` already requires for the code diff. Without `--root` it stays
+  presence-only and says so on the CLEAR line, so a project that has not adopted it is unaffected.
+- **`lib/contract.mjs`** — the six-field contract and the two role tiers, previously hand-typed in
+  `report-check.mjs` and `team-doctor.mjs` with a comment on each promising to stay in sync. A third
+  consumer (`spawn-prompt.mjs`) made a third hand-typed copy the obviously wrong move, given this
+  repo's own history: "backend-developer and monetization-engineer were two releases behind" is what
+  a fourth copy costs. All three now import one lib; an assertion fails if a fourth ever hand-rolls it.
+
+**+31 assertions (1370 -> 1401), 0 failing. 32/32 PR-and-H5 mutations CAUGHT (M38-M70).**
+
+Also fixed: a pre-existing, unrelated syntax defect in `test.sh` — an `ok`/`bad` pair with a stray
+unmatched quote, latent since some earlier edit in this session, masked by line-number luck until an
+insertion nearby finally triggered it. Found by `sh -n`, not by reading.
+
+
+**Review round 3 — the last three code findings.**
+
+- **N4 — two reducers over one append-only log.** `portfolio.mjs` carried its own
+  `items.set(id, {...prev, ...r})` loop while `register.mjs` had another. New `lib/register.mjs`
+  holds the vocabulary, `terminalRefusal()` and `reduceRegister()`; both import it, and an assertion
+  proves the two agree on what is undecided rather than asserting the code looks shared. The CLI is
+  the caller that fails closed on a half-readable log; the dashboard reports the unreadable count
+  instead of crashing.
+- **N6 — the header described one exit contract and the code had several.** It promised
+  `2 CANNOT EVALUATE` for a missing register while `check` deliberately returns 0 (the 36-false-block
+  fix). Now stated per command, and both ends asserted.
+- **N7 — no id-shape or role validation**, while `lib/board.mjs` and `lib/capabilities.mjs` already
+  hold both. `--by tehc-manager` filed an item authored by nobody; an id the board could never match
+  made every `--ticket` link on it uncheckable.
+
+**+8 assertions (1362 -> 1370), 0 failing. 30/30 PR mutations CAUGHT (M38-M68).** The anchor-drift
+check earned its place: moving the validator into the lib left M38/M39 anchored at code that no
+longer existed, and the suite said so rather than reporting two phantom survivors.
+
+
+**Review round 2 — the non-blocking findings that were about to become blocking ones.**
+
+- **N1/N9 — `['qa','done'].includes(status)` has now produced three defects, so it became one
+  predicate.** EE-001 (merge-reconcile deadlocked the loop), B2 (a dependent started against a
+  branch without its dependency), and five readers still telling a founder that gated work had
+  shipped. `lib/board.mjs` `hasShipped(row)` is the single answer, swept across `trace.mjs`,
+  `studio-dashboard.mjs`, `control-room/state.mjs`, `messages-render.mjs` and `board-doctor.mjs`, and
+  an assertion now fails if any reader hand-rolls the set again. `merge-reconcile`'s
+  `CLAIMS_INTEGRATED` is exempt **with its reason recorded**: it selects the population to examine,
+  which is a different question in the same words.
+- **N5 — one `decision` closed both a question and an escalation.** `raised.slice(decisionCount)`
+  counted every decision as closing an escalation, so a thread with one question, one escalation and
+  one decision reported **zero** unclosed escalations: the founder was told nothing was waiting on
+  them, by the command added to tell them it was. Now one ordered walk over a single queue —
+  `answer` closes the oldest question, `decision` closes the oldest item of either kind.
+- **N2 — `wave-integrate` picked a branch arbitrarily.** `mine[0]`, with `allBranches` computed and
+  never printed, and a bare `includes` that matched `APP-1` inside `feat/APP-12-…`. Ambiguity is now
+  reported and the ticket held out of the wave. Found while fixing it: the report sat *after* the
+  no-candidates early exit, so a wave whose only candidates were ambiguous printed "nothing to
+  integrate" and dropped them silently — N2's own failure, reproduced inside its fix.
+- **N3 — the kept integration worktree lived in `os.tmpdir()`**, where the reaper could not count or
+  protect it and the OS could purge the one artifact the message promised. Moved under `.agent-wt/`,
+  which created the opposite risk: a kept wave tree is CLEAN, so the dirty check would not have
+  stopped `--apply`. Integration worktrees are now never auto-reaped.
+- **N8 — the runbook hand-parsed JSON with a greedy regex.** `messages.mjs open --count`.
+
+**+19 assertions (1343 -> 1362), 0 failing. 27/27 PR mutations CAUGHT (M38-M65), none by the wrong
+assertion.** Two more of my own defects caught by the mutation tester rather than by review: a
+`--count` that printed the report as well as the number, and an N3 fixture with no board, where the
+reaper's fail-safe meant the guard under test was never reached.
+
+
+**Review round.** `code-reviewer` returned REQUEST CHANGES on this branch with six blocking
+findings, two of them found by executing rather than reading. All six are fixed here, each with an
+assertion and a mutation that proves the assertion can go red.
+
+- **B1 — `wave-integrate --push` landed the wave on the wrong branch and reported success.**
+  `git merge --ff-only` merges into the working tree it runs in, and this ran with `cwd: ROOT`
+  without ever checking out `$BASE`. Reproduced against a bare remote: `develop` unchanged on both
+  sides, an unrelated checked-out branch silently fast-forwarded to the wave tip, exit 0, `PUSHED
+  develop` on stdout. The wave landed nowhere and a branch nobody leased was rewritten. Now the REF
+  is updated (`git fetch . <wave>:<base>`, fast-forward-only, no checkout, refuses when the target is
+  checked out elsewhere) and `$BASE` is confirmed to have moved before anything is claimed. The
+  printed manual fallback had always included the `git checkout` the code omitted.
+- **B2 — the dependency guard still read `merged` as fact.** `lib/events.mjs` gated `claimed` on a
+  `merged` event, so once `merged` became permission a dependent was claimable before its dependency
+  was integrated — its slot cut from a branch without the code it depends on. Same in the two
+  `orchestrator.mjs` readers. EE-001's class in the second reader of the same event.
+- **B3 — `register.mjs import-bugs` was a second write path around its own refusals.** It appended
+  directly, so `WONTFIX` collapsed to `FIXED` with no reason and `FIXED` imported with no ticket —
+  the two states M38 and M39 exist to prevent, reachable by another door. Titles also came from the
+  Build column. One `terminalRefusal()` now serves both paths; a row that cannot satisfy it imports
+  OPEN and is reported.
+- **B4** the disk ceiling now counts `.studio-cache/`, where `build-env.sh` had moved the largest
+  consumer of disk on an iOS project — out from under the ceiling added to stop the disk filling.
+  Counted, never reaped. **B5** `ci-status.mjs` said `CI STATUS: FAIL` on line 1 while exiting 0 when
+  unarmed; line 1 now says `ADVISORY (...)`, because an agent reads line 1 and acts on it. **B6** an
+  undocumented `--force` disabled the second-lease guard its own header calls the one that matters.
+
+`mutate.sh` gained one declared exclusion: the post-push confirmation cannot be reached by any
+fixture, so it is named in `excluded()` with the reason rather than left as a phantom survivor.
+
+**1325 -> 1343 assertions, 0 failing. 21/21 PR mutations CAUGHT (M38-M59), none by the wrong
+assertion.**
+
+
+**Coherence.** The first two commits made the parts good and left the seams. The end-to-end review
+(`docs/reviews/2026-08-07-end-to-end-flow-review.md`) walked the call graph, the ticket lifecycle and
+the founder's own path through the studio, and found nine places where two individually-correct
+components had never been introduced to each other. The headline was a regression from this morning.
+
+**EE-001 — the wave model deadlocked the loop after any failed wave.** `merge-reconcile.mjs` treats
+`qa` as "claims integrated", which was true when the merge gate was followed by `git merge` in the
+same breath. The wave model split permission from fact on purpose, so every gated ticket sits at `qa`
+with an unmerged branch — and merge-reconcile is a PRECONDITION of `orchestrator round`, whose exit 1
+means "spawn nobody". A wave that failed, a wave that could not run, or a round that ended between
+step 4 and step 5 left the loop blocked by a false accusation, with remedy text telling the operator
+to hand-merge. `verifiedStatic` already distinguished the two states; it now does.
+
+That is FC-001, this repository's own defining defect class, committed by the person who had spent
+the day writing about it: a mechanism that changed the MEANING of an existing event, with every
+consumer checked except the one written by someone else whose whole job is policing that event.
+
+**EE-003 / EE-004 — the channel's two open ends.** `messages.mjs open` is new.
+`--was <n>` refuses a mid-sprint Q&A batch that answered nothing (the verification used to be the
+sentence "re-render and confirm the count actually fell"). `--escalations` exits 1 while any
+escalation is unclosed, which is what `/app-run` now surfaces to the founder — an escalation is not a
+blocker, so the autonomous run had never shown one to anybody. Also: `main()` returned an exit code
+and nothing read it, so every refusal in that file was decorative.
+
+**EE-006 — `/app-recover` was 11 lines of prose invoking nothing**, for the highest-stress moment the
+studio has. It now works four questions as commands: the lease, the board, the worktrees, the wave.
+
+**EE-007 / EE-009** — the register reaches `portfolio.mjs` (undecided items now score, and an
+undecided item with NO ticket scores as heavily as a blocked one); `trace.mjs` runs during the round
+that creates the drift, not only at init and ship.
+
+**EE-002 — I made the runbook 20% longer in the commits justified by its length.** Partly repaid: the
+reasoning moved to the script headers where this repo keeps it, and `app-build.md` / `tech-manager.md`
+lost 40 lines without losing a command. Still above the pre-wave baseline, and still the finding most
+likely to decide whether an agent can run this unattended.
+
+**A guard against a mistake I made three times in one day.** `... && ok "long" || bad "short"` breaks
+mutation testing silently — the catalogue matches the expected label against the FAIL line, so a pair
+whose halves disagree always reports "CAUGHT, but not by its own assertion", and a real gate reads as
+decorative. It is now an assertion, and it found **83 pre-existing mismatches**.
+
+**1322 -> 1325 assertions, 0 failing. 15/15 mutations CAUGHT (M38-M52), none by the wrong assertion.**
+
+
+**Economics.** Every gate in this studio asked "is this legal?" and none asked "what did that cost,
+and did we buy anything with it?" The adversarial review of 2026-08-07
+(`docs/reviews/2026-08-07-adversarial-operations-review.md`) found six S1-tier consequences, all of
+them from the absence of an integration role rather than from a gate failing. This closes them.
+
+**CI became a gate instead of a sentence (OPS-001, OPS-002)**
+- `knowledge/git-workflow.md` has always said "a clean build + green tests is a hard merge gate".
+  Nothing implemented it: the merge gate reads a non-owner approval and nothing on the server, and a
+  grep of the whole plugin for a CI-status read returned two hits, both in `repo-controls.sh`, which
+  only *reports*. New `scripts/ci-status.mjs` reads the last completed conclusion for the integration
+  branch and `orchestrator round` refuses to start a round on red. Opt-in per project
+  (`"requireCiGreen": true`), because a project with no `gh` is ordinary and a gate that deadlocks it
+  gets switched off. Waivers name a **commit SHA**, so they expire on the next push.
+- **No agent may trigger, re-run or cancel a workflow.** `ci-status.mjs` only ever reads.
+
+**One wave, one merge, one build, one push (OPS-002, OPS-003, OPS-008)**
+- New `scripts/wave-integrate.mjs`: merges every gated branch `--no-ff` into `integration/wave-N` in
+  its own worktree, runs the `full` scope ONCE on the merged tree, attributes failures to candidate
+  tickets by changed files, and pushes once with `--push`. A conflict aborts that one merge and the
+  rest of the wave continues.
+- `verify-done.sh --static` is the per-ticket lane: verifies branch, commits and changed files, and
+  exits **2** — because the tests genuinely have not run. It routes to `verified_static`, which
+  already refuses `closed` and already blocks ship. The wave's green earns the real `verified`, using
+  the `qa → verified` transition that has always been legal and that nothing had ever walked.
+- `tech-manager` no longer runs `git merge` per ticket, and resolves textual conflicts itself instead
+  of re-spawning a cold developer to rebase hunks the manager is already holding.
+- New `scripts/build-env.sh` pins `GRADLE_USER_HOME`, `SWIFTPM_CACHE_PATH` and `STUDIO_DERIVED_DATA`
+  at `.studio-cache/`, outside every worktree. `--check` says per project whether the Xcode path
+  actually consumes it, rather than letting an exported variable stand in for a saving nobody made.
+
+**One worktree per writer, not per ticket (OPS-005, OPS-006)**
+- New `scripts/worktree-slot.mjs`. `parallel-orchestrator` batched by owner, `agent-isolation`
+  demanded a worktree per ticket, and step 3 told each agent to use "its worktree path" — three
+  sentences that could not all be true, and the first owner with two ready tickets is where it
+  breaks. `spawn-gate.sh` needed no change: pass it owners.
+- New `scripts/worktree-reap.mjs`, wired read-only into `orchestrator round` and applied at
+  `/app-build` step 4a. Removal used to be specified only on the merge path, so every rejected,
+  blocked or crashed ticket leaked its tree — 12 worktrees and 88 MB measured in this repository,
+  which contains no application code. It **never** `--force`s: a dirty orphan is reported and left.
+  A 5 GB disk ceiling is on by default and blocks the round.
+
+**One register, with a status that is never blank (OPS-004)**
+- New `scripts/register.mjs` over `docs/90-register.jsonl`. `docs/51-bugs.md` and
+  `docs/81-findings.md` were the only two trackers in the studio with no CLI, no vocabulary and no
+  validator — and the only two that feed work back *into* the loop. An item with no ticket was
+  invisible to `board-doctor`, `orchestrator round` and the sprint summary, and got closed by being
+  unmentioned (~70 findings, once, in a real programme).
+- `register.mjs check` refuses while anything lacks a terminal status; `ship-gate.sh` reads it.
+  `DEFERRED` is terminal and cheap — it just needs an author and a reason. `FIXED` needs the ticket
+  whose merge carried it, because FIXED is a claim about the integration branch.
+- `import-bugs` folds QA's Markdown in through the same `parseBugs` `ship-gate.sh` already uses, so
+  the table stays a source and stops being the register.
+
+**+64 assertions (1258 → 1322) and 10 mutations (M38–M47), all ten proven CAUGHT.** One of them,
+M46, SURVIVED its first real run: the ship-gate register assertion grepped for a sentence that
+`note()` prints in exactly the same words as `block()`, so demoting the blocker left it green. That
+is the whole reason this tool exists, found on the first run that could reach it. `mutate.sh` gained
+per-mutation `--only` SCOPES: it ran the whole 1300-assertion suite per mutation, so ten new ones
+cost ninety minutes and were therefore catalogued and left unproven — a check too slow to run is the
+exact defect this tool exists to find. `--full-suite` keeps the old behaviour for the nightly run.
+
+## [3.0.0] — 2026-08-05
+
+The kernel. **779 → 1139 assertions**, twelve foundation invariants holding, and two CLI changes
+that break existing callers on purpose.
+
+**Why this is a major bump and not 2.1.** Two invocations that used to succeed now fail:
+
+- `board.mjs move <ID> approved|changes` **requires `--verdict <path>`**. An approval used to be a
+  word; it is now a document that is opened, parsed and hashed onto the event.
+- `board.mjs add <ID> "Some title"` **is refused**. The title is `--title`; the extra positional was
+  silently discarded, so the ticket was created with an empty title and exited 0.
+
+Both are breaking, both are the point, and neither has a compatibility shim — a flag that can be
+omitted is a rule that can be skipped.
+
+**The foundation, made falsifiable**
+- **Twelve invariants** (`scripts/foundation-conformance.mjs`), committed RED and then green, with
+  the delta published in `docs/foundation/`. They measure properties end to end rather than
+  mechanisms in isolation: the 981 assertions that preceded them were all passing while the board
+  could lose two thirds of its concurrent writes.
+- **Atomic append for every ledger** (`lib/atomic.mjs`). Twelve concurrent `board.mjs add` calls
+  used to commit four events and leave the hash chain forked.
+- **Authenticated authority** (`actor/v1`), **approval bound to base..head**, **content-addressed
+  criterion evidence**, **staleness invalidation**, and **one readiness reducer** every surface
+  projects.
+
+**Review and release**
+- **`review-verdict/v1`.** A review gate must produce a document carrying `REVIEW VERDICT:`,
+  `Scope: <base>..<head>` and a `## Not checked` section. `Scope` is what turns "review the diff,
+  not the whole app" into a recorded fact; a document saying REQUEST CHANGES cannot be appended as
+  `approved`.
+- **`release-candidate/v1`.** Readiness computed everything about a COMMIT and nothing about the
+  BINARY, so an artifact built from one commit could ship while the gates passed on another. The
+  artifact is now bound to its commit by hash, and a file changed after binding is BLOCKED.
+
+**The loop, and the tooling around it**
+- **`orchestrator.mjs`** (read-only) answers "what is legal now, and why" by calling the same
+  `validate()` the CLI calls — it has no model of its own to go stale, and no mutation commands
+  until it has run beside a real sprint.
+- **`project-profile/v1`** pins the toolchain before dispatch and declares `test.fast` / `test.full`;
+  `verify-done.sh` resolves them instead of running the whole matrix per ticket.
+- **`lib/environment.mjs`** separates "this is broken" from "this cannot be checked here".
+  `verify-done.sh` deliberately keeps its own stricter classifier; the disagreement is pinned by an
+  assertion so a tidy-up cannot collapse them and reintroduce DR4-001.
+- **`schema-registry.mjs`** — 31 schemas, scanned from the tree, undeclared and vanished both drift.
+- **`test.sh --only <pattern>`** — a 6-second inner loop instead of 10 minutes. It prints that it is
+  not the gate, and a failing subset says a failure may be a missing fixture.
+- **The ten engineering rules** (`docs/25-engineering-rules.md`), each naming its enforcing
+  mechanism **or stating it has none**. Three have none and say so.
+
+**Honestly not finished**
+- `/app-ship` has still never executed against a real submission.
+- Gates verify the process; across six dry runs not one *product* defect was caught by a gate.
+- The full `mutate.sh` catalogue takes ~2 hours locally and likely exceeds its 90-minute CI budget.
+- Rules 2, 3 and 5 are conventions with no mechanism.
+
 ## [2.0.0] — 2026-07-30
 
 The revamp. 74 commits, **48 → 779 assertions**, and the first release whose own documentation

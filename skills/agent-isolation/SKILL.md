@@ -25,24 +25,50 @@ reports `DONE`, tests pass, and the review reads a diff that contains someone el
 billing file with its guest-purchase guard deleted. Only explicit-path staging kept it out of the
 commit. One `git add -A` ships a removed billing guard.
 
-## Rule 1 — one worktree per agent, always
+## Rule 1 — one worktree per WRITING AGENT, always
 
-Before spawning any agent that writes, the orchestrator creates its worktree:
-
-```bash
-git worktree add .agent-wt/APP-001 -b feat/APP-001-short-slug
-```
-
-The agent is given that path as its **project root** and never leaves it. Its `git` commands are
-confined there. Parallel agents cannot see each other's uncommitted state, because they do not
-share one.
-
-Cleanup after the merge gate:
+Before spawning any agent that writes, the orchestrator leases its slot:
 
 ```bash
-git worktree remove .agent-wt/APP-001
-git worktree prune
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001,APP-002
 ```
+
+The agent is given that path — `.agent-wt/ios-developer` — as its **project root** and never leaves
+it. Its `git` commands are confined there. It cuts `feat/APP-001-short-slug`, commits, then cuts
+`feat/APP-002-short-slug` from the same base and commits: **one branch per ticket, unchanged**.
+Parallel agents cannot see each other's uncommitted state, because they do not share a tree.
+
+**The slot is keyed by the WRITER, and it used to be keyed by the ticket. That was a contradiction,
+not a preference.** `parallel-orchestrator` step 2 says one agent invocation per owner, batched;
+step 3 says each agent's prompt names *its* worktree path, singular. An `ios-developer` owning three
+tickets was spawned once, given three worktrees, and told to stand in one path that did not exist.
+Working all three in one of them makes every branch carry its siblings' files, which `code-reviewer`
+check 9 rejects — sending `tech-manager` to hunt a shared-tree collision the orchestrator caused.
+
+Two agents in one tree corrupt each other. One agent working three tickets one after another in its
+own tree corrupts nobody. The writer was always the unit; the ticket never was. As a bonus, disk is
+now bounded by the parallelism cap rather than by the backlog.
+
+Cleanup — on **every** terminal outcome, not only after a merge:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
+```
+
+**"After the merge" was the whole leak.** Removal was specified in three places and all three were
+the merge path, so a `rejected`, a cap-converted `blocked`, a `BLOCKED:` return or a crashed round
+left its tree behind forever — no cap, no disk budget, no reaper. Measured in this plugin's own
+repository, which contains no application code at all: 12 worktrees, 88 MB. An iOS project's
+worktrees also carry their own DerivedData.
+
+`worktree-reap.mjs` derives liveness from the board (`in_progress`/`review`) so it cannot disagree
+with it, and it **never** runs `--force`. A worktree with uncommitted changes is reported loudly and
+left exactly where it is: one `git stash` in a shared tree already cost 22 files of live work
+(DR4-027), and an automatic cleanup is that move with better manners.
+
+Build caches live **outside** the slots (`scripts/build-env.sh` → `.studio-cache/`), so reaping a
+slot never throws away a warm build, and the next ticket does not start from cold.
 
 `.agent-wt/` sits inside the repo and **must be in `.gitignore`** — `/app-init` adds it for new
 projects. On an existing project, add it yourself before the first spawn: an un-ignored worktree

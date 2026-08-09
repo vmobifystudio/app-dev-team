@@ -29,7 +29,7 @@
  * `control-room/node_modules` present. The React app is the only part that needs the toolchain.
  */
 
-import { IN_FLIGHT_STATUS, BUILD_SPAWNABLE_OWNERS, normalizeId, isEmpty } from '../scripts/lib/board.mjs';
+import { IN_FLIGHT_STATUS, BUILD_SPAWNABLE_OWNERS, normalizeId, isEmpty, hasShipped } from '../scripts/lib/board.mjs';
 import { deriveMetrics, verifyChain } from '../scripts/lib/events.mjs';
 import {
   channelIndex,
@@ -60,7 +60,8 @@ import {
 import { ACTIONS, actionForms } from '../scripts/lib/actions.mjs';
 
 const STATUS_ORDER = ['todo', 'in_progress', 'review', 'qa', 'done', 'blocked'];
-const SHIPPED = new Set(['qa', 'done']);
+// SHIPPED was `new Set(['qa','done'])`. It needs the ROW now, not the status word — see
+// lib/board.mjs hasShipped (N1): a merge-gated ticket awaiting the wave has not shipped.
 const FOUNDER_ROLES = new Set(['ceo', 'cpo', 'cto', 'founder', 'studio-director', 'chief-of-staff']);
 const REVIEW_EVENTS = new Set(['started', 'approved', 'changes']);
 const VERIFY_EVENTS = new Set(['verified', 'verified_static', 'qa_passed', 'qa_failed']);
@@ -351,7 +352,9 @@ function communications(model) {
   let answeredCount = 0;
 
   for (const [ticket, thread] of threadMap) {
-    const status = ticket === '(no ticket)' ? null : (byId.get(normalizeId(ticket))?.status ?? null);
+    const row = ticket === '(no ticket)' ? null : (byId.get(normalizeId(ticket)) ?? null);
+    const status = row?.status ?? null;
+    const shipped = hasShipped(row);
     const { open, answered } = pairQuestions(thread);
     for (const q of open) {
       openItems.push({
@@ -362,10 +365,10 @@ function communications(model) {
         to: q.to.join(', '),
         question: q.summary,
         asked: q.ts || 'inferred',
-        shipped: Boolean(status && SHIPPED.has(status)),
+        shipped,
         ticketStatus: status || 'not on the board',
         reason:
-          status && SHIPPED.has(status)
+          shipped
             ? `STILL OPEN while ${ticket} is ${status} — it shipped on an unconfirmed assumption`
             : 'open — a question nobody answered is how a guess becomes shipped behaviour',
         actionable: true,
@@ -380,7 +383,7 @@ function communications(model) {
         to: m.to.join(', '),
         question: m.summary,
         asked: m.ts || 'inferred',
-        shipped: Boolean(status && SHIPPED.has(status)),
+        shipped,
         ticketStatus: status || 'not on the board',
         reason: `${m.kind} follow-up remains undelivered — the message declared an obligation but no later answer or decision closed it`,
         actionable: true,

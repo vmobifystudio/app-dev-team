@@ -52,7 +52,22 @@ jobs:
     # workflow was extracted to fix — a check that cannot complete reports nothing, it just reports
     # it more expensively. Ubuntu minutes are the cheap ones; headroom here costs almost nothing and
     # a timeout costs the entire signal. Reported by codex on PR #6, whose arithmetic was right.
-    timeout-minutes: 90
+    # RAISED FROM 90 ON 2026-08-06, BECAUSE IT ACTUALLY TIMED OUT: run 31004369024 was killed at
+    # 1h30m15s having completed part of the catalogue. That is not a gate failing; it is a budget
+    # set when the suite was ~400 assertions and never revisited as it grew past 1100. Each of the
+    # 37 mutations re-runs the WHOLE suite, so the catalogue cost tripled with it.
+    #
+    # A job that cannot finish reports nothing, and this one has history: it was started four times
+    # and completed zero under `cancel-in-progress: true`. Silently timing out is the same failure
+    # wearing a different hat — worse, because a red X reads as "a gate broke" and sends someone
+    # hunting a defect that is not there.
+    #
+    # THIS IS THE STOPGAP, NOT THE FIX. The real answer is to stop paying for the whole suite per
+    # mutation: each catalogue entry already names the assertion it expects to break, so it could
+    # run `test.sh --only <that section>` first (seconds) and escalate to the full suite ONLY when
+    # the named assertion does not catch — which is the case that must still distinguish
+    # "CAUGHT, but not by <label>" from "SURVIVED". Common case seconds, interesting case unchanged.
+    timeout-minutes: 240
 
     steps:
       - uses: actions/checkout@v4
@@ -68,4 +83,10 @@ jobs:
       - name: Every gate in the catalogue must still bite
         # No `|| true`, no `continue-on-error`. A surviving mutation means a gate can be broken
         # without this repo noticing, which is a blocker rather than a warning.
-        run: sh scripts/mutate.sh
+        #
+        # `--full-suite` ignores every catalogue scope. A scope says "this section of test.sh is
+        # where the assertion for this mutation lives", which makes the local loop seconds instead
+        # of minutes — and it is a CLAIM, not a proof: it asserts no other section would have caught
+        # the mutation either. This job is the one place that does not take that claim on trust, and
+        # it is the only place that can still report "CAUGHT, but not by its own assertion".
+        run: sh scripts/mutate.sh --full-suite

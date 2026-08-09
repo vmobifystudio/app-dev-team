@@ -23,6 +23,7 @@ import { join, basename, dirname } from 'node:path';
 
 import { BUILD_SPAWNABLE_OWNERS } from './lib/board.mjs';
 import { ROLE_GATES, ROLES_IN_MATRIX } from './lib/capabilities.mjs';
+import { CODE_CONTRACT, ARTIFACT_CONTRACT, CODE_ROLES, ARTIFACT_ROLES } from './lib/contract.mjs';
 import { STOP_FILE } from './lib/stop.mjs';
 
 const ROOT = process.cwd();
@@ -115,35 +116,13 @@ if (appBuild) {
 // and worktree discipline; roles that produce a uniquely-named document do not, but still owe the
 // orchestrator the fields its gates read. Five of the ten spawnable owners had NO output contract
 // at all, so /app-build got free-form prose back and every gate no-opped.
-const CODE_CONTRACT = [
-  'Worktree:',
-  'Mutation confirmed:',
-  'Daily fragment:',
-  'Assumptions & open questions:',
-  'Second-path check:',
-  'Shared surfaces touched:',
-];
-const ARTIFACT_CONTRACT = ['Worktree:', 'Daily fragment:', 'Assumptions & open questions:'];
-
-// Anything writing source or repo config (CI, signing, build flavors) is a code role.
-const CODE_ROLES = [
-  'ios-developer',
-  'android-developer',
-  'backend-developer',
-  'web-developer',
-  'monetization-engineer',
-  'devops-engineer',
-  'test-automation-engineer',
-];
-const ARTIFACT_ROLES = [
-  'ux-architect',
-  'product-designer',
-  'product-manager',
-  'product-researcher',
-  'qa-engineer',
-  'data-analyst',
-  'aso-specialist',
-];
+//
+// SHARED WITH report-check.mjs AND spawn-prompt.mjs via lib/contract.mjs (previously three hand-
+// typed copies with a comment on each promising to stay in sync — this repo's own corpus is
+// "backend-developer and monetization-engineer were two releases behind" for exactly that reason).
+// This file checks the FULL contract including `Branch:`, because a role FILE is checked for what
+// it DECLARES; `report-check.mjs` counts only the `.checked` subset, because that count is a fixed
+// six that predates `Branch:` being required — see contract.mjs for why the two differ on purpose.
 
 for (const [list, fields, tier] of [
   [CODE_ROLES, CODE_CONTRACT, 'code'],
@@ -613,6 +592,18 @@ const DOC_WRITERS = new Map([
   // The dashboard's static export. Deliberately NOT 32-board-view.html: board-render already owns
   // 32-board-view.md, and two renderings sharing one name is DR4-020 — a second view nobody declared.
   ['docs/34-dashboard.html',            ['commands/app-dashboard.md']],
+  // The register: the index of everything the studio OWES, across bugs and audit findings. Written
+  // through scripts/register.mjs only — `qa-engineer` seeds it from its own docs/51-bugs.md with
+  // `import-bugs`, `tech-manager` files findings and decides their terminal status, and
+  // /app-build's step 1 runs the import every round. `.md` is the generated view of the `.jsonl`,
+  // the same relationship 31-board.md has to 31-board-events.jsonl.
+  //
+  // It exists because docs/51-bugs.md and docs/81-findings.md were the only two registers in this
+  // studio with no CLI, no vocabulary and no validator — and the only two that feed work back INTO
+  // the loop (OPS-004). An item with no ticket was invisible to every gate and got closed by being
+  // unmentioned.
+  ['docs/90-register.jsonl',            ['agents/qa-engineer.md', 'agents/tech-manager.md', 'commands/app-build.md']],
+  ['docs/90-register.md',               ['agents/tech-manager.md']],
   ['docs/40-api.md',                    ['agents/backend-developer.md']],
   ['docs/41-monetization.md',           ['agents/monetization-engineer.md']],
   ['docs/50-test-plan.md',              ['agents/qa-engineer.md']],
@@ -735,6 +726,26 @@ const CANONICAL_PATHS = [
   'docs/team/ship-gate-verdict.json',        // ship-gate.sh --record's last verdict
   'docs/team/memory.jsonl',                  // memory-curator.mjs's proposed/reviewed ledger
   'docs/team/journeys/README.md',            // the journey-declaration contract journey-gate reads
+  // ADDED 2026-08-06 when the wiring pass discovered these were read by CODE but unknown to this
+  // list, so any command that named them was reported as a variant spelling. The check was right —
+  // one spelling per artifact — and its list was simply behind the gates that had been added since.
+  // A canonical-path list that lags the code turns a correct rule into noise, and a noisy rule is
+  // one somebody eventually switches off.
+  'docs/team/journey-result.json',           // journey-gate's verdict, read by lib/readiness.mjs
+  'docs/team/runtime-result.json',           // runtime-gate's verdict, read by lib/readiness.mjs
+  'docs/team/project-profile.json',          // platform, pinned toolchain, test.fast/test.full (F6)
+  'docs/team/release-candidates.jsonl',      // the artifact bound to its commit (F17)
+  'docs/team/schema-registry.json',          // every name/vN and who reads it (F7)
+  // The four dispatch manifests. They were absent from this list for the same reason they were
+  // absent from the pipeline: nothing wrote them, so nothing named them, so the canonical-path
+  // check had no opinion about the files feeding the most consequential gate in the loop. FC-005
+  // twice over — the artifact had no writer, and the check for artifacts-without-writers did not
+  // cover artifacts of this shape.
+  'docs/team/actors.json',                   // plaintext HMAC keys — deny_all, never writable
+  'docs/team/capabilities.json',             // which role may perform which operation on which path
+  'docs/team/risk-policy.json',              // the blast-radius router dispatch-preflight consults
+  'docs/team/schedule.json',                 // scheduler overrides; the ready set derives from the board
+  'docs/team/context-manifest.json',         // the hashed context an agent was actually given
 ];
 // Structural references that name no artifact: the directories themselves, the glob the standup
 // reads a day's fragments with, and the archive consumed fragments are moved to.

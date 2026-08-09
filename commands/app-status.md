@@ -19,6 +19,22 @@ allowed-tools: Read, Glob, Grep, Bash
      Anomalies go at the **top** of the status output, not the bottom. A `stranded` ticket is the
      single most important thing on this screen: it is work the sprint loop will never surface on
      its own.
+3aa. **Say which `qa` rows have actually landed.** `qa` now covers two states and they need different
+   answers:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/merge-reconcile.mjs" --root .
+   ```
+
+   - `AWAITING INTEGRATION: …` → those tickets passed the merge gate and the wave has not run. Print
+     them as **"gated, not yet landed"** with the command that lands them
+     (`wave-integrate.mjs --wave <N>`). This is the loop working, not a fault.
+   - `BLOCKED — claims integrated code that is NOT in <base>` → a ticket says it shipped and git
+     disagrees. That goes at the **top** of this screen next to the doctor's anomalies.
+
+   Without this, a founder reading `4 in qa` cannot tell "four features are on the integration
+   branch" from "four features are approved and still sitting on their own branches".
+
 3a. **Render the board** so the shape is visible, not tabular:
 
    ```bash
@@ -92,6 +108,9 @@ allowed-tools: Read, Glob, Grep, Bash
 
 4. Print today's daily report if it exists at `docs/daily/<today>.md`.
 5. Print recent bug list from `docs/51-bugs.md` if it exists — show open S1/S2 only.
+   Then print the register view at `docs/90-register.md` — every item still `OPEN` or `IN-PROGRESS`,
+   and separately the ones with **no ticket**, which are the ones nothing on the board will ever pick
+   up. `node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" check` is the same answer as an exit code.
 5a. If `docs/81-findings.md` exists, print the findings register summary: counts per status, and
    **name every row still `OPEN` or `IN-PROGRESS`**. A register with open rows means the audit is
    not closed, however quiet the board looks.

@@ -14,7 +14,8 @@
  */
 import { useState } from 'react';
 import type { CommsScreen, Message, Thread } from '../types';
-import { SectionCard } from '../ui';
+import { SectionCard, Avatar } from '../ui';
+import { IconByKind, MessageIcon } from '../icons';
 
 function Meta({ message, structured }: { message: Message; structured: boolean }) {
   const m = message.meta;
@@ -49,32 +50,50 @@ function ThreadView({ thread, structured }: { thread: Thread; structured: boolea
   return (
     <div className="thread">
       <h4>
+        <MessageIcon size={14} />
         <span className="mono id">{thread.ticket}</span>
         {thread.ticketStatus ? <span className="dim"> {thread.ticketStatus}</span> : <span className="dim"> not on the board</span>}
         {thread.open ? <span className="tag open_question">{thread.open} open</span> : null}
       </h4>
-      {thread.messages.map((message) => (
-        <article className={`message kind-${message.kind}`} key={message.id}>
-          <div className="line">
-            <span className="mono dim">{message.ts}</span>
-            <b>{message.from}</b>
-            <span className="dim">→ {message.to.join(', ') || 'nobody'}</span>
-            <span className={`tag ${message.kind}`}>{message.kind}</span>
-            {message.provenance === 'inferred' ? <span className="tag inferred">reconstructed, not recorded</span> : null}
-          </div>
-          <p className="summary">{message.summary}</p>
-          {message.body ? <p className="body">{message.body}</p> : null}
-          <Meta message={message} structured={structured} />
-        </article>
-      ))}
+      {thread.messages.map((message) => {
+        const KindGlyph = IconByKind[message.kind];
+        return (
+          <article className={`message kind-${message.kind}`} key={message.id}>
+            <Avatar name={message.from} />
+            <div className="bubble">
+              <div className="line">
+                <b>{message.from}</b>
+                <span className="dim">→ {message.to.join(', ') || 'nobody'}</span>
+                <span className={`kindchip tag ${message.kind}`}>
+                  {KindGlyph ? <KindGlyph size={10} /> : null}
+                  {message.kind}
+                </span>
+                {message.provenance === 'inferred' ? <span className="tag inferred">reconstructed, not recorded</span> : null}
+                <span className="mono faint" style={{ marginLeft: 'auto' }}>{message.ts}</span>
+              </div>
+              <p className="summary">{message.summary}</p>
+              {message.body ? <p className="body">{message.body}</p> : null}
+              <Meta message={message} structured={structured} />
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
 
-export default function Comms({ screen }: { screen: CommsScreen }) {
+export default function Comms({ screen, query = '' }: { screen: CommsScreen; query?: string }) {
   const [channel, setChannel] = useState<string>('');
   const threads = screen.threads ?? [];
-  const shown = channel ? threads.filter((t) => t.messages.some((m) => m.meta.channels.includes(channel))) : threads;
+  const byChannel = channel ? threads.filter((t) => t.messages.some((m) => m.meta.channels.includes(channel))) : threads;
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? byChannel.filter(
+        (t) =>
+          t.ticket.toLowerCase().includes(q) ||
+          t.messages.some((m) => m.from.toLowerCase().includes(q) || m.summary.toLowerCase().includes(q))
+      )
+    : byChannel;
 
   return (
     <>

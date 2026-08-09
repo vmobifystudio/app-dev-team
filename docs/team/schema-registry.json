@@ -1,0 +1,248 @@
+{
+  "schema": "schema-registry/v1",
+  "schemas": {
+    "actor/v1": {
+      "files": [
+        "scripts/lib/actor.mjs"
+      ],
+      "reader": null
+    },
+    "audit-anchor/v1": {
+      "files": [
+        "scripts/audit-anchor.mjs"
+      ],
+      "reader": null
+    },
+    "board-event/v1": {
+      "files": [
+        "scripts/board.mjs"
+      ],
+      "reader": null
+    },
+    "capability-manifest/v1": {
+      "files": [
+        "scripts/capability-check.mjs",
+        "scripts/team-bootstrap.mjs"
+      ],
+      "reader": null
+    },
+    "ci-status/v1": {
+      "files": [
+        "scripts/ci-status.mjs"
+      ],
+      "reader": "scripts/orchestrator.mjs \u2014 the `ci` round precondition; /app-build step 0 surfaces it"
+    },
+    "context-manifest/v2": {
+      "files": [
+        "scripts/context-manifest.mjs"
+      ],
+      "reader": null
+    },
+    "criteria/v1": {
+      "files": [
+        "scripts/criterion-check.mjs",
+        "scripts/foundation-conformance.mjs"
+      ],
+      "reader": null
+    },
+    "dispatch-preflight/v1": {
+      "files": [
+        "scripts/dispatch-preflight.mjs"
+      ],
+      "reader": null
+    },
+    "eval-manifest/v1": {
+      "files": [
+        "scripts/eval-lab.mjs"
+      ],
+      "reader": null
+    },
+    "gate-result/v1": {
+      "files": [
+        "scripts/evidence-check.mjs",
+        "scripts/foundation-conformance.mjs",
+        "scripts/journey-gate.mjs",
+        "scripts/lib/readiness.mjs"
+      ],
+      "reader": null
+    },
+    "impact-map/v1": {
+      "files": [
+        "scripts/impact-map.mjs"
+      ],
+      "reader": null
+    },
+    "incident-ledger/v1": {
+      "files": [
+        "scripts/incident-ledger.mjs"
+      ],
+      "reader": null
+    },
+    "journey-result/v1": {
+      "files": [
+        "scripts/journey-gate.mjs"
+      ],
+      "reader": null
+    },
+    "journey/v1": {
+      "files": [
+        "scripts/journey-gate.mjs"
+      ],
+      "reader": null
+    },
+    "manager-harness/v1": {
+      "files": [
+        "scripts/manager-harness.mjs"
+      ],
+      "reader": null
+    },
+    "manager-scenario/v1": {
+      "files": [
+        "scripts/manager-harness.mjs"
+      ],
+      "reader": null
+    },
+    "manager-state/v1": {
+      "files": [
+        "scripts/manager-harness.mjs"
+      ],
+      "reader": null
+    },
+    "memory-ledger/v1": {
+      "files": [
+        "scripts/memory-curator.mjs"
+      ],
+      "reader": null
+    },
+    "messages-open/v1": {
+      "files": [
+        "scripts/messages.mjs"
+      ],
+      "reader": "commands/app-build.md step 1b (--was, the Q&A batch check) and step 6 (--escalations, the founder's half)"
+    },
+    "orchestrator-next/v1": {
+      "files": [
+        "scripts/orchestrator.mjs"
+      ],
+      "reader": null
+    },
+    "policy-decision/v1": {
+      "files": [
+        "scripts/board.mjs"
+      ],
+      "reader": null
+    },
+    "project-profile/v1": {
+      "files": [
+        "scripts/project-profile.mjs",
+        "scripts/team-bootstrap.mjs"
+      ],
+      "reader": null
+    },
+    "prompt-registry/v1": {
+      "files": [
+        "scripts/prompt-registry.mjs"
+      ],
+      "reader": null
+    },
+    "readiness/v1": {
+      "files": [
+        "scripts/lib/readiness.mjs"
+      ],
+      "reader": null
+    },
+    "register-check/v1": {
+      "files": [
+        "scripts/register.mjs"
+      ],
+      "reader": "scripts/orchestrator.mjs (round report) and scripts/ship-gate.sh (release refusal)"
+    },
+    "register-show/v1": {
+      "files": [
+        "scripts/register.mjs"
+      ],
+      "reader": "commands/app-status.md, and any human reading the generated docs/90-register.md"
+    },
+    "release-candidate/v1": {
+      "files": [
+        "scripts/release-candidate.mjs"
+      ],
+      "reader": null
+    },
+    "risk-policy/v1": {
+      "files": [
+        "scripts/foundation-conformance.mjs",
+        "scripts/risk-router.mjs",
+        "scripts/team-bootstrap.mjs"
+      ],
+      "reader": null
+    },
+    "risk-route/v1": {
+      "files": [
+        "scripts/risk-router.mjs"
+      ],
+      "reader": null
+    },
+    "run-ledger/v1": {
+      "files": [
+        "scripts/run-ledger.mjs"
+      ],
+      "reader": null
+    },
+    "schedule-result/v1": {
+      "files": [
+        "scripts/scheduler.mjs"
+      ],
+      "reader": null
+    },
+    "scheduler-plan/v1": {
+      "files": [
+        "scripts/scheduler.mjs",
+        "scripts/team-bootstrap.mjs"
+      ],
+      "reader": null
+    },
+    "schema-registry/v1": {
+      "files": [
+        "scripts/schema-registry.mjs"
+      ],
+      "reader": null
+    },
+    "ship-gate-verdict/v1": {
+      "files": [
+        "scripts/lib/project.mjs"
+      ],
+      "reader": null
+    },
+    "studio-event-schema/v1": {
+      "files": [
+        "scripts/lib/messages.mjs"
+      ],
+      "reader": null
+    },
+    "studio-register/v1": {
+      "files": [
+        "scripts/register.mjs"
+      ],
+      "reader": "scripts/register.mjs, reducing its own append-only log to current state"
+    },
+    "worktree-reap/v1": {
+      "files": [
+        "scripts/worktree-reap.mjs"
+      ],
+      "reader": "scripts/orchestrator.mjs \u2014 the `worktree pool` round precondition; /app-build step 4a applies it"
+    },
+    "worktree-slots-list/v1": {
+      "files": [
+        "scripts/worktree-slot.mjs"
+      ],
+      "reader": "skills/parallel-orchestrator/SKILL.md step 2a, before a parallel launch"
+    },
+    "worktree-slots/v1": {
+      "files": [
+        "scripts/worktree-slot.mjs"
+      ],
+      "reader": "scripts/worktree-reap.mjs, to tell a leased slot from an orphaned one"
+    }
+  }
+}

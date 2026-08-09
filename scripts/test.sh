@@ -9,13 +9,74 @@
 # Every assertion below corresponds to a defect that was actually shipped and then found by running
 # the thing. The comments name them, so a future change that breaks one knows what it is undoing.
 #
-# Usage:  sh scripts/test.sh [-v]
+# Usage:  sh scripts/test.sh [-v] [--only <pattern>]
 # Exit:   0 all passed · 1 one or more failed
-
+#
+# --only <pattern> runs ONLY the `# --- <title> ---` sections whose banner matches <pattern>, so a
+# change to one script has a seconds-long inner loop instead of a ten-minute one.
+#
+# WHY THIS EXISTS. The suite is ~1100 assertions and a few thousand node spawns, and it could only
+# ever run all of them. Measured on a real change: eight full runs to land two fixes, most of them
+# spent using the suite as a SEARCH TOOL — "which callers did I break?" — where `grep` would have
+# answered in two seconds. A ten-minute inner loop does not just cost ten minutes; it teaches
+# whoever is working here to batch up guesses instead of checking one thing at a time, and batched
+# guesses are how you get a wrong fix that looks efficient.
+#
+# --only IS NOT THE GATE, AND CANNOT BE. Sections share fixtures and setup, so a section run alone
+# may fail for want of something an earlier section built. That is a stated limitation, not a bug:
+# the accelerator is for iterating, the full run is what decides. It says so on every invocation,
+# because a fast check that can be mistaken for the real one is worse than no fast check.
 set -u
-HERE=$(cd "$(dirname "$0")" && pwd)
+# APP_TEAM_TEST_HERE is set only by the --only path below, which re-execs a GENERATED copy of this
+# file from a temp directory — where `dirname "$0"` is /tmp and every `$HERE/board.mjs` resolves to
+# nothing. The subset run then reported 77 failures that were all ENOENT, which is a harness fault
+# wearing a product fault's clothes (DR4-001), and exactly the thing this suite refuses elsewhere.
+HERE=${APP_TEAM_TEST_HERE:-$(cd "$(dirname "$0")" && pwd)}
 FIX="$HERE/fixtures"
-VERBOSE=${1:-}
+
+VERBOSE=''
+ONLY=''
+while [ $# -gt 0 ]; do
+  case $1 in
+    -v) VERBOSE=-v ;;
+    --only) shift; [ $# -gt 0 ] || { echo "test.sh: --only needs a pattern" >&2; exit 2; }; ONLY=$1 ;;
+    --only=*) ONLY=${1#--only=} ;;
+    *) echo "test.sh: unknown argument $1 (usage: [-v] [--only <pattern>])" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+if [ -n "$ONLY" ]; then
+  # Re-exec a generated script: the shared preamble (helpers, $TMP, the assert_* functions) plus
+  # only the matching sections, plus the summary. Generated rather than filtered in-place because
+  # the sections are straight-line shell with no function boundary to skip over.
+  SEL=$(mktemp)
+  trap 'rm -f "$SEL"' EXIT
+  awk -v pat="$ONLY" -v self="$0" '
+    /^# --- / { inbody = 1; keep = (index($0, pat) > 0); matched += keep }
+    /^echo "─────/ { inbody = 0; insummary = 1 }
+    { if (!inbody || keep || insummary) print }
+    END { if (!matched) { print "echo \"test.sh: --only " pat " matched no section in " self "\" >&2; exit 2" } }
+  ' "$0" > "$SEL"
+  echo "  RUNNING A SUBSET (--only $ONLY). This is an accelerator, NOT the gate — sections share"
+  echo "  fixtures, so a pass here is not a pass. Run the whole suite before you commit."
+  APP_TEAM_TEST_HERE="$HERE" sh "$SEL" $VERBOSE
+  RC=$?
+  if [ "$RC" != 0 ]; then
+    # A SUBSET FAILURE IS AMBIGUOUS, AND SAYING SO IS THE WHOLE POINT. Sections set shell variables
+    # for the sections after them — `BD` is board.mjs for most of the file and a SKILL.md path for
+    # one stretch — so a section lifted out of sequence can fail for want of setup rather than for
+    # want of correctness. Observed immediately: the first --only run of the verdict section
+    # reported six failures that were all an unset `BD`, i.e. a harness fault wearing a product
+    # fault's clothes. That is DR4-001's class, and an accelerator that produces it silently would
+    # send someone to fix a bug that does not exist.
+    echo ""
+    echo "  A SUBSET FAILURE IS NOT YET A FINDING. Sections inherit setup from earlier sections, so"
+    echo "  these may be missing a fixture rather than a behaviour. Re-run the full suite before"
+    echo "  believing any failure above:  sh scripts/test.sh"
+  fi
+  exit $RC
+fi
 PASS=0
 FAIL=0
 TMP=$(mktemp -d)
@@ -867,7 +928,7 @@ assert_has "$TMP/tmchain.txt" "chain_too_deep" "...as chain_too_deep, the same c
 # what must not exist.
 [ -z "$(find "$D/docs/72-waivers" -name '*.md' 2>/dev/null)" ] \
   && ok "a refused artifact leaves no .md file on disk" \
-  || bad "a refused artifact must not leave a .md file on disk" "$(find "$D/docs/72-waivers" -name '*.md' 2>/dev/null)"
+  || bad "a refused artifact leaves no .md file on disk" "$(find "$D/docs/72-waivers" -name '*.md' 2>/dev/null)"
 grep -q "WAIVER" "$D/docs/team/messages.jsonl" 2>/dev/null \
   && bad "a refused artifact must not register on the channel" \
   || ok "a refused artifact does not register on the channel either"
@@ -1692,7 +1753,7 @@ const reported = JSON.parse(fs.readFileSync(process.argv[2], "utf8")).projects.l
 process.exit(listed === reported ? 0 : 1);
 ' "$PREG" "$TMP/port.json" \
   && ok "every registry line is reported — no project can be dropped between registry and report" \
-  || bad "every registry line is reported" "registry and report disagree on the project count"
+  || bad "every registry line is reported — no project can be dropped between registry and report" "registry and report disagree on the project count"
 
 # UNREADABLE must outrank every score. Not knowing is worse than any known state.
 head -3 "$TMP/port.txt" | grep -q "UNREADABLE" \
@@ -1746,7 +1807,7 @@ printf 'busy\nstale\n' > "$TMP/prank/reg.txt"
 node "$PORT" --registry "$TMP/prank/reg.txt" > "$TMP/prank.txt" 2>&1
 grep -q "^1\. stale" "$TMP/prank.txt" \
   && ok "a project blocked 3 days with nobody on it outranks a busier one that moved today" \
-  || bad "a project blocked 3 days outranks a busier one that moved today" "$(head -4 "$TMP/prank.txt")"
+  || bad "a project blocked 3 days with nobody on it outranks a busier one that moved today" "$(head -4 "$TMP/prank.txt")"
 
 # --- the facts the portfolio exists to surface ---------------------------------------------------
 assert_has "$TMP/port.txt" "static-only verification" "a merge resting on a suite that never ran is named"
@@ -1769,7 +1830,7 @@ import(process.argv[1]).then((m) => {
 ' "$HERE/lib/board.mjs" "$FIX/ship-blocked/docs/51-bugs.md" 2>/dev/null)
 [ -n "$GATE_OPEN" ] && [ "$GATE_OPEN" = "$PORT_OPEN" ] \
   && ok "ship-gate and the portfolio agree on the open S1/S2 count — one parser, proven by agreement" \
-  || bad "ship-gate and the portfolio agree on the open S1/S2 count" "gate=$GATE_OPEN portfolio=$PORT_OPEN"
+  || bad "ship-gate and the portfolio agree on the open S1/S2 count — one parser, proven by agreement" "gate=$GATE_OPEN portfolio=$PORT_OPEN"
 
 # Usage errors are exit 1, distinct from both CANNOT EVALUATE and a clean report.
 assert_exit 1 "an unknown flag is a usage error, not a silent default" node "$PORT" --registry "$PREG" --nonsense
@@ -1812,6 +1873,25 @@ JGTODAY=$(jgproj jg-today)
 printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"%s"},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
   "$(date +%F)" > "$JGTODAY/docs/team/journeys/r.json"
 assert_exit 1 "a journey entering TODAY's date is refused as indistinguishable from a clock call" node "$JG" --root "$JGTODAY"
+# ...IN EVERY TIMEZONE. This assertion writes the date with `date +%F` (LOCAL) while the gate used to
+# compare against toISOString (UTC), so east of UTC — between local midnight and UTC midnight — the
+# two disagreed and the refusal stopped firing. Caught only because a verification run crossed the
+# boundary at UTC+0530, an hour after CI had passed. A rule that holds for most of the day in some
+# timezones is FC-002 with a clock attached. Both neighbouring UTC days are now refused too.
+JGTZ=$(jgproj jg-tz)
+for OFFSET in -1 0 1; do
+  D=$(node -e "const d=new Date(Date.now()+($OFFSET*86400000));process.stdout.write(d.toISOString().slice(0,10))")
+  printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"%s"},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
+    "$D" > "$JGTZ/docs/team/journeys/r.json"
+  node "$JG" --root "$JGTZ" >/dev/null 2>&1
+  if [ "$?" = "1" ]; then ok "...and a date $OFFSET day(s) from now is refused too (timezone-independent)"
+  else bad "...and a date $OFFSET day(s) from now is refused too (timezone-independent)" "$D was accepted"; fi
+done
+# A genuinely fixed past date is still accepted — this is a gate, not a ban on dates.
+printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"1999-01-02"},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
+  > "$JGTZ/docs/team/journeys/r.json"
+node "$JG" --root "$JGTZ" >/dev/null 2>&1
+[ "$?" != "1" ] && ok "...while a fixed past date is accepted" || bad "...while a fixed past date is accepted"
 assert_has "$TMP/err" "distinguishable" "...and names the property the value lacks"
 for BAD in '""' '"0"'; do
   printf '{"schema":"journey/v1","id":"r","priority":"P0","steps":[{"action":"enter","id":"n","value":%s},{"assert":"value_equals","id":"d","value":"x"}]}\n' \
@@ -2229,7 +2309,35 @@ newboard() {
   printf '%s' "$d"
 }
 # bm <dir> <board.mjs args...> — run the CLI inside a scratch project
-bm() { d=$1; shift; ( cd "$d" && node "$BD" "$@" ); }
+# bm <dir> <board.mjs args...>
+#
+# `approved` and `changes` require `--verdict <file>` (scripts/lib/verdict.mjs). The thirty-three
+# assertions below that append one are about OTHER things — the review-cycle cap, capability,
+# separation of duties, approval binding, the static-verification lane — and threading a verdict
+# file through each would bury what each is actually asserting.
+#
+# So this helper supplies a MINIMAL VALID verdict when the caller did not, and only then. That is a
+# convenience for tests whose subject is elsewhere; it is NOT a way for the contract to go untested.
+# The assertions that ARE about the contract deliberately bypass this helper and call `node "$BD"`
+# directly, because a probe that cannot see the requirement cannot prove the requirement exists —
+# and `mutate.sh` re-proves it by breaking the parser and watching those probes go red.
+bm() {
+  d=$1; shift
+  _needs_verdict=''
+  for _a in "$@"; do
+    [ "$_a" = 'approved' ] && _needs_verdict=APPROVE
+    [ "$_a" = 'changes' ] && _needs_verdict='REQUEST CHANGES'
+    [ "$_a" = '--verdict' ] && { _needs_verdict=''; break; }
+  done
+  if [ -n "$_needs_verdict" ]; then
+    _vp="$d/.test-verdict.md"
+    printf 'REVIEW VERDICT: %s\nScope: base..head\n\n## Not checked\nNothing — this is a test fixture.\n' \
+      "$_needs_verdict" > "$_vp"
+    ( cd "$d" && node "$BD" "$@" --verdict "$_vp" )
+  else
+    ( cd "$d" && node "$BD" "$@" )
+  fi
+}
 # drive <dir> <id> <owner> — take a ticket all the way to merged through every legal step
 drive() {
   bm "$1" move "$2" claimed          --by "$3" >/dev/null 2>&1
@@ -2261,7 +2369,13 @@ bm "$D" add DEP-001 --title "Foundation" --owner ios-developer >/dev/null 2>&1
 bm "$D" add DEP-002 --title "Feature" --owner android-developer --depends DEP-001 >/dev/null 2>&1
 assert_exit 1 "a claim on a ticket whose dependency has not merged is refused" \
   bm "$D" move DEP-002 claimed --by android-developer
-assert_has "$TMP/err" "has not merged" "...and names the dependency that is holding it"
+# The refusal used to say "has not merged". It now says whose CODE IS NOT ON THE INTEGRATION
+# BRANCH, because the wave model made those two different sentences: a dependency can be merged
+# (gated) and still not integrated (the wave has not run). The assertion follows the distinction
+# rather than the old wording — and asserts the TICKET ID is named, which is the part a developer
+# acts on and the part that was always the point.
+assert_has "$TMP/err" "not on the integration branch" "...and names the dependency that is holding it"
+assert_has "$TMP/err" "DEP-001" "...by ticket id, which is the part the reader acts on"
 drive "$D" DEP-001 ios-developer
 assert_exit 0 "...and is allowed the moment that dependency merges (qa, not done)" \
   bm "$D" move DEP-002 claimed --by android-developer
@@ -2308,7 +2422,7 @@ LEDGER_RUN_ID=$(node -e '
 BOARD_RUN_ID=$(board_run_id "$L2/docs/31-board-events.jsonl")
 [ -n "$BOARD_RUN_ID" ] && [ "$BOARD_RUN_ID" = "$LEDGER_RUN_ID" ] \
   && ok "board.mjs's claimed event carries the SAME run_id run-ledger.mjs recorded for the lease" \
-  || bad "board.mjs's claimed event carries the same run_id as the lease" "board=$BOARD_RUN_ID ledger=$LEDGER_RUN_ID"
+  || bad "board.mjs's claimed event carries the SAME run_id run-ledger.mjs recorded for the lease" "board=$BOARD_RUN_ID ledger=$LEDGER_RUN_ID"
 
 # Mirror test: prove the assertion above would have caught the old discard-the-result bug, by
 # temporarily making claimLease() ignore run-ledger's output the way it used to.
@@ -2900,11 +3014,66 @@ assert_has "$TMP/rj3.txt" '\$2.50' "...and prints a real figure once one is actu
 assert_exit 1 "the spend ceiling applies once spend is reported" \
   node "$RJ" check --journal "$J" --max-spend-usd 1
 
+# --- OPS-013's odometer, given teeth ----------------------------------------------------------
+#
+# `orchestrator round` printed the verified_static count every round and nothing read it — an
+# unattended operator would watch a growing number scroll by with nothing stopping the loop. This
+# is the enforcement half: `--verified-static N` on `append` records the reading; `check` blocks
+# once it has stayed above zero and NON-DECREASING for the last N reported rounds — waves stopped
+# landing, not merely mid-flight.
+STALL="$TMP/stall.jsonl"
+node "$RJ" append --journal "$STALL" --round 1 --verified-static 2 >/dev/null 2>&1
+node "$RJ" append --journal "$STALL" --round 2 --verified-static 2 >/dev/null 2>&1
+node "$RJ" append --journal "$STALL" --round 3 --verified-static 3 >/dev/null 2>&1
+node "$RJ" check --journal "$STALL" >"$TMP/rjstall.txt" 2>&1
+assert_exit 1 "verified_static that never shrinks across 3 rounds blocks the next round" \
+  node "$RJ" check --journal "$STALL"
+assert_has "$TMP/rjstall.txt" "verified_static has not shrunk in 3 rounds" "...naming the stall, not just a generic ceiling"
+assert_has "$TMP/rjstall.txt" "r1:2 -> r2:2 -> r3:3" "...and showing the actual sequence that proves it"
+
+SHRINK="$TMP/shrink.jsonl"
+node "$RJ" append --journal "$SHRINK" --round 1 --verified-static 3 >/dev/null 2>&1
+node "$RJ" append --journal "$SHRINK" --round 2 --verified-static 2 >/dev/null 2>&1
+node "$RJ" append --journal "$SHRINK" --round 3 --verified-static 1 >/dev/null 2>&1
+assert_exit 0 "...but a shrinking count, even round to round, does not" node "$RJ" check --journal "$SHRINK"
+
+ZEROSTATIC="$TMP/zerostatic.jsonl"
+node "$RJ" append --journal "$ZEROSTATIC" --round 1 --verified-static 0 >/dev/null 2>&1
+node "$RJ" append --journal "$ZEROSTATIC" --round 2 --verified-static 0 >/dev/null 2>&1
+node "$RJ" append --journal "$ZEROSTATIC" --round 3 --verified-static 0 >/dev/null 2>&1
+assert_exit 0 "...nor does three rounds sitting at zero — zero is the healthy state, not a stall" \
+  node "$RJ" check --journal "$ZEROSTATIC"
+
+SPARSE="$TMP/sparse.jsonl"
+node "$RJ" append --journal "$SPARSE" --round 1 --verified-static 5 >/dev/null 2>&1
+node "$RJ" append --journal "$SPARSE" --round 2 --verified-static 5 >/dev/null 2>&1
+assert_exit 0 "...and fewer than 3 reported rounds is not enough data to call it a stall" \
+  node "$RJ" check --journal "$SPARSE"
+
+UNREPORTED="$TMP/unreported.jsonl"
+node "$RJ" append --journal "$UNREPORTED" --round 1 --spawns 1 >/dev/null 2>&1
+node "$RJ" append --journal "$UNREPORTED" --round 2 --spawns 1 >/dev/null 2>&1
+node "$RJ" append --journal "$UNREPORTED" --round 3 --spawns 1 >/dev/null 2>&1
+assert_exit 0 "...and a project that never reports the odometer at all is not treated as stuck at zero" \
+  node "$RJ" check --journal "$UNREPORTED"
+
 # Wiring: journaled but never checked is a metric nobody reads; checked but never surfaced is a
 # spend you first see when it stops you.
-grep -q 'round-journal.mjs" check' "$HERE/../commands/app-build.md" \
+# THE GUARANTEE IS UNCHANGED; WHERE IT IS SATISFIED MOVED. This used to grep app-build.md for a
+# literal `round-journal.mjs check`. That call now lives inside `orchestrator round`, which
+# app-build runs as its first step — so the direct grep went red while the budget gate was running
+# MORE reliably than before, not less.
+#
+# The lazy fix would have been to grep for "orchestrator round" instead, and it would have been
+# wrong: that only proves app-build names a command, not that the command checks the budget. So
+# both halves are asserted, and the chain has no gap either half could hide.
+grep -qE 'round-journal\.mjs" check|orchestrator\.mjs" round' "$HERE/../commands/app-build.md" \
   && ok "/app-build runs the budget gate at the top of the round" \
   || bad "/app-build runs the budget gate at the top of the round"
+grep -q "round-journal.mjs" "$HERE/orchestrator.mjs" \
+  && ok "...and the round command it delegates to actually checks the budget" \
+  || bad "...and the round command it delegates to actually checks the budget" \
+         "app-build now delegates to \`orchestrator round\`; if that stops checking the budget, the ceiling is gone"
 grep -q 'round-journal.mjs" append' "$HERE/../commands/app-build.md" \
   && ok "...and journals the round before looping" \
   || bad "...and journals the round before looping"
@@ -3230,7 +3399,7 @@ fetch(url, { method: "POST", headers, body })
 # another tab could drive all three actions. Requiring application/json reinstates the preflight.
 [ "$(dfetch_hdr "http://127.0.0.1:$DPORT/action" text/plain - '{"action":"unblock","params":{"ticket":"APP-002","by":"tech-manager","reason":"drive-by"}}')" = "415" ] \
   && ok "POST /action refuses a CORS-simple text/plain body (no preflight = drive-by)" \
-  || bad "POST /action refuses a CORS-simple text/plain body" "$(head -c 200 "$RESP")"
+  || bad "POST /action refuses a CORS-simple text/plain body (no preflight = drive-by)" "$(head -c 200 "$RESP")"
 
 [ "$(dfetch_hdr "http://127.0.0.1:$DPORT/action" application/json https://evil.example '{"action":"unblock","params":{"ticket":"APP-002","by":"tech-manager","reason":"drive-by"}}')" = "403" ] \
   && ok "...and refuses a foreign Origin" \
@@ -3251,7 +3420,7 @@ done
 ok "POST /action refuses every inherited Object.prototype key as an action name"
 [ "$(dfetch "http://127.0.0.1:$DPORT/state")" = "200" ] \
   && ok "...and the server is still alive — the prototype lookup no longer kills the process" \
-  || bad "...and the server is still alive after the prototype lookups"
+  || bad "...and the server is still alive — the prototype lookup no longer kills the process"
 
 # Defence in depth for the parseArgs injection below: a form field shaped like a flag is never a
 # legitimate reason, and the boundary says so before the CLI is ever invoked.
@@ -3281,7 +3450,7 @@ if (unexplained.length) { console.error("unavailable with no reason: " + unexpla
 process.exit(s.panels.length === 8 ? 0 : 1);
 ' "$TMP/empty.html" 2>"$TMP/degrade.txt" \
   && ok "a project with no board, no log and no ledger renders NO panel as clear — every one says why" \
-  || bad "a project with no board, no log and no ledger renders NO panel as clear" "$(cat "$TMP/degrade.txt")"
+  || bad "a project with no board, no log and no ledger renders NO panel as clear — every one says why" "$(cat "$TMP/degrade.txt")"
 assert_has "$TMP/empty.html" "no docs/31-board-events.jsonl in this project" "...naming the event log it could not find"
 assert_has "$TMP/empty.html" "no docs/team/messages.md in this project" "...and the ledger it could not find"
 
@@ -3324,7 +3493,7 @@ const fs = require("fs");
 const s = JSON.parse(fs.readFileSync(process.argv[1], "utf8").match(/const BOOT = (.*);\nconst CAN_ACT/s)[1]);
 process.exit(s.actions.length === 0 ? 0 : 1);
 ' "$TMP/empty.html" && ok "--export offers no actions — a file on disk cannot invoke a CLI" \
-                    || bad "--export offers no actions"
+                    || bad "--export offers no actions — a file on disk cannot invoke a CLI"
 grep -q "EventSource" "$TMP/empty.html" && grep -q "if (BOOT) render(BOOT)" "$TMP/empty.html" \
   && ok "...and the exported page renders from the baked-in state instead of polling a server" \
   || bad "...and the exported page renders from the baked-in state instead of polling a server"
@@ -3335,7 +3504,7 @@ grep -q "EventSource" "$TMP/empty.html" && grep -q "if (BOOT) render(BOOT)" "$TM
 # Two ERE-safe steps instead: list every URL, then subtract the loopback ones.
 NETREFS=$(grep -oE 'https?://[^"'"'"'` )<>]+' "$TMP/empty.html" 2>/dev/null | grep -vE '^https?://(localhost|127\.0\.0\.1)([:/]|$)' || true)
 [ -z "$NETREFS" ] \
-  && ok "the page loads nothing from the network (no CDN, no fonts, no images)" \
+  && ok "the page loads nothing from the network" \
   || bad "the page loads nothing from the network" "$(printf '%s' "$NETREFS" | tr '\n' ' ')"
 
 assert_exit 2 "a project directory that does not exist is exit 2" node "$DASH" --project "$TMP/nosuchproject" --export "$TMP/x.html"
@@ -3345,7 +3514,7 @@ assert_exit 2 "a project directory that does not exist is exit 2" node "$DASH" -
 WRITES=$(grep -c "writeFileSync(\|appendFileSync(\|createWriteStream(" "$DASH")
 [ "$WRITES" = "1" ] \
   && ok "studio-dashboard.mjs contains exactly one file write, and it is the HTML export" \
-  || bad "studio-dashboard.mjs contains exactly one file write" "found $WRITES"
+  || bad "studio-dashboard.mjs contains exactly one file write, and it is the HTML export" "found $WRITES"
 
 # /app-dashboard has to actually invoke the thing, both modes. Mentioning a flag is not wiring it —
 # --docs-only proved that the hard way, one section up.
@@ -3403,7 +3572,97 @@ assert_exit 0 "never touches a read-only git command" hk "git status"
 # on the day this repo spent hunting rules that cannot fire, and caught only by running it.
 assert_exit 2 "parses the payload without GNU sed extensions" hk "git stash"
 
+# a raw `git merge` onto the integration branch, by anyone at all (H6, 2026-08-07).
+# A qa-engineer agent, mid real sprint, ran `git merge --no-ff` directly onto `main` — its own role
+# file says "you never merge your own work", and it did it anyway. No board event backed it: no
+# review_requested, no approved, no merged. board.mjs could not have stopped this; the command never
+# touched the log. DR4-027's shape at the git layer, on a CLEAN tree, so the destructive-command
+# checks above (which all require dirtiness) do not apply — this is a second, independent check.
+HKM=$(mktemp -d)
+( cd "$HKM" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+    && git commit -q --allow-empty -m init && mkdir -p docs \
+    && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
+    && git add -A && git commit -q -m strategy \
+    && git checkout -q -b integration/wave-1 main && echo x > f.txt && git add f.txt \
+    && git commit -q -m x && git checkout -q main ) >/dev/null 2>&1
+hkm() { ( cd "$HKM" && printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | sh "$HOOK" ); }
+
+assert_exit 2 "on the integration branch: BLOCKS the exact H6 shape (git merge --no-ff)" \
+  hkm "git merge --no-ff -m x integration/wave-1"
+assert_exit 2 "...and blocks a bare 'git merge <branch>' with no flag at all — still fabricates a commit" \
+  hkm "git merge integration/wave-1"
+# The one documented safe form: wave-integrate.mjs's own printed manual fallback is --ff-only,
+# which cannot fabricate a merge commit or lose history — the same operation its `git fetch .
+# src:dst` performs, spelled as `merge`. A hook that blocked this would block the tool's own
+# instructions, discovered by running them for real while landing H6's own wave.
+assert_exit 0 "...but ALLOWS --ff-only — wave-integrate.mjs's own documented fallback" \
+  hkm "git merge --ff-only integration/wave-1"
+( cd "$HKM" && git checkout -q -b feat/x main ) >/dev/null 2>&1
+assert_exit 0 "...and a merge on a FEATURE branch (not the integration branch) is untouched" \
+  hkm "git merge --no-ff main"
+
+# Ref-writing bypasses of the merge check above (adversarial re-review, 2026-08-08): none of these
+# contain the word "merge", and none require the integration branch checked out in THIS tree — the
+# whole point of them, since the merge check's precondition is HEAD == the integration branch and
+# these three do not need that to be true to move the branch's ref anyway. Still on feat/x here,
+# deliberately: a bypass that only worked from feat/x would defeat its own purpose.
+assert_exit 2 "a push refspec ending :main is blocked, even from a different branch entirely" \
+  hkm "git push origin HEAD:main"
+assert_exit 2 "a fetch refspec ending :main is blocked — wave-integrate.mjs's own mechanism, run by hand" \
+  hkm "git fetch . feat/x:main"
+assert_exit 2 "git branch -f moving main's pointer directly is blocked" \
+  hkm "git branch -f main feat/x"
+assert_exit 2 "git update-ref moving main's pointer at the plumbing layer is blocked" \
+  hkm "git update-ref refs/heads/main abc123"
+# False-positive check: a similarly-prefixed branch name must not trip a substring match.
+assert_exit 0 "...but a push to a DIFFERENT branch that merely starts with the same name is not" \
+  hkm "git push origin feat/x:mainline"
+assert_exit 0 "...and the documented safe landing sequence (checkout, ff-only merge, push) still works" \
+  hkm "git checkout main && git merge --ff-only integration/wave-1 && git push origin main"
+rm -rf "$HKM"
+
 rm -rf "$HKD"
+
+# --- cross-worktree-write hook: DR4-027's collision, at the Write/Edit layer -----------------------
+#
+# `block-shared-tree-destructive-git.sh` closes DR4-027 at the git-command layer (a repo-wide
+# destructive command on a dirty shared tree). Nothing closed the same collision at the FILE layer:
+# an agent standing in its OWN worktree could use Write/Edit/MultiEdit to reach straight into a
+# SIBLING worktree and overwrite that owner's in-progress file directly — no git command involved,
+# so the git-layer hook never sees it. Found by adversarial re-review asking the question this
+# repo's own H6 lesson implies ("agent-isolation says never leave your worktree — is that prose, or
+# enforced?") and confirmed by testing it, not by reading the prose.
+CWH="$HERE/../hooks/block-cross-worktree-write.sh"
+CWT=$(mktemp -d); mkdir -p "$CWT/.agent-wt/ios-developer/src" "$CWT/.agent-wt/android-developer/src"
+cwh() {  # <cwd (abs)> <target file_path> — mirrors the destructive-git hook's own hk() helper
+  ( cd "$1" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"x"}}' "$2" | sh "$CWH" )
+}
+assert_exit 0 "writing inside your OWN worktree is allowed" \
+  cwh "$CWT/.agent-wt/ios-developer" "$CWT/.agent-wt/ios-developer/src/mine.js"
+assert_exit 2 "writing into a SIBLING worktree is blocked" \
+  cwh "$CWT/.agent-wt/ios-developer" "$CWT/.agent-wt/android-developer/src/other.js"
+assert_exit 2 "...and so is the shared tree reaching into ANY agent's worktree — it has no more business there than a sibling does" \
+  cwh "$CWT" "$CWT/.agent-wt/ios-developer/src/mine.js"
+assert_exit 0 "...but the shared tree writing to the shared tree is untouched" \
+  cwh "$CWT" "$CWT/README.md"
+assert_exit 0 "a relative path resolves against the caller's own cwd, not misjudged as outside it" \
+  cwh "$CWT/.agent-wt/ios-developer" "src/newfile.js"
+# THE macOS SYMLINK TRAP, CAUGHT BY TESTING IT: `/tmp` is itself a symlink to `/private/tmp` on
+# macOS (spawn-gate.sh's own header names the identical trap in `git worktree list` output). A
+# naive `cd $(dirname target) && pwd -P` fails when that directory does not exist yet — Write
+# creates new files, sometimes in a brand-new subdirectory — and the fallback to the unresolved
+# path then compared a `/tmp/...` string against a `/private/tmp/...` `$(pwd -P)`, misreading a
+# same-worktree write as cross-worktree. First version of this hook had exactly that bug.
+assert_exit 0 "a new subdirectory that doesn't exist yet, inside your own worktree, is still allowed" \
+  cwh "$CWT/.agent-wt/ios-developer" "$CWT/.agent-wt/ios-developer/newdir/newfile.js"
+assert_exit 2 "...and the same new-subdirectory shape into a sibling worktree is still blocked" \
+  cwh "$CWT/.agent-wt/ios-developer" "$CWT/.agent-wt/android-developer/a/b/c/deep.js"
+( cd "$CWT/.agent-wt/ios-developer" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"x"}}' "$CWT/.agent-wt/android-developer/src/other.js" | sh "$CWH" ) >"$TMP/cwh1.txt" 2>&1
+assert_has "$TMP/cwh1.txt" "DR4-027" "the refusal names the incident this class of collision reproduces"
+echo 'not json' | sh "$CWH" >/dev/null 2>&1
+[ $? = 0 ] && ok "an unparseable payload fails open, same rule as the git-layer hook" \
+            || bad "an unparseable payload fails open, same rule as the git-layer hook"
+rm -rf "$CWT"
 
 echo "gates that could not fire"
 # --------------------------------------------------------------------------------------------
@@ -3418,7 +3677,7 @@ echo "gates that could not fire"
 # `RESULT: CLEAR, EXIT=0` from the most consequential blocker in the plugin.
 sh "$HERE/ship-gate.sh" "$FIX/ship-bugs-plain" >"$TMP/sgplain.txt" 2>&1
 [ $? = 1 ] && ok "the plain pipe-delimited bug board (the one qa-engineer is told to write) BLOCKS" \
-           || bad "the plain pipe-delimited bug board BLOCKS" "$(cat "$TMP/sgplain.txt")"
+           || bad "the plain pipe-delimited bug board (the one qa-engineer is told to write) BLOCKS" "$(cat "$TMP/sgplain.txt")"
 assert_has "$TMP/sgplain.txt" "1 open S1/S2 bug" "...counting the open S1 and not the row marked FIXED"
 assert_has "$TMP/sgplain.txt" "1 open S3/S4 bug" "...and the deferred S3 in the same plain form"
 # The bold form must keep working — a fix that swaps one exclusive spelling for another is not a fix.
@@ -3441,7 +3700,7 @@ node "$HERE/ship-inflight.mjs" "$FIX/ship-static/docs/31-board.md" > "$TMP/infli
 assert_has "$TMP/inflight-static.txt" "APP-002(qa,static-only)" "ship-inflight carries the static-only flag out of the board"
 sh "$HERE/ship-gate.sh" "$FIX/ship-static" >"$TMP/sgstatic.txt" 2>&1
 [ $? = 1 ] && ok "ship-gate BLOCKS a sprint holding a ticket whose suite never ran" \
-           || bad "ship-gate BLOCKS a static-only sprint" "$(cat "$TMP/sgstatic.txt")"
+           || bad "ship-gate BLOCKS a sprint holding a ticket whose suite never ran" "$(cat "$TMP/sgstatic.txt")"
 assert_has "$TMP/sgstatic.txt" "APP-002 is verified_static" "...naming the ticket, not just the count"
 # A waiver is the only route past it, and a waived gate must never look like a skipped one.
 mkdir -p "$TMP/sgwaived/docs"
@@ -3450,7 +3709,7 @@ printf 'WAIVED: APP-002 — head-of-eng — no simulator runtime on the release 
   > "$TMP/sgwaived/docs/60-releases.md"
 sh "$HERE/ship-gate.sh" "$TMP/sgwaived" >"$TMP/sgwaived.txt" 2>&1
 [ $? = 0 ] && ok "...and a well-formed waiver naming the ticket clears it" \
-           || bad "a well-formed waiver naming the ticket clears it" "$(cat "$TMP/sgwaived.txt")"
+           || bad "...and a well-formed waiver naming the ticket clears it" "$(cat "$TMP/sgwaived.txt")"
 assert_has "$TMP/sgwaived.txt" "WAIVED: APP-002 shipped static-only" "...REPORTING the waiver, never silently"
 # A ticket genuinely in flight must still block, and must not be confused with a static-only one.
 assert_exit 1 "an in-flight ticket still blocks, separately from the static-only check" \
@@ -3474,7 +3733,7 @@ jobs:
 YML
 sh "$HERE/ship-gate.sh" "$WFP" >"$TMP/wf1.txt" 2>&1
 [ $? = 1 ] && ok "an unguarded piped test step blocks even when ANOTHER step has shell: bash" \
-           || bad "an unguarded piped step blocks despite another step's shell: bash" "$(cat "$TMP/wf1.txt")"
+           || bad "an unguarded piped test step blocks even when ANOTHER step has shell: bash" "$(cat "$TMP/wf1.txt")"
 cat > "$WFP/.github/workflows/ci.yml" <<'YML'
 name: ci
 jobs:
@@ -3486,7 +3745,7 @@ jobs:
 YML
 sh "$HERE/ship-gate.sh" "$WFP" >"$TMP/wf2.txt" 2>&1
 [ $? = 1 ] && ok "...and a COMMENT mentioning pipefail cannot vouch for a step" \
-           || bad "a comment mentioning pipefail cannot vouch for a step" "$(cat "$TMP/wf2.txt")"
+           || bad "...and a COMMENT mentioning pipefail cannot vouch for a step" "$(cat "$TMP/wf2.txt")"
 cat > "$WFP/.github/workflows/ci.yml" <<'YML'
 name: ci
 jobs:
@@ -3531,7 +3790,32 @@ ok "a zero exit with no ran-evidence is CANNOT EVALUATE, not tests=green"
 ( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "echo 'Executed 3 tests, with 0 failures'" ) >"$TMP/vdg2.txt" 2>/dev/null
 [ $? = 0 ] && grep -q "tests=green" "$TMP/vdg2.txt" \
   && ok "...and output that PROVES a suite ran green still verifies" \
-  || bad "output that proves a suite ran green still verifies" "$(head -2 "$TMP/vdg2.txt")"
+  || bad "...and output that PROVES a suite ran green still verifies" "$(head -2 "$TMP/vdg2.txt")"
+
+# --- Node's built-in test runner's TAP summary was invisible to the ran-evidence check -----------
+#
+# FOUND BY RUNNING A REAL WAVE (H7, 2026-08-08): `node --test` — the default for this plugin's own
+# `cli`/`library` projects, and this plugin's own language — prints `# tests N` / `# pass N` /
+# `# fail N`, count AFTER the noun. Every prior alternative expected the count BEFORE ("N tests ...
+# pass/fail"), so a project on Node's own test runner was structurally un-passable at this gate — a
+# green suite reported CANNOT EVALUATE over evidence sitting in the very log being scanned. Found
+# independently twice in one wave: by the IC agent working the ticket (who correctly did not touch
+# the plugin script and recorded it in the daily fragment instead) and by wave-integrate.mjs hitting
+# the identical regex-shape gap in its own copy of this check.
+( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "printf '# tests 6\n# pass 6\n# fail 0\n'" ) >"$TMP/vdg3.txt" 2>/dev/null
+[ $? = 0 ] && grep -q "tests=green" "$TMP/vdg3.txt" \
+  && ok "...and Node's own \`node --test\` TAP summary (count after the noun) verifies too" \
+  || bad "...and Node's own \`node --test\` TAP summary (count after the noun) verifies too" "$(head -2 "$TMP/vdg3.txt")"
+
+# FOUND BY RUNNING A REAL WAVE AGAIN (H9, 2026-08-09), same class, third test runner: AGP's
+# `connectedDebugAndroidTest` on a real emulator prints `Starting N tests on <device>` /
+# `Finished N tests on <device>`, then `BUILD SUCCESSFUL` — a real, passing instrumented Android
+# test run, on a real emulator, that this gate still reported CANNOT EVALUATE for. Neither the
+# original alternatives nor the two TAP-summary fixes above matched AGP's own completion line.
+( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "printf 'Starting 3 tests on baby_growth_test(AVD) - 16\nFinished 3 tests on baby_growth_test(AVD) - 16\n\nBUILD SUCCESSFUL in 5s\n'" ) >"$TMP/vdg4.txt" 2>/dev/null
+[ $? = 0 ] && grep -q "tests=green" "$TMP/vdg4.txt" \
+  && ok "...and AGP's own connectedAndroidTest completion line ('Finished N tests on <device>') verifies too" \
+  || bad "...and AGP's own connectedAndroidTest completion line ('Finished N tests on <device>') verifies too" "$(head -2 "$TMP/vdg4.txt")"
 
 # --- the integration branch resolver's input was never written by anyone ------------------------
 # `grep -rn "Integration branch" agents/ skills/ commands/` returned NOTHING: no role was told to
@@ -3539,7 +3823,7 @@ ok "a zero exit with no ran-evidence is CANNOT EVALUATE, not tests=green"
 # at exit 0 — the exact fail-open its header says it exists to remove.
 grep -q 'Integration branch: develop' "$HERE/../agents/devops-engineer.md" \
   && ok "devops-engineer.md mandates the exact line integration-branch.sh reads" \
-  || bad "devops-engineer.md mandates the exact 'Integration branch: <name>' line"
+  || bad "devops-engineer.md mandates the exact line integration-branch.sh reads"
 grep -q 'integration-branch.sh' "$HERE/../agents/devops-engineer.md" \
   && ok "...and tells it to verify the line resolves before handing off" \
   || bad "...and tells it to verify the line resolves before handing off"
@@ -3560,7 +3844,7 @@ for FORM in 'Integration branch: develop' \
   [ "$GOT" = "develop" ] || IBFAIL="$IBFAIL [$FORM -> '$GOT']"
 done
 [ -z "$IBFAIL" ] && ok "every realistic phrasing of the declaration resolves, not just 'branch: name'" \
-                 || bad "every realistic phrasing of the declaration resolves" "$IBFAIL"
+                 || bad "every realistic phrasing of the declaration resolves, not just 'branch: name'" "$IBFAIL"
 
 # A git-strategy doc that EXISTS and declares nothing is exit 2, never a silent `main`: the document
 # that owns the answer is silent, and "the doc did not say" must not be spelled like "the doc said
@@ -3571,7 +3855,7 @@ assert_exit 2 "a git-strategy doc that declares no integration branch CANNOT RES
 rm -f "$IBP/docs/23-git-strategy.md"
 [ "$(sh "$HERE/integration-branch.sh" "$IBP" 2>/dev/null)" = "main" ] \
   && ok "...while a project with no git-strategy doc at all still resolves main" \
-  || bad "a project with no git-strategy doc at all still resolves main"
+  || bad "...while a project with no git-strategy doc at all still resolves main"
 
 # --- CLI argument injection: a value that looks like a flag was read as a flag ------------------
 # board.mjs parseArgs read ANY `--`-prefixed token as a new flag even in a value position, so every
@@ -3591,10 +3875,1043 @@ printf 'SENTINEL\n' > "$INJ/victim.txt"
          "victim.txt was overwritten"
 grep -q -- '"detail":"--board=' "$INJ/docs/31-board-events.jsonl" \
   && ok "...and the value is RECORDED verbatim, not swallowed as \"detail\": true" \
-  || bad "...and the value is RECORDED verbatim" "$(tail -1 "$INJ/docs/31-board-events.jsonl")"
+  || bad "...and the value is RECORDED verbatim, not swallowed as \"detail\": true" "$(tail -1 "$INJ/docs/31-board-events.jsonl")"
 ( cd "$INJ" && node "$HERE/board.mjs" move APP-001 blocked --by tech-manager --detail ) >/dev/null 2>&1
 [ $? = 2 ] && ok "...and a value-taking flag with nothing after it is exit 2, not silently true" \
-           || bad "a value-taking flag with nothing after it is exit 2"
+           || bad "...and a value-taking flag with nothing after it is exit 2, not silently true"
+
+# --- the same hole, reopened five times by flags nobody declared --------------------------------
+# VALUE_FLAGS closed `--detail` and was then never extended: `evidence`, `context`, `run`, `attempt`
+# and `lease-seconds` were all read as values and none were declared. `--evidence "--board=<path>"`
+# therefore set `evidence` to `true` and `board` to an arbitrary path — the ORIGINAL bug, on the
+# approval path, which is the one place a redirected write also destroys the record of who approved
+# what. It failed safe only by ordering: bindApprovalEvidence rejects the missing evidence file
+# before writeView runs. `--run`/`--attempt` have no such accident; they forward into run-ledger's
+# argv. Found by probing the approval path, not by reading the set.
+INJ2="$TMP/inject-evidence"; mkdir -p "$INJ2/docs"
+( cd "$INJ2" && git init -q . && git config user.email t@t.t && git config user.name T
+  echo one > a.txt && git add -A && git commit -qm one
+  echo two >> a.txt && git add -A && git commit -qm two ) >/dev/null 2>&1
+INJ2_BASE=$( cd "$INJ2" && git rev-parse HEAD~1 )
+printf 'SENTINEL\n' > "$INJ2/victim.md"
+( cd "$INJ2" && node "$HERE/board.mjs" add T-001 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move T-001 claimed         --by ios-developer
+  node "$HERE/board.mjs" move T-001 done_reported   --by ios-developer
+  node "$HERE/board.mjs" move T-001 verified        --by tech-manager
+  node "$HERE/board.mjs" move T-001 review_requested --by ios-developer ) >/dev/null 2>&1
+# A VALID VERDICT IS SUPPLIED ON PURPOSE. Without it the review-verdict contract refuses first and
+# this probe passes while testing nothing — which is exactly what happened when the contract landed:
+# the assertion below went red because the message it greps for was being produced by a different
+# layer than the one under test. "Before believing a refusal, name the layer you expected it from."
+printf 'REVIEW VERDICT: APPROVE\nScope: base..head\n\n## Not checked\nNothing.\n' > "$INJ2/verdict.md"
+( cd "$INJ2" && node "$HERE/board.mjs" move T-001 approved --by code-reviewer --bind \
+    --verdict "$INJ2/verdict.md" \
+    --base "$INJ2_BASE" --evidence "--board=$INJ2/victim.md" --context "$INJ2/a.txt" ) >"$TMP/out" 2>&1
+[ "$(head -1 "$INJ2/victim.md")" = "SENTINEL" ] \
+  && ok "an --evidence value shaped like a flag does not redirect the board's output path" \
+  || bad "an --evidence value shaped like a flag does not redirect the board's output path" \
+         "victim.md was overwritten"
+grep -q -- '--board=' "$TMP/out" \
+  && ok "...and the refusal names the path it was GIVEN, not \"true\" — the tell that it was swallowed" \
+  || bad "...and the refusal names the path it was GIVEN, not \"true\"" "$(cat "$TMP/out")"
+
+# The durable half. The probe above catches ONE flag; this catches the next one somebody adds and
+# forgets, which is how all five got here. Every `flags.X` board.mjs reads must be declared a value
+# flag or be a known boolean — there is no third kind, and an undeclared value flag is an injection
+# point by construction.
+# --- the output contract was enforced against the FILE, never against the agent -------------------
+#
+# MEASURED BY SPAWNING ONE AGENT, 2026-08-06 (H4), the first ever run against this loop.
+#
+# team-doctor enforces that every ticket-owning role FILE declares six fields, because /app-build's
+# gates parse them. Nothing had ever checked that an agent RETURNS them. The agent returned ONE of
+# six. It also reported "no git repo initialized in this worktree" about a directory that IS a git
+# repository, made no commit, and reported DONE — so verify-done.sh came back REJECTED with
+# "nothing was actually written" and the ticket parked at in_progress.
+#
+# The gates worked. The HANDOFF did not, and the handoff was the half nobody was checking: FC-002
+# at the boundary where this studio meets its own workers.
+#
+# READING THE REPORT DOES NOT CATCH THIS, which is why it is a command and not an instruction. The
+# report that failed sounded complete, named its own skips and explained itself; a reader supplies
+# the missing structure from imagination.
+RPT="$TMP/report-check"; mkdir -p "$RPT"
+# The verbatim shape of the report that failed.
+printf 'Worktree: worked directly in project root (serialized round)\nDONE: APP-001\nBranch: none created — no git repo initialized in this worktree\nTests: 0 added, 1 existing green\nNext: code-reviewer\n' > "$RPT/h4.txt"
+node "$HERE/report-check.mjs" --role ios-developer --report "$RPT/h4.txt" >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "the report that actually failed H4 is caught as INCOMPLETE" \
+           || bad "the report that actually failed H4 is caught as INCOMPLETE" "$(cat "$TMP/out")"
+assert_has "$TMP/out" '1 of 6 contract field' "...counting exactly how many of six it returned"
+assert_has "$TMP/out" 'MISSING  Second-path check:' "...and naming each missing field"
+assert_has "$TMP/out" 'NOT fill them in yourself' \
+  "...and forbidding the orchestrator from inventing the answer, which would record a claim nobody made"
+
+printf 'Worktree: .agent-wt/APP-001\nMutation confirmed: yes\nDaily fragment: docs/daily/x.md\nAssumptions & open questions: none\nSecond-path check: grepped every writer\nShared surfaces touched: none\n' > "$RPT/good.txt"
+node "$HERE/report-check.mjs" --role ios-developer --report "$RPT/good.txt" >/dev/null 2>&1
+[ $? = 0 ] && ok "...while a complete code-tier report clears" || bad "...while a complete code-tier report clears"
+node "$HERE/report-check.mjs" --role qa-engineer --report "$RPT/good.txt" >/dev/null 2>&1
+[ $? = 0 ] && ok "...and an artifact-tier role owes three fields, not six" \
+           || bad "...and an artifact-tier role owes three fields, not six"
+node "$HERE/report-check.mjs" --role code-reviewer --report "$RPT/good.txt" >/dev/null 2>&1
+[ $? = 2 ] && ok "...and a gate role, which returns a verdict rather than a DONE, has no report contract" \
+           || bad "...and a gate role, which returns a verdict rather than a DONE, has no report contract"
+
+
+# --- report-check --root: presence is not truth (H5b, 2026-08-07) ----------------------------------
+#
+# A second agent, dispatched with the contract correctly inlined, returned all six fields — and one
+# was FALSE: "Daily fragment: docs/daily/<date>-...md" named a real, well-written file that had
+# never been `git add`ed, so it was never on the branch. Checking that text CONTAINS a field label is
+# not checking that the field is TRUE — the same claim/verification gap H4 found in the code diff,
+# surviving into the one field nothing double-checked.
+RCF="$TMP/report-check-fixture"; rm -rf "$RCF"; mkdir -p "$RCF"
+( cd "$RCF" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init
+  git checkout -q -b feat/APP-001-x main && echo code > code.txt && git add code.txt && git commit -qm code
+) >/dev/null 2>&1
+
+printf 'DONE: APP-001\nWorktree: .agent-wt/ios-developer\nBranch: feat/APP-001-x\nMutation confirmed: git diff --numstat -> 1 files, +1/-0\nDaily fragment: docs/daily/2026-08-07-ios-developer-APP-001.md\nAssumptions & open questions: none\nSecond-path check: none applicable\nShared surfaces touched: none\nNext: code-reviewer\n' > "$RCF/claim.txt"
+
+# Without --root: unchanged behaviour, presence-only, and it SAYS SO rather than silently downgrading.
+node "$HERE/report-check.mjs" --role ios-developer --report "$RCF/claim.txt" >"$TMP/rc-nr.txt" 2>&1
+[ $? = 0 ] && ok "without --root, report-check stays presence-only (unchanged for projects that predate it)" \
+  || bad "without --root, report-check stays presence-only (unchanged for projects that predate it)" "$(cat "$TMP/rc-nr.txt")"
+assert_has "$TMP/rc-nr.txt" "presence only" "...and says so on the CLEAR line rather than silently downgrading"
+
+# With --root, against a branch where the fragment was NEVER committed: FALSE CLAIM.
+node "$HERE/report-check.mjs" --role ios-developer --report "$RCF/claim.txt" --root "$RCF" >"$TMP/rc-false.txt" 2>&1
+[ $? = 1 ] && ok "--root catches a Daily fragment claim that is not actually on the branch" \
+  || bad "--root catches a Daily fragment claim that is not actually on the branch" "$(cat "$TMP/rc-false.txt")"
+assert_has "$TMP/rc-false.txt" "FALSE CLAIM" "...naming it a false claim, not a missing field"
+assert_has "$TMP/rc-false.txt" "docs/daily/2026-08-07-ios-developer-APP-001.md" "...naming the exact path that is missing"
+assert_has "$TMP/rc-false.txt" "Do NOT commit it" "...and forbidding the orchestrator from committing it on the agent's behalf"
+
+# Now commit the SAME path on the SAME branch: the claim becomes true, and the gate clears verified.
+( cd "$RCF" && git checkout -q feat/APP-001-x && mkdir -p docs/daily \
+  && echo "fragment" > docs/daily/2026-08-07-ios-developer-APP-001.md \
+  && git add docs/daily/2026-08-07-ios-developer-APP-001.md && git commit -qm fragment && git checkout -q main
+) >/dev/null 2>&1
+node "$HERE/report-check.mjs" --role ios-developer --report "$RCF/claim.txt" --root "$RCF" >"$TMP/rc-true.txt" 2>&1
+[ $? = 0 ] && ok "...and clears once the fragment is genuinely committed on that branch" \
+  || bad "...and clears once the fragment is genuinely committed on that branch" "$(cat "$TMP/rc-true.txt")"
+assert_has "$TMP/rc-true.txt" "VERIFIED on the branch" "...and says it verified the claim, not just counted fields"
+
+# --- spawn-prompt: the contract must be inlined, not referenced (H5, 2026-08-07) --------------------
+#
+# The first prompt ever sent against this loop said "Return the CODE profile defined in
+# team-protocol" instead of containing it, and the agent returned 0 of 6 fields — worse than the
+# agent that failed H4 the day before. The identical ticket, role and slot, re-spawned with the
+# contract pasted in literally, returned all six. Dispatch, not capability.
+SPF="$TMP/spawn-prompt-fixture"; rm -rf "$SPF"; mkdir -p "$SPF/docs"
+( cd "$SPF" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf 'Integration branch: main\n' > "$SPF/docs/23-git-strategy.md"
+( cd "$SPF" && node "$HERE/board.mjs" add APP-001 --title "greet includes the name" --owner ios-developer \
+    --feature F-001 --spec "prd#F-001" --acceptance "Given Ada, shows Hello Ada" --by tech-manager \
+) >/dev/null 2>&1
+
+( cd "$SPF" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role ios-developer --slot .agent-wt/ios-developer ) >"$TMP/sp-compose.txt" 2>&1
+[ $? = 0 ] && ok "spawn-prompt compose succeeds against a real board row" \
+  || bad "spawn-prompt compose succeeds against a real board row" "$(cat "$TMP/sp-compose.txt")"
+assert_has "$TMP/sp-compose.txt" "greet includes the name" "...and carries the board row's title, not a placeholder"
+assert_has "$TMP/sp-compose.txt" "DONE: APP-001" "...and inlines the contract's header line"
+assert_has "$TMP/sp-compose.txt" "Mutation confirmed:" "...and every field label, literally"
+assert_has "$TMP/sp-compose.txt" "BLOCKED: APP-001" "...and the BLOCKED alternative, so the agent has both paths"
+
+# verify must tell H5's failing shape from H5b's passing shape — that distinction IS the point.
+printf 'Return the CODE profile defined in `team-protocol`.\n' > "$TMP/sp-h5.txt"
+node "$HERE/spawn-prompt.mjs" verify --role ios-developer --prompt "$TMP/sp-h5.txt" >"$TMP/sp-h5-out.txt" 2>&1
+[ $? = 1 ] && ok "verify REFUSES the exact prompt shape that produced H5's 0-of-6 result" \
+  || bad "verify REFUSES the exact prompt shape that produced H5's 0-of-6 result" "$(cat "$TMP/sp-h5-out.txt")"
+assert_has "$TMP/sp-h5-out.txt" "CONTRACT NOT INLINED" "...naming the failure by name"
+
+node "$HERE/spawn-prompt.mjs" verify --role ios-developer --prompt "$TMP/sp-compose.txt" >"$TMP/sp-h5b-out.txt" 2>&1
+[ $? = 0 ] && ok "...and CLEARS the composed prompt, which is the H5b shape" \
+  || bad "...and CLEARS the composed prompt, which is the H5b shape" "$(cat "$TMP/sp-h5b-out.txt")"
+
+# --- one contract, three consumers: report-check, team-doctor, spawn-prompt agree on the roles too --
+node "$HERE/spawn-prompt.mjs" compose --root "$SPF" --ticket APP-001 --role code-reviewer >/dev/null 2>&1
+[ $? = 2 ] && ok "spawn-prompt refuses to compose for a gate role, agreeing with report-check and team-doctor" \
+  || bad "spawn-prompt refuses to compose for a gate role, agreeing with report-check and team-doctor"
+
+# THE TWO CONTRACTS MUST NOT DRIFT — proven by AGREEMENT, not by grepping for text that no longer
+# lives in either file. report-check.mjs and team-doctor.mjs (and, now, spawn-prompt.mjs) used to
+# each hand-type the same six field names with a comment promising to stay in sync; that promise is
+# how "backend-developer and monetization-engineer were two releases behind" happened. All three now
+# import scripts/lib/contract.mjs, so asserting "the field string appears in this file" would prove
+# nothing — asserting that all three import the ONE lib is what actually rules out a second copy.
+for _f in report-check.mjs team-doctor.mjs spawn-prompt.mjs; do
+  grep -q "from './lib/contract.mjs'" "$HERE/$_f" \
+    || { bad "$_f imports the shared contract lib rather than a private copy" "no import found"; break; }
+done
+ok "report-check, team-doctor and spawn-prompt import the ONE contract lib, not private copies"
+# And the lib itself is the only place the six code-tier field names may be hand-typed.
+CONTRACTDUP=$( { grep -rln "'Mutation confirmed:'" "$HERE"/*.mjs 2>/dev/null || true; } | grep -v "lib/contract.mjs" | tr '\n' ' ')
+[ -z "$(printf '%s' "$CONTRACTDUP" | tr -d ' ')" ] \
+  && ok "...and no script outside the lib hand-types the contract fields" \
+  || bad "...and no script outside the lib hand-types the contract fields" "$CONTRACTDUP"
+grep -q 'report-check' "$HERE/../commands/app-build.md" \
+  && ok "...and /app-build runs it before believing a DONE" \
+  || bad "...and /app-build runs it before believing a DONE"
+
+# --- a planned project could not dispatch AT ALL --------------------------------------------------
+#
+# THE COMPLETE EXPLANATION FOR 11-OF-19, found by running it 2026-08-06.
+#
+# /app-build runs `dispatch-preflight` before spawning any owner. Four of its nine required inputs
+# are manifests in docs/team/. ON A FRESHLY PLANNED PROJECT THAT DIRECTORY DOES NOT EXIST — so
+# preflight died on the first manifest, /app-build's own rule ("a failed or unavailable check stops
+# the spawn") stopped the round, and every ticket sat at `created` forever.
+#
+# Across every recorded dry run, 11 of 19 tickets ended exactly there: never claimed, never blocked,
+# never refused. Six reports called it an agent-diligence problem. It was a missing writer.
+#
+# IT IS FC-005 FROM THIS REPO'S OWN CORPUS — "the check whose own input nobody writes... it never
+# fires, the Definition of Done cites it, everyone believes it is covered, and no writer was ever
+# assigned." The corpus mechanises that Tell in team-doctor, for docs/NN-*.md artifacts only. The
+# docs/team/*.json manifests feeding the most consequential gate were outside its scope, so the
+# check written for this exact class never looked where it had happened.
+TBS="$TMP/team-bootstrap"; rm -rf "$TBS"; mkdir -p "$TBS/docs" "$TBS/src"
+( cd "$TBS" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm base ) >/dev/null 2>&1
+( cd "$TBS" && node "$BD" add APP-001 --title t --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+
+PRE() { ( cd "$TBS" && node "$HERE/dispatch-preflight.mjs" --root "$TBS" --ticket APP-001 \
+  --context docs/team/context-manifest.json --schedule docs/team/schedule.json \
+  --capability docs/team/capabilities.json --risk docs/team/risk-policy.json \
+  --role "$1" --operation write --path "$2" --file "$2" --change feature ); }
+
+PRE ios-developer src/App.swift >"$TMP/out" 2>&1
+grep -q '"status": "CLEAR"' "$TMP/out" \
+  && bad "a project with no docs/team cannot dispatch — the fixture is wrong" \
+  || ok "before bootstrap, a freshly planned project cannot dispatch at all (the 11-of-19 cause)"
+
+( cd "$TBS" && node "$HERE/team-bootstrap.mjs" --root "$TBS" ) >"$TMP/out" 2>&1
+[ $? = 0 ] && ok "team-bootstrap writes the manifests dispatch requires" \
+           || bad "team-bootstrap writes the manifests dispatch requires" "$(cat "$TMP/out")"
+
+PRE ios-developer src/App.swift >"$TMP/out" 2>&1
+grep -q '"status": "CLEAR"' "$TMP/out" \
+  && ok "...and AFTER it, the same project dispatches CLEAR — the loop can finally start" \
+  || bad "...and AFTER it, the same project dispatches CLEAR — the loop can finally start" "$(head -3 "$TMP/out")"
+
+# A BOOTSTRAP THAT OPENED EVERYTHING WOULD BE WORSE THAN THE FAILURE — the gate would pass while
+# checking nothing. My first version wrote `roles: []`, which was safe and left dispatch failing one
+# step later with a clearer message: a bootstrap whose output cannot dispatch has moved the stopping
+# point and called it safety. These four prove the seeded defaults still refuse.
+PRE product-designer src/App.swift >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'outside allowed paths' "...while a document role still may not write source"
+PRE ios-developer docs/team/actors.json >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'denied to EVERY role' "...nobody may write the actor secrets"
+PRE release-manager src/App.swift >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'role is not declared' "...and an undeclared role is refused, not defaulted"
+
+( cd "$TBS" && node "$HERE/team-bootstrap.mjs" --root "$TBS" ) >/dev/null 2>&1
+[ $? = 1 ] && ok "re-running refuses to overwrite — an edited policy is not a bootstrap's to reset" \
+           || bad "re-running refuses to overwrite — an edited policy is not a bootstrap's to reset"
+
+grep -q 'team-bootstrap' "$HERE/../commands/app-plan.md" \
+  && ok "...and /app-plan runs it, so the writer FC-005 was missing now exists in the pipeline" \
+  || bad "...and /app-plan runs it, so the writer FC-005 was missing now exists in the pipeline"
+
+# project-profile.json IS ALSO A CONSUMER WITH NO PRODUCER — found while building the H4 fixture,
+# hours after this bootstrap was written to fix precisely that class. `orchestrator round` step 0c
+# requires the profile and nothing wrote it. FC-005 committed by the person who had just fixed
+# FC-005, one file over.
+#
+# It scaffolds UNSTATED: empty toolchain, no test commands, so `project-profile.mjs check` still
+# returns CANNOT EVALUATE until a human fills it in. That is deliberate — an unstated toolchain IS
+# unknown, and R10 is two builds broken by a toolchain nobody wrote down. The scaffold removes the
+# guesswork about the schema, not the requirement to state the answer.
+[ -f "$TBS/docs/team/project-profile.json" ] \
+  && ok "team-bootstrap also scaffolds project-profile.json, which orchestrator round requires" \
+  || bad "team-bootstrap also scaffolds project-profile.json, which orchestrator round requires" \
+         "orchestrator round step 0c requires it and nothing else writes it — FC-005 again"
+( cd "$TBS" && node "$HERE/project-profile.mjs" check --root "$TBS" ) >/dev/null 2>&1
+[ $? = 2 ] && ok "...and the scaffold still reports CANNOT EVALUATE until a human states the toolchain" \
+           || bad "...and the scaffold still reports CANNOT EVALUATE until a human states the toolchain" \
+                  "a scaffold that made the check PASS would be worse than the missing file"
+
+# --- the board said `merged`; git said the branch was never merged -------------------------------
+#
+# FOUND BY EXECUTION, 2026-08-06, in a five-minute targeted experiment with no agents involved. A
+# `git merge` failed on a dirty tree, and then:
+#
+#     board.mjs move APP-001 merged     -> accepted
+#     board.mjs move APP-001 qa_passed  -> accepted
+#     board.mjs move APP-001 closed     -> accepted   final state: done
+#
+# main did not contain the commit. The branch was not an ancestor of main. A ticket reached `done` —
+# the strongest claim this system makes — with the code never integrated. FC-003, "green while
+# nothing happened", living inside the most consequential transition on the board.
+#
+# The gate is not wrong to allow it: `move ... merged` is a PRECONDITION that runs BEFORE any git
+# command by design, so an unapproved merge is impossible rather than merely detectable. What was
+# missing is the confirmation afterwards — the window between "allowed to merge" and "merged" was
+# unobserved, and a conflict, a dirty tree, a rejected push or an agent that never ran the command
+# all left the board asserting a merge that did not exist.
+MR="$TMP/merge-reconcile"; rm -rf "$MR"; mkdir -p "$MR/docs"
+( cd "$MR" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo base > a.txt && git add -A && git commit -qm base \
+  && git checkout -q -b feat/APP-001 && echo work >> a.txt && git add -A && git commit -qm work ) >/dev/null 2>&1
+MRB() { ( cd "$MR" && node "$BD" "$@" ) >/dev/null 2>&1; }
+MRB add APP-001 --title t --owner ios-developer --by tech-manager
+for e in "claimed ios-developer" "done_reported ios-developer" "verified tech-manager" \
+         "review_requested ios-developer" "started code-reviewer"; do
+  set -- $e; MRB move APP-001 "$1" --by "$2"
+done
+printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-001\n\n## Not checked\nNothing.\n' > "$MR/v.md"
+MRB move APP-001 approved --by code-reviewer --verdict "$MR/v.md"
+# The merge event WITHOUT the merge — exactly what the experiment produced.
+MRB move APP-001 merged --by tech-manager
+MRB move APP-001 qa_passed --by qa-engineer
+MRB move APP-001 closed --by tech-manager
+
+( cd "$MR" && node "$HERE/merge-reconcile.mjs" --root "$MR" ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "a ticket at done whose branch is not merged is BLOCKED, not believed" \
+           || bad "a ticket at done whose branch is not merged is BLOCKED, not believed" "$(cat "$TMP/out")"
+assert_has "$TMP/out" 'is not an ancestor of main' "...naming the branch and the integration branch"
+assert_has "$TMP/out" 'board asserts this code is integrated and git says it is not' \
+  "...and stating the disagreement in words, not just a code"
+
+# Actually merge it: the same board must now verify clean. A check that blocked either way would be
+# refuse-everything, which gets switched off.
+( cd "$MR" && git checkout -q main && git merge -q --no-ff feat/APP-001 -m m ) >/dev/null 2>&1
+( cd "$MR" && node "$HERE/merge-reconcile.mjs" --root "$MR" ) >"$TMP/out" 2>&1
+[ $? = 0 ] && ok "...and the identical board verifies CLEAR once the merge actually happens" \
+           || bad "...and the identical board verifies CLEAR once the merge actually happens" "$(cat "$TMP/out")"
+
+# A deleted or squashed branch is UNKNOWN, never assumed merged — guessing either way is how this
+# class survives.
+( cd "$MR" && git branch -D feat/APP-001 ) >/dev/null 2>&1
+( cd "$MR" && node "$HERE/merge-reconcile.mjs" --root "$MR" ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'UNKNOWN' "a ticket with no matching branch is UNKNOWN, not assumed merged"
+
+grep -q 'merge-reconcile' "$HERE/ship-gate.sh" \
+  && ok "...and the ship gate runs it, so a release cannot go out on a board that claims a phantom merge" \
+  || bad "...and the ship gate runs it, so a release cannot go out on a board that claims a phantom merge"
+grep -q 'merge-reconcile' "$HERE/orchestrator.mjs" \
+  && ok "...as does every build round" || bad "...as does every build round"
+
+# --- the assertion count says more than it delivers ---------------------------------------------
+#
+# "1216 assertions" is quoted about this project in the README, the HANDBOOK, every commit message
+# and every status report. A share of those only grep a Markdown file for a string — they prove an
+# INSTRUCTION EXISTS, not that anything happens, which is FC-002's shape. This repo has been caught
+# by it: the only assertion guarding code-reviewer.md's mandatory `## Not checked` section grepped
+# the instruction file, so a reviewer could omit the section forever with the suite green.
+#
+# The census is a MEASUREMENT, not a gate — deliberately exit 0 whatever the ratio. A threshold
+# would invite gaming the classifier instead of writing behavioural tests.
+node "$HERE/assertion-census.mjs" >"$TMP/out" 2>&1
+[ $? = 0 ] && ok "the assertion census runs and never gates" || bad "the assertion census runs and never gates"
+assert_has "$TMP/out" 'behavioural' "...reporting behavioural assertions separately"
+assert_has "$TMP/out" 'documentary' "...from documentary ones, so one number cannot flatter the other"
+assert_has "$TMP/out" 'sites, not executions' \
+  "...and saying it counts SITES, not executions, rather than letting two numbers look comparable"
+grep -q 'assertion-census' "$HERE/../.github/workflows/checks.yml" \
+  && ok "...and CI prints it, so the honest figure is in front of whoever reads a green build" \
+  || bad "...and CI prints it, so the honest figure is in front of whoever reads a green build"
+
+# --- throughput: is anything actually MOVING? ---------------------------------------------------
+#
+# THE NUMBER THIS EXISTS FOR. Across every recorded dry run: 19 tickets created, ONE reached
+# `closed`. ELEVEN never left `created` — never claimed, never blocked, never refused. The gates
+# were not the obstacle; nothing ever reached them.
+#
+# And every existing check passes on that board. board-doctor says coherent, because it is.
+# `orchestrator next` cheerfully lists legal transitions for tickets nobody performs them on. Six
+# dry-run reports analysed the QUALITY OF REFUSALS and not one counted throughput, so a system that
+# had stopped was indistinguishable from one being careful.
+MOV="$TMP/movement"; rm -rf "$MOV"; mkdir -p "$MOV/docs/team"
+( cd "$MOV" && git init -q . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm one ) >/dev/null 2>&1
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo ok","full":"echo ok"}}\n' \
+  > "$MOV/docs/team/project-profile.json"
+MB() { ( cd "$MOV" && node "$BD" "$@" ) >/dev/null 2>&1; }
+for i in 1 2 3; do MB add APP-00$i --title "T$i" --owner ios-developer --by tech-manager; done
+
+( cd "$MOV" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'READY BUT UNCLAIMED (3)' \
+  "a board of tickets nobody has picked up is reported, not silently coherent"
+[ $? = 0 ] || true
+( cd "$MOV" && node "$HERE/orchestrator.mjs" round ) >/dev/null 2>&1
+[ $? = 0 ] && ok "...and round ONE does not block on it — every project starts unclaimed" \
+           || bad "...and round ONE does not block on it — every project starts unclaimed"
+
+# Now move the board a lot while APP-003 is ignored. THIS is the failure: not that a ticket is
+# unclaimed, but that it stays unclaimed while everything else proceeds around it.
+for e in "APP-001 claimed ios-developer" "APP-001 done_reported ios-developer" \
+         "APP-001 verified tech-manager" "APP-001 review_requested ios-developer" \
+         "APP-002 claimed ios-developer" "APP-002 done_reported ios-developer" \
+         "APP-002 verified tech-manager" "APP-002 blocked tech-manager" \
+         "APP-002 unblocked tech-manager" "APP-001 started code-reviewer" \
+         "APP-001 blocked tech-manager" "APP-001 unblocked tech-manager"; do
+  set -- $e; MB move "$1" "$2" --by "$3"
+done
+( cd "$MOV" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "a ticket left behind while the board moves on BLOCKS the round" \
+           || bad "a ticket left behind while the board moves on BLOCKS the round" "$(grep -E 'STALLED|RESULT' "$TMP/out")"
+assert_has "$TMP/out" 'STALLED APP-003' "...naming it"
+assert_has "$TMP/out" 'work is not moving' \
+  "...and saying the combination out loud: preconditions clear AND nothing moving"
+
+# THE HOLE THE FIRST VERSION HAD. Unclaimed tickets `continue`d before the stall check, so the
+# 11-of-19 case reported forever and could never block — a signal that can only ever be advice,
+# which is precisely the "stopped loop that looks careful" this check was written to end.
+grep -q 'never claimed' "$TMP/out" \
+  && ok "...including a ticket that was never claimed at all, not just an in-flight one gone quiet" \
+  || bad "...including a ticket that was never claimed at all, not just an in-flight one gone quiet" "it can only ever advise, which is the defect"
+
+# A TICKET AT `qa` MUST BE ABLE TO STALL — and the first version of this check could not see one.
+#
+# `TERMINAL` was written as ['done', 'qa']. A ticket at `qa` has MERGED and still owes `qa_passed`
+# and `closed`, so treating it as terminal made the stall detector blind to exactly the population
+# it was built to find: of 19 recorded tickets, 4 ended at `merged` and 2 at `qa_passed` — all six
+# sitting at `qa`, and this check would have called that board healthy.
+#
+# Found by the third experiment, which was aimed at those six, falsified its own hypothesis (the
+# transitions out of merged work cleanly), and then asked whether the new instrument would have SEEN
+# them. It would not have. An instrument with a blind spot over its own subject is worse than no
+# instrument, because it answers.
+MOVQ="$TMP/movement-qa"; rm -rf "$MOVQ"; mkdir -p "$MOVQ/docs/53-reviews" "$MOVQ/docs/team"
+( cd "$MOVQ" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm b ) >/dev/null 2>&1
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo ok","full":"echo ok"}}\n' \
+  > "$MOVQ/docs/team/project-profile.json"
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\n## Not checked\nNothing.\n' > "$MOVQ/docs/53-reviews/v.md"
+QB() { ( cd "$MOVQ" && node "$BD" "$@" ) >/dev/null 2>&1; }
+QB add APP-001 --title t --owner ios-developer --by tech-manager
+QB move APP-001 claimed --by ios-developer
+QB move APP-001 done_reported --by ios-developer
+QB move APP-001 verified --by tech-manager
+QB move APP-001 review_requested --by ios-developer
+QB move APP-001 started --by code-reviewer
+QB move APP-001 approved --by code-reviewer --verdict "$MOVQ/docs/53-reviews/v.md"
+QB move APP-001 merged --by tech-manager
+QB add APP-002 --title t2 --owner ios-developer --by tech-manager
+for _i in 1 2 3 4 5 6; do QB move APP-002 blocked --by tech-manager; QB move APP-002 unblocked --by tech-manager; done
+( cd "$MOVQ" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
+grep -q 'STALLED APP-001 \[qa\]' "$TMP/out" \
+  && ok "a ticket parked at qa while the board moves on IS stalled — merged is not done" \
+  || bad "a ticket parked at qa while the board moves on IS stalled — merged is not done" \
+         "TERMINAL must be ['done'] alone; qa still owes qa_passed and closed"
+
+# --- OPS-013: the verified_static odometer ---------------------------------------------------------
+#
+# `round-journal.mjs` counts rounds/spawns/retries but had no field for how many tickets are
+# currently carrying the STATIC-only promise (no executable suite has run for them yet). Reported
+# by `orchestrator.mjs round`, every round: not blocking (static-only is legitimate mid-wave), but no
+# longer invisible.
+VSO="$TMP/verified-static-odometer"; rm -rf "$VSO"; mkdir -p "$VSO/docs/53-reviews" "$VSO/docs/team"
+( cd "$VSO" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm b ) >/dev/null 2>&1
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo ok","full":"echo ok"}}\n' \
+  > "$VSO/docs/team/project-profile.json"
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\n## Not checked\nNothing.\n' > "$VSO/docs/53-reviews/v.md"
+VB() { ( cd "$VSO" && node "$BD" "$@" ) >/dev/null 2>&1; }
+VB add APP-060 --title t --owner ios-developer --by tech-manager
+VB move APP-060 claimed --by ios-developer
+VB move APP-060 done_reported --by ios-developer
+VB move APP-060 verified_static --by tech-manager --detail d
+VB move APP-060 review_requested --by ios-developer
+VB move APP-060 started --by code-reviewer
+VB move APP-060 approved --by code-reviewer --verdict "$VSO/docs/53-reviews/v.md"
+VB move APP-060 merged --by tech-manager
+( cd "$VSO" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'VERIFIED STATIC — 1 ticket' "a ticket still carrying verified_static is counted, every round"
+assert_has "$TMP/out" 'APP-060' "...naming it"
+
+# THE MIRROR CASE: a ticket verified for real (the suite actually ran) must NOT show up here — an
+# odometer that also counts the honest ones would make the number meaningless.
+( cd "$MOVQ" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out2" 2>&1
+grep -q 'VERIFIED STATIC' "$TMP/out2" \
+  && bad "a ticket verified for real (not static-only) is not counted on the odometer" "$(grep 'VERIFIED STATIC' "$TMP/out2")" \
+  || ok "a ticket verified for real (not static-only) is not counted on the odometer"
+
+# --- OPS-014: cross-ticket review-finding pattern scan ----------------------------------------------
+#
+# Code review is per-ticket, so two tickets independently failing on the same underlying file get no
+# correlation — each burns its own retry rediscovering it. `review-pattern-scan.mjs` groups blocking
+# findings by the file they name; `orchestrator.mjs round` surfaces a shared one.
+RPS="$TMP/review-pattern"; rm -rf "$RPS"; mkdir -p "$RPS/docs/53-reviews"
+printf '## REQUEST CHANGES: APP-070\n\n## Blocking\n\n### 1. `src/Shared.kt:10` — wrong token\n\nDetail.\n' \
+  > "$RPS/docs/53-reviews/APP-070-cycle-0.md"
+printf '## REQUEST CHANGES: APP-071\n\n## Blocking\n\n### 1. `src/Shared.kt:22` — same wrong token, different line\n\nDetail.\n' \
+  > "$RPS/docs/53-reviews/APP-071-cycle-0.md"
+printf '## APPROVED: APP-072\n\nNothing to see here.\n' \
+  > "$RPS/docs/53-reviews/APP-072-cycle-0.md"
+node "$HERE/review-pattern-scan.mjs" --root "$RPS" >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'src/Shared.kt' "two tickets blocking on the same file are correlated"
+assert_has "$TMP/out" 'APP-070, APP-071' "...naming both tickets, in order"
+node "$HERE/review-pattern-scan.mjs" --root "$RPS" --json >"$TMP/out.json" 2>&1
+grep -q '"patterns":\[{"file":"src/Shared.kt"' "$TMP/out.json" \
+  && ok "...and the machine-readable form carries the same finding" \
+  || bad "...and the machine-readable form carries the same finding" "$(cat "$TMP/out.json")"
+
+# Reuse VSO (already a working orchestrator-round fixture) to prove `round` itself wires the scan
+# in, not only the standalone script.
+cp "$RPS/docs/53-reviews/APP-070-cycle-0.md" "$RPS/docs/53-reviews/APP-071-cycle-0.md" "$VSO/docs/53-reviews/"
+( cd "$VSO" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'REVIEW PATTERNS' "orchestrator round itself surfaces a cross-ticket review pattern, not only the standalone scan"
+
+# --- PF-002: corrupt data returned as empty ------------------------------------------------------
+#
+# THE FIRST PRODUCT DEFECT CLASS THIS STUDIO CAN DETECT. Across six dry runs not one product defect
+# was caught by a gate, and that was never a mystery: knowledge/failure-corpus.md holds seven
+# classes, all of them about the STUDIO's own defects, each with a mechanised Tell — and nothing
+# equivalent existed for the apps. The product classes were written into reports and left there.
+#
+# PF-002 is the one that is cleanly greppable: malformed persisted data caught and returned as an
+# empty list, so a user whose file was corrupted sees exactly what a new user sees. No error, no
+# telemetry, no way for support to tell "you have no data" from "we lost your data".
+PFS="$TMP/silent-fallback"; rm -rf "$PFS"; mkdir -p "$PFS/src"
+printf 'fun loadEntries(): List<Entry> {\n    return try {\n        Json.decodeFromString<List<Entry>>(readFile(p))\n    } catch (e: Exception) {\n        emptyList()\n    }\n}\n' > "$PFS/src/Bad.kt"
+node "$HERE/silent-fallback-scan.mjs" "$PFS" >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'src/Bad.kt' "a corrupt-read caught and returned as an empty list is found"
+
+# THE BARE-RETURN FORM IS THE ORIGINATING SHAPE. Kotlin's try-as-expression writes
+# `} catch (e) { emptyList() }` with no `return` keyword; the first version of this scan required
+# `return` and therefore missed the exact example it was written against. A detector that cannot
+# find its own originating incident is FC-006, so the bare form has its own assertion.
+grep -q 'Bad.kt:4' "$TMP/out" \
+  && ok "...including the bare try-as-expression form with no return keyword" \
+  || bad "...including the bare try-as-expression form with no return keyword" "$(cat "$TMP/out")"
+
+# A HANDLER THAT REPORTS IS NOT THIS CLASS. The defect is silence, not the catch.
+printf 'fun load3(): List<Entry> {\n    try { return ObjectMapper().readValue(readFile(p)) }\n    catch (e: Exception) { Log.e(TAG, "corrupt", e); return emptyList() }\n}\n' > "$PFS/src/Logged.kt"
+node "$HERE/silent-fallback-scan.mjs" "$PFS" >"$TMP/out" 2>&1
+grep -q 'Logged.kt' "$TMP/out" \
+  && bad "a handler that logs is not reported — the defect is silence, not the catch" \
+  || ok "a handler that logs is not reported — the defect is silence, not the catch"
+
+# FALSE POSITIVE THAT ACTUALLY HAPPENED, on this scan's first run: a flat 12-line lookback crossed
+# a function boundary and reported an in-memory cache because the function ABOVE it called
+# readFile. The scan's own header says a detector that refuses everything gets switched off within
+# a week; shipping with that bug would have been exactly that.
+printf 'fun readStore(): String { return readFile(path) }\nfun cacheLookup(k: String): List<Item> {\n    try { return memo[k]!! } catch (e: Exception) { return emptyList() }\n}\n' > "$PFS/src/Cache.kt"
+node "$HERE/silent-fallback-scan.mjs" "$PFS" >"$TMP/out" 2>&1
+grep -q 'Cache.kt' "$TMP/out" \
+  && bad "an in-memory cache below an unrelated file-reading function is not reported" \
+         "the lookback crossed a function boundary again" \
+  || ok "an in-memory cache below an unrelated file-reading function is not reported"
+
+# Warn by default, block on demand — and a root with no source is CANNOT EVALUATE, never CLEAR.
+node "$HERE/silent-fallback-scan.mjs" "$PFS" >/dev/null 2>&1
+[ $? = 0 ] && ok "findings warn by default, so the gate does not become refuse-everything" \
+           || bad "findings warn by default, so the gate does not become refuse-everything"
+node "$HERE/silent-fallback-scan.mjs" "$PFS" --strict >/dev/null 2>&1
+[ $? = 1 ] && ok "...and --strict blocks, for a project that has decided the answer is always no" \
+           || bad "...and --strict blocks, for a project that has decided the answer is always no"
+# N/A, NOT CANNOT-EVALUATE, and the distinction is load-bearing. This exited 2 at first, reasoning
+# that "nothing scanned" must never read as clean — right about source that could not be READ,
+# wrong about a project with no source of these languages at all. It immediately took six ship-gate
+# fixtures to CANNOT EVALUATE that were genuinely fine: the false-BLOCK half of the false-positive
+# problem, which switches a gate off just as fast as noise does.
+mkdir -p "$TMP/pf-empty"
+node "$HERE/silent-fallback-scan.mjs" "$TMP/pf-empty" >"$TMP/out" 2>&1
+[ $? = 0 ] && ok "a project with no Swift/Kotlin/Java/TS is N/A, not CANNOT EVALUATE" \
+           || bad "a project with no Swift/Kotlin/Java/TS is N/A, not CANNOT EVALUATE" "it must not block a docs-only project"
+assert_has "$TMP/out" 'not the same as a clean sweep' "...and says so rather than implying it swept clean"
+node "$HERE/silent-fallback-scan.mjs" "$TMP/definitely-not-a-real-root" >/dev/null 2>&1
+[ $? = 2 ] && ok "...while a root that does not exist is still CANNOT EVALUATE" \
+           || bad "...while a root that does not exist is still CANNOT EVALUATE"
+
+grep -q 'silent-fallback-scan' "$HERE/ship-gate.sh" \
+  && ok "...and the ship gate actually runs it" \
+  || bad "...and the ship gate actually runs it"
+
+# --- every shipped script has a caller ----------------------------------------------------------
+#
+# FOUND BY GREPPING, 2026-08-06, and it is the largest single omission this repo has produced:
+# `foundation-conformance.mjs` — the TWELVE INVARIANTS, the instrument that decides whether the
+# foundation holds, committed RED on purpose so "we fixed it" would be falsifiable — was referenced
+# by no command, no agent, no skill and no workflow. It ran when a human remembered.
+#
+# That is this repository's governing sentence failing on its own most important check, and it is
+# the same omission that kept the assertion suite outside CI until Phase 6. Four more were orphaned
+# beside it: orchestrator, release-candidate, schema-registry, evidence-check — every one built,
+# tested, and invoked by nothing.
+#
+# A capability nothing invokes is a capability that does not exist. This makes that a rule rather
+# than something a reviewer might notice.
+#
+# EXEMPT, with reasons rather than a bare list:
+#   test.sh, mutate.sh   the harness itself; being run BY a human is the point
+#   lib/*                libraries, imported not invoked (this loop only walks top-level scripts)
+#   *-scan.mjs           detectors composed by ship-gate.sh, which IS called — they are its limbs
+for f in "$HERE"/*.mjs "$HERE"/*.sh; do
+  n=$(basename "$f")
+  case "$n" in test.sh|mutate.sh) continue ;; esac
+  callers=$( { grep -rl -- "$n" "$HERE/../commands" "$HERE/../agents" "$HERE/../skills" \
+      "$HERE/../.github" 2>/dev/null; grep -rl -- "$n" "$HERE" 2>/dev/null \
+      | grep -v "^$HERE/$n$" | grep -v "test.sh$" | grep -v "mutate.sh$"; } | wc -l | tr -d ' ')
+  [ "${callers:-0}" -gt 0 ] \
+    && ok "$n is invoked by something other than the test harness" \
+    || bad "$n is invoked by something other than the test harness" \
+           "built, tested, and called by nothing — a capability nothing invokes does not exist"
+done
+
+# --- F8: "this is broken" is not "this cannot be checked here" ----------------------------------
+#
+# DR4-001's class, factored out. verify-done.sh could not tell a FAILING test from a test command
+# that never RAN, so a missing simulator looked exactly like a defect and developers were re-spawned
+# to fix bugs that did not exist. Each script then re-derived that judgement its own way.
+#
+# The classifier is CONSERVATIVE IN ONE DIRECTION ON PURPOSE: an unrecognised failure is a REAL
+# failure, never an environment problem. The inverse error is the dangerous one — a genuine defect
+# reported as "your toolchain is missing" is a defect nobody investigates.
+node -e '
+import("'"$HERE"'/lib/environment.mjs").then(({ classify }) => {
+  const cases = [
+    [{ status: 0, output: "" }, "ok", 0],
+    [{ status: 127, output: "" }, "environment", 2],
+    [{ status: 126, output: "" }, "environment", 2],
+    [{ status: null, output: "" }, "environment", 2],
+    [{ status: 1, output: "xcodebuild: command not found" }, "environment", 2],
+    [{ status: 1, output: "xcode-select: error: tool not installed" }, "environment", 2],
+    [{ status: 1, output: "adb: no devices/emulators found" }, "environment", 2],
+    // THE LOAD-BEARING NEGATIVES. Real failures that merely contain the word "not found" must NOT
+    // be laundered into CANNOT EVALUATE, or a broken build becomes an environment excuse.
+    [{ status: 1, output: "Test Case testLogin failed: expected 3 got 4" }, "failed", 1],
+    [{ status: 1, output: "error: module not found: MyFeature" }, "failed", 1],
+    [{ status: 65, output: "** TEST FAILED **" }, "failed", 1],
+  ];
+  for (const [input, kind, exit] of cases) {
+    const c = classify(input);
+    if (c.kind !== kind || c.exit !== exit) {
+      process.stderr.write(`${JSON.stringify(input)} -> ${c.kind}/${c.exit}, expected ${kind}/${exit}\n`);
+      process.exit(1);
+    }
+  }
+});
+' 2>"$TMP/err" \
+  && ok "the environment classifier separates a missing toolchain from a real failure" \
+  || bad "the environment classifier separates a missing toolchain from a real failure" "$(cat "$TMP/err")"
+
+# THE TWO CLASSIFIERS DISAGREE ON PURPOSE, AND THAT MUST STAY TRUE.
+#
+# verify-done.sh has a third stage lib/environment.mjs does not: positive evidence that a suite
+# actually RAN. Its default for unrecognised output is therefore the OPPOSITE — cannot-evaluate,
+# not failure — because it answers "may I believe this DONE claim?", where silence is not proof.
+#
+# Pinned because the obvious tidy-up is to "unify the duplicate", and doing so would turn "no
+# evidence anything ran" into "real failure": DR4-001 reintroduced by a refactor that looks like
+# removing duplication. This assertion exists to make that refactor go red.
+grep -q 'no evidence that a test suite ran at all' "$HERE/verify-done.sh" \
+  && ok "verify-done.sh keeps its stricter third stage — output with no sign a suite ran is CANNOT EVALUATE" \
+  || bad "verify-done.sh keeps its stricter third stage — output with no sign a suite ran is CANNOT EVALUATE" \
+         "if this was refactored onto lib/environment.mjs, DR4-001 is back: silence now reads as a real failure"
+grep -q 'DELIBERATELY DISAGREES' "$HERE/lib/environment.mjs" \
+  && ok "...and lib/environment.mjs records why the two must not be merged" \
+  || bad "...and lib/environment.mjs records why the two must not be merged"
+
+# --- F6: the toolchain is pinned before the build, not discovered when it breaks ----------------
+#
+# R10: AGP/Kotlin/KSP incompatibility broke the build in two different fixtures, in two dry runs.
+# Both times the toolchain was found to be wrong halfway through a sprint, by an agent who then had
+# to diagnose someone else's environment.
+PPD="$TMP/project-profile"; rm -rf "$PPD"; mkdir -p "$PPD/docs/team"
+PPC() { ( cd "$PPD" && node "$HERE/project-profile.mjs" "$@" ); }
+
+PPC check >"$TMP/out" 2>&1
+[ $? = 2 ] && ok "no project profile is CANNOT EVALUATE — the toolchain is UNKNOWN, not defaulted" \
+           || bad "no project profile is CANNOT EVALUATE — the toolchain is UNKNOWN, not defaulted"
+assert_has "$TMP/out" 'not the' "...and it says so rather than implying defaults are fine"
+
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo fast","full":"echo full"}}\n' \
+  > "$PPD/docs/team/project-profile.json"
+PPC check >/dev/null 2>&1
+[ $? = 0 ] && ok "a profile whose declared tool is present at its declared version is CLEAR" \
+           || bad "a profile whose declared tool is present at its declared version is CLEAR"
+
+# A WRONG VERSION IS BLOCKED (1), AN ABSENT TOOL IS CANNOT EVALUATE (2). Collapsing these is the
+# whole defect: one means fix your machine, the other means this project will not build correctly.
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v0.1."}],"test":{"fast":"echo f","full":"echo F"}}\n' \
+  > "$PPD/docs/team/project-profile.json"
+PPC check >/dev/null 2>&1
+[ $? = 1 ] && ok "...a declared tool at the WRONG version is BLOCKED (1), not cannot-evaluate" \
+           || bad "...a declared tool at the WRONG version is BLOCKED (1), not cannot-evaluate"
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"definitely-not-a-real-tool-xyz","args":[],"expect":"1"}],"test":{"fast":"echo f","full":"echo F"}}\n' \
+  > "$PPD/docs/team/project-profile.json"
+PPC check >/dev/null 2>&1
+[ $? = 2 ] && ok "...while an ABSENT tool is CANNOT EVALUATE (2) — nothing could be compared" \
+           || bad "...while an ABSENT tool is CANNOT EVALUATE (2) — nothing could be compared"
+
+# test.fast / test.full: the split that stops every ticket paying for the whole matrix.
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"full":"echo FULL"}}\n' \
+  > "$PPD/docs/team/project-profile.json"
+PPC test-command --scope full >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'echo FULL' "test-command --scope full prints the declared command"
+PPC test-command --scope fast >/dev/null 2>&1
+[ $? = 2 ] && ok "...and an UNDECLARED scope is exit 2 with nothing substituted for it" \
+           || bad "...and an UNDECLARED scope is exit 2 with nothing substituted for it"
+
+# THE SPLIT IS ONLY WORTH ANYTHING ONCE THE LOOP CALLS IT. verify-done.sh ran ONE command per
+# ticket — in practice the whole suite, every time, so a one-line ticket paid for the full matrix.
+# `fast`/`full` now resolve from the profile instead of being hardcoded by each caller.
+VDS="$TMP/verify-done-scope"; rm -rf "$VDS"; mkdir -p "$VDS/docs/team"
+( cd "$VDS" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo a > a.txt && git add -A && git commit -qm base \
+  && git checkout -q -b feat/x && echo b > b.txt && git add -A && git commit -qm work ) >/dev/null 2>&1
+
+# No profile: the scope cannot be resolved, so this is CANNOT EVALUATE. Nothing is substituted —
+# a default test command would make "the tests ran" true of a command nobody chose.
+( cd "$VDS" && sh "$HERE/verify-done.sh" feat/x main fast ) >"$TMP/out" 2>&1
+[ $? = 2 ] && ok "verify-done with scope 'fast' and no project profile is CANNOT EVALUATE" \
+           || bad "verify-done with scope 'fast' and no project profile is CANNOT EVALUATE" "$(cat "$TMP/out")"
+grep -q 'CANNOT EVALUATE' "$TMP/out" \
+  && ok "...and says so rather than falling back to a command nobody chose" \
+  || bad "...and says so rather than falling back to a command nobody chose"
+
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[],"test":{"fast":"echo 3 tests run: OK","full":"echo full"}}\n' \
+  > "$VDS/docs/team/project-profile.json"
+( cd "$VDS" && sh "$HERE/verify-done.sh" feat/x main fast ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" "resolved from the project profile" \
+  "...and with a profile it resolves the scope and SAYS which command it ran"
+assert_has "$TMP/out" 'VERIFIED' "...then verifies on the resolved command"
+
+# --- F7: every schema this studio writes is declared, and none has silently vanished ------------
+#
+# Thirty-one `name/vN` identifiers, one already at v2, and nothing listed them. The registry is
+# SCANNED from the tree rather than hand-maintained: a hand-kept list is a second source of truth
+# about the first one, drifting in exactly the way it exists to catch.
+assert_exit 0 "the schema registry agrees with the tree" node "$HERE/schema-registry.mjs" check
+
+# Mirror: an undeclared schema must be found. Proven by removing one entry from a copy.
+SRD="$TMP/schema-registry"; rm -rf "$SRD"; mkdir -p "$SRD/docs/team/x" "$SRD/scripts"
+cp "$HERE"/*.mjs "$SRD/scripts/" 2>/dev/null
+mkdir -p "$SRD/scripts/lib" && cp "$HERE"/lib/*.mjs "$SRD/scripts/lib/" 2>/dev/null
+node -e '
+const fs = require("fs");
+const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+delete r.schemas["board-event/v1"];
+fs.writeFileSync(process.argv[2], JSON.stringify(r));
+' "$HERE/../docs/team/schema-registry.json" "$SRD/docs/team/schema-registry.json"
+( cd "$SRD" && node "$HERE/schema-registry.mjs" check --root "$SRD" ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "...and an undeclared schema is reported as drift" \
+           || bad "...and an undeclared schema is reported as drift" "$(cat "$TMP/out")"
+assert_has "$TMP/out" 'UNDECLARED  board-event/v1' "...naming the schema and who writes it"
+
+# --- F24: the ten engineering rules, ratified where they can be found --------------------------
+#
+# They lived only inside a dry-run report — the exact shape this repo keeps proving is not a rule.
+# Each rule must name its enforcing mechanism OR say it has none; a rule listed as enforced with
+# nothing enforcing it is the "rule that cannot fail" pattern, in the rules file.
+RULES="$HERE/../docs/25-engineering-rules.md"
+[ -f "$RULES" ] && ok "the ten engineering rules have a canonical home outside a dry-run report" \
+               || bad "the ten engineering rules have a canonical home outside a dry-run report"
+for _n in 1 2 3 4 5 6 7 8 9 10; do
+  grep -qE "^\| $_n \|" "$RULES" || { bad "engineering rule $_n is listed"; break; }
+done
+grep -cE '^\| [0-9]+ \|' "$RULES" | grep -qx 10 \
+  && ok "...all ten of them, no more and no fewer" \
+  || bad "...all ten of them, no more and no fewer" "$(grep -cE '^\| [0-9]+ \|' "$RULES") rows"
+grep -q 'No mechanism' "$RULES" \
+  && ok "...and rules with no enforcing mechanism say so rather than claiming a checkmark" \
+  || bad "...and rules with no enforcing mechanism say so rather than claiming a checkmark"
+
+# --- F17: the artifact you upload, bound to the commit that passed ------------------------------
+#
+# R1, the strongest recurrence in the corpus: "no release-candidate aggregate; /app-ship is a bag of
+# gates, not a submission pipeline." 4 of 6 dry runs, scored 4/10 twice, THE ONLY DIMENSION THAT
+# NEVER MOVED. It never moved because every previous pass added another gate, and the missing thing
+# was never a gate — it is the SUBJECT the gates are about.
+#
+# Concretely: readiness is computed about a COMMIT (gates record subject.head, staleness compares
+# it). Nothing recorded the BINARY. So an .ipa built from one commit could be uploaded while the
+# gates passed on another, and no mechanism here noticed. "Readiness: PASS" was a true statement
+# about source and silent about the file a human hands to Apple.
+RCD="$TMP/release-candidate"; rm -rf "$RCD"; mkdir -p "$RCD/build"
+( cd "$RCD" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && printf 'BINARY' > build/app.ipa && echo v1 > a.txt && git add -A && git commit -qm one ) >/dev/null 2>&1
+# A FUNCTION, NOT A STRING. `RCC="node $HERE/release-candidate.mjs"` word-splits: this repository's
+# own path contains spaces ("Mobify Studio Apps"), so the unquoted expansion passed "Studio" as the
+# script name and every invocation failed silently into the fixture's error path. Six assertions
+# went red for a reason that had nothing to do with the code under test.
+RCC() { node "$HERE/release-candidate.mjs" "$@"; }
+
+# NO RECORD IS NOT A PASS. The default state of a project that has never recorded an artifact must
+# be "what would be uploaded is UNKNOWN", never silence — an absent gate that prints nothing is
+# indistinguishable from a clean one.
+( cd "$RCD" && node "$HERE/readiness.mjs" ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'no build artifact has been recorded' \
+  "with no artifact recorded, readiness says what would be uploaded is UNKNOWN"
+grep -q 'PASS *artifact' "$TMP/out" \
+  && bad "...and the artifact gate does not read PASS before anything was recorded" \
+  || ok "...and the artifact gate does not read PASS before anything was recorded"
+
+( cd "$RCD" && RCC record --artifact build/nothing-here.ipa ) >/dev/null 2>&1
+[ $? = 2 ] && ok "recording an artifact that does not exist is CANNOT EVALUATE (2), not a refusal" \
+           || bad "recording an artifact that does not exist is CANNOT EVALUATE (2), not a refusal"
+
+( cd "$RCD" && RCC record --artifact build/app.ipa --platform ios --variant release --by release-manager ) >/dev/null 2>&1
+( cd "$RCD" && node "$HERE/readiness.mjs" ) >"$TMP/out" 2>&1
+grep -qE 'PASS +artifact' "$TMP/out" \
+  && ok "a clean-tree artifact recorded against HEAD passes the artifact gate" \
+  || bad "a clean-tree artifact recorded against HEAD passes the artifact gate" "$(grep artifact "$TMP/out")"
+
+# THE BINDING IS THE POINT. A file swapped after it was bound is BLOCKED — not stale, not a warning.
+cp "$RCD/build/app.ipa" "$TMP/app.ipa.orig"
+printf 'TAMPERED' > "$RCD/build/app.ipa"
+( cd "$RCD" && node "$HERE/readiness.mjs" ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'no longer hashes to what was recorded' \
+  "an artifact changed after binding is BLOCKED, naming both hashes"
+( cd "$RCD" && RCC verify ) >/dev/null 2>&1
+[ $? = 1 ] && ok "...and verify exits 1 on the changed file" || bad "...and verify exits 1 on the changed file"
+cp "$TMP/app.ipa.orig" "$RCD/build/app.ipa"
+
+# A COMMIT THAT MOVED ON. The gates and the binary are now about different source, which is exactly
+# the defect this whole file exists to make visible. STALE, never PASS.
+( cd "$RCD" && echo v2 > a.txt && git add -A && git commit -qm two ) >/dev/null 2>&1
+( cd "$RCD" && node "$HERE/readiness.mjs" ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'the gates and the binary are about different source' \
+  "an artifact built from an earlier commit is STALE once HEAD moves"
+
+# A DIRTY BUILD CANNOT BE REPRODUCED, and that is recorded rather than normalised away. Checked
+# before the commit comparison on purpose: "built from uncommitted work" is a stronger statement
+# than "built from an older commit", and the reader needs the stronger one.
+RCD2="$TMP/release-candidate-dirty"; rm -rf "$RCD2"; mkdir -p "$RCD2/build"
+( cd "$RCD2" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && printf 'BINARY' > build/app.ipa && echo v1 > a.txt && git add -A && git commit -qm one \
+  && echo uncommitted > a.txt ) >/dev/null 2>&1
+( cd "$RCD2" && RCC record --artifact build/app.ipa --platform ios ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'WORKING TREE WAS DIRTY' "recording from a dirty tree says so at record time"
+( cd "$RCD2" && node "$HERE/readiness.mjs" ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'cannot be reproduced from any commit' \
+  "...and readiness reads a dirty-built artifact as STALE, never PASS"
+
+# A REWRITTEN LEDGER IS CANNOT EVALUATE, NEVER AN EMPTY ONE. Treating a corrupt chain as "no
+# records" would turn tampering into a clean slate — the most useful possible outcome for whoever
+# tampered, and the reason every ledger here is chained rather than merely appended.
+sed -i.bak 's/"size":6/"size":9999/' "$RCD2/docs/team/release-candidates.jsonl"
+( cd "$RCD2" && RCC verify ) >"$TMP/out" 2>&1
+[ $? = 2 ] && ok "a rewritten release-candidate ledger is CANNOT EVALUATE" \
+           || bad "a rewritten release-candidate ledger is CANNOT EVALUATE" "$(cat "$TMP/out")"
+assert_has "$TMP/out" 'has been rewritten' "...and says the ledger was rewritten rather than reporting zero records"
+
+# The reducer stays the ONE reducer: the artifact gate folds into the same precedence as the rest,
+# rather than being reported beside the verdict where nobody has to act on it (I-11).
+( cd "$RCD2" && node "$HERE/readiness.mjs" --json ) >"$TMP/out" 2>&1
+node -e '
+const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+if (!s.gates.some((g) => g.gate === "artifact")) { process.stderr.write("artifact is not among the reduced gates\n"); process.exit(1); }
+' "$TMP/out" 2>"$TMP/err" \
+  && ok "the artifact gate is part of the one readiness reducer, not a fact printed beside it" \
+  || bad "the artifact gate is part of the one readiness reducer, not a fact printed beside it" "$(cat "$TMP/err")"
+
+# --- no role file may generate an approval command the CLI refuses ------------------------------
+#
+# R5, the recurrence the corpus calls "the generator is the defect": the templates emit documents
+# the validator rejects, and the author is blamed for the generator's output. Making --verdict
+# mandatory created a fresh instance of it IN THE SAME SESSION — `tech-manager.md` carried two
+# repair paths telling it to append `board.mjs move APP-NNN approved --by code-reviewer`, which the
+# CLI now refuses. An instruction file that hands an agent a command guaranteed to fail is worse
+# than a missing instruction: the agent will assume it did something wrong.
+#
+# Checked mechanically because the set of files naming this command will grow, and the next one to
+# grow it will not remember this paragraph.
+for f in "$HERE"/../agents/*.md "$HERE"/../commands/*.md; do
+  # Only the lines that actually INVOKE the CLI, not prose mentioning the word "approved" — and not
+  # the `merged` gate's explanation of what it refuses.
+  if grep -qE 'board\.mjs"? move [A-Za-z0-9-]+ (approved|changes) ' "$f" 2>/dev/null; then
+    grep -q -- '--verdict' "$f" \
+      && ok "$(basename "$f") names an approval command and also names --verdict" \
+      || bad "$(basename "$f") names an approval command but never --verdict" \
+             "the CLI refuses it; this file hands an agent a command that cannot succeed"
+  fi
+done
+
+# --- an extra positional is refused, never discarded --------------------------------------------
+#
+# `board.mjs add APP-001 "Foundation"` — the obvious spelling — recorded `title: ""` and exited 0,
+# because the title is `--title` and the extra positional went where nothing read it. The Title
+# column then rendered `—` forever. This is the quiet half of the argument-injection class already
+# closed in VALUE_FLAGS: there a value was read as a flag, here it was read as nothing at all, and
+# both end with the CLI reporting success for an instruction it did not carry out.
+#
+# docs/RESUME.md's standing probe — in the section headed "the one probe that must never regress" —
+# used the broken spelling for weeks.
+POSA="$TMP/positional"; mkdir -p "$POSA/docs"
+( cd "$POSA" && node "$BD" add APP-001 "Foundation" --by tech-manager ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "an extra positional on add is refused, not silently discarded" \
+           || bad "an extra positional on add is refused, not silently discarded" "$(cat "$TMP/out")"
+assert_has "$TMP/out" 'Ignored: "Foundation"' "...and the refusal quotes the argument that would have been dropped"
+( cd "$POSA" && node "$BD" add APP-001 --title Foundation --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+( cd "$POSA" && node "$BD" show APP-001 --json ) 2>/dev/null | grep -q '"title": "Foundation"' \
+  && ok "...while the named form records the title it was given" \
+  || bad "...while the named form records the title it was given"
+( cd "$POSA" && node "$BD" move APP-001 claimed --by ios-developer ) >/dev/null 2>&1
+[ $? = 0 ] && ok "...and commands that legitimately take two positionals still work" \
+           || bad "...and commands that legitimately take two positionals still work"
+
+# --- the counts in HANDBOOK.md are checked against the tree -------------------------------------
+#
+# metadata-check guarded roles, skills and commands, so those stayed honest while the numbers beside
+# them rotted: the handbook advertised 52 scripts and 9 libs against an actual 57 and 14. F-08's
+# shape — a document whose narrative outlives the code — in the script whose job is to stop it.
+# ONLY THE PATHS metadata-check READS ARE COPIED. The first version was `cp -R "$HERE/.."`, which
+# drags in .git and the gitignored dry-runs/ tree — hundreds of megabytes, per suite run, to mutate
+# one line of one Markdown file. A regression that makes the suite slower makes the suite get run
+# less, which is a strange way to defend a rule about running things.
+MDC="$TMP/metadata-drift/repo"; rm -rf "$TMP/metadata-drift"
+mkdir -p "$MDC/docs"
+cp -R "$HERE/../agents" "$HERE/../skills" "$HERE/../commands" "$HERE/../.claude-plugin" "$MDC/" 2>/dev/null
+mkdir -p "$MDC/scripts/lib"
+cp "$HERE"/*.mjs "$HERE"/*.sh "$MDC/scripts/" 2>/dev/null
+cp "$HERE"/lib/*.mjs "$MDC/scripts/lib/" 2>/dev/null
+cp "$HERE/../README.md" "$HERE/../CHANGELOG.md" "$MDC/" 2>/dev/null
+cp "$HERE/../docs/HANDBOOK.md" "$MDC/docs/" 2>/dev/null
+sed -i.bak 's/[0-9][0-9]* top-level scripts/999 top-level scripts/' "$MDC/docs/HANDBOOK.md" 2>/dev/null
+( cd "$MDC" && node scripts/metadata-check.mjs ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "a wrong script count in HANDBOOK.md fails metadata-check" \
+           || bad "a wrong script count in HANDBOOK.md fails metadata-check" "$(cat "$TMP/out")"
+
+# --- review-verdict/v1: the output contract for a review gate ----------------------------------
+#
+# `team-doctor` enforces an output contract on the fourteen roles that OWN tickets. The roles that
+# JUDGE were in neither tier, so nothing checked what a review returns — measured: `board.mjs move
+# APP-001 approved --by code-reviewer` succeeded with no document, no scope and no evidence. The
+# approval was a WORD. Meanwhile `agents/code-reviewer.md` mandates a `## Not checked` heading and
+# the ONLY assertion about it grepped the instruction file, which is the "rule whose only test is
+# that the rule is written down" class this repo exists to refuse.
+#
+# These bypass `bm` deliberately — bm supplies a valid verdict for the assertions whose subject is
+# elsewhere, and a probe that cannot see the requirement cannot prove the requirement exists.
+VD="$TMP/verdict"; mkdir -p "$VD/docs/53-reviews"
+vd_reset() {
+  rm -rf "$VD/docs"; mkdir -p "$VD/docs/53-reviews"
+  ( cd "$VD"
+    node "$BD" add V-001 --title t --owner ios-developer --by tech-manager
+    node "$BD" move V-001 claimed          --by ios-developer
+    node "$BD" move V-001 done_reported    --by ios-developer
+    node "$BD" move V-001 verified         --by tech-manager
+    node "$BD" move V-001 review_requested --by ios-developer ) >/dev/null 2>&1
+}
+
+vd_reset
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "approved with no --verdict is refused — an approval is a document, not a word" \
+           || bad "approved with no --verdict is refused — an approval is a document, not a word" "$(cat "$TMP/out")"
+
+vd_reset
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/absent.md ) >/dev/null 2>&1
+[ $? = 2 ] && ok "...and a verdict path that does not exist is CANNOT EVALUATE (2), not refused (1)" \
+           || bad "...and a verdict path that does not exist is CANNOT EVALUATE (2), not refused (1)"
+
+# THE HIGHEST-VALUE CATCH. A document concluding REQUEST CHANGES attached to an `approved` event is
+# a review whose outcome was inverted between the reviewer and the board. Nothing could see it
+# before, because nothing opened the document.
+vd_reset
+printf 'REVIEW VERDICT: REQUEST CHANGES\nScope: a..b\n\n## Not checked\nNothing.\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "...and a document saying REQUEST CHANGES cannot be appended as approved" \
+           || bad "...and a document saying REQUEST CHANGES cannot be appended as approved"
+assert_has "$TMP/out" 'disagree about the outcome' "...and the refusal says the two disagree, naming both"
+
+vd_reset
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "...and a verdict with no '## Not checked' section is refused" \
+           || bad "...and a verdict with no '## Not checked' section is refused"
+
+# Scope is what makes "review the diff, not the whole app" a recorded fact rather than an
+# instruction. A scope that does not resolve to a range is a scope nobody can check you against.
+vd_reset
+printf 'REVIEW VERDICT: APPROVE\n\n## Not checked\nNothing.\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >"$TMP/out" 2>&1
+[ $? = 1 ] && ok "...and a verdict with no 'Scope: <base>..<head>' is refused" \
+           || bad "...and a verdict with no 'Scope: <base>..<head>' is refused"
+vd_reset
+printf 'REVIEW VERDICT: APPROVE\nScope: the login screen\n\n## Not checked\nNothing.\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >/dev/null 2>&1
+[ $? = 1 ] && ok "...and prose in the Scope line is refused — a range, not a description" \
+           || bad "...and prose in the Scope line is refused — a range, not a description"
+
+vd_reset
+printf 'REVIEW VERDICT: APPROVE\nScope: abc1234..def5678\n\n## Not checked\n- 56dp measurement: no simulator here.\n' \
+  > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >/dev/null 2>&1
+[ $? = 0 ] && ok "a complete verdict is accepted" || bad "a complete verdict is accepted"
+node -e '
+const fs = require("fs");
+const lines = fs.readFileSync(process.argv[1], "utf8").trim().split("\n");
+const d = JSON.parse(lines[lines.length - 1]).detail || {};
+// Content-addressed for the same reason the approval evidence is: the event records WHICH document
+// was read, so editing the review afterwards is visible rather than silent.
+const missing = ["verdict", "verdict_path", "verdict_hash", "reviewed_scope"].filter((k) => !d[k]);
+if (missing.length) { process.stderr.write(`event detail is missing ${missing.join(" ")}\n`); process.exit(1); }
+if (d.reviewed_scope !== "abc1234..def5678") { process.stderr.write(`scope recorded as ${d.reviewed_scope}\n`); process.exit(1); }
+' "$VD/docs/31-board-events.jsonl" 2>"$TMP/err" \
+  && ok "...and the event records the verdict, its hash and the scope the reviewer claims to have read" \
+  || bad "...and the event records the verdict, its hash and the scope the reviewer claims to have read" "$(cat "$TMP/err")"
+
+# `changes` owes a document too. It is the one the developer is re-spawned against, so an
+# unpersisted one strands the retry with nothing to act on.
+vd_reset
+( cd "$VD" && node "$BD" move V-001 changes --by code-reviewer ) >/dev/null 2>&1
+[ $? = 1 ] && ok "changes owes a verdict document as much as approved does" \
+           || bad "changes owes a verdict document as much as approved does"
+vd_reset
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\n## Not checked\nNothing.\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 changes --by code-reviewer --verdict docs/53-reviews/v.md ) >/dev/null 2>&1
+[ $? = 1 ] && ok "...and an APPROVE document cannot be appended as changes either" \
+           || bad "...and an APPROVE document cannot be appended as changes either"
+
+# ORDERING. A caller who may not write this event at all must hear THAT, not be sent to write a
+# document for a ticket they were never allowed to approve.
+#
+# BOTH authority rules are probed, because the first version of this assertion used
+# `--by ios-developer` and greped for the CAPABILITY message — and ios-developer is V-001's OWNER,
+# so the older did-not-gate-your-own-work rule answered first and the assertion failed. The rule it
+# was written to check was never reached. That is this repo's own "name the layer you expected the
+# refusal from", firing on the person adding the gate; two roles, two messages, so neither can
+# stand in for the other.
+vd_reset
+( cd "$VD" && node "$BD" move V-001 approved --by ios-developer ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'does not gate its own work' \
+  "the owner rule is refused before the verdict requirement, so the message is actionable"
+vd_reset
+( cd "$VD" && node "$BD" move V-001 approved --by product-designer ) >"$TMP/out" 2>&1
+assert_has "$TMP/out" 'may not write' \
+  "...and so is the capability rule, for a role that is not the owner either"
+
+# The role file must carry the three parsed lines, or a reviewer reading it writes a document the
+# CLI rejects — the generator-is-the-defect failure (R5) in the review path.
+for _l in 'REVIEW VERDICT:' 'Scope: <base>..<head>' '## Not checked'; do
+  grep -q -- "$_l" "$HERE/../agents/code-reviewer.md" \
+    && ok "code-reviewer.md documents the parsed line: $_l" \
+    || bad "code-reviewer.md documents the parsed line: $_l"
+done
+grep -q -- '--verdict' "$HERE/../commands/app-build.md" \
+  && ok "...and /app-build's review step passes --verdict, not a --detail nothing opens" \
+  || bad "...and /app-build's review step passes --verdict, not a --detail nothing opens"
+
+node -e '
+const fs = require("fs");
+const raw = fs.readFileSync(process.argv[1], "utf8");
+// COMMENTS ARE STRIPPED FIRST. Without this the checker read its own explanation: the note in
+// board.mjs telling you to declare a new flag says "flags.X", and "X" was duly reported as an
+// undeclared value flag. A check that fails on prose is a check people delete.
+const src = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+const declared = new Set(
+  (src.match(/const VALUE_FLAGS = new Set\(\[([\s\S]*?)\]\)/) || [, ""])[1]
+    .match(/'"'"'([a-z-]+)'"'"'/g)?.map((s) => s.slice(1, -1)) || []
+);
+// The only flags legitimately absent: they are read as booleans and never carry a value.
+const BOOLEANS = new Set(["bind", "json"]);
+const read = new Set();
+for (const m of src.matchAll(/flags\.([a-zA-Z][a-zA-Z0-9]*)|flags\[.([a-z-]+).\]/g)) {
+  read.add(m[1] || m[2]);
+}
+const undeclared = [...read].filter((f) => !declared.has(f) && !BOOLEANS.has(f)).sort();
+if (undeclared.length) {
+  process.stderr.write(`undeclared value flag(s): ${undeclared.join(" ")}\n`);
+  process.exit(1);
+}
+' "$HERE/board.mjs" 2>"$TMP/err" \
+  && ok "every flag board.mjs reads is declared a value flag or a known boolean" \
+  || bad "every flag board.mjs reads is declared a value flag or a known boolean" "$(cat "$TMP/err")"
 
 # --- the renderer escaped `|`, the reader never unescaped it -----------------------------------
 # CELL wrote `\|`; splitRow did a naive .split('|'). A title with a pipe shifted every later column,
@@ -3617,7 +4934,7 @@ import("'"$HERE"'/lib/events.mjs").then(async (ev) => {
   if (bad.length) { console.error(bad.join("; ")); process.exit(1); }
 });' 2>"$TMP/pipecell.txt" \
   && ok "a title carrying | and a newline round-trips without shifting a column or forging a row" \
-  || bad "a title carrying | and a newline round-trips intact" "$(cat "$TMP/pipecell.txt")"
+  || bad "a title carrying | and a newline round-trips without shifting a column or forging a row" "$(cat "$TMP/pipecell.txt")"
 
 # --- IDs the doctor prints must be the IDs the CLI accepts --------------------------------------
 # board.mjs deliberately stopped upcasing whole ticket IDs (the convention is `BUG-001-fix`, and a
@@ -3645,7 +4962,7 @@ if (wrong.length) { console.error("upcased: " + wrong.join(", ")); process.exit(
 if (!ids.includes("BUG-001-fix")) { console.error("never named the ticket: " + ids.join(", ")); process.exit(1); }
 ' "$TMP/idcase.json" 2>"$TMP/idcase.txt" \
   && ok "board-doctor reports BUG-001-fix in the spelling the CLI accepts, not BUG-001-FIX" \
-  || bad "board-doctor reports BUG-001-fix in the spelling the CLI accepts" "$(cat "$TMP/idcase.txt")"
+  || bad "board-doctor reports BUG-001-fix in the spelling the CLI accepts, not BUG-001-FIX" "$(cat "$TMP/idcase.txt")"
 
 # --- a reconstructed approval read as a real one -------------------------------------------------
 # `board.mjs migrate` invents an approval for any row already sitting in qa/done, stamps it
@@ -3685,8 +5002,21 @@ process.exit([...j.anomalies, ...j.warnings].some((f) => /approval_inferred|done
 sh "$HERE/spawn-gate.sh" --dir >"$TMP/sg-dir.txt" 2>&1
 [ $? = 2 ] && [ -s "$TMP/sg-dir.txt" ] \
   && ok "spawn-gate --dir with no value says CANNOT EVALUATE instead of exiting silently" \
-  || bad "spawn-gate --dir with no value names its reason" "$(cat "$TMP/sg-dir.txt")"
+  || bad "spawn-gate --dir with no value says CANNOT EVALUATE instead of exiting silently" "$(cat "$TMP/sg-dir.txt")"
 assert_has "$TMP/sg-dir.txt" "CANNOT EVALUATE" "...in the same shape as every other exit-2 path here"
+
+# --- the usage text must name what the CLI actually takes ------------------------------------------
+#
+# The slot model moved from per-ticket to per-owner worktrees (OPS-005) and this file's own REFUSED
+# message already says "PASS OWNERS, NOT TICKETS" — but the usage COMMENT at the top of the file,
+# and the zero-args error path, still said `<TICKET-ID>` after that move, and nobody had actually
+# called the CLI bare since. Caught by an adversarial re-review running it for real, not by reading
+# the comment.
+sh "$HERE/spawn-gate.sh" >"$TMP/sg-noargs.txt" 2>&1
+assert_has "$TMP/sg-noargs.txt" "OWNER" "the zero-args usage text names an OWNER, not a ticket"
+grep -q "TICKET-ID" "$HERE/spawn-gate.sh" \
+  && bad "no stale TICKET-ID wording survives anywhere in the file" "$(grep -n TICKET-ID "$HERE/spawn-gate.sh")" \
+  || ok "no stale TICKET-ID wording survives anywhere in the file"
 
 # --- a scheme name was matched as a REGEX --------------------------------------------------------
 # `grep -qx -- "$SCHEME_OPT"` made `--scheme '.*'` match any line, so runtime-gate accepted a scheme
@@ -3694,7 +5024,7 @@ assert_has "$TMP/sg-dir.txt" "CANNOT EVALUATE" "...in the same shape as every ot
 # artifact, in the check written to prevent exactly that.
 grep -q 'grep -qxF' "$HERE/runtime-gate.sh" \
   && ok "runtime-gate compares the scheme name literally (-F), not as a pattern" \
-  || bad "runtime-gate compares the scheme name literally (-F)"
+  || bad "runtime-gate compares the scheme name literally (-F), not as a pattern"
 printf 'App\nDemo\n' > "$TMP/schemes.txt"
 grep -qxF -- '.*' "$TMP/schemes.txt" \
   && bad "a regex metacharacter no longer matches every scheme" \
@@ -3710,7 +5040,7 @@ CHK="$HERE/../.github/workflows/checks.yml"
 UNBOUND=$(grep -nE "grep -qE '\^(name|description|tools):[^|]*\" ?\"?\\\$f\"" "$CHK" || true)
 [ -z "$UNBOUND" ] \
   && ok "every frontmatter grep in checks.yml reads the frontmatter block, never the whole file" \
-  || bad "every frontmatter grep in checks.yml reads the frontmatter block" "$UNBOUND"
+  || bad "every frontmatter grep in checks.yml reads the frontmatter block, never the whole file" "$UNBOUND"
 # ...and the extractor those greps pipe through is executed here, on a file whose BODY carries the
 # very lines the unbounded version accepted.
 FMPROBE="$TMP/fmprobe.md"
@@ -3729,7 +5059,7 @@ echo "the loop's own documentation"
 CR="$HERE/../agents/code-reviewer.md"
 grep -q 'board.mjs" move APP-NNN approved --by code-reviewer' "$CR" \
   && ok "code-reviewer records its verdict with board.mjs, the only writer of the board" \
-  || bad "code-reviewer records its verdict with board.mjs"
+  || bad "code-reviewer records its verdict with board.mjs, the only writer of the board"
 grep -qE '^- (When you start|On approve|On request-changes): append' "$CR" \
   && bad "code-reviewer no longer instructs a hand-append to a GENERATED file" \
   || ok "code-reviewer no longer instructs a hand-append to a GENERATED file"
@@ -3786,7 +5116,7 @@ grep -q 'docs/54-evidence/' "$QA" \
 PO="$HERE/../skills/parallel-orchestrator/SKILL.md"
 grep -q 'verified_static' "$PO" \
   && ok "parallel-orchestrator names the third verify-done outcome (DR4-002's fix, where the loop reads it)" \
-  || bad "parallel-orchestrator names the third verify-done outcome"
+  || bad "parallel-orchestrator names the third verify-done outcome (DR4-002's fix, where the loop reads it)"
 grep -q 'CANNOT EVALUATE' "$PO" \
   && ok "...and the exit-2 state by name" || bad "...and the exit-2 state by name"
 grep -q 'verify-done.sh" <branch> main' "$PO" \
@@ -3802,7 +5132,7 @@ grep -q 'verify-done.sh" feat/APP-001-login main' "$BD" \
 
 grep -q 'verified_static' "$HERE/../agents/tech-manager.md" \
   && ok "tech-manager's event list carries verified_static — the role instructed to append it" \
-  || bad "tech-manager's event list carries verified_static"
+  || bad "tech-manager's event list carries verified_static — the role instructed to append it"
 grep -q 'verified_static' "$HERE/../skills/sprint-planner/SKILL.md" \
   && ok "...and so does sprint-planner's" || bad "...and so does sprint-planner's"
 
@@ -4016,7 +5346,7 @@ assert_exit 1 "...but the identical text in docs/60-releases.md still does" \
 # written, and a graph validator is exactly the kind of tool that grows its own board regex.
 grep -q "from './lib/board.mjs'" "$TR" \
   && ok "trace reads the board through lib/board.mjs and not a second regex" \
-  || bad "trace reads the board through lib/board.mjs"
+  || bad "trace reads the board through lib/board.mjs and not a second regex"
 
 # The third state, published where the agents read it — a vocabulary trace.mjs enforces and the
 # skill no longer states is a rule enforcing itself.
@@ -4036,7 +5366,7 @@ echo "product-validator (independence, enforced in the doc graph)"
 grep -q '^name: product-validator' "$HERE/../agents/product-validator.md" \
   && ok "product-validator exists as a role" || bad "product-validator exists as a role"
 grep -q 'INTENT: ALIGNED' "$HERE/../agents/product-validator.md" \
-  && ok "...with the three-state verdict the gates read" || bad "...with the three-state verdict"
+  && ok "...with the three-state verdict the gates read" || bad "...with the three-state verdict the gates read"
 grep -q 'product-validator' "$HERE/../skills/role-activation/SKILL.md" \
   && ok "...and a row in the activation matrix" || bad "...and a row in the activation matrix"
 
@@ -4573,7 +5903,7 @@ assert_exit 2 "a non-numeric --sample is refused"    sh "$MUT" --sample notanumb
 awk '/^CATALOGUE$/ { p = 0 } p { print } /<<.CATALOGUE.$/ { p = 1 }' "$MUT" > "$TMP/cat.txt"
 CAT_N=$(grep -c . "$TMP/cat.txt")
 [ "$CAT_N" -ge 10 ] && ok "the catalogue parses ($CAT_N mutations)" \
-                    || bad "the catalogue parses" "found $CAT_N entries — the here-doc markers moved"
+                    || bad "the catalogue parses ($CAT_N mutations)" "found $CAT_N entries — the here-doc markers moved"
 
 # APP_TEAM_MUTATING is set by mutate.sh, and only by mutate.sh. Under it, one anchor in this tree
 # has been deliberately replaced, so this check would fail for EVERY mutation — turning the whole
@@ -4794,7 +6124,7 @@ for m in "$HERE"/../eval/*/manifest.json; do
 done
 [ -z "$EVAL_STATUS_BAD" ] \
   && ok "every eval manifest's status is enumerated and agrees with whether its detector exists" \
-  || bad "every eval manifest's status agrees with whether its detector exists" "$EVAL_STATUS_BAD"
+  || bad "every eval manifest's status is enumerated and agrees with whether its detector exists" "$EVAL_STATUS_BAD"
 # A manifest naming a CI workflow must name one that exists — the crash-on-launch fixture pointed at
 # checks.yml after the job moved to runtime-gate.yml, so its stated proof was unfollowable.
 #
@@ -4855,7 +6185,7 @@ BADIMPORT=$(grep -rnE "^[[:space:]]*import.*from[[:space:]]+['\"][^.]" "$HERE" -
   | grep -vE "from[[:space:]]+['\"]node:" || true)
 [ -z "$BADIMPORT" ] \
   && ok "no script under scripts/ imports a package — every import is node: or relative" \
-  || bad "no script under scripts/ imports a package" "$BADIMPORT"
+  || bad "no script under scripts/ imports a package — every import is node: or relative" "$BADIMPORT"
 # A MENTION of control-room in a comment is fine and useful; a code path INTO it is not. Match the
 # forms that actually reach the directory — an import, a require, or a path handed to a spawn.
 CRDEP=$( { grep -rnE "(import|require|from|execFile|spawn|exec)[^#]*['\"][^'\"]*control-room/" "$HERE" 2>/dev/null; \
@@ -4929,7 +6259,7 @@ assert_has "$RESP" "is not legal on APP-003" "a CLI refusal comes back VERBATIM 
 assert_has "$RESP" '"exitCode":1' "...with the exit code the CLI actually returned"
 cmp -s "$TMP/cr-log-before.jsonl" "$DFX/docs/31-board-events.jsonl" \
   && ok "...and the event log is byte-identical — the refusal was not advisory" \
-  || bad "...and the event log is byte-identical"
+  || bad "...and the event log is byte-identical — the refusal was not advisory"
 
 # And statically, the way the dashboard's is: there is NO file write in this directory at all. Not
 # one that is currently unreachable, not one behind a flag. A second writer of state is a second
@@ -4966,7 +6296,7 @@ import(process.argv[1]).then((m) => {
 });
 ' "$CR/state.mjs" "$CRBROKE" 2>"$TMP/cr-degrade.txt" \
   && ok "an unparseable log makes every log-derived section CANNOT EVALUATE, never clear" \
-  || bad "an unparseable log makes every log-derived section CANNOT EVALUATE" "$(cat "$TMP/cr-degrade.txt")"
+  || bad "an unparseable log makes every log-derived section CANNOT EVALUATE, never clear" "$(cat "$TMP/cr-degrade.txt")"
 
 # A project with nothing in it must produce NOT ONE `clear`. "Swept nothing, found nothing" is the
 # shape of every false all-clear this repo has shipped.
@@ -4980,7 +6310,7 @@ import(process.argv[1]).then((m) => {
 });
 ' "$CR/state.mjs" "$TMP/cr-empty" 2>"$TMP/cr-empty.txt" \
   && ok "an empty project produces no CLEAR anywhere — every screen says what it could not read" \
-  || bad "an empty project produces no CLEAR anywhere" "$(cat "$TMP/cr-empty.txt")"
+  || bad "an empty project produces no CLEAR anywhere — every screen says what it could not read" "$(cat "$TMP/cr-empty.txt")"
 
 # Dry run 5 (Android fixture, 2026-08-01): Mission Control's "Release readiness" panel could show
 # `clear` while `ship-gate.sh` itself had just returned BLOCKED, because the panel swept only
@@ -5066,14 +6396,14 @@ CRTESTED="$TMP/cr-readiness-tested"; mkdir -p "$CRTESTED"
     && node "$HERE/board.mjs" move RD-003 verified --by tech-manager ) >/dev/null 2>&1
 [ "$(readiness_state "$CRTESTED" engineering)" = "tested" ] \
   && ok "engineering readiness is tested (not production-ready) with a real verification but no recorded CLEAR ship-gate verdict" \
-  || bad "engineering readiness is tested" "got $(readiness_state "$CRTESTED" engineering)"
+  || bad "engineering readiness is tested (not production-ready) with a real verification but no recorded CLEAR ship-gate verdict" "got $(readiness_state "$CRTESTED" engineering)"
 
 mkdir -p "$CRTESTED/docs/team"
 printf '{"schema":"ship-gate-verdict/v1","result":"CLEAR","evaluated_at":"2026-08-03T00:00:00Z","blockers":[],"unknowns":[]}\n' \
   > "$CRTESTED/docs/team/ship-gate-verdict.json"
 [ "$(readiness_state "$CRTESTED" engineering)" = "production-ready" ] \
   && ok "engineering readiness reaches production-ready only once ship-gate.sh has recorded CLEAR" \
-  || bad "engineering readiness reaches production-ready" "got $(readiness_state "$CRTESTED" engineering)"
+  || bad "engineering readiness reaches production-ready only once ship-gate.sh has recorded CLEAR" "got $(readiness_state "$CRTESTED" engineering)"
 
 [ "$(readiness_state "$CRREADY" store)" = "not-ready" ] \
   && ok "store readiness is not-ready with no submission checklist" \
@@ -5084,7 +6414,7 @@ printf '### Submission checklist — 1.0.0\n\n- [x] Build signed\n- [ ] Store li
   > "$CRSTOREPART/docs/60-releases.md"
 [ "$(readiness_state "$CRSTOREPART" store)" = "founder-actions-required" ] \
   && ok "store readiness is founder-actions-required with an incomplete checklist" \
-  || bad "store readiness is founder-actions-required" "got $(readiness_state "$CRSTOREPART" store)"
+  || bad "store readiness is founder-actions-required with an incomplete checklist" "got $(readiness_state "$CRSTOREPART" store)"
 
 CRSTOREDONE="$TMP/cr-readiness-store-done"; mkdir -p "$CRSTOREDONE/docs"
 printf '### Submission checklist — 1.0.0\n\n- [x] Build signed\n- [x] Store listing copy\n' \
@@ -5106,7 +6436,7 @@ import(process.argv[1]).then((m) => {
 });
 ' "$CR/state.mjs" "$CRREADY" 2>"$TMP/cr-notcovered.txt" \
   && ok "readiness honestly lists product/compliance/ai-workflow as not covered, rather than fabricating a verdict" \
-  || bad "readiness honestly lists dimensions it cannot measure" "$(cat "$TMP/cr-notcovered.txt")"
+  || bad "readiness honestly lists product/compliance/ai-workflow as not covered, rather than fabricating a verdict" "$(cat "$TMP/cr-notcovered.txt")"
 
 # Mirror test: prove these assertions would catch a regression, by reverting the CLEAR-gate check to
 # always treat any real verification as production-ready and confirming the tested-vs-production-ready
@@ -5148,7 +6478,7 @@ import(process.argv[1]).then((m) => {
 });
 ' "$CR/state.mjs" "$TMP/cr-halfpop" 2>"$TMP/cr-half.txt" \
   && ok "one unreadable input of two makes the decisions verdict unavailable, never clear" \
-  || bad "one unreadable input of two makes the decisions verdict unavailable" "$(cat "$TMP/cr-half.txt")"
+  || bad "one unreadable input of two makes the decisions verdict unavailable, never clear" "$(cat "$TMP/cr-half.txt")"
 
 # The Founder Inbox answers ONE question — what is waiting on YOU. The predicate tested
 # `[q.from, ...q.to]`, so a question a founder ASKED (ceo → tech-manager) appeared in it even though
@@ -5204,7 +6534,7 @@ import(process.argv[1]).then((m) => {
 });
 ' "$HERE/lib/project.mjs" "$TMP/cr-roster" 2>"$TMP/cr-roster.txt" \
   && ok "a roster with no parseable rows is NOT ok — zero roles is not every role valid" \
-  || bad "a roster with no parseable rows is NOT ok" "$(cat "$TMP/cr-roster.txt")"
+  || bad "a roster with no parseable rows is NOT ok — zero roles is not every role valid" "$(cat "$TMP/cr-roster.txt")"
 
 # Every section, on every screen, always states its population. DR4-025: a clearance claim that does
 # not say what it looked at hides its own blind spot.
@@ -6008,7 +7338,13 @@ for E in claimed done_reported; do bm "$FCB" move T-001 $E --by ios-developer >/
 bm "$FCB" move T-001 verified --by verification-engineer >/dev/null 2>&1
 bm "$FCB" move T-001 review_requested --by ios-developer >/dev/null 2>&1
 bm "$FCB" move T-001 started --by code-reviewer >/dev/null 2>&1
-( cd "$FCB" && node "$BD" move T-001 approved --by code-reviewer --bind --evidence ev.txt --context ctx.txt ) >/dev/null 2>&1
+# THE VERDICT FILE LIVES OUTSIDE THE FIXTURE REPO, deliberately. This call bypasses `bm` (it needs
+# an exact argument list), so the verdict is explicit — and writing it inside $FCB would add an
+# untracked file to the very working tree whose `files` manifest the next assertion pins. A test
+# fixture that perturbs the thing it measures is the measurement, not the subject.
+printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/x\n\n## Not checked\nNothing.\n' > "$TMP/fcb-verdict.md"
+( cd "$FCB" && node "$BD" move T-001 approved --by code-reviewer --verdict "$TMP/fcb-verdict.md" \
+    --bind --evidence ev.txt --context ctx.txt ) >/dev/null 2>&1
 if grep -q '"base_source":"merge-base with main"' "$FCB/docs/31-board-events.jsonl" 2>/dev/null; then
   ok "an approval binds base..head, resolved from the integration branch"
 else bad "an approval binds base..head, resolved from the integration branch"; fi
@@ -6615,6 +7951,1015 @@ else bad "...recording WHICH key store signed it, so a file-signed era is never 
 if grep -rq "env-only-secret" "$FCS3/docs" 2>/dev/null; then
   bad "...and the secret never appears anywhere in the tree the agent reads"
 else ok "...and the secret never appears anywhere in the tree the agent reads"; fi
+
+
+# --- build-env: the caches leave the worktree (OPS-003) -------------------------------------------
+#
+# Every per-ticket build was cold. verify-done runs the test command either in an agent's slot or in
+# a `mktemp -d` worktree it then DELETES, so whatever warmed up died with the trap. Nothing pinned
+# GRADLE_USER_HOME, the SwiftPM cache or DerivedData anywhere durable. At the six-retry spawn budget
+# that is seven cold compiles for one ticket.
+BE="$HERE/build-env.sh"
+sh "$BE" --print > "$TMP/be.txt" 2>&1
+assert_has "$TMP/be.txt" "GRADLE_USER_HOME" "build-env exports GRADLE_USER_HOME (the one with a real effect, no cooperation needed)"
+assert_has "$TMP/be.txt" ".studio-cache" "...rooted at .studio-cache/, outside every .agent-wt worktree so a reaper cannot take it"
+
+# THE HONEST HALF. xcodebuild has no environment variable for DerivedData — it takes
+# -derivedDataPath and nothing else — so an exported STUDIO_DERIVED_DATA the project's own test
+# command ignores is a saving nobody made. Believing in it silently is the exact shape of defect
+# this repository keeps re-finding, so --check says per project whether it applies.
+assert_exit 2 "build-env --check FLAGS an xcodebuild command that does not pin DerivedData" \
+  sh "$BE" --check "xcodebuild test -scheme App"
+assert_exit 0 "...and passes one that does" \
+  sh "$BE" --check 'xcodebuild test -derivedDataPath "$STUDIO_DERIVED_DATA"'
+assert_exit 0 "...and says gradle/SwiftPM need no cooperation at all" \
+  sh "$BE" --check "./gradlew test"
+
+# --- verify-done --static: the per-ticket lane of the wave model (OPS-003) ------------------------
+#
+# --static exits 2, NOT 0, and that is the whole design. The tests genuinely have not run, so CANNOT
+# EVALUATE is the honest word and `verified_static` is the honest event — which already refuses
+# `closed` and already blocks ship-gate. There is no path from "nothing ran" to a green.
+VDS="$TMP/vds"; rm -rf "$VDS"; mkdir -p "$VDS"
+( cd "$VDS" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init && git checkout -q -b feat/APP-001 \
+  && echo hi > f.txt && git add f.txt && git commit -q -m APP-001 && git checkout -q main ) >/dev/null 2>&1
+
+( cd "$VDS" && sh "$HERE/verify-done.sh" --static feat/APP-001 main ) >"$TMP/vds.txt" 2>&1
+[ $? = 2 ] && ok "verify-done --static is exit 2 CANNOT EVALUATE, never a pass" \
+  || bad "verify-done --static is exit 2 CANNOT EVALUATE, never a pass" "$(head -2 "$TMP/vds.txt")"
+assert_has "$TMP/vds.txt" "deferred-to-wave" "...naming WHY the suite did not run, so it is not mistaken for a missing command"
+assert_has "$TMP/vds.txt" "verified_static" "...and routing to the event that refuses closed and blocks ship-gate"
+assert_has "$TMP/vds.txt" "wave-integrate" "...and naming what will actually run the suite"
+
+# A test command with --static would run per ticket, which is the cost --static removes. Refused
+# rather than silently ignored: a flag whose meaning quietly inverts is worse than no flag.
+assert_exit 2 "--static REFUSES a test command instead of running it anyway" \
+  sh -c 'cd "$1" && sh "$2/verify-done.sh" --static feat/APP-001 main "true"' sh "$VDS" "$HERE"
+assert_exit 2 "--static and --docs-only are mutually exclusive (one settles the tests, one defers them)" \
+  sh -c 'cd "$1" && sh "$2/verify-done.sh" --static --docs-only feat/APP-001 main' sh "$VDS" "$HERE"
+
+# --- worktree-reap: the leak was the failure paths (OPS-006) --------------------------------------
+#
+# Removal was specified in three places — /app-build 4a, tech-manager.md, agent-isolation — and all
+# three were the merge path. A rejected, blocked or crashed ticket kept its tree forever, with no
+# cap, no disk budget and no reaper. Measured in this repo, which has no app code: 12 worktrees,
+# 88 MB. An iOS project's worktrees also carry DerivedData.
+WR="$TMP/wreap"; rm -rf "$WR"; mkdir -p "$WR"
+( cd "$WR" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+( cd "$WR" && node "$HERE/board.mjs" add APP-001 --title live --owner ios-developer --by tech-manager \
+  && node "$HERE/board.mjs" add APP-002 --title dead --owner ios-developer --by tech-manager \
+  && node "$HERE/board.mjs" move APP-001 claimed --by ios-developer ) >/dev/null 2>&1
+( cd "$WR" && git worktree add -q .agent-wt/APP-001 -b feat/APP-001 && git worktree add -q .agent-wt/APP-002 -b feat/APP-002 ) >/dev/null 2>&1
+
+( cd "$WR" && node "$HERE/worktree-reap.mjs" --root . ) >"$TMP/wr.txt" 2>&1
+assert_has "$TMP/wr.txt" "LIVE     APP-001" "worktree-reap leaves a tree whose ticket is still in flight"
+assert_has "$TMP/wr.txt" "ORPHAN   APP-002" "...and names the one whose ticket is not — the failure-path leak nothing collected"
+
+# NEVER --force. `git worktree remove` refuses a dirty tree, and that refusal is the feature: this is
+# the same class of loss as DR4-027's `git stash`, where one command discarded 22 files of another
+# agent's in-progress work.
+echo scratch > "$WR/.agent-wt/APP-002/left-behind.txt"
+( cd "$WR" && node "$HERE/worktree-reap.mjs" --root . --apply ) >"$TMP/wr2.txt" 2>&1
+assert_has "$TMP/wr2.txt" "ORPHAN\*" "a DIRTY orphan is reported, not reclaimed"
+[ -d "$WR/.agent-wt/APP-002" ] && ok "...and the tree with uncommitted work is still there afterwards" \
+  || bad "...and the tree with uncommitted work is still there afterwards" "it was deleted"
+
+rm -f "$WR/.agent-wt/APP-002/left-behind.txt"
+( cd "$WR" && node "$HERE/worktree-reap.mjs" --root . --apply ) >"$TMP/wr3.txt" 2>&1
+[ -d "$WR/.agent-wt/APP-002" ] \
+  && bad "a CLEAN orphan is reclaimed by --apply" "still present" \
+  || ok "a CLEAN orphan is reclaimed by --apply"
+[ -d "$WR/.agent-wt/APP-001" ] && ok "...and the live one is untouched" \
+  || bad "...and the live one is untouched" "the reaper took a tree an agent may still be in"
+
+# The board is the authority on liveness, so the reaper cannot disagree with it. With no event log
+# there is no board, and nothing may be called an orphan — fail-safe, not fail-open.
+WRN="$TMP/wreap-nolog"; rm -rf "$WRN"; mkdir -p "$WRN"
+( cd "$WRN" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init && git worktree add -q .agent-wt/APP-009 -b feat/APP-009 ) >/dev/null 2>&1
+( cd "$WRN" && node "$HERE/worktree-reap.mjs" --root . --apply ) >"$TMP/wr4.txt" 2>&1
+[ -d "$WRN/.agent-wt/APP-009" ] \
+  && ok "with NO event log nothing is called an orphan — the reaper fails safe, never open" \
+  || bad "with NO event log nothing is called an orphan — the reaper fails safe, never open" "it deleted a tree it could not judge"
+
+# The ceiling is ON by default (5 GB). A ceiling that defaults to unlimited is a gate that never
+# fires, which is the shape this repo has been caught by before — the orphaned invariant suite, the
+# unreachable --driver, the detector nobody called.
+#
+# Sized against a real pool rather than an empty one: `0 > 0` is false, so a 0 MB fixture under a
+# 0 MB ceiling passes and the assertion proves nothing. Two megabytes of actual bytes is what makes
+# this branch reachable at all.
+dd if=/dev/zero of="$WRN/.agent-wt/APP-009/ballast.bin" bs=1024 count=2048 >/dev/null 2>&1
+assert_exit 1 "the disk ceiling BLOCKS when the pool exceeds it" \
+  sh -c 'cd "$1" && node "$2/worktree-reap.mjs" --root . --max-disk-mb 1' sh "$WRN" "$HERE"
+assert_exit 0 "...and clears under a ceiling the pool fits inside" \
+  sh -c 'cd "$1" && node "$2/worktree-reap.mjs" --root . --max-disk-mb 5000' sh "$WRN" "$HERE"
+
+# --- ci-status: the merge gate CI has always claimed (OPS-001) ------------------------------------
+#
+# knowledge/git-workflow.md said "a clean build + green tests is a hard merge gate" and nothing
+# implemented it: the merge gate reads a non-owner approval and nothing on the server. Grepping the
+# whole plugin for a CI-status read found two hits, both in repo-controls.sh, which only REPORTS.
+CIS="$TMP/cis"; rm -rf "$CIS"; mkdir -p "$CIS/docs" "$CIS/bin"
+( cd "$CIS" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf 'Integration branch: main\n' > "$CIS/docs/23-git-strategy.md"
+printf '#!/bin/sh\necho "no auth" >&2\nexit 1\n' > "$CIS/bin/gh"; chmod +x "$CIS/bin/gh"
+
+# UNARMED IS THE DEFAULT AND MUST NEVER DEADLOCK. A project with no gh, no remote or no CI at all is
+# ordinary. A gate that stops those is a gate its first user switches off — so without
+# requireCiGreen this reports and exits 0, loudly, rather than blocking.
+printf '{}\n' > "$CIS/.studio-policy.json"
+( cd "$CIS" && PATH="$CIS/bin:$PATH" node "$HERE/ci-status.mjs" --root . --base main ) >"$TMP/ci1.txt" 2>&1
+[ $? = 0 ] && ok "ci-status never blocks a project that has not armed requireCiGreen" \
+  || bad "ci-status never blocks a project that has not armed requireCiGreen" "$(head -3 "$TMP/ci1.txt")"
+assert_has "$TMP/ci1.txt" "CANNOT EVALUATE" "...while still SAYING it could not ask — exit 0 is not the same as green"
+assert_has "$TMP/ci1.txt" "ADVISORY ONLY" "...and naming the flag that would make it a gate"
+
+# Armed, the same unanswerable question is CANNOT EVALUATE and stops the round. "Nobody asked" and
+# "it is green" are different answers and only one of them is safe to build on.
+printf '{"requireCiGreen": true}\n' > "$CIS/.studio-policy.json"
+assert_exit 2 "armed, an unanswerable CI question is CANNOT EVALUATE — never a pass" \
+  sh -c 'cd "$1" && PATH="$1/bin:$PATH" node "$2/ci-status.mjs" --root . --base main' sh "$CIS" "$HERE"
+
+# --- register: the two trackers that fed the loop had no machine (OPS-004) ------------------------
+#
+# This studio tracks work in eleven places. docs/51-bugs.md and docs/81-findings.md were the only two
+# with no CLI, no vocabulary and no validator — and the only two that feed work back INTO the loop.
+# A bug or finding with no ticket is not a board row, so board-doctor, orchestrator round and
+# /app-build's exit check are all blind to it, and it is closed by being unmentioned.
+# tech-manager.md's own note: ~70 findings silently skipped while four review rounds reported nothing.
+RG="$TMP/reg"; rm -rf "$RG"; mkdir -p "$RG/docs"; printf '{}\n' > "$RG/.studio-policy.json"
+rg_() { ( cd "$RG" && node "$HERE/register.mjs" --root . "$@" ); }
+
+assert_exit 0 "register check is CLEAR on an empty register" rg_ check
+rg_ add BUG-001 --kind bug --title "the date picker selection is discarded" --severity S1 --by qa-engineer >/dev/null 2>&1
+assert_exit 1 "...and refuses the moment one item owes an answer" rg_ check
+
+# THE REFUSAL THAT DOES THE WORK. It is trivially easy to close a register by marking everything
+# DEFERRED; the reason field is what makes that visible to the next reader. Deferring is a decision,
+# and a decision has an author and a why.
+assert_exit 1 "DEFERRED with no --reason is REFUSED (a deferral without one is an omission)" \
+  rg_ status BUG-001 DEFERRED --by tech-manager
+# FIXED is a claim about the INTEGRATION BRANCH — tech-manager.md says so in prose. This is that
+# sentence as a refusal: name the ticket whose merge carried it, or there is nothing to check.
+assert_exit 1 "FIXED with no --ticket is REFUSED (nothing would be checkable against the board)" \
+  rg_ status BUG-001 FIXED --by tech-manager
+assert_exit 1 "a status outside the closed vocabulary is REFUSED, with the legal list" \
+  rg_ status BUG-001 done --by tech-manager
+assert_exit 1 "adding an ID twice is REFUSED — correct by appending, never by re-adding" \
+  rg_ add BUG-001 --kind bug --title "another go at the same id" --by qa-engineer
+
+rg_ status BUG-001 FIXED --by tech-manager --ticket APP-004 >/dev/null 2>&1
+assert_exit 0 "a terminal status with its evidence clears the register" rg_ check
+rg_ status BUG-001 DEFERRED --by tech-manager --reason "S3 in practice, queued to sprint 4" >/dev/null 2>&1
+assert_exit 0 "DEFERRED WITH a reason is terminal too — deferring is a fine decision, silence is not" rg_ check
+
+# import-bugs makes the Markdown a SOURCE rather than the register, through the same parseBugs
+# ship-gate.sh already trusts. One parser, not two that can disagree about what a bug row is.
+printf '| BUG-002 | APP-001 | **S2** | crashes on rotate |\n' > "$RG/docs/51-bugs.md"
+rg_ import-bugs --by qa-engineer >/dev/null 2>&1
+assert_exit 1 "import-bugs pulls docs/51-bugs.md in, and the imported row owes an answer" rg_ check
+rg_ show --json > "$TMP/reg-show.json" 2>&1
+assert_has "$TMP/reg-show.json" "crashes on rotate" "...importing the DESCRIPTION cell, not a re-print of the pipes around it"
+
+# --- worktree-slot: one tree per WRITER, which the ticket never was (OPS-005) ----------------------
+#
+# parallel-orchestrator step 2 batches by owner; step 3 tells each agent to use "its worktree path",
+# singular; agent-isolation demanded one worktree per TICKET. An ios-developer owning three tickets
+# was spawned once, given three trees, and told to stand in a path that did not exist. Both
+# resolutions were broken: one tree makes every branch carry its siblings' files (code-reviewer
+# check 9 rejects it), and one spawn per ticket throws away the batching step 2 exists for.
+WS="$TMP/wslot"; rm -rf "$WS"; mkdir -p "$WS/docs"
+( cd "$WS" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf '.agent-wt/\n' > .gitignore && git add .gitignore && git commit -qm gitignore \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf 'Integration branch: main\n' > "$WS/docs/23-git-strategy.md"
+ws_() { ( cd "$WS" && node "$HERE/worktree-slot.mjs" --root . "$@" ); }
+
+ws_ lease --owner ios-developer --tickets APP-001,APP-002 >"$TMP/ws1.txt" 2>&1
+[ -d "$WS/.agent-wt/ios-developer" ] \
+  && ok "a slot is leased per OWNER and holds all of that owner's tickets" \
+  || bad "a slot is leased per OWNER and holds all of that owner's tickets" "$(cat "$TMP/ws1.txt")"
+assert_has "$TMP/ws1.txt" "spawn-gate.sh ios-developer" "...and tells the caller to gate on OWNERS, which is what now has a tree each"
+
+# spawn-gate needs no change at all: it asks whether <dir>/<name> is a real worktree, and an owner
+# name is a name. That the existing gate accepts the new shape unmodified is the assertion.
+assert_exit 0 "spawn-gate accepts an owner-keyed slot with no modification to the gate itself" \
+  sh -c 'cd "$1" && sh "$2/spawn-gate.sh" ios-developer' sh "$WS" "$HERE"
+
+assert_exit 1 "a second wave into a slot still holding the first is REFUSED" \
+  ws_ lease --owner ios-developer --tickets APP-009
+assert_exit 1 "leasing past the pool size is REFUSED — that is the parallelism cap doing its job" \
+  ws_ lease --owner android-developer --tickets APP-003 --pool 1
+ws_ release --owner ios-developer >/dev/null 2>&1
+assert_exit 0 "...and releasing frees the slot for the next owner" \
+  ws_ lease --owner android-developer --tickets APP-003 --pool 1
+
+# A released lease leaves the TREE, and the reaper is what reclaims it — with its dirty check intact.
+( cd "$WS" && node "$HERE/worktree-reap.mjs" --root . ) >"$TMP/ws2.txt" 2>&1
+assert_has "$TMP/ws2.txt" "ios-developer" "a released slot's tree becomes the reaper's problem, not a silent leak"
+
+# --- worktree-slot: a dirty base tree is warned about, not silently forgotten (H9, 2026-08-09) -----
+#
+# `git worktree add` snapshots the last COMMIT, never the live working directory. A cpo wrote a new
+# requirement into the SRS/PRD and a tech-lead wrote its impl spec, both directly on the shared
+# tree, neither committed — and the worktree cut for the developer right after was missing both
+# edits entirely, because from git's point of view they did not exist yet. The developer correctly
+# BLOCKED on a ticket and spec it could not find, a real result from a real dry run, not staged.
+#
+# `docs/23-git-strategy.md` in this fixture has never actually been committed (written after the
+# initial empty commit, never staged) — a genuinely clean baseline needs it tracked first, or the
+# "clean" control case below is not actually clean.
+( cd "$WS" && git add docs/23-git-strategy.md && git commit -q -m "track git-strategy.md" ) >/dev/null 2>&1
+echo "uncommitted spec edit" >> "$WS/docs/23-git-strategy.md"
+ws_ lease --owner qa-engineer --tickets APP-777 >"$TMP/ws3.txt" 2>&1
+assert_has "$TMP/ws3.txt" "uncommitted path(s) before this lease" "leasing into a dirty base tree warns that the new worktree will not see it"
+assert_has "$TMP/ws3.txt" "LEASED" "...but still leases — this is advisory, a dirty tree is often unrelated to this lease"
+( cd "$WS" && git checkout -q -- docs/23-git-strategy.md ) >/dev/null 2>&1
+ws_ release --owner qa-engineer >/dev/null 2>&1
+ws_ lease --owner qa-engineer --tickets APP-777 >"$TMP/ws4.txt" 2>&1
+grep -q "uncommitted path" "$TMP/ws4.txt" \
+  && bad "...and a CLEAN base tree gets no such warning" "$(cat "$TMP/ws4.txt")" \
+  || ok "...and a CLEAN base tree gets no such warning"
+ws_ release --owner qa-engineer >/dev/null 2>&1
+
+# --- wave-integrate: merge once, test once, push once (OPS-002 / OPS-003 / OPS-008) ---------------
+#
+# The loop paid per TICKET for a signal only meaningful per WAVE: a cold build per DONE (seven for
+# one ticket at the retry ceiling), a push and therefore a CI run per merge (none of them read), and
+# a cold developer respawn for every merge conflict. /app-build step 5 already made this exact
+# argument about the runtime gate — "one app build per wave... the only place three
+# individually-approved tickets and no composition root is visible at all" — and then ran the
+# per-ticket builds anyway.
+WI="$TMP/wave"; rm -rf "$WI"; mkdir -p "$WI/docs/team" "$WI/docs/53-reviews"
+( cd "$WI" && git init -q -b main . && git config user.email t@t.t && git config user.name T ) >/dev/null 2>&1
+printf 'docs/\n' > "$WI/.gitignore"
+printf 'Integration branch: main\n' > "$WI/docs/23-git-strategy.md"
+printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"sh run-tests.sh","full":"sh run-tests.sh"}}\n' > "$WI/docs/team/project-profile.json"
+cat > "$WI/run-tests.sh" <<'RT'
+#!/bin/sh
+echo "3 tests run: 3 passing"
+for f in feature-*.txt; do [ -f "$f" ] || continue; grep -q OK "$f" || { echo "FAILED: assertion failed in $f"; exit 1; }; done
+exit 0
+RT
+( cd "$WI" && git add -A && git commit -q -m init ) >/dev/null 2>&1
+
+wave_mk() {  # <nnn> <OK|BAD>
+  ( cd "$WI" && git checkout -q -b "feat/APP-$1" main && echo "$2" > "feature-$1.txt" \
+    && git add "feature-$1.txt" && git commit -q -m "APP-$1" && git checkout -q main ) >/dev/null 2>&1
+}
+wave_drive() {  # <nnn> — walk a ticket to the merge gate, exactly as /app-build does
+  ( cd "$WI"
+    node "$HERE/board.mjs" add "APP-$1" --title "t$1" --owner ios-developer --by tech-manager
+    node "$HERE/board.mjs" move "APP-$1" claimed --by ios-developer
+    node "$HERE/board.mjs" move "APP-$1" done_reported --by ios-developer
+    node "$HERE/board.mjs" move "APP-$1" verified_static --by tech-manager --detail "deferred to wave"
+    node "$HERE/board.mjs" move "APP-$1" review_requested --by ios-developer --detail "-> code-reviewer"
+    printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-%s\n\n## Not checked\nNothing.\n' "$1" > "docs/53-reviews/APP-$1-cycle-0.md"
+    node "$HERE/board.mjs" move "APP-$1" approved --by code-reviewer --verdict "docs/53-reviews/APP-$1-cycle-0.md"
+    node "$HERE/board.mjs" move "APP-$1" merged --by tech-manager ) >/dev/null 2>&1
+}
+wave_mk 001 OK; wave_mk 002 OK; wave_drive 001; wave_drive 002
+
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --dry-run ) >"$TMP/wi0.txt" 2>&1
+assert_has "$TMP/wi0.txt" "APP-001" "wave-integrate --dry-run names the wave without touching anything"
+( cd "$WI" && git rev-parse --verify integration/wave-1 ) >/dev/null 2>&1 \
+  && bad "--dry-run creates no branch" "integration/wave-1 exists" \
+  || ok "--dry-run creates no branch"
+
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 1 ) >"$TMP/wi1.txt" 2>&1
+[ $? = 0 ] && ok "a clean wave merges and its suite runs GREEN — once, on the merged tree" \
+  || bad "a clean wave merges and its suite runs GREEN — once, on the merged tree" "$(tail -5 "$TMP/wi1.txt")"
+assert_has "$TMP/wi1.txt" "merged 2, conflicted 0" "...merging every gated branch in one pass"
+assert_has "$TMP/wi1.txt" "move APP-001 verified" "...and printing the upgrade the green earns per ticket"
+assert_has "$TMP/wi1.txt" "NOT PUSHED" "...pushing nothing without --push: one push per wave is a decision, not a side effect"
+
+# THE UPGRADE PATH IS REAL, NOT ADVICE. `verified` is legal from `qa` precisely so a ticket merged on
+# a STATIC verification can be raised once the suite finally runs (lib/events.mjs legalEvents). That
+# path existed and nothing had ever walked it; this is what walks it, with no new event and no
+# schema change.
+( cd "$WI" && node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "wave 1 full suite green" ) >"$TMP/wi-up.txt" 2>&1
+[ $? = 0 ] && ok "the wave's green upgrades verified_static to a real verified (no new event needed)" \
+  || bad "the wave's green upgrades verified_static to a real verified (no new event needed)" "$(cat "$TMP/wi-up.txt")"
+
+# A ticket whose branch breaks the merged tree fails the WAVE, and the wave names candidates from
+# the changed-file map rather than re-spawning everyone.
+wave_mk 003 BAD; wave_drive 003
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 2 ) >"$TMP/wi2.txt" 2>&1
+[ $? = 1 ] && ok "a wave whose merged tree fails its suite is exit 1 — the wave does not advance" \
+  || bad "a wave whose merged tree fails its suite is exit 1 — the wave does not advance" "$(tail -4 "$TMP/wi2.txt")"
+assert_has "$TMP/wi2.txt" "CANDIDATE tickets" "...naming candidates from the changed-file map"
+assert_has "$TMP/wi2.txt" "APP-003" "...and the candidate is the ticket that actually broke it"
+assert_has "$TMP/wi2.txt" "not a verdict" "...stated as a heuristic, because attributing by feel is the alternative"
+
+# A CONFLICT COSTS ITSELF, NOT THE WAVE. Per-ticket merging blocked on the first conflict and sent a
+# cold developer to rebase; here the other approved work still integrates.
+( cd "$WI" && git checkout -q -b feat/APP-004 main && echo left > shared.txt && git add shared.txt && git commit -q -m APP-004 \
+  && git checkout -q -b feat/APP-005 main && echo right > shared.txt && git add shared.txt && git commit -q -m APP-005 \
+  && git checkout -q main ) >/dev/null 2>&1
+wave_drive 004; wave_drive 005
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 3 ) >"$TMP/wi3.txt" 2>&1
+assert_has "$TMP/wi3.txt" "conflicted 1" "one conflicting branch is aborted and the rest of the wave still merges"
+assert_has "$TMP/wi3.txt" "CONFLICT APP-005" "...naming which ticket and which files"
+assert_has "$TMP/wi3.txt" "shared.txt" "...so tech-manager can read both sides instead of guessing"
+assert_has "$TMP/wi3.txt" "Nothing here picks a side" "...and the script never resolves it: ours/theirs unread is a silent lost edit"
+
+# Re-running the same wave number would merge on top of the previous result and report it as fresh.
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 3 ) >"$TMP/wi4.txt" 2>&1
+assert_has "$TMP/wi4.txt" "already exists" "re-running a wave number is refused rather than silently re-integrating"
+
+# --- Node's built-in test runner's TAP summary was invisible to the ran-evidence check -----------
+#
+# FOUND BY RUNNING A REAL WAVE (H7, 2026-08-08), against a genuine `node --test` project: the TAP
+# summary (`# tests N` / `# pass N` / `# fail N`, count AFTER the noun) matched none of the RAN
+# alternatives, which all expect the count BEFORE ("N tests ... pass/fail") — a wave that had
+# actually gone green reported CANNOT EVALUATE over evidence sitting in the very output being
+# scanned. verify-done.sh carried the identical regex-shape gap, found independently by the IC agent
+# working the ticket; both are fixed together.
+WIT="$TMP/wave-tap"; rm -rf "$WIT"; mkdir -p "$WIT/docs/team" "$WIT/docs/53-reviews"
+cat > "$WIT/docs/team/project-profile.json" <<'PPJSON'
+{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"echo '# tests 1'; echo '# pass 1'; echo '# fail 0'","full":"echo '# tests 1'; echo '# pass 1'; echo '# fail 0'"}}
+PPJSON
+( cd "$WIT" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf 'docs/\n' > .gitignore \
+  && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
+  && git add -A && git commit -q -m init \
+  && git checkout -q -b feat/APP-901 main && echo x > f.txt && git add f.txt && git commit -q -m APP-901 \
+  && git checkout -q main
+  node "$HERE/board.mjs" add APP-901 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-901 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-901 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-901 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-901 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-901\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-901-cycle-0.md
+  node "$HERE/board.mjs" move APP-901 approved --by code-reviewer --verdict docs/53-reviews/APP-901-cycle-0.md
+  node "$HERE/board.mjs" move APP-901 merged --by tech-manager ) >/dev/null 2>&1
+( cd "$WIT" && node "$HERE/wave-integrate.mjs" --root . --wave 1 ) >"$TMP/wit.txt" 2>&1
+[ $? = 0 ] && ok "a wave whose suite is Node's own \`node --test\` TAP summary is recognized as GREEN" \
+  || bad "a wave whose suite is Node's own \`node --test\` TAP summary is recognized as GREEN" "$(tail -8 "$TMP/wit.txt")"
+assert_has "$TMP/wit.txt" "WAVE RESULT: GREEN" "...not CANNOT EVALUATE over evidence already in the log"
+
+# FOUND BY RUNNING A REAL WAVE AGAIN (H9, 2026-08-09), same class, third test runner: AGP's
+# `connectedDebugAndroidTest` on a real emulator prints `Starting N tests on <device>` /
+# `Finished N tests on <device>`, then `BUILD SUCCESSFUL` — a real, passing instrumented Android
+# test run this gate still reported CANNOT EVALUATE for, over evidence sitting in its own log.
+WITA="$TMP/wave-agp"; rm -rf "$WITA"; mkdir -p "$WITA/docs/team" "$WITA/docs/53-reviews"
+cat > "$WITA/docs/team/project-profile.json" <<'PPJSON'
+{"schema":"project-profile/v1","platform":"android","toolchain":{},"test":{"fast":"printf 'Starting 1 tests on fake-avd\nFinished 1 tests on fake-avd\n\nBUILD SUCCESSFUL in 1s\n'","full":"printf 'Starting 1 tests on fake-avd\nFinished 1 tests on fake-avd\n\nBUILD SUCCESSFUL in 1s\n'"}}
+PPJSON
+( cd "$WITA" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf 'docs/\n' > .gitignore \
+  && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
+  && git add -A && git commit -q -m init \
+  && git checkout -q -b feat/APP-902 main && echo x > f.txt && git add f.txt && git commit -q -m APP-902 \
+  && git checkout -q main
+  node "$HERE/board.mjs" add APP-902 --title t --owner android-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-902 claimed --by android-developer
+  node "$HERE/board.mjs" move APP-902 done_reported --by android-developer
+  node "$HERE/board.mjs" move APP-902 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-902 review_requested --by android-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-902\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-902-cycle-0.md
+  node "$HERE/board.mjs" move APP-902 approved --by code-reviewer --verdict docs/53-reviews/APP-902-cycle-0.md
+  node "$HERE/board.mjs" move APP-902 merged --by tech-manager ) >/dev/null 2>&1
+( cd "$WITA" && node "$HERE/wave-integrate.mjs" --root . --wave 1 ) >"$TMP/wita.txt" 2>&1
+[ $? = 0 ] && ok "a wave whose suite is AGP's own connectedAndroidTest completion line is recognized as GREEN" \
+  || bad "a wave whose suite is AGP's own connectedAndroidTest completion line is recognized as GREEN" "$(tail -8 "$TMP/wita.txt")"
+assert_has "$TMP/wita.txt" "WAVE RESULT: GREEN" "...not CANNOT EVALUATE over a real instrumented pass already in the log"
+
+# --- ship-gate reads the register (OPS-004) --------------------------------------------------------
+#
+# Step 3 of ship-gate counts open S1/S2 rows in one Markdown table. That is a real check and a
+# DIFFERENT question: an audit finding is not a bug row, so it was invisible there. Shipping with
+# three DEFERRED S3 bugs is a fine release; shipping without knowing is the failure.
+SGR="$TMP/shipreg"; rm -rf "$SGR"; mkdir -p "$SGR/docs"
+cp "$FIX/clean.md" "$SGR/docs/31-board.md" 2>/dev/null || printf '# board\n' > "$SGR/docs/31-board.md"
+( cd "$SGR" && node "$HERE/register.mjs" --root . add AUD-031 --kind finding \
+    --title "consent gate unenforceable in composition" --by security-reviewer ) >/dev/null 2>&1
+( cd "$SGR" && sh "$HERE/ship-gate.sh" . ) >"$TMP/sgr.txt" 2>&1
+# ASSERT ON THE VERDICT, NOT ON THE SENTENCE. This grepped for "no terminal status", which
+# ship-gate's `note()` prints in exactly the same words as its `block()` — so demoting the register
+# check from a blocker to a note left the assertion green. Mutation M46 SURVIVED on the first run
+# that could reach it, which is the entire reason mutation testing exists: the assertion read fine,
+# named the right thing, and could not fail. The blocker prefix is what distinguishes them.
+assert_has "$TMP/sgr.txt" "BLOCKED  the register has item" "ship-gate BLOCKS on a register item nobody has decided about"
+( cd "$SGR" && node "$HERE/register.mjs" --root . status AUD-031 WRONG-FINDING --by cto \
+    --reason "the composition root wires the gated logger; re-checked on the merged tree" ) >/dev/null 2>&1
+( cd "$SGR" && sh "$HERE/ship-gate.sh" . ) >"$TMP/sgr2.txt" 2>&1
+grep -q "BLOCKED  the register has item" "$TMP/sgr2.txt" \
+  && bad "...and stops blocking once every item has been DECIDED (not necessarily fixed)" "still blocking" \
+  || ok "...and stops blocking once every item has been DECIDED (not necessarily fixed)"
+
+
+# --- requireTicketFiles: contention stops resting on an optional field (OPS-007) -------------------
+#
+# contention-check.mjs IS wired into dispatch-preflight and works. What it can only ever see is the
+# file set a ticket declared AT CREATION — and tech-manager.md made declaring it conditional, so the
+# ordinary ticket declares nothing, the check answers CANNOT EVALUATE, and BOTH agents are dispatched
+# into the same file. The stated fallback ("list the files each ticket is LIKELY to touch") is a
+# prediction by a role that has never opened the code; the measured cost of it being wrong is two
+# "independent" tickets in one module producing add/add conflicts on all 8 files.
+#
+# Built on the BOOTSTRAPPED fixture above rather than on hand-written manifests. The first version
+# of this section wrote its own four manifests, dispatch-preflight failed on the first one, and every
+# assertion below it took an honest-skip branch — so the suite gained ONE assertion and the gate went
+# untested while looking tested. That is this file's own recurring defect (a check whose fixture
+# cannot reach it), caught here by the assertion count moving by 1 instead of 4.
+DPF="$TMP/dpf"; rm -rf "$DPF"; mkdir -p "$DPF/docs" "$DPF/src"
+( cd "$DPF" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && echo x > a.txt && git add -A && git commit -qm base ) >/dev/null 2>&1
+# APP-001 declares NO files — the ordinary ticket. APP-002 declares one, and is the control: the
+# gate must refuse what is undeclared, not refuse everything.
+( cd "$DPF" && node "$HERE/board.mjs" add APP-001 --title "declares nothing" --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+( cd "$DPF" && node "$HERE/board.mjs" add APP-002 --title "declares its files" --owner ios-developer --by tech-manager --file src/App.swift ) >/dev/null 2>&1
+( cd "$DPF" && node "$HERE/team-bootstrap.mjs" --root "$DPF" ) >/dev/null 2>&1
+
+DPRE() { ( cd "$DPF" && node "$HERE/dispatch-preflight.mjs" --root "$DPF" --ticket "$1" \
+  --context docs/team/context-manifest.json --schedule docs/team/schedule.json \
+  --capability docs/team/capabilities.json --risk docs/team/risk-policy.json \
+  --role ios-developer --operation write --path src/App.swift --file src/App.swift --change feature ); }
+
+# UNARMED MUST STAY NON-FATAL. Most tickets predate the flag, and refusing them all would make the
+# studio unusable to buy a guarantee it cannot offer — a gate its first user switches off.
+printf '{}\n' > "$DPF/.studio-policy.json"
+DPRE APP-001 >"$TMP/dpf-unarmed.txt" 2>&1
+grep -q '"status": "CLEAR"' "$TMP/dpf-unarmed.txt" \
+  && ok "unarmed, a ticket that declares no files still dispatches — legacy boards keep working" \
+  || bad "unarmed, a ticket that declares no files still dispatches — legacy boards keep working" "$(head -3 "$TMP/dpf-unarmed.txt")"
+
+printf '{"requireTicketFiles": true}\n' > "$DPF/.studio-policy.json"
+assert_exit 1 "...and ARMED, the same undeclared ticket is REFUSED at dispatch, not at merge" \
+  sh -c 'cd "$1" && node "$2/dispatch-preflight.mjs" --root "$1" --ticket APP-001 \
+    --context docs/team/context-manifest.json --schedule docs/team/schedule.json \
+    --capability docs/team/capabilities.json --risk docs/team/risk-policy.json \
+    --role ios-developer --operation write --path src/App.swift --file src/App.swift --change feature' sh "$DPF" "$HERE"
+cp "$TMP/err" "$TMP/dpf-armed.txt" 2>/dev/null || true
+assert_has "$TMP/dpf-armed.txt" "requireTicketFiles" "...naming the policy flag that armed it"
+assert_has "$TMP/dpf-armed.txt" "corrected" "...and the exact correction that clears it"
+
+# THE CONTROL. A gate that refuses everything proves nothing about what it targets, and would be
+# indistinguishable here from `requireTicketFiles` simply breaking dispatch.
+DPRE APP-002 >"$TMP/dpf-declared.txt" 2>&1
+grep -q '"status": "CLEAR"' "$TMP/dpf-declared.txt" \
+  && ok "...while a ticket that DOES declare its files dispatches CLEAR under the same policy" \
+  || bad "...while a ticket that DOES declare its files dispatches CLEAR under the same policy" "$(head -3 "$TMP/dpf-declared.txt")"
+
+
+# --- EE-001: a pending wave is not a lying board --------------------------------------------------
+#
+# The wave model split PERMISSION (the merge gate) from FACT (the wave pass), so every gated ticket
+# sits at `qa` with an unmerged branch until step 5 runs. merge-reconcile called that "the board is
+# lying" — and it is a PRECONDITION of `orchestrator round`, whose exit 1 means "spawn nobody". So a
+# wave that failed, a wave that could not run, or a round that ended between step 4 and step 5 left
+# the loop BLOCKED by a false accusation, with remedy text telling the operator to hand-merge.
+# Reproduced on a fixture the day the wave model landed; this is that reproduction.
+MRW="$TMP/mr-wave"; rm -rf "$MRW"; mkdir -p "$MRW/docs/53-reviews"
+( cd "$MRW" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf 'docs/\n' > .gitignore && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
+  && git add -A && git commit -qm init ) >/dev/null 2>&1
+
+# Two tickets, identical except for HOW they were verified — which is the whole distinction.
+#   APP-001 verified_static -> awaiting the wave      (legitimate)
+#   APP-002 verified        -> the wave ran; unmerged is a real lie
+mr_drive() {  # <id> <verify-event>
+  ( cd "$MRW" && git checkout -q -b "feat/$1" main && echo "$1" > "$1.txt" \
+    && git add "$1.txt" && git commit -qm "$1" && git checkout -q main
+    node "$HERE/board.mjs" add "$1" --title t --owner ios-developer --by tech-manager
+    node "$HERE/board.mjs" move "$1" claimed --by ios-developer
+    node "$HERE/board.mjs" move "$1" done_reported --by ios-developer
+    node "$HERE/board.mjs" move "$1" "$2" --by tech-manager --detail d
+    node "$HERE/board.mjs" move "$1" review_requested --by ios-developer --detail "-> code-reviewer"
+    printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/%s\n\n## Not checked\nNothing.\n' "$1" > "docs/53-reviews/$1-cycle-0.md"
+    node "$HERE/board.mjs" move "$1" approved --by code-reviewer --verdict "docs/53-reviews/$1-cycle-0.md"
+    node "$HERE/board.mjs" move "$1" merged --by tech-manager ) >/dev/null 2>&1
+}
+mr_drive APP-001 verified_static
+( cd "$MRW" && node "$HERE/merge-reconcile.mjs" --root . ) >"$TMP/mr1.txt" 2>&1
+[ $? = 0 ] && ok "a merge-gated ticket awaiting the wave does NOT block the loop" \
+  || bad "a merge-gated ticket awaiting the wave does NOT block the loop" "$(head -3 "$TMP/mr1.txt")"
+assert_has "$TMP/mr1.txt" "AWAITING INTEGRATION" "...and is reported by name, so nobody mistakes it for a clean board"
+assert_has "$TMP/mr1.txt" "wave-integrate" "...naming the command that lands it"
+
+# THE GATE MUST STILL BITE. A reconciler that stopped accusing anything would be worse than the
+# false accusation it replaced — that is the "gate that cannot fail" class, in the gate that guards
+# the most consequential transition on the board.
+mr_drive APP-002 verified
+( cd "$MRW" && node "$HERE/merge-reconcile.mjs" --root . ) >"$TMP/mr2.txt" 2>&1
+[ $? = 1 ] && ok "...while a REAL verified whose branch is unmerged still BLOCKS — the gate still bites" \
+  || bad "...while a REAL verified whose branch is unmerged still BLOCKS — the gate still bites" "$(head -3 "$TMP/mr2.txt")"
+assert_has "$TMP/mr2.txt" "APP-002" "...naming the ticket that is actually lying"
+grep -q "APP-001 \[qa\] —" "$TMP/mr2.txt" \
+  && bad "...and NOT the one that is merely waiting" "APP-001 was accused too" \
+  || ok "...and NOT the one that is merely waiting"
+
+# --- EE-003 / EE-004: the channel's two open questions, as exit codes ------------------------------
+#
+# EE-003. /app-build step 1b is the loop's highest-leverage step by its own argument — "a question
+# answered after the wave is spawned is answered too late" — and its verification was the sentence
+# "re-render and confirm the count actually fell", with nothing checking it. A tech-lead that returns
+# a thoughtful paragraph instead of `answer` rows produces exactly the shape report-check.mjs exists
+# to catch one step below.
+#
+# EE-004. team-protocol requires an escalation to be "resolved or passed to the user in the same
+# round". /app-run surfaces only blockers, and an escalation is not a blocker — the ticket that
+# raised it keeps moving — so it was written to a ledger, counted by a renderer, and read by nobody.
+MOP="$TMP/msg-open"; rm -rf "$MOP"; mkdir -p "$MOP/docs/team"
+( cd "$MOP" && git init -q . ) >/dev/null 2>&1
+mop() { ( cd "$MOP" && sh "$HERE/team-message.sh" "$@" ); }
+mop --from ios-developer --to tech-lead --ticket APP-001 --kind question \
+    --summary "Which error type for a failed toggle?" --body "spec says TodoError, repo throws IOException" >/dev/null 2>&1
+
+( cd "$MOP" && node "$HERE/messages.mjs" open ) >"$TMP/mo1.txt" 2>&1
+[ $? = 1 ] && ok "messages open exits 1 while a question still owes an answer" \
+  || bad "messages open exits 1 while a question still owes an answer" "$(cat "$TMP/mo1.txt")"
+
+# THE ASSERTION THAT MATTERS: a batch that answered nothing is REFUSED, not noted.
+( cd "$MOP" && node "$HERE/messages.mjs" open --was 1 ) >"$TMP/mo2.txt" 2>&1
+[ $? = 1 ] && ok "...and --was REFUSES a Q&A batch that answered nothing" \
+  || bad "...and --was REFUSES a Q&A batch that answered nothing" "$(cat "$TMP/mo2.txt")"
+assert_has "$TMP/mo2.txt" "prose instead of ledger rows" "...naming the failure mode so the re-spawn is actionable"
+
+mop --from tech-lead --to ios-developer --ticket APP-001 --kind answer \
+    --summary "TodoError wins" --artifact docs/22-impl-spec-ios.md >/dev/null 2>&1
+( cd "$MOP" && node "$HERE/messages.mjs" open --was 1 ) >"$TMP/mo3.txt" 2>&1
+[ $? = 0 ] && ok "...and clears once a real answer row lands" \
+  || bad "...and clears once a real answer row lands" "$(cat "$TMP/mo3.txt")"
+
+# An escalation is the FOUNDER's half of the channel and needs its own exit code, or the autonomous
+# run cannot tell it apart from ordinary mid-sprint traffic it must not stop for.
+( cd "$MOP" && node "$HERE/messages.mjs" open --escalations ) >/dev/null 2>&1
+[ $? = 0 ] && ok "no unclosed escalation is exit 0 — the run does not stop for ordinary traffic" \
+  || bad "no unclosed escalation is exit 0 — the run does not stop for ordinary traffic"
+mop --from tech-manager --to ceo --ticket APP-001 --kind escalation \
+    --summary "scope conflict needs a founder call" >/dev/null 2>&1
+( cd "$MOP" && node "$HERE/messages.mjs" open --escalations ) >"$TMP/mo4.txt" 2>&1
+[ $? = 1 ] && ok "...and an unclosed escalation exits 1, which is what /app-run surfaces to the user" \
+  || bad "...and an unclosed escalation exits 1, which is what /app-run surfaces to the user" "$(cat "$TMP/mo4.txt")"
+assert_has "$TMP/mo4.txt" "these are the founder's" "...marked as the founder's, not the team's"
+
+# main() RETURNED an exit code and nothing read it, so every `return 1` above was decorative and
+# `open --was` reported its refusal on stderr while exiting 0. Invisible until a command needed a
+# non-zero SUCCESS path, because every existing command exits through die().
+( cd "$MOP" && node "$HERE/messages.mjs" channels ) >/dev/null 2>&1
+[ $? = 0 ] && ok "...and the pre-existing commands still exit 0 through the same return path" \
+  || bad "...and the pre-existing commands still exit 0 through the same return path"
+
+# --- OPS-009: an answer that resolves a question on an ALREADY-SHIPPED ticket is not silent -------
+#
+# A `question`/`answer` pair about a ticket that reached `qa`/`done` is a correction arriving after
+# the code shipped: the assumption it corrects is already merged, and nothing downstream re-opened
+# anything for it — the correction sat inertly in the message ledger. `messages.mjs send` now auto-
+# files a register item for exactly this shape, without refusing the send itself.
+OPS9="$TMP/ops9-late-answer"; rm -rf "$OPS9"; mkdir -p "$OPS9/docs/53-reviews"
+( cd "$OPS9" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  node "$HERE/board.mjs" add APP-050 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-050 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-050 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-050 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-050 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-050-cycle-0.md
+  node "$HERE/board.mjs" move APP-050 approved --by code-reviewer --verdict docs/53-reviews/APP-050-cycle-0.md
+  node "$HERE/board.mjs" move APP-050 merged --by tech-manager ) >/dev/null 2>&1
+OPS9_STATUS=$( cd "$OPS9" && node "$HERE/board.mjs" show APP-050 --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);process.stdout.write(j["APP-050"].status)})' )
+[ "$OPS9_STATUS" = "qa" ] || bad "OPS-009 fixture: APP-050 reached qa before the answer is sent" "got $OPS9_STATUS"
+( cd "$OPS9" && sh "$HERE/team-message.sh" --from ios-developer --to tech-lead --ticket APP-050 --kind question --summary "does the cache ever expire?" ) >/dev/null 2>&1
+( cd "$OPS9" && sh "$HERE/team-message.sh" --from tech-lead --to ios-developer --ticket APP-050 --kind answer \
+    --summary "no — turns out it never expires, contradicts the shipped assumption" --artifact docs/22-impl-spec-ios.md ) >"$TMP/ops9.txt" 2>&1
+assert_has "$TMP/ops9.txt" "filed ASM-" "an answer on an already-shipped ticket says it filed a register item"
+( cd "$OPS9" && node "$HERE/register.mjs" show --json ) >"$TMP/ops9reg.json" 2>&1
+grep -q '"kind": "assumption"' "$TMP/ops9reg.json" \
+  && ok "...and the register actually carries an OPEN assumption item for it" \
+  || bad "...and the register actually carries an OPEN assumption item for it" "$(cat "$TMP/ops9reg.json")"
+
+# The mirror case: an answer on a ticket still IN PROGRESS is ordinary team traffic, not a late
+# correction — nothing should be filed for it.
+OPS9B="$TMP/ops9b-in-progress"; rm -rf "$OPS9B"; mkdir -p "$OPS9B"
+( cd "$OPS9B" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  node "$HERE/board.mjs" add APP-051 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-051 claimed --by ios-developer ) >/dev/null 2>&1
+( cd "$OPS9B" && sh "$HERE/team-message.sh" --from ios-developer --to tech-lead --ticket APP-051 --kind question --summary "which enum?" ) >/dev/null 2>&1
+( cd "$OPS9B" && sh "$HERE/team-message.sh" --from tech-lead --to ios-developer --ticket APP-051 --kind answer \
+    --summary "TodoError wins" --artifact docs/22-impl-spec-ios.md ) >"$TMP/ops9b.txt" 2>&1
+grep -q "filed ASM-" "$TMP/ops9b.txt" \
+  && bad "an answer on an in-progress ticket files nothing on the register" "$(cat "$TMP/ops9b.txt")" \
+  || ok "an answer on an in-progress ticket files nothing on the register"
+
+# --- B1: --push must land on $BASE, not on whatever is checked out --------------------------------
+#
+# `git merge --ff-only` merges into the WORKING TREE it runs in, and this ran with cwd=ROOT without
+# ever checking out $BASE. Reproduced by the reviewer against a bare remote: `develop` unchanged on
+# both sides, an unrelated `scratch/operator` silently fast-forwarded to the wave tip, exit 0, and
+# the words "PUSHED develop" on stdout. Two wrongs at once — the wave lands nowhere, and a branch
+# nobody leased is rewritten, which is the rule wave-integrate's own header states.
+#
+# THE FIXTURE IS THE POINT: its HEAD is deliberately NOT on the base. The pre-existing wave fixture
+# is always on `main == $BASE`, which is why nothing here could have caught it.
+WP="$TMP/wave-push"; rm -rf "$WP"; mkdir -p "$WP/docs/team" "$WP/docs/53-reviews"
+WPO="$TMP/wave-push-origin.git"; rm -rf "$WPO"; git init -q --bare "$WPO"
+( cd "$WP" && git init -q -b develop . && git config user.email t@t.t && git config user.name T
+  printf 'docs/\n' > .gitignore
+  printf 'Integration branch: develop\n' > docs/23-git-strategy.md
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":"sh run-tests.sh"}}\n' > docs/team/project-profile.json
+  printf '#!/bin/sh\necho "1 tests run: 1 passing"\n' > run-tests.sh
+  git add -A && git commit -qm init && git remote add origin "$WPO" && git push -q origin develop
+  git checkout -q -b feat/APP-001 develop && echo x > f.txt && git add f.txt && git commit -qm APP-001
+  node "$HERE/board.mjs" add APP-001 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-001 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-001 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-001 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-001 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: develop..feat/APP-001\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 merged --by tech-manager
+  git checkout -q -b scratch/operator develop ) >/dev/null 2>&1
+
+WP_SCRATCH_BEFORE=$( cd "$WP" && git rev-parse scratch/operator )
+( cd "$WP" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --push ) >"$TMP/wp.txt" 2>&1
+WP_WAVE=$( cd "$WP" && git rev-parse integration/wave-1 2>/dev/null )
+WP_DEV=$( cd "$WP" && git rev-parse develop )
+WP_ORIGIN=$( git --git-dir="$WPO" rev-parse develop 2>/dev/null )
+WP_SCRATCH=$( cd "$WP" && git rev-parse scratch/operator )
+
+[ "$WP_DEV" = "$WP_WAVE" ] \
+  && ok "--push fast-forwards \$BASE itself, with the checkout on another branch entirely" \
+  || bad "--push fast-forwards \$BASE itself, with the checkout on another branch entirely" "develop=$WP_DEV wave=$WP_WAVE: $(tail -3 "$TMP/wp.txt")"
+[ "$WP_SCRATCH" = "$WP_SCRATCH_BEFORE" ] \
+  && ok "...and does NOT move the branch that happened to be checked out" \
+  || bad "...and does NOT move the branch that happened to be checked out" "scratch/operator moved to $WP_SCRATCH"
+[ "$WP_ORIGIN" = "$WP_WAVE" ] \
+  && ok "...and the push actually reached origin" \
+  || bad "...and the push actually reached origin" "origin/develop=$WP_ORIGIN wave=$WP_WAVE"
+
+# Future Conflict #1 (adversarial-operations-review): merge-reconcile.mjs ran at ROUND START only,
+# so drift introduced by the wave's own fetch/ff/push sequence went unnoticed until the next round.
+# --push now runs it again immediately after the ref moves, closing the same window one call sooner.
+grep -q "merge-reconcile (post-wave)" "$TMP/wp.txt" \
+  && ok "--push runs merge-reconcile.mjs again right after the wave lands (Future Conflict #1)" \
+  || bad "--push runs merge-reconcile.mjs again right after the wave lands (Future Conflict #1)" "$(tail -6 "$TMP/wp.txt")"
+
+# --- B2: a dependency is satisfied by INTEGRATION, not by permission ------------------------------
+#
+# The claimed-gate tested for a `merged` EVENT. The wave model made `merged` permission, so a
+# dependent became claimable the moment its dependency was approved — and its slot was cut from an
+# integration branch without the code it depends on. EE-001's class, in the second reader of the
+# same event, found in review of the commit that split them.
+DEPW="$TMP/dep-wave"; rm -rf "$DEPW"; mkdir -p "$DEPW/docs/53-reviews"
+( cd "$DEPW" && git init -q -b main . ) >/dev/null 2>&1
+( cd "$DEPW"
+  node "$HERE/board.mjs" add APP-001 --title dep --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" add APP-002 --title dependent --owner ios-developer --by tech-manager --depends APP-001
+  node "$HERE/board.mjs" move APP-001 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-001 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-001 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-001 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-001\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 merged --by tech-manager ) >/dev/null 2>&1
+
+( cd "$DEPW" && node "$HERE/board.mjs" move APP-002 claimed --by ios-developer ) >"$TMP/dep1.txt" 2>&1
+[ $? = 1 ] \
+  && ok "a dependent is REFUSED while its dependency is merge-gated but not yet integrated" \
+  || bad "a dependent is REFUSED while its dependency is merge-gated but not yet integrated" "$(cat "$TMP/dep1.txt")"
+assert_has "$TMP/dep1.txt" "awaiting the wave" "...and the refusal names the wave, not a merge that did happen"
+
+( cd "$DEPW" && node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "wave 1 green" ) >/dev/null 2>&1
+( cd "$DEPW" && node "$HERE/board.mjs" move APP-002 claimed --by ios-developer ) >"$TMP/dep2.txt" 2>&1
+[ $? = 0 ] \
+  && ok "...and becomes claimable the moment the wave lands its dependency" \
+  || bad "...and becomes claimable the moment the wave lands its dependency" "$(cat "$TMP/dep2.txt")"
+
+# A project that merges PER TICKET never sets verifiedStatic, so its dependents must unblock exactly
+# as before. Without this the fix would trade one stall for another.
+DEPC="$TMP/dep-classic"; rm -rf "$DEPC"; mkdir -p "$DEPC/docs/53-reviews"
+( cd "$DEPC" && git init -q -b main . ) >/dev/null 2>&1
+( cd "$DEPC"
+  node "$HERE/board.mjs" add APP-001 --title dep --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" add APP-002 --title dependent --owner ios-developer --by tech-manager --depends APP-001
+  node "$HERE/board.mjs" move APP-001 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-001 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "tests green"
+  node "$HERE/board.mjs" move APP-001 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-001\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-0.md
+  node "$HERE/board.mjs" move APP-001 merged --by tech-manager ) >/dev/null 2>&1
+assert_exit 0 "a per-ticket-merge project's dependents unblock at the gate, exactly as before" \
+  sh -c 'cd "$1" && node "$2/board.mjs" move APP-002 claimed --by ios-developer' sh "$DEPC" "$HERE"
+
+# --- B3: import-bugs is held to the register's own rules ------------------------------------------
+#
+# `import-bugs` appended straight to the log, so it was a SECOND WRITE PATH around the two refusals
+# M38 and M39 exist to enforce. Against the canonical nine-column row in agents/qa-engineer.md it
+# produced titles taken from the Build column ("1.0.3 (42)"), a WONTFIX collapsed to FIXED with no
+# reason, and a FIXED with no ticket. defect-hunting §1, inside the file whose whole purpose is that
+# every item carries an authored decision.
+RGI="$TMP/reg-import"; rm -rf "$RGI"; mkdir -p "$RGI/docs"; printf '{}\n' > "$RGI/.studio-policy.json"
+cat > "$RGI/docs/51-bugs.md" <<'BUGS'
+| BUG-001 | APP-004 | **S1** | iOS | Tap the date picker and save, reopen the entry | the chosen date | today's date | 1.0.3 (42) | FIXED |
+| BUG-002 |  | **S2** | Android | Rotate on the list screen while syncing | list keeps order | list resets | 1.0.3 (42) | WONTFIX |
+| BUG-003 | APP-009 | **S3** | iOS | Long titles overflow the card | truncates | overlaps the icon | 1.0.3 (42) |  |
+BUGS
+( cd "$RGI" && node "$HERE/register.mjs" --root . import-bugs --by qa-engineer ) >"$TMP/rgi.txt" 2>&1
+( cd "$RGI" && node "$HERE/register.mjs" --root . show --json ) >"$TMP/rgi.json" 2>&1
+
+assert_has "$TMP/rgi.json" "Tap the date picker" "import-bugs titles the row from its description, not from the Build column"
+grep -q '1.0.3' "$TMP/rgi.json" \
+  && bad "...and never from the Build column" "a title is still the build string" \
+  || ok "...and never from the Build column"
+assert_has "$TMP/rgi.txt" "BUG-002" "a WONTFIX row with no reason is REPORTED, not silently imported terminal"
+node -e '
+const items = require(process.argv[1]).items;
+const by = Object.fromEntries(items.map((i) => [i.id, i]));
+const bad = [];
+if (by["BUG-002"].status !== "OPEN") bad.push("BUG-002 imported " + by["BUG-002"].status + ", not OPEN");
+if (by["BUG-001"].status !== "FIXED") bad.push("BUG-001 should import FIXED — it names a ticket");
+process.exit(bad.length ? (console.error(bad.join("; ")), 1) : 0);
+' "$TMP/rgi.json" \
+  && ok "...downgraded to OPEN, while a FIXED row that DOES name its ticket imports terminal" \
+  || bad "...downgraded to OPEN, while a FIXED row that DOES name its ticket imports terminal"
+
+# --- B4/B5/B6: the ceiling, line 1, and a flag with no usage string -------------------------------
+CEIL="$TMP/ceiling"; rm -rf "$CEIL"; mkdir -p "$CEIL/docs" "$CEIL/.studio-cache/DerivedData" "$CEIL/bin"
+( cd "$CEIL" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+dd if=/dev/zero of="$CEIL/.studio-cache/DerivedData/big.bin" bs=1024 count=3072 >/dev/null 2>&1
+
+# B4. build-env.sh moved DerivedData OUT of the worktrees so reaping cannot destroy a warm build —
+# correct, and it put the largest consumer of disk on an iOS project outside the ceiling added to
+# stop the disk filling. Counted here, never reaped: deleting a warm cache is the operator's call.
+( cd "$CEIL" && node "$HERE/worktree-reap.mjs" --root . ) >"$TMP/ceil.txt" 2>&1
+assert_has "$TMP/ceil.txt" "shared cache" "the disk ceiling counts .studio-cache, which is where the build cache now lives"
+assert_exit 1 "...so a cache over the ceiling BLOCKS, with no worktrees involved at all" \
+  sh -c 'cd "$1" && node "$2/worktree-reap.mjs" --root . --max-disk-mb 2' sh "$CEIL" "$HERE"
+[ -f "$CEIL/.studio-cache/DerivedData/big.bin" ] \
+  && ok "...and never reaps it — a warm cache is an asset, deleting it is the operator's call" \
+  || bad "...and never reaps it — a warm cache is an asset, deleting it is the operator's call"
+
+# B5. Line 1 must match the exit code — this repo's law, broken here: `CI STATUS: FAIL` with exit 0.
+printf 'Integration branch: main\n' > "$CEIL/docs/23-git-strategy.md"
+printf '{}\n' > "$CEIL/.studio-policy.json"
+printf '#!/bin/sh\nexit 1\n' > "$CEIL/bin/gh"; chmod +x "$CEIL/bin/gh"
+( cd "$CEIL" && PATH="$CEIL/bin:$PATH" node "$HERE/ci-status.mjs" --root . --base main ) >"$TMP/ci-adv.txt" 2>&1
+CI_ADV_RC=$?
+head -1 "$TMP/ci-adv.txt" | grep -q "ADVISORY" \
+  && ok "unarmed, ci-status says ADVISORY on line 1 rather than a verdict it is not enforcing" \
+  || bad "unarmed, ci-status says ADVISORY on line 1 rather than a verdict it is not enforcing" "$(head -1 "$TMP/ci-adv.txt")"
+[ "$CI_ADV_RC" = "0" ] \
+  && ok "...and line 1 agrees with the exit code, which is what an agent acts on" \
+  || bad "...and line 1 agrees with the exit code, which is what an agent acts on" "exit $CI_ADV_RC"
+
+# B6. A flag that disables a guard and appears in no usage string is a hole with a password.
+SLOTF="$TMP/slot-force"; rm -rf "$SLOTF"; mkdir -p "$SLOTF/docs"
+( cd "$SLOTF" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init && printf 'Integration branch: main\n' > docs/23-git-strategy.md
+  node "$HERE/worktree-slot.mjs" --root . lease --owner ios-developer --tickets APP-001 ) >/dev/null 2>&1
+assert_exit 1 "--force no longer buys a second lease past the guard its own header calls the one that matters" \
+  sh -c 'cd "$1" && node "$2/worktree-slot.mjs" --root . lease --owner ios-developer --tickets APP-009 --force' sh "$SLOTF" "$HERE"
+
+
+# --- N1/N9: one predicate for "has this shipped", swept across every reader ------------------------
+#
+# `['qa','done'].includes(status)` encoded a belief that stopped being true when the wave model split
+# the merge gate (permission) from the wave pass (fact). That belief has now produced three defects:
+# EE-001 (merge-reconcile called a pending wave a lying board, deadlocking the loop), B2 (a dependent
+# started against a branch without its dependency) and N1 (five readers telling a founder that gated
+# work had shipped). Patching the sixth site the same way would guarantee a seventh.
+assert_exit 0 "hasShipped: a landed ticket has shipped" \
+  node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"qa"})?0:1))'
+assert_exit 0 "...and a merge-gated one awaiting the wave has NOT (board-row spelling)" \
+  node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"qa",staticOnly:true})?1:0))'
+assert_exit 0 "...nor in the event-log spelling, so neither reader has to know which shape it holds" \
+  node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"qa",verifiedStatic:true})?1:0))'
+assert_exit 0 "...and \`done\` still counts, because it cannot be reached without the wave" \
+  node -e 'import("'"$HERE"'/lib/board.mjs").then((m)=>process.exit(m.hasShipped({status:"done"})?0:1))'
+
+# THE SWEEP IS THE POINT, not the predicate. A rule that exists and is called from one place is the
+# shape this repo keeps catching (§4 of the review: "a sweep is not done until a rule prevents
+# recurrence"). Every reader that answers "has it shipped" must ask the one function.
+SHIPREADERS=""
+for f in trace.mjs studio-dashboard.mjs messages-render.mjs board-doctor.mjs; do
+  grep -q "hasShipped" "$HERE/$f" || SHIPREADERS="$SHIPREADERS $f"
+done
+grep -q "hasShipped" "$HERE/../control-room/state.mjs" || SHIPREADERS="$SHIPREADERS control-room/state.mjs"
+[ -z "$SHIPREADERS" ] \
+  && ok "every reader that judges whether work shipped asks the one predicate" \
+  || bad "every reader that judges whether work shipped asks the one predicate" "still hand-rolling it:$SHIPREADERS"
+
+# And none of them may keep a private copy of the old test — that is how the sixth site appears.
+# merge-reconcile's CLAIMS_INTEGRATED is EXEMPT and the exemption is the interesting part: it is not
+# asking "has this shipped", it is selecting the POPULATION to examine — every ticket that claims its
+# code is integrated — and then splitting that population with `awaitingWave`. Same words, different
+# question. An exemption list that names why is a rule; one that names only files is a loophole.
+HANDROLLED=$( { grep -rn "new Set(\['qa', 'done'\])\|new Set(\['done', 'qa'\])" \
+    "$HERE"/*.mjs "$HERE/../control-room"/*.mjs 2>/dev/null || true; } \
+    | grep -v "VALID_STATUS\|STATUS_ORDER\|CLAIMS_INTEGRATED" | tr '\n' ' ')
+[ -z "$(printf '%s' "$HANDROLLED" | tr -d ' ')" ] \
+  && ok "...and no reader keeps a private ['qa','done'] set to drift from it" \
+  || bad "...and no reader keeps a private ['qa','done'] set to drift from it" "$HANDROLLED"
+
+# --- N5: one decision cannot close both a question and an escalation -------------------------------
+#
+# `raised.slice(decisionCount)` counted EVERY decision on the thread as closing an escalation,
+# including one that answered a question. A thread with one question, one escalation and one decision
+# reported ZERO unclosed escalations — so the founder was told nothing was waiting on them by the
+# command added to tell them it was. M51 mutates the exit wiring, not this arithmetic.
+NPAIR="$TMP/n5-pairing"; rm -rf "$NPAIR"; mkdir -p "$NPAIR/docs/team"
+( cd "$NPAIR" && git init -q . ) >/dev/null 2>&1
+npair() { ( cd "$NPAIR" && sh "$HERE/team-message.sh" "$@" ) >/dev/null 2>&1; }
+npair --from ios-developer --to tech-lead --ticket APP-001 --kind question --summary "Which error type for a failed toggle?"
+npair --from tech-manager --to ceo --ticket APP-001 --kind escalation --summary "scope conflict needs a founder call"
+npair --from tech-lead --to ios-developer --ticket APP-001 --kind decision --summary "TodoError wins" --artifact docs/22-impl-spec-ios.md
+
+( cd "$NPAIR" && node "$HERE/messages.mjs" open --escalations ) >"$TMP/n5a.txt" 2>&1
+[ $? = 1 ] \
+  && ok "a decision that answered a QUESTION does not also close an escalation" \
+  || bad "a decision that answered a QUESTION does not also close an escalation" "$(cat "$TMP/n5a.txt")"
+assert_has "$TMP/n5a.txt" "scope conflict" "...and the escalation is still named to the founder"
+
+npair --from ceo --to tech-manager --ticket APP-001 --kind decision --summary "cut the scope" --artifact docs/10-prd.md
+( cd "$NPAIR" && node "$HERE/messages.mjs" open --escalations ) >"$TMP/n5b.txt" 2>&1
+[ $? = 0 ] \
+  && ok "...and a second decision does close it — pairing is by count, oldest first, over one queue" \
+  || bad "...and a second decision does close it — pairing is by count, oldest first, over one queue" "$(cat "$TMP/n5b.txt")"
+
+# --- N8: --count prints a number and nothing else --------------------------------------------------
+#
+# /app-build step 1b recovered this by piping --json through `tr -dc` and a greedy `sed` — a regex
+# over prose summaries, in a runbook. The first version of --count printed the human report too,
+# which is not a count.
+( cd "$NPAIR" && node "$HERE/messages.mjs" open --count ) >"$TMP/n8.txt" 2>&1
+[ "$(wc -l < "$TMP/n8.txt" | tr -d ' ')" = "1" ] \
+  && ok "messages open --count prints exactly one line" \
+  || bad "messages open --count prints exactly one line" "$(cat "$TMP/n8.txt")"
+grep -qE '^[0-9]+$' "$TMP/n8.txt" \
+  && ok "...and that line is a bare number the runbook can use without a regex" \
+  || bad "...and that line is a bare number the runbook can use without a regex" "$(cat "$TMP/n8.txt")"
+grep -q "open --count" "$HERE/../commands/app-build.md" \
+  && ok "...and /app-build step 1b uses it instead of hand-parsing JSON" \
+  || bad "...and /app-build step 1b uses it instead of hand-parsing JSON"
+
+# --- N2: ambiguity is reported, never resolved by picking ------------------------------------------
+#
+# `mine[0]` with `allBranches` computed and never printed: a ticket with two unintegrated branches
+# integrated whichever sorted first, silently. And the match was a bare `includes`, so `APP-1` also
+# matched `feat/APP-12-…`. This file argues elsewhere that two disagreeing resolvers are worse than
+# one wrong one; an arbitrary pick is that failure with nobody to blame.
+NAMB="$TMP/n2-ambiguous"; rm -rf "$NAMB"; mkdir -p "$NAMB/docs/team" "$NAMB/docs/53-reviews"
+( cd "$NAMB" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  printf 'docs/\n' > .gitignore
+  printf 'Integration branch: main\n' > docs/23-git-strategy.md
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":"true"}}\n' > docs/team/project-profile.json
+  git add -A && git commit -qm init
+  git checkout -q -b feat/APP-1-login main && echo a > a.txt && git add a.txt && git commit -qm one
+  git checkout -q -b fix/APP-1-retry main && echo b > b.txt && git add b.txt && git commit -qm two
+  git checkout -q -b feat/APP-12-unrelated main && echo c > c.txt && git add c.txt && git commit -qm three
+  git checkout -q main
+  node "$HERE/board.mjs" add APP-1 --title amb --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-1 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-1 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-1 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-1 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-1-login\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 approved --by code-reviewer --verdict docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 merged --by tech-manager ) >/dev/null 2>&1
+
+( cd "$NAMB" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --dry-run ) >"$TMP/n2.txt" 2>&1
+assert_has "$TMP/n2.txt" "AMBIGUOUS" "a ticket with two unintegrated branches is REPORTED, not picked between"
+assert_has "$TMP/n2.txt" "feat/APP-1-login" "...naming both candidates so a human can resolve it"
+assert_has "$TMP/n2.txt" "fix/APP-1-retry" "...naming the second one too"
+grep -q "APP-12-unrelated" "$TMP/n2.txt" \
+  && bad "...and APP-1 does not match the branch of APP-12" "substring match struck again" \
+  || ok "...and APP-1 does not match the branch of APP-12"
+
+# --- N3: the kept integration worktree is somewhere the reaper protects ---------------------------
+grep -q "'.agent-wt', \`integration-wave-" "$HERE/wave-integrate.mjs" \
+  && ok "the integration worktree lives under .agent-wt, where the reaper can see it" \
+  || bad "the integration worktree lives under .agent-wt, where the reaper can see it"
+NKEEP="$TMP/n3-keep"; rm -rf "$NKEEP"; mkdir -p "$NKEEP/.agent-wt/integration-wave-9"
+( cd "$NKEEP" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init && rmdir .agent-wt/integration-wave-9 \
+  && git worktree add -q .agent-wt/integration-wave-9 -b integration/wave-9 ) >/dev/null 2>&1
+# A BOARD IS REQUIRED FOR THIS FIXTURE TO TEST ANYTHING. With no event log the reaper fails safe —
+# "nothing can be called an orphan without a board" — so the integration-worktree guard is never
+# reached and a mutation of it measures the fail-safe instead. One ticket is enough to make the
+# guard the only thing between `--apply` and a CLEAN kept wave tree.
+( cd "$NKEEP" && node "$HERE/board.mjs" add APP-001 --title t --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+( cd "$NKEEP" && node "$HERE/worktree-reap.mjs" --root . --apply ) >"$TMP/n3.txt" 2>&1
+[ -d "$NKEEP/.agent-wt/integration-wave-9" ] \
+  && ok "...and --apply never reaps it, because a kept wave tree is CLEAN and the dirty check would not save it" \
+  || bad "...and --apply never reaps it, because a kept wave tree is CLEAN and the dirty check would not save it"
+assert_has "$TMP/n3.txt" "integration worktree" "...it is reported and counted rather than silently kept"
+
+
+# --- N4/N6/N7: one reducer, an honest header, and the two conventions this file skipped ------------
+#
+# N4. `portfolio.mjs` carried its own `items.set(id, {...prev, ...r})` loop over the register while
+# `register.mjs` had another — a second reader of an append-only log, which is the shape that
+# produced this repo's last four fail-open gates and the reason `parseBugs` and `lib/board.mjs`
+# exist. Both now import `lib/register.mjs`.
+#
+# N6. The header promised "2 CANNOT EVALUATE — the register is missing or unreadable" for every
+# command, while `check` deliberately returns 0 on a missing file (the fix for 36 false blocks on
+# docs-only fixtures). The softening is right; describing it as if it applied everywhere was not.
+#
+# N7. No id-shape check and no role check, while `lib/board.mjs` and `lib/capabilities.mjs` already
+# hold both — so `--by tehc-manager` filed an item authored by nobody.
+NREG="$TMP/n467"; rm -rf "$NREG"; mkdir -p "$NREG/docs"; printf '{}\n' > "$NREG/.studio-policy.json"
+nreg() { ( cd "$NREG" && node "$HERE/register.mjs" --root . "$@" ); }
+
+assert_exit 0 "a known role may file an item" \
+  nreg add BUG-001 --kind bug --title "the date picker discards the selection" --by qa-engineer
+assert_exit 1 "a role this studio does not have is REFUSED — an item authored by nobody answers to nobody" \
+  nreg add BUG-002 --kind bug --title "filed by a typo" --by tehc-manager
+assert_exit 1 "...and so is an id the board could never match, which makes every --ticket link uncheckable" \
+  nreg add nonsense --kind bug --title "no id shape at all" --by qa-engineer
+assert_exit 0 "...while a SUFFIXED id still works (BUG-NNN-fix is the documented bug-fix shape)" \
+  nreg add BUG-003-fix --kind bug --title "suffixed ids are the fix-ticket convention" --by qa-engineer
+
+# N6, as behaviour rather than as a sentence: the two ends of the exit contract the header now
+# states per command.
+NMISS="$TMP/n467-missing"; rm -rf "$NMISS"; mkdir -p "$NMISS/docs"; printf '{}\n' > "$NMISS/.studio-policy.json"
+assert_exit 0 "check on a project that has never filed anything is CLEAR, not CANNOT EVALUATE" \
+  sh -c 'cd "$1" && node "$2/register.mjs" --root . check' sh "$NMISS" "$HERE"
+printf '{"id":"BUG-9","kind":"bug","status":"OPEN"}\nthis line is not json\n' > "$NMISS/docs/90-register.jsonl"
+assert_exit 2 "...but a register that EXISTS and will not parse is CANNOT EVALUATE, never 'nothing owed'" \
+  sh -c 'cd "$1" && node "$2/register.mjs" --root . check' sh "$NMISS" "$HERE"
+
+# N4 — proven by AGREEMENT, which is the only thing that shows there is one reducer and not two.
+# Both readers are handed the same log and must report the same counts.
+( cd "$NREG" && node "$HERE/register.mjs" --root . show --json ) >"$TMP/n4-reg.json" 2>&1
+node -e '
+import("'"$HERE"'/lib/register.mjs").then((m) => {
+  const fs = require("node:fs");
+  const text = fs.readFileSync(process.argv[1], "utf8");
+  const { items } = m.reduceRegister(text);
+  const { open } = m.undecided(items);
+  const viaCli = require(process.argv[2]).items.filter((i) => ["OPEN", "IN-PROGRESS"].includes(i.status)).length;
+  process.exit(open.length === viaCli ? 0 : (console.error(`lib says ${open.length}, the CLI says ${viaCli}`), 1));
+});
+' "$NREG/docs/90-register.jsonl" "$TMP/n4-reg.json" \
+  && ok "the register has ONE reducer: the library and the CLI agree on what is undecided" \
+  || bad "the register has ONE reducer: the library and the CLI agree on what is undecided"
+
+# And no caller may quietly grow a second one back.
+REDUP=$( { grep -rn "items.set(key(r.id)\|items.set(String(r.id).toUpperCase()" "$HERE"/*.mjs 2>/dev/null || true; } | tr '\n' ' ')
+[ -z "$(printf '%s' "$REDUP" | tr -d ' ')" ] \
+  && ok "...and no script re-implements that reduction inline" \
+  || bad "...and no script re-implements that reduction inline" "$REDUP"
+
+# --- an ok/bad pair must carry the SAME label ------------------------------------------------------
+#
+# `... && ok "long label" || bad "short label"` type-checks, reads fine, and quietly breaks mutation
+# testing: mutate.sh matches the catalogue's expected label against the FAIL line, so a pair whose
+# two halves disagree always reports "CAUGHT, but not by the assertion written for it" — the guard
+# looks decorative when it is not. Made this mistake twice in one day (M45/M47, then M49/M51); both
+# times the only thing that noticed was the mutation tester. Now it is an assertion.
+MISMATCHED=$(awk '
+  /^[[:space:]]*#/ { next }
+  /&& ok "/   { if (match($0, /&& ok "[^"]*"/)) { lastok = substr($0, RSTART+7, RLENGTH-8); okline = NR } }
+  /\|\| bad "/ { if (match($0, /\|\| bad "[^"]*"/)) { b = substr($0, RSTART+8, RLENGTH-9)
+                    # A label held in a shell variable is the same string on both halves by
+                    # construction — the assert_* helpers do exactly this, and flagging them would
+                    # make the check noise that gets deleted.
+                    if (okline && NR - okline <= 3 && substr(lastok,1,1) != "$" && b != lastok)
+                      printf "  line %d: ok=%s / bad=%s\n", NR, lastok, b } }
+' "$0")
+[ -z "$MISMATCHED" ] \
+  && ok "every ok/bad pair in this file carries the same label" \
+  || bad "every ok/bad pair in this file carries the same label" "$MISMATCHED"
+
+# --- an unescaped backtick pair inside a double-quoted label is a live bug, not decoration ---------
+#
+# `"...and \`done\` still counts..."` written WITHOUT the backslashes is not a stylistic choice — sh
+# still runs command substitution on backticks inside double quotes, so that label tried to execute
+# a program named `done`. Found by an adversarial re-review reading this file's own stderr: a
+# `syntax error near unexpected token 'done'` and a leaked `fatal: not a git repository` sitting in
+# the middle of a run this suite still called 1417/1417 green, because the stray subshell's failure
+# never touched this script's own exit code. A suite whose whole pitch is "it can go red" emitting a
+# shell error it does not notice is exactly the class this file exists to stop — in itself this time.
+BACKTICKED=$(awk '
+  /^[[:space:]]*#/ { next }
+  # Gated on the known assertion call sites, not every double-quoted string in the file: a fully
+  # general shell tokenizer is not worth writing in awk, and scanning every line found two false
+  # positives on its first run — a grep character class that legitimately mixes quote styles, and
+  # this very check quoting a backtick as an awk string literal inside a single-quoted script,
+  # which the outer shell never evaluates at all. Real label call sites are what matters here.
+  !/ok "|bad "|assert_exit |assert_has |assert_finding /  { next }
+  {
+    line = $0; n = 0
+    while (match(line, /"[^"]*"/)) {
+      seg = substr(line, RSTART, RLENGTH)
+      gsub(/\\`/, "", seg)
+      if (index(seg, "`")) n++
+      line = substr(line, RSTART + RLENGTH)
+    }
+    if (n) printf "  line %d: %s\n", NR, $0
+  }
+' "$0")
+[ -z "$BACKTICKED" ] \
+  && ok "no double-quoted label carries an unescaped backtick that would run as a command" \
+  || bad "no double-quoted label carries an unescaped backtick that would run as a command" "$BACKTICKED"
 
 # agents/code-reviewer.md shipped on this branch carrying an unresolved `<<<<<<< HEAD` block. The
 # orchestrator resolved the conflicted test.sh, then ran `git add -A` — which staged the OTHER

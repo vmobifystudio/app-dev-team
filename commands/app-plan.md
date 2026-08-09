@@ -77,6 +77,32 @@ Focus (optional): $ARGUMENTS
 
 4. **Print the sprint goal, the per-track assignment, and dependency edges.** Show what's parallel and what's serial.
 
+4b. **Bootstrap the dispatch manifests — without these the sprint cannot start at all.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs"
+   ```
+
+   `/app-build` runs `dispatch-preflight` before spawning any owner, and four of its required inputs
+   are manifests in `docs/team/`. **On a freshly planned project that directory does not exist**, so
+   preflight fails on the first one, `/app-build`'s own rule ("a failed or unavailable check stops
+   the spawn") stops the round, and every ticket sits at `created`.
+
+   That is not hypothetical. Measured 2026-08-06 across every recorded run: **11 of 19 tickets ended
+   at `created`** — never claimed, never blocked, never refused. It was never agent diligence; the
+   loop was structurally unable to dispatch. It is FC-005 from `knowledge/failure-corpus.md`, "the
+   check whose own input nobody writes", sitting under the most important gate in the loop.
+
+   It refuses to overwrite existing manifests — a project's edited policy is not something a
+   re-plan resets. `--force` for a deliberate reset.
+
+   **Then read what it wrote, and edit it.** The defaults are the safe end of each contract, not
+   decisions anyone made for this project: developer roles may write source, document roles may
+   write documents, nobody may touch `docs/team/actors.json`, and risk defaults to medium needing a
+   tech-manager approval. A project with a backend, a payments surface or an unusual layout will
+   need more than that, and it is better to widen it deliberately than to discover mid-sprint that
+   the gate was never going to allow the work.
+
 5. **Hand off.** When a human invoked `/app-plan` directly, ask "ready to launch the pod with
    `/app-build`?" and do not auto-launch.
 

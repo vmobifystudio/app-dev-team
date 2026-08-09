@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body { margin:0; background:#f2f2ef; color:#14140f; font:14px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing:antialiased; }
+  * { box-sizing:border-box; }
+  a { color:#4f46e5; } a:hover { color:#3730a3; }
+</style>
+</helmet>
+<div style="max-width:1180px;margin:0 auto;padding:48px 40px 120px">
+
+  <header style="margin-bottom:48px;padding-bottom:28px;border-bottom:1px solid #e6e5de">
+    <div style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6b6a62;margin-bottom:10px">Implementation spec</div>
+    <h1 style="font-size:34px;font-weight:680;letter-spacing:-0.03em;margin:0 0 10px;line-height:1.1">Control room design system</h1>
+    <p style="margin:0;font-size:15px;color:#5c5b54;max-width:700px;line-height:1.6;text-wrap:pretty">Every value below is a literal, implementable in <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px">styles.css</span> as a custom property. Light mode. No web fonts, no icon library, no CSS framework — the icon set stays hand-authored inline SVG on <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px">currentColor</span>.</p>
+  </header>
+
+  <!-- ============ COLOR ============ -->
+  <section style="margin-bottom:56px">
+    <h2 style="font-size:19px;font-weight:650;letter-spacing:-0.015em;margin:0 0 6px">1 · Color</h2>
+    <p style="margin:0 0 20px;font-size:13.5px;color:#5c5b54;max-width:680px">Four semantic colors, one accent. The accent is used only for identity and interactivity — never for state. A status color means the same thing on every screen.</p>
+
+    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b6a62;margin:0 0 10px">Base</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#f2f2ef"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">canvas</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#f2f2ef</div></div></div>
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#ffffff;border-bottom:1px solid #f0efe9"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">surface</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#ffffff</div></div></div>
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#fbfbf9"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">surface-sunken</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#fbfbf9</div></div></div>
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#fdfdfb"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">surface-footer</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#fdfdfb</div></div></div>
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#14140f"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">text</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#14140f</div></div></div>
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#5c5b54"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">text-2 · body dim</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#5c5b54</div></div></div>
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#6b6a62"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">text-3 · meta, labels, zeros</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#6b6a62 · 5.5:1</div></div></div>
+      <div style="border:1px solid #d5d5fb;border-radius:10px;overflow:hidden;background:#eef0fe;padding:12px"><div style="font-size:12.5px;font-weight:600;color:#3b32c9;margin-bottom:4px">One muted grey, not two</div><div style="font-size:11.5px;color:#3b32c9;line-height:1.5">Every text token clears 4.5:1 at 11px. Hierarchy comes from size, weight and case — a lighter grey that fails AA is not a third level, it is an unreadable one.</div></div>
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#e6e5de"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">border</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#e6e5de</div></div></div>
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#f0efe9"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">border-soft · row rules</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#f0efe9</div></div></div>
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#4f46e5"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">accent</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#4f46e5</div></div></div>
+      <div style="border:1px solid #e6e5de;border-radius:10px;overflow:hidden;background:#fff"><div style="height:56px;background:#eef0fe;border-bottom:1px solid #d5d5fb"></div><div style="padding:10px 12px"><div style="font-size:12.5px;font-weight:600">accent-soft / line</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">#eef0fe · #d5d5fb</div></div></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b6a62;margin:0 0 10px">Semantic — each has fg / bg / line</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+      <div style="border:1px solid #fecdca;border-radius:12px;background:#fef3f2;padding:16px">
+        <div style="font-size:13px;font-weight:700;color:#b42318;margin-bottom:2px">Attention</div>
+        <div style="font-size:12px;color:#b42318;margin-bottom:12px">something needs a human decision now</div>
+        <div style="display:flex;gap:6px"><span style="width:26px;height:26px;border-radius:6px;background:#b42318"></span><span style="width:26px;height:26px;border-radius:6px;background:#fef3f2;border:1px solid #fecdca"></span><span style="width:26px;height:26px;border-radius:6px;background:#fee4e2"></span></div>
+        <div style="font-size:11px;color:#b42318;font-family:ui-monospace,Menlo,monospace;margin-top:8px;line-height:1.6">#b42318<br />#fef3f2 · #fecdca<br />#fee4e2 (count chip)</div>
+      </div>
+      <div style="border:1px solid #a9e5c3;border-radius:12px;background:#ecfdf3;padding:16px">
+        <div style="font-size:13px;font-weight:700;color:#087443;margin-bottom:2px">Clear</div>
+        <div style="font-size:12px;color:#087443;margin-bottom:12px">swept a real population, found nothing</div>
+        <div style="display:flex;gap:6px"><span style="width:26px;height:26px;border-radius:6px;background:#087443"></span><span style="width:26px;height:26px;border-radius:6px;background:#ecfdf3;border:1px solid #a9e5c3"></span><span style="width:26px;height:26px;border-radius:6px;background:#065f38"></span></div>
+        <div style="font-size:11px;color:#087443;font-family:ui-monospace,Menlo,monospace;margin-top:8px;line-height:1.6">#087443<br />#ecfdf3 · #a9e5c3<br />#065f38 (on-tint text)</div>
+      </div>
+      <div style="border:1px solid #c7d7fe;border-radius:12px;background:#eff4ff;padding:16px">
+        <div style="font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:2px">Info</div>
+        <div style="font-size:12px;color:#1d4ed8;margin-bottom:12px">it displays, it does not judge</div>
+        <div style="display:flex;gap:6px"><span style="width:26px;height:26px;border-radius:6px;background:#1d4ed8"></span><span style="width:26px;height:26px;border-radius:6px;background:#eff4ff;border:1px solid #c7d7fe"></span></div>
+        <div style="font-size:11px;color:#1d4ed8;font-family:ui-monospace,Menlo,monospace;margin-top:8px;line-height:1.6">#1d4ed8<br />#eff4ff · #c7d7fe</div>
+      </div>
+      <div style="border:1px dashed #f0c66b;border-radius:12px;background:#fffdf5;padding:16px">
+        <div style="font-size:13px;font-weight:700;color:#a15c07;margin-bottom:2px">Cannot evaluate</div>
+        <div style="font-size:12px;color:#a15c07;margin-bottom:12px">the input it needed was not readable</div>
+        <div style="display:flex;gap:6px"><span style="width:26px;height:26px;border-radius:6px;background:#a15c07"></span><span style="width:26px;height:26px;border-radius:6px;background:#fffaeb;border:1px dashed #f0c66b"></span><span style="width:26px;height:26px;border-radius:6px;background:#fffdf5;border:1px dashed #f0c66b"></span></div>
+        <div style="font-size:11px;color:#a15c07;font-family:ui-monospace,Menlo,monospace;margin-top:8px;line-height:1.6">#a15c07<br />#fffaeb (chip) · #fffdf5 (card)<br />#f0c66b, always dashed</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:flex-start;padding:14px 16px;border:1px solid #d5d5fb;border-radius:10px;background:#eef0fe;font-size:13px;color:#3b32c9;max-width:820px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-5M12 8h.01"></path></svg>
+      <span><b>Cannot-evaluate carries a second signal beyond hue: the border is always dashed.</b> Amber alone is a warning; dashed amber is "we do not know." It survives grayscale printing, monochrome displays, and every form of color blindness — which is the point, since collapsing it into clear would be a functional regression.</span>
+    </div>
+  </section>
+
+  <!-- ============ TYPE ============ -->
+  <section style="margin-bottom:56px">
+    <h2 style="font-size:19px;font-weight:650;letter-spacing:-0.015em;margin:0 0 6px">2 · Type</h2>
+    <p style="margin:0 0 20px;font-size:13.5px;color:#5c5b54;max-width:680px">Sans: <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px">ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif</span>. Mono, for everything log-derived — IDs, timestamps, paths, commands, counts of rows: <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px">ui-monospace, SFMono-Regular, Menlo, Consolas, monospace</span>.</p>
+    <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;overflow:hidden">
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;padding:18px 20px;border-bottom:1px solid #f0efe9;align-items:baseline">
+        <div><div style="font-size:12.5px;font-weight:600">Page headline</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">30 / 680 / -0.025em / 1.15</div></div>
+        <div style="font-size:30px;font-weight:680;letter-spacing:-0.025em;line-height:1.15">Sprint closed — release not yet gated</div>
+      </div>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;padding:18px 20px;border-bottom:1px solid #f0efe9;align-items:baseline">
+        <div><div style="font-size:12.5px;font-weight:600">Screen title</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">22 / 680 / -0.02em</div></div>
+        <div style="font-size:22px;font-weight:680;letter-spacing:-0.02em">Communications</div>
+      </div>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;padding:18px 20px;border-bottom:1px solid #f0efe9;align-items:baseline">
+        <div><div style="font-size:12.5px;font-weight:600">Stat number</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">28 / 680 / tabular-nums</div></div>
+        <div style="font-size:28px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">47</div>
+      </div>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;padding:18px 20px;border-bottom:1px solid #f0efe9;align-items:baseline">
+        <div><div style="font-size:12.5px;font-weight:600">Card / section header</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">15 / 650 / -0.01em</div></div>
+        <div style="font-size:15px;font-weight:650;letter-spacing:-0.01em">Why work is not moving</div>
+      </div>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;padding:18px 20px;border-bottom:1px solid #f0efe9;align-items:baseline">
+        <div><div style="font-size:12.5px;font-weight:600">Item title</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">14.5 / 600 / 1.4</div></div>
+        <div style="font-size:14.5px;font-weight:600">Subscription receipt validation</div>
+      </div>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;padding:18px 20px;border-bottom:1px solid #f0efe9;align-items:baseline">
+        <div><div style="font-size:12.5px;font-weight:600">Body</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">13.5 / 400 / 1.6</div></div>
+        <div style="font-size:13.5px;color:#5c5b54;line-height:1.6">Waiting on APP-002 — the receipt fixture the dependency named was never committed.</div>
+      </div>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;padding:18px 20px;border-bottom:1px solid #f0efe9;align-items:baseline">
+        <div><div style="font-size:12.5px;font-weight:600">Group label</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">13 / 700 / .06em / upper</div></div>
+        <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62">Budget position</div>
+      </div>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;padding:18px 20px;border-bottom:1px solid #f0efe9;align-items:baseline">
+        <div><div style="font-size:12.5px;font-weight:600">Micro label</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">11 / 700 / .07em / upper</div></div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#6b6a62">Context, quoted from the log</div>
+      </div>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;padding:18px 20px;align-items:baseline">
+        <div><div style="font-size:12.5px;font-weight:600">Provenance · mono</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">11.5 / 400 / #6b6a62</div></div>
+        <div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">swept 8 tickets · 148 board events · 4 gate results</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SPACE ============ -->
+  <section style="margin-bottom:56px">
+    <h2 style="font-size:19px;font-weight:650;letter-spacing:-0.015em;margin:0 0 6px">3 · Space, radius, elevation</h2>
+    <p style="margin:0 0 20px;font-size:13.5px;color:#5c5b54;max-width:680px">4px base. Card padding is 20px horizontal / 18px vertical at the roomier density; 28px between major sections; 12–16px between peers in a grid.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;padding:20px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b6a62;margin-bottom:14px">Spacing scale</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:44px;font-size:12px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">4</span><span style="height:10px;width:4px;background:#4f46e5;border-radius:2px"></span><span style="font-size:12px;color:#6b6a62">icon-to-label gap</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:44px;font-size:12px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">8</span><span style="height:10px;width:8px;background:#4f46e5;border-radius:2px"></span><span style="font-size:12px;color:#6b6a62">chip gaps</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:44px;font-size:12px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">12</span><span style="height:10px;width:12px;background:#4f46e5;border-radius:2px"></span><span style="font-size:12px;color:#6b6a62">card grid gap</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:44px;font-size:12px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">16</span><span style="height:10px;width:16px;background:#4f46e5;border-radius:2px"></span><span style="font-size:12px;color:#6b6a62">two-up gap</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:44px;font-size:12px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">20</span><span style="height:10px;width:20px;background:#4f46e5;border-radius:2px"></span><span style="font-size:12px;color:#6b6a62">card padding-x</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:44px;font-size:12px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">28</span><span style="height:10px;width:28px;background:#4f46e5;border-radius:2px"></span><span style="font-size:12px;color:#6b6a62">section gap</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:44px;font-size:12px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">40</span><span style="height:10px;width:40px;background:#4f46e5;border-radius:2px"></span><span style="font-size:12px;color:#6b6a62">page padding-x</span></div>
+        </div>
+      </div>
+      <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;padding:20px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b6a62;margin-bottom:14px">Radius &amp; elevation</div>
+        <div style="display:flex;gap:12px;margin-bottom:18px">
+          <div style="text-align:center"><div style="width:56px;height:44px;border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9"></div><div style="font-size:11.5px;color:#6b6a62;margin-top:6px;font-family:ui-monospace,Menlo,monospace">12 card</div></div>
+          <div style="text-align:center"><div style="width:56px;height:44px;border:1px solid #e6e5de;border-radius:10px;background:#fbfbf9"></div><div style="font-size:11.5px;color:#6b6a62;margin-top:6px;font-family:ui-monospace,Menlo,monospace">10 ticket</div></div>
+          <div style="text-align:center"><div style="width:56px;height:44px;border:1px solid #e6e5de;border-radius:8px;background:#fbfbf9"></div><div style="font-size:11.5px;color:#6b6a62;margin-top:6px;font-family:ui-monospace,Menlo,monospace">8 control</div></div>
+          <div style="text-align:center"><div style="width:56px;height:44px;border:1px solid #e6e5de;border-radius:6px;background:#fbfbf9"></div><div style="font-size:11.5px;color:#6b6a62;margin-top:6px;font-family:ui-monospace,Menlo,monospace">6 chip</div></div>
+          <div style="text-align:center"><div style="width:56px;height:44px;border:1px solid #e6e5de;border-radius:999px;background:#fbfbf9"></div><div style="font-size:11.5px;color:#6b6a62;margin-top:6px;font-family:ui-monospace,Menlo,monospace">999 pill</div></div>
+        </div>
+        <div style="display:flex;gap:14px">
+          <div><div style="width:120px;height:48px;border:1px solid #e6e5de;border-radius:10px;background:#fff;box-shadow:0 1px 2px rgba(20,20,10,.04)"></div><div style="font-size:11.5px;color:#6b6a62;margin-top:6px;font-family:ui-monospace,Menlo,monospace">sm · nav, cards</div></div>
+          <div><div style="width:120px;height:48px;border:1px solid #e6e5de;border-radius:10px;background:#fff;box-shadow:0 12px 28px rgba(20,20,10,.12),0 2px 6px rgba(20,20,10,.06)"></div><div style="font-size:11.5px;color:#6b6a62;margin-top:6px;font-family:ui-monospace,Menlo,monospace">lg · popovers only</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ COMPONENTS ============ -->
+  <section style="margin-bottom:56px">
+    <h2 style="font-size:19px;font-weight:650;letter-spacing:-0.015em;margin:0 0 24px">4 · Components</h2>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Status badge · 4 variants</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;padding:20px;border:1px solid #e6e5de;border-radius:12px;background:#fff;margin-bottom:28px;align-items:center">
+      <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:6px;padding:3px 8px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.18 14.18A1.5 1.5 0 0 0 3.4 20.5h17.2a1.5 1.5 0 0 0 1.29-2.46L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"></path><path d="M12 9v4M12 17h.01"></path></svg>2 need attention</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#087443;background:#ecfdf3;border:1px solid #a9e5c3;border-radius:6px;padding:3px 8px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="m9 12 2 2 4-4"></path></svg>clear</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#1d4ed8;background:#eff4ff;border:1px solid #c7d7fe;border-radius:6px;padding:3px 8px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-5M12 8h.01"></path></svg>info</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px dashed #f0c66b;border-radius:6px;padding:3px 8px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"></path><path d="M12 17.5h.01"></path></svg>cannot evaluate</span>
+      <span style="font-size:12px;color:#6b6a62;margin-left:8px">10.5 / 700 / .05em upper · radius 6 · pad 3×8 · icon 11px</span>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Card · 4 status variants</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px">
+      <section style="border:1px solid #fecdca;border-radius:12px;background:#fff;overflow:hidden">
+        <header style="display:flex;align-items:center;gap:10px;padding:14px 20px;background:#fef3f2;border-bottom:1px solid #fecdca">
+          <span style="color:#b42318;display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.18 14.18A1.5 1.5 0 0 0 3.4 20.5h17.2a1.5 1.5 0 0 0 1.29-2.46L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"></path><path d="M12 9v4M12 17h.01"></path></svg></span>
+          <h3 style="font-size:15px;font-weight:650;margin:0">Attention</h3>
+          <span style="margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#b42318">2 · Attention</span>
+        </header>
+        <p style="margin:0;padding:16px 20px;font-size:13.5px;color:#5c5b54">Tinted header, red border on the whole card. The only variant that tints. Body lists the findings.</p>
+        <p style="margin:0;padding:10px 20px;font-size:11.5px;color:#6b6a62;background:#fdfdfb;border-top:1px solid #f0efe9;font-family:ui-monospace,Menlo,monospace">swept &lt;population&gt;</p>
+      </section>
+      <section style="border:1px dashed #f0c66b;border-radius:12px;background:#fffdf5;overflow:hidden">
+        <header style="display:flex;align-items:center;gap:10px;padding:14px 20px">
+          <span style="color:#a15c07;display:flex"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"></path><path d="M12 17.5h.01"></path></svg></span>
+          <h3 style="font-size:15px;font-weight:650;margin:0">Cannot evaluate</h3>
+          <span style="margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#a15c07">Cannot evaluate</span>
+        </header>
+        <p style="margin:0;padding:0 20px 14px;font-size:13.5px;color:#5c5b54">Dashed border, faint amber fill, and it names the input it could not read. Never a verdict.</p>
+        <p style="margin:0;padding:10px 20px;font-size:11.5px;color:#8a4b06;border-top:1px dashed #f0c66b;font-family:ui-monospace,Menlo,monospace">swept &lt;the file it wanted&gt;</p>
+      </section>
+      <section style="border:1px solid #e6e5de;border-radius:12px;background:#fff;overflow:hidden">
+        <header style="display:flex;align-items:center;gap:10px;padding:14px 20px">
+          <span style="color:#087443;display:flex"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="m9 12 2 2 4-4"></path></svg></span>
+          <h3 style="font-size:15px;font-weight:650;margin:0">Clear</h3>
+          <span style="margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#087443">Clear</span>
+        </header>
+        <p style="margin:0;padding:0 20px 14px;font-size:13.5px;color:#087443"><b>CLEAR</b> — every off role in the roster names why it is off.</p>
+        <p style="margin:0;padding:10px 20px;font-size:11.5px;color:#6b6a62;background:#fdfdfb;border-top:1px solid #f0efe9;font-family:ui-monospace,Menlo,monospace">swept all 7 roster rows</p>
+      </section>
+      <section style="border:1px solid #e6e5de;border-radius:12px;background:#fff;overflow:hidden">
+        <header style="display:flex;align-items:center;gap:10px;padding:14px 20px">
+          <span style="color:#1d4ed8;display:flex"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-5M12 8h.01"></path></svg></span>
+          <h3 style="font-size:15px;font-weight:650;margin:0">Info</h3>
+          <span style="margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1d4ed8">Info</span>
+        </header>
+        <p style="margin:0;padding:0 20px 14px;font-size:13.5px;color:#5c5b54">Neutral surface. Color appears only in the label and the glyph — a note inside an info card is body text, never amber.</p>
+        <p style="margin:0;padding:10px 20px;font-size:11.5px;color:#6b6a62;background:#fdfdfb;border-top:1px solid #f0efe9;font-family:ui-monospace,Menlo,monospace">swept the most recent ticket event</p>
+      </section>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Message kind chip · 7 variants</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;padding:20px;border:1px solid #e6e5de;border-radius:12px;background:#fff;margin-bottom:16px;align-items:center">
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px solid #f0c66b;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"></path><path d="M12 17.5h.01"></path></svg>question</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#087443;background:#ecfdf3;border:1px solid #a9e5c3;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>answer</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#4f46e5;background:#eef0fe;border:1px solid #d5d5fb;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="m9.5 15 1.5 1.5L15 13"></path></svg>decision</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"></path><path d="M12 8v5M12 16h.01"></path></svg>escalation</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"></path><path d="M12 8v5M12 16h.01"></path></svg>blocker</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#1d4ed8;background:#eff4ff;border:1px solid #c7d7fe;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>fyi</span>
+      <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#5c5b54;background:#fbfbf9;border:1px solid #e6e5de;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"></path><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><path d="m7 22-4-4 4-4"></path><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>handoff</span>
+    </div>
+    <p style="margin:0 0 28px;font-size:12.5px;color:#6b6a62;max-width:760px">Kind chips reuse the semantic palette by meaning, not by decoration: a question is unanswered (amber), an answer or decision resolves (green / accent), an escalation or blocker demands a human (red), an fyi and a handoff only inform (blue / neutral). Handoff is the one neutral chip — it moves work without judging it.</p>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Nav item · default / hover / active / focus</div>
+    <div style="display:flex;gap:12px;padding:20px;border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;margin-bottom:28px;flex-wrap:wrap">
+      <span style="display:flex;align-items:center;gap:10px;width:230px;padding:8px 10px;border:1px solid transparent;border-radius:8px;font-size:13.5px;color:#5c5b54"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:.8"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="9.5" y="4" width="5" height="10" rx="1.5"></rect><rect x="16" y="4" width="5" height="13" rx="1.5"></rect></svg><span style="flex:1">default</span></span>
+      <span style="display:flex;align-items:center;gap:10px;width:230px;padding:8px 10px;border:1px solid transparent;border-radius:8px;background:#f0efe9;font-size:13.5px;color:#14140f"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:.8"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="9.5" y="4" width="5" height="10" rx="1.5"></rect><rect x="16" y="4" width="5" height="13" rx="1.5"></rect></svg><span style="flex:1">hover</span></span>
+      <span style="display:flex;align-items:center;gap:10px;width:230px;padding:8px 10px;border:1px solid #d5d5fb;border-radius:8px;background:#eef0fe;font-size:13.5px;font-weight:600;color:#3b32c9"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:.85"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="9.5" y="4" width="5" height="10" rx="1.5"></rect><rect x="16" y="4" width="5" height="13" rx="1.5"></rect></svg><span style="flex:1">active</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:700;background:#fee4e2;color:#b42318">3</span></span>
+      <span style="display:flex;align-items:center;gap:10px;width:230px;padding:8px 10px;border:1px solid #d5d5fb;border-radius:8px;background:#eef0fe;box-shadow:0 0 0 2px #fbfbf9,0 0 0 4px #4f46e5;font-size:13.5px;color:#3b32c9"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:.8"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="9.5" y="4" width="5" height="10" rx="1.5"></rect><rect x="16" y="4" width="5" height="13" rx="1.5"></rect></svg><span style="flex:1">focus-visible</span></span>
+    </div>
+    <p style="margin:-16px 0 28px;font-size:12.5px;color:#6b6a62">Focus ring is <span style="font-family:ui-monospace,Menlo,monospace">box-shadow: 0 0 0 2px &lt;local bg&gt;, 0 0 0 4px #4f46e5</span> on every interactive element — the 2px gap keeps it legible against tinted card headers.</p>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Action form · 4 states</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px">
+      <div style="border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;padding:16px 18px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#6b6a62;margin-bottom:12px">Default</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:13px;padding:8px 11px;border:1px solid #e6e5de;border-radius:8px;background:#fff;font-family:ui-monospace,Menlo,monospace;width:110px">APP-004</span>
+          <span style="font-size:13px;padding:8px 11px;border:1px solid #e6e5de;border-radius:8px;background:#fff;flex:1 1 140px;color:#6b6a62">reason…</span>
+          <span style="font-size:13px;font-weight:600;padding:9px 18px;border-radius:8px;border:1px solid #4f46e5;background:#4f46e5;color:#fff">Run command</span>
+        </div>
+      </div>
+      <div style="border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;padding:16px 18px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#6b6a62;margin-bottom:12px">Submitting</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:13px;padding:8px 11px;border:1px solid #e6e5de;border-radius:8px;background:#f0efe9;font-family:ui-monospace,Menlo,monospace;width:110px;color:#6b6a62">APP-004</span>
+          <span style="font-size:13px;padding:8px 11px;border:1px solid #e6e5de;border-radius:8px;background:#f0efe9;flex:1 1 140px;color:#6b6a62">Target sandbox…</span>
+          <span style="font-size:13px;font-weight:600;padding:9px 18px;border-radius:8px;border:1px solid #6c63e8;background:#6c63e8;color:#fff">running…</span>
+        </div>
+        <p style="margin:10px 0 0;font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">inputs disabled until the CLI returns</p>
+      </div>
+      <div style="border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;padding:16px 18px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#6b6a62;margin-bottom:12px">Success</div>
+        <pre style="margin:0;padding:12px 14px;background:#ecfdf3;border:1px solid #a9e5c3;border-radius:8px;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#065f38">$ node scripts/team-message.sh --ticket APP-004 …
+exit 0
+recorded message m-0143</pre>
+      </div>
+      <div style="border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;padding:16px 18px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#6b6a62;margin-bottom:12px">Refused — printed verbatim, amber not red</div>
+        <pre style="margin:0;padding:12px 14px;background:#fffaeb;border:1px solid #f0c66b;border-radius:8px;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#8a4b06">REFUSED: board.mjs will not move a ticket out of done without a recorded reason
+whitelist: answer-question, reopen-ticket, unblock-ticket, assign-owner
+exit 3</pre>
+        <p style="margin:10px 0 0;font-size:11.5px;color:#6b6a62">A refusal is a finding, not an error. Red is reserved for a failed command (non-zero exit that was not a refusal).</p>
+      </div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Avatar · deterministic from the name</div>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding:20px;border:1px solid #e6e5de;border-radius:12px;background:#fff;margin-bottom:28px">
+      <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:32px;height:32px;font-size:11px;background:hsl(310 70% 92%);color:hsl(310 55% 29%)">TM</span>
+      <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:26px;height:26px;font-size:10px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>
+      <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:22px;height:22px;font-size:9px;background:hsl(101 70% 92%);color:hsl(101 55% 29%)">CR</span>
+      <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:18px;height:18px;font-size:8.5px;background:hsl(164 70% 92%);color:hsl(164 55% 29%)">QE</span>
+      <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:26px;height:26px;font-size:10px;background:#f0efe9;color:#6b6a62">AD</span>
+      <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:26px;height:26px;font-size:10px;background:#fee4e2;color:#b42318">?</span>
+      <span style="font-size:12.5px;color:#6b6a62;max-width:520px;line-height:1.6">Same hash as today, one value changed: <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">hsl(hash(name) 70% 92%)</span> fill, <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">hsl(h 55% 29%)</span> text — the source's 32% lightness leaves some hues at 4.4:1, below AA at these sizes; 29% clears every hue. Sizes 18 / 22 / 26 / 32. Two exceptions: an <b>off</b> role renders neutral grey, and <b>unassigned</b> renders as a red "?" — the absence of an owner is a finding, not a person.</span>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Kanban column &amp; ticket card</div>
+    <div style="display:flex;gap:14px;align-items:flex-start;padding:20px;border:1px solid #e6e5de;border-radius:12px;background:#fff;margin-bottom:14px">
+      <div style="width:250px;border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;padding:12px">
+        <div style="display:flex;align-items:center;gap:8px;padding:2px 4px 10px;margin-bottom:10px;border-bottom:1px solid #e6e5de">
+          <span style="width:7px;height:7px;border-radius:999px;background:#087443"></span>
+          <span style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#5c5b54">done</span>
+          <span style="margin-left:auto;font-size:11.5px;font-weight:700;color:#6b6a62;font-variant-numeric:tabular-nums">5</span>
+        </div>
+        <div style="border:1px solid #e6e5de;border-radius:10px;padding:12px;background:#fff">
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:6px">APP-002</div>
+          <div style="font-size:13px;font-weight:550;line-height:1.4;margin-bottom:10px">Local store schema and migrations</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c5b54;margin-bottom:9px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:18px;height:18px;font-size:8.5px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>ios-developer</div>
+          <span style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px dashed #f0c66b;border-radius:5px;padding:2px 6px">qa (static only)</span>
+        </div>
+      </div>
+      <div style="width:250px;border:1px solid #fecdca;border-radius:12px;background:#fffbfa;padding:12px">
+        <div style="display:flex;align-items:center;gap:8px;padding:2px 4px 10px;margin-bottom:10px;border-bottom:1px solid #fecdca">
+          <span style="width:7px;height:7px;border-radius:999px;background:#b42318"></span>
+          <span style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#b42318">blocked</span>
+          <span style="margin-left:auto;font-size:11.5px;font-weight:700;color:#b42318;font-variant-numeric:tabular-nums">1</span>
+        </div>
+        <div style="border:1px solid #fecdca;border-radius:10px;padding:12px;background:#fff">
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:6px">APP-004</div>
+          <div style="font-size:13px;font-weight:550;line-height:1.4;margin-bottom:10px">Subscription receipt validation</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px dashed #f0c66b;border-radius:5px;padding:2px 6px">stranded</span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#1d4ed8;background:#eff4ff;border:1px solid #c7d7fe;border-radius:5px;padding:2px 6px">needs APP-002</span>
+          </div>
+        </div>
+      </div>
+      <div style="width:250px;border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;padding:12px">
+        <div style="display:flex;align-items:center;gap:8px;padding:2px 4px 10px;margin-bottom:10px;border-bottom:1px solid #e6e5de">
+          <span style="width:7px;height:7px;border-radius:999px;background:#a15c07"></span>
+          <span style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#5c5b54">review</span>
+          <span style="margin-left:auto;font-size:11.5px;font-weight:700;color:#6b6a62;font-variant-numeric:tabular-nums">0</span>
+        </div>
+        <div style="border:1px dashed #e6e5de;border-radius:10px;padding:14px 12px;text-align:center;font-size:12px;color:#6b6a62">no tickets in review</div>
+      </div>
+    </div>
+    <p style="margin:0 0 28px;font-size:12.5px;color:#6b6a62;max-width:820px">Columns are <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">grid-template-columns: repeat(5, 254px)</span> with a 14px gap, inside an <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">overflow-x: auto</span> wrapper — a fixed track, never flex-grow and never <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">minmax(0, …)</span>, which lets every track shrink to nothing and squashes the cards instead of scrolling. 254 is not arbitrary: 5×254 + 4×14 = <b>1326px</b>, which plus 48px of content padding and the 60px rail is 1434 — the widest the board can be and still fit a 1440px laptop with the sidebar collapsed. One column holding twenty tickets and four holding none looks the same width as an even spread, which is the common real shape at sprint start and sprint end. An empty column says so in words rather than rendering as a void.</p>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Verdict bar — a section whose whole body is its verdict</div>
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff;margin-bottom:10px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#087443" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><circle cx="12" cy="12" r="9"></circle><path d="m9 12 2 2 4-4"></path></svg>
+      <span style="font-size:13.5px;color:#087443"><b style="font-weight:650">CLEAR</b> — every off role in the roster names why it is off.</span>
+      <span style="margin-left:auto;font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace;white-space:nowrap">swept all 7 roster rows</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border:1px dashed #f0c66b;border-radius:12px;background:#fffdf5;margin-bottom:10px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a15c07" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"></path><path d="M12 17.5h.01"></path></svg>
+      <span style="font-size:13.5px;color:#a15c07"><b style="font-weight:650">CANNOT EVALUATE</b> — docs/02-team-roster.md was not readable.</span>
+      <span style="margin-left:auto;font-size:11.5px;color:#8a4b06;font-family:ui-monospace,Menlo,monospace;white-space:nowrap">swept nothing</span>
+    </div>
+    <p style="margin:0 0 28px;font-size:12.5px;color:#6b6a62;max-width:820px">Used where a section has no list to show and its verdict <em>is</em> the content — the roster's off-role check, for instance. It obeys the same fill rule as the card: <b>clear does not tint</b>, the green lives in the glyph and the words; cannot-evaluate keeps its dashed amber. Attention never uses this shape, because an attention finding always has items to list, and those belong in a card.</p>
+    <p style="margin:0 0 28px;font-size:12.5px;color:#6b6a62;max-width:820px">The same bar carries the empty-filter case that <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">Comms.tsx</span> already renders — <em>"No thread matches this filter. 2 thread(s) were read from docs/team/messages.jsonl"</em>. It states the population it searched, so an empty channel never reads as a team with nothing to say. The prototype's data reaches every channel, so the state is not visible there; build it anyway.</p>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Data tables</div>
+    <div style="display:flex;gap:10px;align-items:flex-start;padding:14px 16px;border:1px solid #d5d5fb;border-radius:10px;background:#eef0fe;font-size:13px;color:#3b32c9;margin-bottom:28px;max-width:820px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-5M12 8h.01"></path></svg>
+      <span>Every <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">&lt;table&gt;</span> goes in its own <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">overflow-x: auto</span> wrapper inside the card, with a <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">min-width</span> equal to the sum of its columns — the roster 820px, the workload table 680px. The card itself keeps <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">overflow: hidden</span> for its radius, and without the inner scroller that hidden silently amputates the rightmost columns: <b>"Trigger / reason it is off"</b> on the roster and <b>"Static only"</b> on the workload table — the two columns those screens exist to show. This is the <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">.scroll</span> wrapper the current <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">Board.tsx</span> and <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">Team.tsx</span> already put around every table; keep it.</span>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Icons to add to <span style="font-family:ui-monospace,Menlo,monospace;text-transform:none;letter-spacing:0">icons.tsx</span></div>
+    <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;padding:20px;margin-bottom:8px">
+      <p style="margin:0 0 14px;font-size:13.5px;color:#5c5b54;max-width:820px">The v2 chrome uses five glyphs the existing set does not have. All stroke-based, 24×24 viewBox, <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">stroke-width 2</span>, round caps and joins, <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">currentColor</span> — same <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">Icon</span> wrapper as the rest. Nothing else is needed: the small state dots on kanban columns, role rows and the source list are CSS circles, not SVG.</p>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+        <div style="display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid #f0efe9;border-radius:10px;background:#fbfbf9">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="m6 9 6 6 6-6"></path></svg>
+          <div><div style="font-size:13px;font-weight:600">ChevronDownIcon</div><div style="font-size:12px;color:#6b6a62;line-height:1.5"><span style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">m6 9 6 6 6-6</span>. Trailing disclosure on the source chip and every dropdown.</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid #f0efe9;border-radius:10px;background:#fbfbf9">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+          <div><div style="font-size:13px;font-weight:600">SearchIcon</div><div style="font-size:12px;color:#6b6a62;line-height:1.5">Circle r=7 at 11,11 plus a handle <span style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px">m20 20-3.5-3.5</span>. The only thing left in the search field when it collapses to its 34px floor.</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid #f0efe9;border-radius:10px;background:#fbfbf9">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="m8 9 4-4 4 4"></path><path d="m16 15-4 4-4-4"></path></svg>
+          <div><div style="font-size:13px;font-weight:600">SelectorIcon</div><div style="font-size:12px;color:#6b6a62;line-height:1.5">Opposed chevrons, up over down. Project switcher in the sidebar head — a two-way swap, not a one-way disclosure, so it must not reuse the chevron.</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid #f0efe9;border-radius:10px;background:#fbfbf9">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M9 4v16"></path></svg>
+          <div><div style="font-size:13px;font-weight:600">PanelIcon</div><div style="font-size:12px;color:#6b6a62;line-height:1.5">Rounded rect with a vertical rule a third in — a page with a sidebar. The collapse toggle at the foot of the rail.</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid #f0efe9;border-radius:10px;background:#fbfbf9">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M3 5h18l-7 8v6l-4 2v-8z"></path></svg>
+          <div><div style="font-size:13px;font-weight:600">FilterIcon</div><div style="font-size:12px;color:#6b6a62;line-height:1.5">A funnel as one closed path. Leads every filter dropdown — owner on Board, state on Team.</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid #f0efe9;border-radius:10px;background:#fbfbf9">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><rect x="3" y="4" width="18" height="7" rx="2"></rect><rect x="3" y="15" width="18" height="5" rx="2"></rect></svg>
+          <div><div style="font-size:13px;font-weight:600">GroupIcon</div><div style="font-size:12px;color:#6b6a62;line-height:1.5">Two stacked bands of unequal height — rows gathered into groups. Leads the group-by dropdown, so it matches its sibling filter control.</div></div>
+        </div>
+      </div>
+    </div>
+    <p style="margin:0;font-size:12.5px;color:#6b6a62;max-width:820px">Icon rule: every element of a class gets one, or none of them do. Icon-bearing classes are status badges, message-kind chips, section headers, sidebar nav items, and toolbar dropdowns — <b>including the group-by control, which is the same class as the filter beside it</b>. Non-bearing classes are flag chips on ticket cards, metadata chips, and table cells.</p>
+  </section>
+
+  <!-- ============ CHROME ============ -->
+  <section style="margin-bottom:56px">
+    <h2 style="font-size:19px;font-weight:650;letter-spacing:-0.015em;margin:0 0 6px">5 · Chrome — sidebar, top bar, health</h2>
+    <p style="margin:0 0 20px;font-size:13.5px;color:#5c5b54;max-width:700px">This replaces the old header and its eight wrapping pills. Three surfaces carry provenance, at three levels of loudness, and each states a different amount.</p>
+
+    <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;overflow:hidden;margin-bottom:20px">
+      <div style="display:grid;grid-template-columns:190px 1fr;gap:20px;padding:18px 20px;border-bottom:1px solid #f0efe9">
+        <div><div style="font-size:12.5px;font-weight:600">Sidebar</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">248px ↔ 60px</div></div>
+        <div style="font-size:13.5px;color:#5c5b54;line-height:1.6">Project switcher, five nav items with attention counts, runtime line, collapse toggle. Collapsing to a 60px icon rail is not decoration: the Board needs 1326px for five columns, and the rail is what lets a 1440px laptop see all of them without horizontal scroll — see the arithmetic in §4. Nav item states are in §4. Rail state drops the labels and puts each in <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">title</span>, but the attention counts must survive it — reduced to a 14px red numeral pinned to the icon's top-right, with a 1.5px border in the sidebar fill so it reads against the glyph. The rail is the state an operator works the Board in, and with the health strip on Mission only, those counts are the sole persistent cross-screen signal that something needs them. Neutral counts (Team's roster size) drop with the labels; only attention counts are promoted.</div>
+      </div>
+      <div style="display:grid;grid-template-columns:190px 1fr;gap:20px;padding:18px 20px;border-bottom:1px solid #f0efe9">
+        <div><div style="font-size:12.5px;font-weight:600">Top bar</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">56px, sticky</div></div>
+        <div style="font-size:13.5px;color:#5c5b54;line-height:1.6">Breadcrumb · search · connection pill · source chip · operator avatar. <b>Shrink order is fixed and matters:</b> the breadcrumb is <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">flex:0 0 auto</span> and never yields (the project segment truncates at 140px, the screen name never truncates); the right cluster is <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">flex:0 0 auto</span> and never yields; the search is the sole flexible item, <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">flex:0 1 240px</span> with a 34px floor and <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">overflow:hidden</span>, collapsing toward an icon-only box. Give any container in this bar <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">min-width:0</span> and the shrink lands on the wrong element.</div>
+      </div>
+      <div style="display:grid;grid-template-columns:190px 1fr;gap:20px;padding:18px 20px">
+        <div><div style="font-size:12.5px;font-weight:600">Health strip</div><div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">Mission Control only</div></div>
+        <div style="font-size:13.5px;color:#5c5b54;line-height:1.6">The full-width amber sentence naming the unreadable files renders on Mission Control and nowhere else. On the other four screens the bar chip carries the same fact in one chip. Rendering the strip on every screen makes it wallpaper within a week, and with <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">journeys</span> and <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">verification</span> routinely absent it would be permanently on. Nothing is hidden by this: the chip is present on every screen, in both states, always.</div>
+      </div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Source chip · 2 states · always present</div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:20px;border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;margin-bottom:28px">
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border:1px solid #a9e5c3;border-radius:999px;background:#ecfdf3;color:#087443"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="m9 12 2 2 4-4"></path></svg>all 8 sources<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><path d="m6 9 6 6 6-6"></path></svg></span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border:1px solid #f0c66b;border-radius:999px;background:#fffdf5;color:#a15c07"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.18 14.18A1.5 1.5 0 0 0 3.4 20.5h17.2a1.5 1.5 0 0 0 1.29-2.46L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"></path><path d="M12 9v4M12 17h.01"></path></svg>6 of 8 sources<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><path d="m6 9 6 6 6-6"></path></svg></span>
+      <span style="font-size:12.5px;color:#6b6a62;max-width:460px;line-height:1.6">The healthy state is green and explicit — <b>never absent</b>. An empty slot where a verdict belongs is the failure this page exists to prevent. Both states open the same 8-row source panel.</span>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Connection pill · 2 states</div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:20px;border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9">
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:5px 10px;border:1px solid #a9e5c3;border-radius:999px;background:#ecfdf3;color:#087443"><span style="width:6px;height:6px;border-radius:999px;background:#087443"></span>live · 14:22:06Z</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border:1px dashed #f0c66b;border-radius:999px;background:#fffdf5;color:#a15c07"><span style="width:6px;height:6px;border-radius:999px;background:#a15c07"></span>stream dropped · last read 14:22:06Z</span>
+      <span style="font-size:12.5px;color:#6b6a62;max-width:460px;line-height:1.6">A dot that is always green is decoration. It earns its place only because <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">App.tsx</span> already detects <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">EventSource.onerror</span> — bind the amber state to it. Dashed, like every other "we cannot know" on this page: a page that stopped receiving updates is not reporting a problem, it is reporting that it can no longer tell you.</span>
+    </div>
+  </section>
+
+  <!-- ============ VARIATIONS ============ -->
+  <section>
+    <h2 style="font-size:19px;font-weight:650;letter-spacing:-0.015em;margin:0 0 6px">6 · Variations to choose between</h2>
+    <p style="margin:0 0 24px;font-size:13.5px;color:#5c5b54;max-width:680px">The built screens use the first option in each pair. The alternates are real and equally implementable — tell me which you want and I will apply it everywhere.</p>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Mission Control layout</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px">
+      <div style="border:1px solid #4f46e5;border-radius:12px;background:#fff;padding:18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#4f46e5;background:#eef0fe;border:1px solid #d5d5fb;border-radius:6px;padding:2px 7px">built</span><span style="font-size:13.5px;font-weight:600">M1 · Single column, cause first</span></div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+          <div style="height:34px;border-radius:6px;background:#f0efe9"></div>
+          <div style="height:60px;border-radius:6px;background:#fef3f2;border:1px solid #fecdca"></div>
+          <div style="height:26px;border-radius:6px;background:#f0efe9"></div>
+          <div style="display:flex;gap:6px"><div style="flex:1;height:38px;border-radius:6px;background:#fffdf5;border:1px dashed #f0c66b"></div><div style="flex:1;height:38px;border-radius:6px;background:#f0efe9"></div></div>
+          <div style="height:26px;border-radius:6px;background:#f0efe9"></div>
+        </div>
+        <p style="margin:0;font-size:12.5px;color:#5c5b54;line-height:1.6">Blockers own the full width and everything else reads underneath in one scan line. Best when the answer to "what's wrong" is the only thing you came for.</p>
+      </div>
+      <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;padding:18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6b6a62;background:#fbfbf9;border:1px solid #e6e5de;border-radius:6px;padding:2px 7px">alternate</span><span style="font-size:13.5px;font-weight:600">M2 · Two column, status rail right</span></div>
+        <div style="display:flex;gap:6px;margin-bottom:12px">
+          <div style="flex:2;display:flex;flex-direction:column;gap:6px">
+            <div style="height:34px;border-radius:6px;background:#f0efe9"></div>
+            <div style="height:78px;border-radius:6px;background:#fef3f2;border:1px solid #fecdca"></div>
+            <div style="height:34px;border-radius:6px;background:#f0efe9"></div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+            <div style="height:44px;border-radius:6px;background:#fffdf5;border:1px dashed #f0c66b"></div>
+            <div style="height:32px;border-radius:6px;background:#f0efe9"></div>
+            <div style="height:32px;border-radius:6px;background:#f0efe9"></div>
+            <div style="height:32px;border-radius:6px;background:#f0efe9"></div>
+          </div>
+        </div>
+        <p style="margin:0;font-size:12.5px;color:#5c5b54;line-height:1.6">Blockers left, budget / verification / build / agents stacked in a narrow right rail. Everything above the fold on a 1400px screen; blockers get less width when there are many.</p>
+      </div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Status card treatment</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:32px">
+      <div style="border:1px solid #4f46e5;border-radius:12px;background:#fff;padding:18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#4f46e5;background:#eef0fe;border:1px solid #d5d5fb;border-radius:6px;padding:2px 7px">built</span><span style="font-size:13.5px;font-weight:600">S1 · Tint only attention</span></div>
+        <div style="border:1px solid #fecdca;border-radius:8px;overflow:hidden;margin-bottom:6px"><div style="padding:8px 10px;background:#fef3f2;font-size:11.5px;font-weight:600;color:#b42318">attention</div><div style="padding:10px;font-size:11.5px;color:#6b6a62">list</div></div>
+        <div style="border:1px solid #e6e5de;border-radius:8px;overflow:hidden;margin-bottom:6px"><div style="padding:8px 10px;font-size:11.5px;font-weight:600;color:#087443">clear</div></div>
+        <div style="border:1px dashed #f0c66b;border-radius:8px;background:#fffdf5;overflow:hidden"><div style="padding:8px 10px;font-size:11.5px;font-weight:600;color:#a15c07">cannot evaluate</div></div>
+        <p style="margin:12px 0 0;font-size:12.5px;color:#5c5b54;line-height:1.6">Only the two states that need you carry fill. Calm page, sharp signal.</p>
+      </div>
+      <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;padding:18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6b6a62;background:#fbfbf9;border:1px solid #e6e5de;border-radius:6px;padding:2px 7px">alternate</span><span style="font-size:13.5px;font-weight:600">S2 · Left status rail</span></div>
+        <div style="border:1px solid #e6e5de;border-left:3px solid #b42318;border-radius:8px;overflow:hidden;margin-bottom:6px"><div style="padding:8px 10px;font-size:11.5px;font-weight:600;color:#b42318">attention</div><div style="padding:10px;font-size:11.5px;color:#6b6a62">list</div></div>
+        <div style="border:1px solid #e6e5de;border-left:3px solid #087443;border-radius:8px;overflow:hidden;margin-bottom:6px"><div style="padding:8px 10px;font-size:11.5px;font-weight:600;color:#087443">clear</div></div>
+        <div style="border:1px dashed #f0c66b;border-left:3px dashed #a15c07;border-radius:8px;overflow:hidden"><div style="padding:8px 10px;font-size:11.5px;font-weight:600;color:#a15c07">cannot evaluate</div></div>
+        <p style="margin:12px 0 0;font-size:12.5px;color:#5c5b54;line-height:1.6">Every card carries a 3px colored spine. Scannable as a vertical stripe pattern; slightly busier.</p>
+      </div>
+      <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;padding:18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6b6a62;background:#fbfbf9;border:1px solid #e6e5de;border-radius:6px;padding:2px 7px">alternate</span><span style="font-size:13.5px;font-weight:600">S3 · Full tint, all four</span></div>
+        <div style="border:1px solid #fecdca;border-radius:8px;overflow:hidden;margin-bottom:6px"><div style="padding:8px 10px;background:#fef3f2;font-size:11.5px;font-weight:600;color:#b42318">attention</div><div style="padding:10px;font-size:11.5px;color:#6b6a62">list</div></div>
+        <div style="border:1px solid #a9e5c3;border-radius:8px;overflow:hidden;margin-bottom:6px"><div style="padding:8px 10px;background:#ecfdf3;font-size:11.5px;font-weight:600;color:#087443">clear</div></div>
+        <div style="border:1px dashed #f0c66b;border-radius:8px;overflow:hidden"><div style="padding:8px 10px;background:#fffaeb;font-size:11.5px;font-weight:600;color:#a15c07">cannot evaluate</div></div>
+        <p style="margin:12px 0 0;font-size:12.5px;color:#5c5b54;line-height:1.6">Closest to today. Maximum state legibility, at the cost of the flat hierarchy the brief asked to fix.</p>
+      </div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0 0 12px">Communications density</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="border:1px solid #4f46e5;border-radius:12px;background:#fff;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #f0efe9"><span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#4f46e5;background:#eef0fe;border:1px solid #d5d5fb;border-radius:6px;padding:2px 7px">built</span><span style="font-size:13.5px;font-weight:600">C1 · Roomy — 32px avatar, metadata as chips</span></div>
+        <div style="display:grid;grid-template-columns:32px 1fr;gap:12px;padding:18px">
+          <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:32px;height:32px;font-size:11px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>
+          <div>
+            <div style="display:flex;align-items:center;gap:8px"><b style="font-size:13.5px">ios-developer</b><span style="font-size:12.5px;color:#6b6a62">→ tech-manager</span><span style="font-size:10.5px;font-weight:700;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px solid #f0c66b;border-radius:6px;padding:2px 7px">question</span></div>
+            <p style="margin:8px 0 0;font-size:14.5px;font-weight:600;line-height:1.4">Which receipt environment should validation target?</p>
+            <p style="margin:6px 0 0;font-size:13.5px;color:#5c5b54;line-height:1.6">The requirement says "validate the receipt" without naming sandbox or production.</p>
+            <div style="display:flex;gap:6px;margin-top:12px"><span style="font-size:11.5px;border:1px solid #e6e5de;border-radius:6px;padding:3px 8px;background:#fbfbf9;font-family:ui-monospace,Menlo,monospace">R-12</span><span style="font-size:11.5px;border:1px solid #fecdca;border-radius:6px;padding:3px 8px;background:#fef3f2;color:#b42318;font-family:ui-monospace,Menlo,monospace">due round 31</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #f0efe9"><span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#6b6a62;background:#fbfbf9;border:1px solid #e6e5de;border-radius:6px;padding:2px 7px">alternate</span><span style="font-size:13.5px;font-weight:600">C2 · Log-dense — 20px avatar, metadata inline</span></div>
+        <div style="display:grid;grid-template-columns:20px 1fr;gap:10px;padding:11px 18px;border-bottom:1px solid #f0efe9">
+          <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:20px;height:20px;font-size:9px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:7px;flex-wrap:wrap"><b style="font-size:12.5px">ios-developer</b><span style="font-size:11.5px;color:#6b6a62">→ tech-manager</span><span style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#a15c07;border:1px solid #f0c66b;border-radius:4px;padding:0 5px">q</span><span style="font-size:13px;font-weight:550">Which receipt environment should validation target?</span></div>
+            <div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace;margin-top:3px">R-12 · due round 31 · 11:04:11Z</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:20px 1fr;gap:10px;padding:11px 18px;border-bottom:1px solid #f0efe9">
+          <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:20px;height:20px;font-size:9px;background:hsl(310 70% 92%);color:hsl(310 55% 29%)">TM</span>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:7px;flex-wrap:wrap"><b style="font-size:12.5px">tech-manager</b><span style="font-size:11.5px;color:#6b6a62">→ ios-developer</span><span style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#b42318;border:1px solid #fecdca;border-radius:4px;padding:0 5px">blk</span><span style="font-size:13px;font-weight:550">APP-004 moved to blocked pending the fixture</span></div>
+            <div style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace;margin-top:3px">in_progress → blocked · 11:31:52Z</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:20px 1fr;gap:10px;padding:11px 18px">
+          <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;width:20px;height:20px;font-size:9px;background:hsl(101 70% 92%);color:hsl(101 55% 29%)">CR</span>
+          <div>
+            <div style="display:flex;align-items:baseline;gap:7px;flex-wrap:wrap"><b style="font-size:12.5px">code-reviewer</b><span style="font-size:11.5px;color:#6b6a62">→ nobody</span><span style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:#1d4ed8;border:1px solid #c7d7fe;border-radius:4px;padding:0 5px">fyi</span><span style="font-size:13px;font-weight:550">Review deferred while the ticket is blocked</span></div>
+            <div style="font-size:11.5px;color:#a15c07;font-family:ui-monospace,Menlo,monospace;margin-top:3px">metadata unknown — generated Markdown view</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p style="margin:16px 0 0;font-size:12.5px;color:#6b6a62;max-width:820px">C2 fits roughly three times the messages per screen and reads like a log; C1 reads like a conversation and gives the body copy room. You asked for roomier overall, so C1 is what the prototype uses — but Comms is the one screen where the argument for density is strongest.</p>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180}}"></script>
+</body>
+</html>

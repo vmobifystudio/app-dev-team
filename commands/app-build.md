@@ -56,62 +56,45 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 
 ## Steps
 
-0. **Adopt the event log, then run the board doctor gate** — *before spawning anything*.
+0. **Run every mechanical precondition as ONE command, before spawning anything.**
 
    ```bash
-   if [ ! -f docs/31-board-events.jsonl ] && [ -f docs/31-board.md ]; then
-     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" migrate docs/31-board.md --out docs/31-board-events.jsonl \
-       && node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" render \
-       && echo "MIGRATED: hand-written board -> event log"
-   fi
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" round
    ```
 
-   Run this **once, at the top of the first round only** — after that the log exists and the guard
-   is a no-op. Announce what it reconstructed and how much of it is `inferred` (`ts: null`): those
-   are events the hand-written board never recorded, and the metrics in `/app-status` will be thin
-   for tickets that predate the log. If migrate exits non-zero the board is too old to reconstruct —
-   print `LEGACY BOARD: no event log — running the hand-written path`, use `board-doctor` as the
-   authority for the rest of this run, and move rows by hand as this command used to. Do not strand
-   the project over it.
+   This replaces four separate steps that used to be four separate paragraphs: the **board doctor**
+   gate, the **budget** ceiling, the **toolchain** check, and printing **what is legal now**. Every
+   one of them was already a script with its own exit code. What was prose was the discipline of
+   running all four, in order, every round — and that is exactly the kind of discipline this
+   codebase has repeatedly proven does not survive contact with a long file. Dry run 3's skipped
+   transition was not ignorance; it was load.
 
-   Then, on either path, use the `board-doctor` skill:
+   It is READ-ONLY. It claims nothing, advances nothing, appends nothing.
+
+   - Exit `0` → every precondition CLEAR, and it prints the legal transitions per ticket. Continue.
+   - Exit `1` → **BLOCKED. Spawn nobody this round.** It names which precondition and why: an
+     incoherent board (repair it with `tech-manager`, then re-run), a reached ceiling or the
+     emergency stop (raising a ceiling is the user's decision, never a workaround you apply to keep
+     going), or a declared tool at the wrong version.
+   - Exit `2` → **CANNOT EVALUATE. Also not a pass.** Usually no board yet (`/app-plan` first), or
+     no `docs/team/project-profile.json` so the toolchain is UNPROVEN. Supply what it names.
+
+   **If a project has no event log yet but does have a hand-written `docs/31-board.md`**, migrate
+   once before this step, then continue as normal:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board-doctor.mjs" docs/31-board.md
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" migrate docs/31-board.md --out docs/31-board-events.jsonl \
+     && node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" render
    ```
 
-   - Exit `0` → print `BOARD DOCTOR: CLEAN — N tickets` and continue.
-   - Exit `1` → **stop. Spawn nobody.** Print the anomaly list verbatim, spawn `tech-manager` once
-     to repair the board, then re-run the doctor. If it fails a second time, surface to the user.
-   - Exit `2` → no board yet; suggest `/app-plan`.
+   Announce how much it reconstructed as `inferred` (`ts: null`) — those are events the hand-written
+   board never recorded, so `/app-status` metrics will be thin for tickets that predate the log. If
+   migrate exits non-zero the board is too old to reconstruct: say `LEGACY BOARD: no event log`, use
+   `board-doctor` as the authority for the rest of the run, and do not strand the project over it.
 
-   This gate is not optional and it runs **every round**, not just the first — a ticket becomes
-   `stranded` the moment its dependency is blocked, which happens mid-loop at step 4.
-
-0a. **Budget gate — the loop's only economic brake.**
-
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" check
-   ```
-
-   - Exit `0` → print the `BUDGET:` line in the standup (step 6) and continue. It is surfaced every
-     round on purpose: a spend you only see when it stops you is a spend you saw too late.
-   - Exit `1` → **CEILING REACHED. Stop the loop.** Print its lines verbatim, then the sprint
-     summary from step 8 naming every unfinished ticket. Do not spawn this round. Raising a ceiling
-     (`--max-rounds`, `--max-spawns`, `--max-retries`, `--max-agent-spawns`, `--max-spend-usd`, or
-     `APP_TEAM_MAX_*`) is the user's decision, not a workaround you apply to keep going.
-   - It also reports **per-agent** spawn counts against `--max-agent-spawns`. The studio-wide total
-     can look healthy while 59 of 60 spawns belong to one role looping on one ticket; that is the
-     failure a per-agent ceiling catches and the aggregate cannot. Journal them in step 6 with
-     `--agents ios-developer=2,qa-engineer=1`.
-   - The same command reports the **EMERGENCY STOP** (`.studio-stop`, or `APP_TEAM_STOP`) and exits
-     `1`. That is not a budget and must not be treated as one: a ceiling can be raised with a
-     reason, a stop is cleared by the operator who set it and by nobody else.
-
-   **Token cost is not measurable in this harness**, so nothing here pretends to know it. What is
-   counted is what is countable — rounds, spawns, retries, refusals, wall-clock — and those are the
-   ceilings that fire. If a harness does report spend, pass it with `--spend-usd` in step 6 and the
-   `--max-spend-usd` ceiling starts applying too.
+   **The `GATE` lines in its output are the ones with a closed role list.** Those are the steps that
+   must not be routed around, and `orchestrator explain <TICKET>` says why any given transition is
+   refused — including the ones you expected to be legal, which is the more useful half.
 
 1. **Read state.**
    - `node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json` — the derived state of every
@@ -129,7 +112,25 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      nothing to do while one QA cycle ran. QA failures already have their own mechanism — they
      become `BUG-NNN-fix` tickets in step 1 — so blocking dependents a second time buys nothing and
      serializes the whole board behind its slowest gate.
-   - `docs/51-bugs.md` (if it exists) — for every open `S1` or `S2`, ensure a matching `BUG-NNN-fix` row exists on the board; if not, spawn `tech-manager` once with the instruction to create them, then re-read the board.
+   - **The register — every bug and every audit finding, with a status that is never blank.**
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . import-bugs --by qa-engineer
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . check
+     ```
+
+     `import-bugs` folds `docs/51-bugs.md` into `docs/90-register.jsonl` through the parser
+     `ship-gate.sh` already uses, so QA keeps writing the Markdown it always wrote and nothing is
+     lost by nobody reading it. `check` exits 1 while anything still owes an answer. Here that is a **report** — open bugs
+     mid-sprint are what a sprint is for — and at ship it is a **refusal**. For every open `S1`/`S2`
+     with no ticket, cut a `BUG-NNN-fix` row and link it:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . link BUG-007 --ticket BUG-007-fix --by tech-manager
+     ```
+
+     An item with **no ticket** is the one to act on: nothing on the board will ever pick it up.
+     Why this is a command and not the sentence it replaced: `scripts/register.mjs` header.
 
 1a. **Route the finished wave's assumptions into the ledger.** For every agent that returned last
    round, each `ASSUMED, NOT RAISED` line in its `Assumptions & open questions` field becomes a real
@@ -159,20 +160,37 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    `tech-manager` covering everything it cannot. See `team-protocol` §Mid-sprint Q&A for the exact
    contract.
 
-   Then re-render and confirm the count actually fell. A batch that comes back with the same number
-   of open questions means `tech-lead` wrote prose instead of ledger rows, and the next wave is
-   about to inherit the same guesses.
+   **Then prove the batch answered something** — read the count before you spawn, pass it back after:
 
-   **Why this sits here and not later:** a question answered after the wave is spawned is answered
-   too late — the developer has already decided. Measured across three dry runs and ten agent-runs,
-   the live channel was used zero times, so every ambiguity was resolved by a guess and caught, if
-   at all, in review. This step is where a guess becomes a decision before it becomes code.
+   ```bash
+   BEFORE=$(node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --count)
+   # ... spawn tech-lead ONCE with the whole batch ...
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --was "$BEFORE"
+   ```
 
-2. **Spawn developers in parallel.** Use the `parallel-orchestrator` skill, which now requires a
-   **git worktree per writing agent, created before the spawn** (`agent-isolation`), and serializes
-   any ticket pair that shares a file. Launch IC agents concurrently in a **single assistant
-   message** — one Task invocation per owner, each passed its worktree path and the full list of
-   tickets they're working this round.
+   Exit `1` → **the batch answered nothing.** `tech-lead` wrote prose instead of ledger rows: re-spawn
+   it requiring one `answer` row per question it can settle and ONE `escalation` for the rest, and do
+   not proceed to step 2. Why this step exists and sits here rather than later (the "zero times in
+   ten agent-runs" measurement): `scripts/messages.mjs`'s `open` docstring.
+
+2. **Spawn developers in parallel.** Use the `parallel-orchestrator` skill, which requires a
+   **worktree per writing agent, leased before the spawn** (`agent-isolation`), and serializes any
+   ticket pair that shares a file. Launch IC agents concurrently in a **single assistant message** —
+   one Task invocation per owner, each passed its slot path and the full list of tickets they're
+   working this round.
+
+   **Lease one slot per OWNER, not one per ticket:**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease \
+     --owner ios-developer --tickets APP-001,APP-002 --pool 3
+   ```
+
+   The owner works its tickets **one after another in that one slot**, cutting `feat/APP-NNN-slug`
+   per ticket and committing between — so branch-per-ticket is unchanged and every branch carries
+   only its own files (`code-reviewer` check 9). `lease` refuses when the pool is full; that is the
+   parallelism cap, and raising it is a decision, not a workaround. The unit of isolation is the
+   **writer**, never the ticket: `agent-isolation` Rule 1 has the argument.
 
    **Claim each ticket before its agent is spawned**, so the board says who is working on what while
    they work rather than after they return:
@@ -183,10 +201,11 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 
    A refusal here means the ticket was not actually ready — read the reason and spawn nobody for it.
 
-   **Then run the isolation gate, and obey it.** Last command before the launch message:
+   **Then run the isolation gate, and obey it.** Last command before the launch message — and it
+   takes the **owners** you are about to spawn, because that is what now has a tree each:
 
    ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" APP-001 APP-002 APP-003
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" ios-developer android-developer
    ```
 
    Exit `1` → **REFUSED: spawn nobody.** It names the tickets with no worktree and prints the
@@ -200,6 +219,20 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    `.studio-stop` yourself** — an agent deciding the halt no longer applies is the halt not existing.
    An operator sets it with `echo "reason" > .studio-stop` and clears it with `rm .studio-stop`,
    with no code change and no restart.
+
+   **Then compose each agent's prompt — do not write it by hand.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-prompt.mjs" compose \
+     --root . --ticket APP-NNN --role <owner> --slot .agent-wt/<owner>
+   ```
+
+   Use its stdout as the spawn message **verbatim**. This exists because the reminder that a prompt
+   must contain the output contract also failed the person who wrote it: the first prompt ever sent
+   against this loop said *"Return the CODE profile defined in `team-protocol`"* instead of
+   containing it, and the agent — correct code, correctly committed — returned **0 of 6** contract
+   fields (H5, 2026-08-07). The identical ticket, role and slot, re-spawned with the contract text
+   pasted in, returned all six (H5b). See `parallel-orchestrator` step 4 for the full account.
 
    This is a script rather than a reminder because the reminder failed on the people who wrote it:
    two writers went into one checkout hours after that rule was hardened, one ran `git stash` +
@@ -232,6 +265,37 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    (`owner_not_spawnable`).
 
 3. **Streaming review.** As each developer agent returns `DONE: APP-NNN`:
+   - **Check the report satisfies its contract BEFORE you believe any of it.** Save the agent's
+     returned text and run:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/report-check.mjs" --role <owner-role> --report <saved report> --root .
+     ```
+
+     Exit `1` → **the DONE is not actionable.** Re-spawn the agent asking for the missing fields
+     specifically. **Do not fill them in yourself** — a field the orchestrator invents is a claim
+     nobody made, recorded as though someone did.
+
+     **`--root` is not optional.** Without it the check is presence-only — a field can be *stated*
+     without being *true*. Measured 2026-08-07 (H5b): an agent returned all six fields, cleanly, and
+     one was false — `Daily fragment: docs/daily/<today>-<role>-<ticket>.md` named a real, well-written file that
+     was never `git add`ed, so it did not exist on the branch. `--root` runs `git show
+     <branch>:<path>` against the claim instead of trusting the string, the same class of check
+     `agent-isolation` already requires for the code diff (`Mutation confirmed:`). Exit `1` with
+     `FALSE CLAIM` names the untracked file; re-spawn the agent to stage and commit it — never commit
+     it yourself from here.
+
+     **Measured 2026-08-06, on the first agent ever spawned against this loop: it returned ONE of
+     six contract fields.** It also reported "no git repo initialized" about a directory that is a
+     git repository, made no commit, and reported DONE — so `verify-done.sh` came back REJECTED
+     with "nothing was actually written" and the ticket parked at `in_progress`.
+
+     `team-doctor` enforces that the role FILE declares those six fields. Nothing checked that an
+     agent RETURNS them, which is FC-002 at the boundary where this studio meets its own workers.
+     **Reading the report does not catch this**: the one that failed sounded complete, named its own
+     skips and explained itself. A reader supplies the missing structure from imagination.
+
+
    - **Record the claim as a claim**, before you have checked anything:
 
      ```bash
@@ -249,8 +313,31 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      ```bash
      BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") \
        || { echo "$BASE"; echo "STOP: integration branch unresolved"; exit 2; }
-     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" "<project test command>"
+     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" --static <branch> "$BASE"
      ```
+
+     **`--static` is the default per-ticket lane.** It verifies the half a branch can answer — it
+     exists, it has commits, it changed files, the diff is this ticket's — and exits **2**, because
+     the suite genuinely has not run and CANNOT EVALUATE is the honest word. Record
+     `verified_static`: it unlocks review, approval and the merge gate, refuses `closed`, and blocks
+     `ship-gate.sh`. Step 5's wave pass runs the suite once on the merged tree and earns the real
+     `verified`. The arithmetic behind this is in `scripts/verify-done.sh`.
+
+     **Still run tests per ticket when `fast` is genuinely scoped** (`./gradlew :module:test`,
+     `swift test --filter Unit`) **and** `build-env.sh --check` says the caches apply — then it costs
+     seconds and buys the developer earlier feedback:
+
+     ```bash
+     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" fast
+     ```
+
+     `fast` and `full` resolve from `docs/team/project-profile.json` (F6); never hardcode a command.
+     If `fast` is really the whole matrix, it is not a fast scope — use `--static` and fix the
+     profile.
+
+     A scope the profile does not declare is **exit 2, with nothing substituted** — no default is
+     invented, because a default test command makes "the tests ran" true of a command nobody chose.
+     Projects with no profile keep passing a literal command; that path is unchanged.
 
      **If `integration-branch.sh` exits 2, STOP the round** and surface its message (it prints on
      stdout, so `$BASE` holds it) — do not run `verify-done.sh`, do not merge. Exit 2 means the
@@ -393,16 +480,28 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      owner, increment `Cycles` — with the verdict persisted alongside the review at
      `docs/53-reviews/APP-NNN-cycle-N.md`.
    - `APPROVED` (and `VERIFICATION: PASS`, if one was required above) → the reviewer appends
-     `board.mjs move APP-NNN approved --by code-reviewer --detail "docs/53-reviews/APP-NNN-cycle-N.md"`.
+     `board.mjs move APP-NNN approved --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md`.
+     **The path moved from `--detail` to `--verdict`, and that is the whole change**: `--detail` was
+     free text nothing opened, so an approval could name a file that did not exist, or name nothing
+     at all. `--verdict` is read, parsed and hashed onto the event — the append is refused if the
+     file is missing, if it has no `REVIEW VERDICT:` line, if that line says `REQUEST CHANGES` while
+     you are appending `approved`, if it has no `Scope: <base>..<head>`, or if it has no
+     `## Not checked` section. A refusal here means the review is not recorded yet, not that the
+     code is bad; read the message and have the reviewer finish the document.
      Then spawn `tech-manager` to run the Merge gate (see `agents/tech-manager.md`), passing the
      `$BASE` resolved in step 3. The gate **is** `board.mjs move APP-NNN merged --by tech-manager`,
-     which refuses without a non-owner `approved` and runs before any git command; on exit 0 the row
-     is `qa`.
-   - `REQUEST CHANGES` → `board.mjs move APP-NNN changes --by code-reviewer --detail
-     "docs/53-reviews/APP-NNN-cycle-N.md"`, then re-spawn the original developer **pointed at that
-     file**, not at notes you are holding in context. If the file does not exist, ask the reviewer to
-     write it before re-spawning anyone — an unpersisted verdict is one compaction away from being
-     lost, and then nobody can say what was wrong.
+     which refuses without a non-owner `approved`; on exit 0 the row is `qa`.
+
+     **The gate no longer runs `git merge`, and that is the change.** It passes or refuses per
+     ticket, exactly as before. The git merges happen ONCE, for the whole wave, in step 5 —
+     `wave-integrate.mjs`. Per-ticket merging pushed the integration branch once per ticket (three
+     CI runs for a three-ticket wave, none of them read), and handed every conflict back to a cold
+     developer respawn for a rebase whose hunks the manager was already holding.
+   - `REQUEST CHANGES` → `board.mjs move APP-NNN changes --by code-reviewer --verdict
+     docs/53-reviews/APP-NNN-cycle-N.md`, then re-spawn the original developer **pointed at that
+     file**, not at notes you are holding in context. You no longer have to remember to check the
+     file exists — the append refuses without it, which is what "an unpersisted verdict is one
+     compaction away from being lost" earns you once it is a mechanism instead of a paragraph.
 
      There is no `Cycles` column to increment any more. The count is the number of `changes` events,
      so it cannot drift from the ledger the way the hand-maintained column did.
@@ -421,11 +520,40 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    - A ticket going `blocked` here is exactly what strands its dependents — the CLI names them on
      the spot, and step 0 re-runs at the top of every round to catch the rest.
 
-4a. **Clean up worktrees.** After each merge, remove the ticket's worktree so the next round starts
-   clean: `git worktree remove .agent-wt/APP-NNN && git worktree prune`.
+4a. **Release the slot and reap the pool.** When an owner has no tickets left in flight, release its
+   lease and reclaim anything nothing is using:
 
-5. **QA pass — starting with the runtime gate.** Once a wave of tickets is in `qa`, run the
-   `runtime-gate` skill's script **on the integration branch, before spawning `qa-engineer`**:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
+   ```
+
+   **Every terminal outcome, not only a merge** — `rejected`, a cap-converted `blocked`, a
+   `BLOCKED:` return, a crashed round. `orchestrator round` runs it read-only at step 0 and BLOCKS on
+   the disk ceiling. Why (`--force` is never used; the old merge-only rule's measured cost):
+   `scripts/worktree-reap.mjs` header.
+
+5. **The wave integration pass — merge once, test once, push once.** Every ticket whose merge gate
+   cleared is sitting at `qa` with its branch unmerged. This is where the git merges happen, and it
+   is the only place the executable suite runs. Full account of why (candidate-list heuristic,
+   conflict policy, the `AWAITING INTEGRATION` distinction) in `scripts/wave-integrate.mjs`'s own
+   header — read that once, not here every time.
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE"
+   ```
+
+   | Exit | Meaning | Do |
+   |---|---|---|
+   | `0` GREEN | merged tree passes | run the `board.mjs move APP-NNN verified` lines it printed, then `wave-integrate.mjs --wave <N> --push` (one push, one CI run — never trigger/re-run/cancel a workflow yourself) |
+   | `1` FAIL/CONFLICT | wave does not advance | re-spawn only the owners the printed candidate list names; a textual conflict is yours to resolve (`git-pr-strategy` §6), a behaviour/contract one goes to that contract's owner as a ticket |
+   | `2` CANNOT EVALUATE | no `full` scope, or the suite could not run | not a pass; every ticket keeps `verified_static`, `closed` stays refused |
+
+   A non-green wave is a normal outcome, not a stuck loop — `merge-reconcile` reports those tickets
+   as `AWAITING INTEGRATION`, never as a lying board.
+
+   Then the runtime gate. **Once a wave of tickets is in `qa`, run the `runtime-gate` skill's script
+   on the integration branch, before spawning `qa-engineer`**:
 
    ```bash
    sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root .
@@ -549,8 +677,20 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    Print the terminal view in the standup. `docs/32-board-view.md` carries a Mermaid dependency
    graph that renders on GitHub — stranded and blocked tickets are outlined in red.
 
-   Also surface unanswered team messages: any `question` in `docs/team/messages.jsonl` with no matching
-   `answer` is a `tech-manager` action item, not a thing to leave sitting.
+   Also surface what the channel still owes, and **escalate the founder's half to the founder**:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --escalations
+   ```
+
+   An unanswered `question` is a `tech-manager` action item, not a thing to leave sitting. An
+   **escalation** is not: `team-protocol` requires it to be *resolved or passed to the user in the
+   same round*, and exit `1` from the second command means one is still open. **Surface those to the
+   user verbatim in this round's report** — do not carry them to the next round.
+
+   Until now an escalation was written to a ledger, counted by a renderer, and read by nobody: it is
+   not a blocker, so the autonomous run never surfaced it.
 
 6a. **Journal the round — one line, every round, before you loop.**
 
@@ -559,8 +699,16 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      --tickets APP-001,APP-002 --verdicts approved=1,changes=1 \
      --agents ios-developer=2,code-reviewer=1 \
      --spawns <how many agents you launched> --retries <re-spawns> \
-     --refusals <CLI/gate exit-1s this round> --wall-clock-sec <seconds>
+     --refusals <CLI/gate exit-1s this round> --wall-clock-sec <seconds> \
+     --verified-static <the number from step 0's "VERIFIED STATIC — N ticket(s)" line, or omit it
+                         if that line did not print — 0 tickets is a real reading, no line at all is not>
    ```
+
+   `--verified-static` is what gives OPS-013's odometer teeth: without it, `orchestrator round`
+   prints the count every round and nothing stops the loop when it stalls instead of shrinking.
+   `round-journal.mjs check` — already run at the top of every round via step 0's `budget` line —
+   blocks once that count has stayed above zero and non-decreasing for 3 consecutive reported
+   rounds. Read it from step 0's own printed line; do not recompute it.
 
    Then print the `BUDGET:` line from step 0a in the standup, so the spend is visible before it is a
    problem rather than at the moment it stops the run.

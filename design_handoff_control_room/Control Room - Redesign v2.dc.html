@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body { margin:0; background:#f2f2ef; color:#14140f; font:14px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing:antialiased; }
+  * { box-sizing:border-box; }
+  a { color:#4f46e5; text-decoration:none; } a:hover { color:#3730a3; text-decoration:underline; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline:none; box-shadow:0 0 0 2px #fff, 0 0 0 4px #4f46e5; }
+  input::placeholder { color:#6b6a62; }
+</style>
+</helmet>
+
+<div style="display:flex;align-items:stretch;min-height:100vh;background:#f2f2ef">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside style="{{ asideStyle }}">
+    <div style="display:flex;align-items:center;gap:9px;padding:14px 12px;border-bottom:1px solid #e6e5de;height:56px">
+      <span style="width:28px;height:28px;border-radius:8px;flex:0 0 auto;background:#4f46e5;color:#fff;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5-9 5-9-5z"></path><path d="m3 12 9 5 9-5"></path><path d="m3 17 9 5 9-5"></path></svg></span>
+      <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+        <button style="display:flex;align-items:center;gap:7px;flex:1 1 auto;min-width:0;font:inherit;padding:4px 6px;border:1px solid transparent;border-radius:7px;background:transparent;cursor:pointer;text-align:left" style-hover="background:#f0efe9">
+          <span style="min-width:0;flex:1 1 auto">
+            <span style="display:block;font-size:13px;font-weight:650;letter-spacing:-0.01em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">pulse-journal</span>
+            <span style="display:block;font-size:11px;color:#6b6a62;line-height:1.3">ios-app · tier-2</span>
+          </span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b6a62" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="m8 9 4-4 4 4"></path><path d="m16 15-4 4-4-4"></path></svg>
+        </button>
+      </sc-if>
+    </div>
+
+    <nav style="display:flex;flex-direction:column;gap:2px;padding:14px 10px;flex:1 1 auto;overflow-y:auto">
+      <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6b6a62;padding:0 8px 8px">Studio</div>
+      </sc-if>
+      <button style="{{ navMission }}" onClick="{{ goMission }}" title="Mission Control">
+        <span style="position:relative;display:flex;flex:0 0 auto">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:.85"><path d="M19.07 4.93A10 10 0 1 0 22 12"></path><path d="M12 12 8.5 8.5"></path><path d="M12 2v4M12 12l6.36-2.12"></path></svg>
+          <sc-if value="{{ rail }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-4px;right:-5px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;background:#b42318;color:#fff;font-size:9.5px;font-weight:700;line-height:14px;text-align:center;border:1.5px solid #fbfbf9">2</span></sc-if>
+        </span>
+        <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span style="flex:1 1 auto;text-align:left;white-space:nowrap">Mission Control</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;background:#fee4e2;color:#b42318">2</span></sc-if>
+      </button>
+      <button style="{{ navComms }}" onClick="{{ goComms }}" title="Communications">
+        <span style="position:relative;display:flex;flex:0 0 auto">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:.85"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          <sc-if value="{{ rail }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-4px;right:-5px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;background:#b42318;color:#fff;font-size:9.5px;font-weight:700;line-height:14px;text-align:center;border:1.5px solid #fbfbf9">1</span></sc-if>
+        </span>
+        <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span style="flex:1 1 auto;text-align:left;white-space:nowrap">Communications</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;background:#fee4e2;color:#b42318">1</span></sc-if>
+      </button>
+      <button style="{{ navBoard }}" onClick="{{ goBoard }}" title="Board">
+        <span style="position:relative;display:flex;flex:0 0 auto">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:.85"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="9.5" y="4" width="5" height="10" rx="1.5"></rect><rect x="16" y="4" width="5" height="13" rx="1.5"></rect></svg>
+          <sc-if value="{{ rail }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-4px;right:-5px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;background:#b42318;color:#fff;font-size:9.5px;font-weight:700;line-height:14px;text-align:center;border:1.5px solid #fbfbf9">3</span></sc-if>
+        </span>
+        <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span style="flex:1 1 auto;text-align:left;white-space:nowrap">Board</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;background:#fee4e2;color:#b42318">3</span></sc-if>
+      </button>
+      <button style="{{ navTeam }}" onClick="{{ goTeam }}" title="Team">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;opacity:.85"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span style="flex:1 1 auto;text-align:left;white-space:nowrap">Team</span><span style="font-size:11.5px;color:#6b6a62;font-variant-numeric:tabular-nums">7</span></sc-if>
+      </button>
+      <button style="{{ navInbox }}" onClick="{{ goInbox }}" title="Founder Inbox">
+        <span style="position:relative;display:flex;flex:0 0 auto">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:.85"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg>
+          <sc-if value="{{ rail }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-4px;right:-5px;min-width:14px;height:14px;padding:0 3px;border-radius:999px;background:#b42318;color:#fff;font-size:9.5px;font-weight:700;line-height:14px;text-align:center;border:1.5px solid #fbfbf9">2</span></sc-if>
+        </span>
+        <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span style="flex:1 1 auto;text-align:left;white-space:nowrap">Founder Inbox</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;background:#fee4e2;color:#b42318">2</span></sc-if>
+      </button>
+    </nav>
+
+    <div style="padding:10px;border-top:1px solid #e6e5de;display:flex;flex-direction:column;gap:8px">
+      <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:0 8px;font-size:11px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace;line-height:1.55">jsonl-scan · Node 20.14<br />log intact · 148 chained</div>
+      </sc-if>
+      <button style="{{ collapseBtn }}" onClick="{{ toggleRail }}" title="Collapse sidebar">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M9 4v16"></path></svg>
+        <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}"><span style="white-space:nowrap">Collapse</span></sc-if>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <div style="flex:1 1 auto;min-width:0;display:flex;flex-direction:column">
+
+    <!-- top bar -->
+    <div style="position:sticky;top:0;z-index:20;background:#fbfbf9;border-bottom:1px solid #e6e5de">
+      <div style="height:56px;display:flex;align-items:center;gap:14px;padding:0 24px">
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;flex:0 0 auto">
+          <span style="color:#6b6a62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px">pulse-journal</span>
+          <span style="color:#d6d5cc;flex:0 0 auto">/</span>
+          <span style="font-weight:600;white-space:nowrap;flex:0 0 auto">{{ screenName }}</span>
+        </div>
+
+        <label style="margin-left:16px;display:flex;align-items:center;gap:8px;flex:0 1 240px;min-width:34px;overflow:hidden;border:1px solid #e6e5de;border-radius:8px;background:#fff;padding:0 9px;height:32px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b6a62" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+          <input type="text" placeholder="Search tickets, messages, roles…" style="flex:1 1 auto;min-width:0;border:0;outline:none;background:transparent;font:inherit;font-size:13px;color:#14140f" />
+        </label>
+
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto">
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#087443;padding:5px 10px;border:1px solid #a9e5c3;border-radius:999px;background:#ecfdf3;white-space:nowrap;flex:0 0 auto">
+            <span style="width:6px;height:6px;border-radius:999px;background:#087443;flex:0 0 auto"></span>live · 14:22:06Z
+          </span>
+          <button style="{{ srcChip }}" onClick="{{ toggleSources }}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.18 14.18A1.5 1.5 0 0 0 3.4 20.5h17.2a1.5 1.5 0 0 0 1.29-2.46L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"></path><path d="M12 9v4M12 17h.01"></path></svg>
+            6 of 8 sources
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:28px;height:28px;font-size:11px;background:#eef0fe;color:#4f46e5;border:1px solid #d5d5fb;flex:0 0 auto">FN</span>
+        </div>
+      </div>
+
+      <!-- escalated health strip: Mission Control only. The bar chip carries it elsewhere. -->
+      <sc-if value="{{ isMission }}" hint-placeholder-val="{{ true }}">
+      <div style="background:#fffdf5;border-top:1px solid #f0c66b;border-bottom:1px solid #f0c66b">
+        <div style="padding:9px 24px;display:flex;align-items:center;gap:10px;font-size:12.5px;color:#a15c07">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="m10.29 3.86-8.18 14.18A1.5 1.5 0 0 0 3.4 20.5h17.2a1.5 1.5 0 0 0 1.29-2.46L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"></path><path d="M12 9v4M12 17h.01"></path></svg>
+          <span><b style="font-weight:650">2 of 8 sources could not be read</b> — <span style="font-family:ui-monospace,Menlo,monospace">docs/40-journeys.md</span>, <span style="font-family:ui-monospace,Menlo,monospace">docs/32-verification.jsonl</span>. Sections that need them say CANNOT EVALUATE rather than clear.</span>
+          <button style="{{ srcLink }}" onClick="{{ toggleSources }}">Which sources</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ sourcesOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:16px 24px;background:#fff;border-bottom:1px solid #e6e5de">
+          <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b6a62;margin-bottom:12px">Sources this page read</div>
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 20px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px">
+            <div style="display:flex;align-items:center;gap:8px;color:#5c5b54"><span style="width:6px;height:6px;border-radius:999px;background:#087443;flex:0 0 auto"></span>board<span style="margin-left:auto;color:#6b6a62">8 tickets</span></div>
+            <div style="display:flex;align-items:center;gap:8px;color:#5c5b54"><span style="width:6px;height:6px;border-radius:999px;background:#087443;flex:0 0 auto"></span>events<span style="margin-left:auto;color:#6b6a62">148 rows</span></div>
+            <div style="display:flex;align-items:center;gap:8px;color:#5c5b54"><span style="width:6px;height:6px;border-radius:999px;background:#087443;flex:0 0 auto"></span>messages<span style="margin-left:auto;color:#6b6a62">42 rows</span></div>
+            <div style="display:flex;align-items:center;gap:8px;color:#5c5b54"><span style="width:6px;height:6px;border-radius:999px;background:#087443;flex:0 0 auto"></span>roster<span style="margin-left:auto;color:#6b6a62">7 roles</span></div>
+            <div style="display:flex;align-items:center;gap:8px;color:#5c5b54"><span style="width:6px;height:6px;border-radius:999px;background:#087443;flex:0 0 auto"></span>bugs<span style="margin-left:auto;color:#6b6a62">3 rows</span></div>
+            <div style="display:flex;align-items:center;gap:8px;color:#5c5b54"><span style="width:6px;height:6px;border-radius:999px;background:#087443;flex:0 0 auto"></span>rounds<span style="margin-left:auto;color:#6b6a62">33 rows</span></div>
+            <div style="display:flex;align-items:center;gap:8px;color:#a15c07"><span style="width:6px;height:6px;border-radius:999px;background:#a15c07;flex:0 0 auto"></span>journeys<span style="margin-left:auto">file not found</span></div>
+            <div style="display:flex;align-items:center;gap:8px;color:#a15c07"><span style="width:6px;height:6px;border-radius:999px;background:#a15c07;flex:0 0 auto"></span>verification<span style="margin-left:auto">file not found</span></div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="padding:28px 24px 88px;max-width:1420px;width:100%">
+
+      <!-- ================= MISSION ================= -->
+      <sc-if value="{{ isMission }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:24px">
+          <div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#6b6a62;margin-bottom:8px">Phase · derived, the log records no phase marker</div>
+            <h1 style="font-size:30px;font-weight:680;letter-spacing:-0.025em;margin:0;line-height:1.15">Sprint closed — release not yet gated</h1>
+            <p style="margin:8px 0 0;font-size:13.5px;color:#5c5b54">5 of 8 tickets done · ship-gate has not fired · round 33</p>
+          </div>
+          <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:#fef3f2;border:1px solid #fecdca;color:#b42318;font-size:12px;font-weight:650;white-space:nowrap">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.18 14.18A1.5 1.5 0 0 0 3.4 20.5h17.2a1.5 1.5 0 0 0 1.29-2.46L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"></path><path d="M12 9v4M12 17h.01"></path></svg>2 need attention
+          </span>
+        </div>
+
+        <section style="border:1px solid #fecdca;border-radius:12px;background:#fff;margin-bottom:24px;overflow:hidden;box-shadow:0 1px 2px rgba(20,20,10,.04)">
+          <header style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:#fef3f2;border-bottom:1px solid #fecdca">
+            <span style="color:#b42318;display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.18 14.18A1.5 1.5 0 0 0 3.4 20.5h17.2a1.5 1.5 0 0 0 1.29-2.46L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"></path><path d="M12 9v4M12 17h.01"></path></svg></span>
+            <h2 style="font-size:15px;font-weight:650;margin:0;letter-spacing:-0.01em">Why work is not moving</h2>
+            <span style="margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#b42318">Attention</span>
+          </header>
+          <ul style="list-style:none;margin:0;padding:0">
+            <li style="display:grid;grid-template-columns:120px 1fr 230px;gap:16px;align-items:start;padding:18px 20px;border-bottom:1px solid #f0efe9">
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:6px;padding:3px 8px;justify-self:start"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"></path><path d="M12 8v5M12 16h.01"></path></svg>blocked</span>
+              <div>
+                <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:4px"><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-004</span><span style="font-weight:600;font-size:14.5px;min-width:0;flex:1 1 auto">Subscription receipt validation</span></div>
+                <p style="margin:0;font-size:13.5px;color:#5c5b54;text-wrap:pretty">Waiting on APP-002 — the receipt fixture the dependency named was never committed, so validation cannot be exercised.</p>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-start">
+                <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#5c5b54"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:20px;height:20px;font-size:9px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>ios-developer</span>
+                <span style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">blocked since round 31</span>
+              </div>
+            </li>
+            <li style="display:grid;grid-template-columns:120px 1fr 230px;gap:16px;align-items:start;padding:18px 20px">
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px dashed #f0c66b;border-radius:6px;padding:3px 8px;justify-self:start"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"></path><path d="M12 17.5h.01"></path></svg>unknown</span>
+              <div>
+                <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:4px"><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-006</span><span style="font-weight:600;font-size:14.5px;min-width:0;flex:1 1 auto">Journey coverage pass</span></div>
+                <p style="margin:0;font-size:13.5px;color:#5c5b54;text-wrap:pretty">journey-gate returned <b style="color:#a15c07">cannot evaluate</b> — docs/40-journeys.md was not readable. Nothing is claimed about this ticket either way.</p>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-start">
+                <span style="font-size:12px;color:#5c5b54;font-family:ui-monospace,Menlo,monospace">journey-gate</span>
+                <span style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">round 33 · exit 2</span>
+              </div>
+            </li>
+          </ul>
+          <p style="margin:0;padding:10px 20px;font-size:11.5px;color:#6b6a62;background:#fdfdfb;border-top:1px solid #f0efe9;font-family:ui-monospace,Menlo,monospace">swept 8 tickets · 148 board events · 4 gate results</p>
+        </section>
+
+        <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 12px">
+          <h2 style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0">Budget position</h2>
+          <span style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">33 rounds in docs/33-rounds.jsonl</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px">
+          <div style="padding:16px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><div style="font-size:28px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;line-height:1.1">33</div><div style="font-size:12px;color:#6b6a62;margin-top:4px">rounds run</div></div>
+          <div style="padding:16px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><div style="font-size:28px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;line-height:1.1">47</div><div style="font-size:12px;color:#6b6a62;margin-top:4px">agents spawned</div></div>
+          <div style="padding:16px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><div style="font-size:28px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;line-height:1.1">6</div><div style="font-size:12px;color:#6b6a62;margin-top:4px">retries</div></div>
+          <div style="padding:16px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><div style="font-size:28px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;line-height:1.1">2</div><div style="font-size:12px;color:#6b6a62;margin-top:4px">refusals</div></div>
+          <div style="padding:16px 18px;border:1px dashed #f0c66b;border-radius:12px;background:#fffdf5"><div style="font-size:16px;font-weight:650;color:#a15c07;line-height:1.1;padding:6px 0 5px">not measurable</div><div style="font-size:12px;color:#a15c07;margin-top:4px">dollar spend · the harness records no token cost</div></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+          <section style="border:1px dashed #f0c66b;border-radius:12px;background:#fffdf5;overflow:hidden">
+            <header style="display:flex;align-items:center;gap:10px;padding:14px 18px">
+              <span style="color:#a15c07;display:flex"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"></path><path d="M12 17.5h.01"></path></svg></span>
+              <h2 style="font-size:15px;font-weight:650;margin:0;letter-spacing:-0.01em">Latest verification</h2>
+              <span style="margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#a15c07">Cannot evaluate</span>
+            </header>
+            <p style="margin:0;padding:0 18px 14px;font-size:13.5px;color:#5c5b54;text-wrap:pretty">docs/32-verification.jsonl does not exist in this project. The last suite run is <b style="color:#a15c07">unknown</b> — not zero, not passing.</p>
+            <p style="margin:0;padding:10px 18px;font-size:11.5px;color:#8a4b06;border-top:1px dashed #f0c66b;font-family:ui-monospace,Menlo,monospace">swept docs/32-verification.jsonl</p>
+          </section>
+          <section style="border:1px solid #e6e5de;border-radius:12px;background:#fff;overflow:hidden">
+            <header style="display:flex;align-items:center;gap:10px;padding:14px 18px">
+              <span style="color:#1d4ed8;display:flex"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg></span>
+              <h2 style="font-size:15px;font-weight:650;margin:0;letter-spacing:-0.01em">Build</h2>
+              <span style="margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#1d4ed8">Info</span>
+            </header>
+            <div style="padding:0 18px 14px;display:flex;align-items:flex-start;gap:11px">
+              <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:26px;height:26px;font-size:10px;flex:0 0 auto;background:hsl(310 70% 92%);color:hsl(310 55% 29%)">TM</span>
+              <div>
+                <div style="font-size:13.5px"><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-003</span> <b>merged</b> by tech-manager</div>
+                <p style="margin:3px 0 0;font-size:13px;color:#5c5b54">Daily reminder scheduler · 2 files · review passed first pass</p>
+              </div>
+              <span style="margin-left:auto;font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace;white-space:nowrap">2 min ago</span>
+            </div>
+            <p style="margin:0;padding:10px 18px;font-size:11.5px;color:#6b6a62;background:#fdfdfb;border-top:1px solid #f0efe9;font-family:ui-monospace,Menlo,monospace">swept the most recent ticket event</p>
+          </section>
+        </div>
+
+        <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 12px">
+          <h2 style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0">Active agents</h2>
+          <span style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">148 board events, grouped by actor</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:30px;height:30px;font-size:11px;flex:0 0 auto;background:hsl(310 70% 92%);color:hsl(310 55% 29%)">TM</span><div><div style="font-size:13.5px;font-weight:600">tech-manager</div><div style="font-size:12px;color:#6b6a62;font-variant-numeric:tabular-nums">61 actions</div></div></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:30px;height:30px;font-size:11px;flex:0 0 auto;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span><div><div style="font-size:13.5px;font-weight:600">ios-developer</div><div style="font-size:12px;color:#6b6a62;font-variant-numeric:tabular-nums">44 actions</div></div></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:30px;height:30px;font-size:11px;flex:0 0 auto;background:hsl(101 70% 92%);color:hsl(101 55% 29%)">CR</span><div><div style="font-size:13.5px;font-weight:600">code-reviewer</div><div style="font-size:12px;color:#6b6a62;font-variant-numeric:tabular-nums">27 actions</div></div></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:30px;height:30px;font-size:11px;flex:0 0 auto;background:hsl(164 70% 92%);color:hsl(164 55% 29%)">QE</span><div><div style="font-size:13.5px;font-weight:600">qa-engineer</div><div style="font-size:12px;color:#6b6a62;font-variant-numeric:tabular-nums">16 actions</div></div></div>
+        </div>
+      </sc-if>
+
+      <!-- ================= COMMS ================= -->
+      <sc-if value="{{ isComms }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+          <h1 style="font-size:22px;font-weight:680;letter-spacing:-0.02em;margin:0">Communications</h1>
+          <span style="font-size:12.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">42 messages · 2 threads · docs/team/messages.jsonl</span>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <button style="{{ chAll }}" onClick="{{ setAll }}">all threads<span style="opacity:.65;margin-left:5px">2</span></button>
+            <button style="{{ chIos }}" onClick="{{ setIos }}">#ios<span style="opacity:.65;margin-left:5px">2</span></button>
+            <button style="{{ chArtifacts }}" onClick="{{ setArtifacts }}">#artifacts<span style="opacity:.65;margin-left:5px">1</span></button>
+            <button style="{{ chProduct }}" onClick="{{ setProduct }}">#product<span style="opacity:.65;margin-left:5px">1</span></button>
+          </div>
+        </div>
+
+        <section style="border:1px solid #fecdca;border-radius:12px;background:#fff;margin-bottom:24px;overflow:hidden">
+          <header style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:#fef3f2;border-bottom:1px solid #fecdca">
+            <span style="color:#b42318;display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"></path><path d="M12 17.5h.01"></path></svg></span>
+            <h2 style="font-size:15px;font-weight:650;margin:0;letter-spacing:-0.01em">Open questions nobody answered</h2>
+            <span style="margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#b42318">1 · Attention</span>
+          </header>
+          <div style="display:grid;grid-template-columns:1fr 230px;gap:16px;padding:18px 20px">
+            <div>
+              <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:4px"><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-004</span><span style="font-weight:600;font-size:14.5px;min-width:0;flex:1 1 auto">Which receipt environment should validation target?</span></div>
+              <p style="margin:0;font-size:13.5px;color:#5c5b54;text-wrap:pretty">Asked 4 rounds ago, no answer recorded. APP-004 is blocked behind it.</p>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#5c5b54"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:20px;height:20px;font-size:9px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>ios-developer → tech-manager</span>
+              <span style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">round 29 · due round 31</span>
+            </div>
+          </div>
+          <p style="margin:0;padding:10px 20px;font-size:11.5px;color:#6b6a62;background:#fdfdfb;border-top:1px solid #f0efe9;font-family:ui-monospace,Menlo,monospace">swept 42 messages across 2 threads for questions with no recorded answer</p>
+        </section>
+
+        <sc-if value="{{ showApp004 }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;margin-bottom:16px;overflow:hidden">
+          <header style="display:flex;align-items:center;gap:10px;padding:13px 20px;border-bottom:1px solid #f0efe9;background:#fdfdfb">
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-004</span>
+            <span style="font-size:14px;font-weight:600">Subscription receipt validation</span>
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:6px;padding:2px 7px">blocked</span>
+            <span style="margin-left:auto;font-size:12px;color:#6b6a62">3 messages · 1 open</span>
+          </header>
+          <article style="display:grid;grid-template-columns:32px 1fr;gap:12px;padding:18px 20px;border-bottom:1px solid #f0efe9">
+            <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:32px;height:32px;font-size:11px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>
+            <div style="min-width:0">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+                <b style="font-size:13.5px">ios-developer</b><span style="font-size:12.5px;color:#6b6a62">→ tech-manager</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px solid #f0c66b;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"></path><path d="M12 17.5h.01"></path></svg>question</span>
+                <span style="margin-left:auto;font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">11:04:11Z</span>
+              </div>
+              <p style="margin:8px 0 0;font-size:14.5px;font-weight:600;line-height:1.4;text-wrap:pretty">Which receipt environment should validation target?</p>
+              <p style="margin:6px 0 0;font-size:13.5px;color:#5c5b54;line-height:1.6;text-wrap:pretty">The requirement says "validate the receipt" without naming sandbox or production. Both are implementable; they fail differently at review. I am not going to guess this one.</p>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">
+                <span style="font-size:11.5px;border:1px solid #e6e5de;border-radius:6px;padding:3px 8px;background:#fbfbf9;font-family:ui-monospace,Menlo,monospace"><span style="color:#6b6a62">ticket</span> APP-004</span>
+                <span style="font-size:11.5px;border:1px solid #e6e5de;border-radius:6px;padding:3px 8px;background:#fbfbf9;font-family:ui-monospace,Menlo,monospace"><span style="color:#6b6a62">requirement</span> R-12</span>
+                <span style="font-size:11.5px;border:1px solid #fecdca;border-radius:6px;padding:3px 8px;background:#fef3f2;color:#b42318;font-family:ui-monospace,Menlo,monospace"><span style="opacity:.7">response required by</span> round 31</span>
+              </div>
+            </div>
+          </article>
+          <article style="display:grid;grid-template-columns:32px 1fr;gap:12px;padding:18px 20px;border-bottom:1px solid #f0efe9">
+            <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:32px;height:32px;font-size:11px;background:hsl(310 70% 92%);color:hsl(310 55% 29%)">TM</span>
+            <div style="min-width:0">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+                <b style="font-size:13.5px">tech-manager</b><span style="font-size:12.5px;color:#6b6a62">→ ios-developer, code-reviewer</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"></path><path d="M12 8v5M12 16h.01"></path></svg>blocker</span>
+                <span style="margin-left:auto;font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">11:31:52Z</span>
+              </div>
+              <p style="margin:8px 0 0;font-size:14.5px;font-weight:600;line-height:1.4;text-wrap:pretty">APP-004 moved to blocked pending the receipt fixture from APP-002</p>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">
+                <span style="font-size:11.5px;border:1px solid #e6e5de;border-radius:6px;padding:3px 8px;background:#fbfbf9;font-family:ui-monospace,Menlo,monospace"><span style="color:#6b6a62">transition</span> in_progress → blocked</span>
+                <span style="font-size:11.5px;border:1px solid #e6e5de;border-radius:6px;padding:3px 8px;background:#fbfbf9;font-family:ui-monospace,Menlo,monospace"><span style="color:#6b6a62">evidence</span> 31-board-events.jsonl:141</span>
+              </div>
+            </div>
+          </article>
+          <article style="display:grid;grid-template-columns:32px 1fr;gap:12px;padding:18px 20px">
+            <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:32px;height:32px;font-size:11px;background:hsl(101 70% 92%);color:hsl(101 55% 29%)">CR</span>
+            <div style="min-width:0">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+                <b style="font-size:13.5px">code-reviewer</b><span style="font-size:12.5px;color:#6b6a62">→ nobody</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#1d4ed8;background:#eff4ff;border:1px solid #c7d7fe;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>fyi</span>
+                <span style="margin-left:auto;font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">11:47:03Z</span>
+              </div>
+              <p style="margin:8px 0 0;font-size:14.5px;font-weight:600;line-height:1.4">Review deferred while the ticket is blocked</p>
+              <div style="display:flex;align-items:center;gap:7px;margin-top:12px;padding:8px 10px;border:1px dashed #f0c66b;border-radius:8px;background:#fffdf5;color:#a15c07;font-size:12.5px">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"></path><path d="M12 17.5h.01"></path></svg>
+                Metadata unknown — this row came from the generated Markdown view, which has no columns for it. Reconstructed, not recorded.
+              </div>
+            </div>
+          </article>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ showApp003 }}" hint-placeholder-val="{{ true }}">
+        <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;overflow:hidden">
+          <header style="display:flex;align-items:center;gap:10px;padding:13px 20px;border-bottom:1px solid #f0efe9;background:#fdfdfb">
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-003</span>
+            <span style="font-size:14px;font-weight:600">Daily reminder scheduler</span>
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#087443;background:#ecfdf3;border:1px solid #a9e5c3;border-radius:6px;padding:2px 7px">done</span>
+            <span style="margin-left:auto;font-size:12px;color:#6b6a62">2 messages</span>
+          </header>
+          <article style="display:grid;grid-template-columns:32px 1fr;gap:12px;padding:18px 20px;border-bottom:1px solid #f0efe9">
+            <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:32px;height:32px;font-size:11px;background:hsl(101 70% 92%);color:hsl(101 55% 29%)">CR</span>
+            <div style="min-width:0">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+                <b style="font-size:13.5px">code-reviewer</b><span style="font-size:12.5px;color:#6b6a62">→ tech-manager</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#087443;background:#ecfdf3;border:1px solid #a9e5c3;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>answer</span>
+                <span style="margin-left:auto;font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">14:19:40Z</span>
+              </div>
+              <p style="margin:8px 0 0;font-size:14.5px;font-weight:600;line-height:1.4;text-wrap:pretty">Approved — scheduler respects the quiet-hours constant, no new financial constants introduced</p>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">
+                <span style="font-size:11.5px;border:1px solid #e6e5de;border-radius:6px;padding:3px 8px;background:#fbfbf9;font-family:ui-monospace,Menlo,monospace"><span style="color:#6b6a62">artifact</span> docs/31-board.md</span>
+                <span style="font-size:11.5px;border:1px solid #e6e5de;border-radius:6px;padding:3px 8px;background:#fbfbf9;font-family:ui-monospace,Menlo,monospace"><span style="color:#6b6a62">obligation</span> OBL-07 satisfied</span>
+              </div>
+            </div>
+          </article>
+          <article style="display:grid;grid-template-columns:32px 1fr;gap:12px;padding:18px 20px">
+            <span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:32px;height:32px;font-size:11px;background:hsl(310 70% 92%);color:hsl(310 55% 29%)">TM</span>
+            <div style="min-width:0">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+                <b style="font-size:13.5px">tech-manager</b><span style="font-size:12.5px;color:#6b6a62">→ ios-developer</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#4f46e5;background:#eef0fe;border:1px solid #d5d5fb;border-radius:6px;padding:2px 7px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="m9.5 15 1.5 1.5L15 13"></path></svg>decision</span>
+                <span style="margin-left:auto;font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">14:20:18Z</span>
+              </div>
+              <p style="margin:8px 0 0;font-size:14.5px;font-weight:600;line-height:1.4">Merged to integration. APP-003 closed.</p>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">
+                <span style="font-size:11.5px;border:1px solid #e6e5de;border-radius:6px;padding:3px 8px;background:#fbfbf9;font-family:ui-monospace,Menlo,monospace"><span style="color:#6b6a62">decision</span> D-19</span>
+                <span style="font-size:11.5px;border:1px solid #e6e5de;border-radius:6px;padding:3px 8px;background:#fbfbf9;font-family:ui-monospace,Menlo,monospace"><span style="color:#6b6a62">transition</span> review → done</span>
+              </div>
+            </div>
+          </article>
+        </div>
+        </sc-if>
+      </sc-if>
+
+      <!-- ================= BOARD ================= -->
+      <sc-if value="{{ isBoard }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+          <h1 style="font-size:22px;font-weight:680;letter-spacing:-0.02em;margin:0">Board</h1>
+          <span style="font-size:12.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">8 tickets · docs/31-board.md</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#5c5b54;border:1px solid #e6e5de;border-radius:8px;background:#fff;padding:6px 11px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b6a62" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"></path></svg>All owners
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b6a62" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#5c5b54;border:1px solid #e6e5de;border-radius:8px;background:#fff;padding:6px 11px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b6a62" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"></rect><rect x="3" y="15" width="18" height="5" rx="2"></rect></svg>Group: status
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b6a62" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;background:#fef3f2;border:1px solid #fecdca;color:#b42318;font-size:12px;font-weight:650;white-space:nowrap">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.18 14.18A1.5 1.5 0 0 0 3.4 20.5h17.2a1.5 1.5 0 0 0 1.29-2.46L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"></path><path d="M12 9v4M12 17h.01"></path></svg>3 need attention
+            </span>
+          </div>
+        </div>
+
+        <section style="border:1px solid #fecdca;border-radius:12px;background:#fff;margin-bottom:24px;overflow:hidden">
+          <header style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:#fef3f2;border-bottom:1px solid #fecdca">
+            <span style="color:#b42318;display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.18 14.18A1.5 1.5 0 0 0 3.4 20.5h17.2a1.5 1.5 0 0 0 1.29-2.46L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"></path><path d="M12 9v4M12 17h.01"></path></svg></span>
+            <h2 style="font-size:15px;font-weight:650;margin:0;letter-spacing:-0.01em">Needs attention</h2>
+            <span style="margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#b42318">3 · Attention</span>
+          </header>
+          <ul style="list-style:none;margin:0;padding:0">
+            <li style="display:grid;grid-template-columns:110px 1fr;gap:16px;align-items:center;padding:14px 20px;border-bottom:1px solid #f0efe9">
+              <span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:6px;padding:3px 8px;justify-self:start">blocked</span>
+              <span style="font-size:13.5px"><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-004</span> Subscription receipt validation — blocked since round 31, owner ios-developer</span>
+            </li>
+            <li style="display:grid;grid-template-columns:110px 1fr;gap:16px;align-items:center;padding:14px 20px;border-bottom:1px solid #f0efe9">
+              <span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px dashed #f0c66b;border-radius:6px;padding:3px 8px;justify-self:start">stranded</span>
+              <span style="font-size:13.5px"><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-004</span> depends on APP-002, which is done but shipped without the fixture the dependency named</span>
+            </li>
+            <li style="display:grid;grid-template-columns:110px 1fr;gap:16px;align-items:center;padding:14px 20px">
+              <span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:6px;padding:3px 8px;justify-self:start">unowned</span>
+              <span style="font-size:13.5px"><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-007</span> Restore purchases on fresh install — no owner recorded on the board</span>
+            </li>
+          </ul>
+          <p style="margin:0;padding:10px 20px;font-size:11.5px;color:#6b6a62;background:#fdfdfb;border-top:1px solid #f0efe9;font-family:ui-monospace,Menlo,monospace">swept all 8 tickets for blocked status, unmet dependencies and missing owner</p>
+        </section>
+
+        <div style="overflow-x:auto;margin-bottom:24px;padding-bottom:4px">
+        <div style="display:grid;grid-template-columns:repeat(5,254px);gap:14px;align-items:start;width:max-content">
+          <div style="border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;padding:12px">
+            <div style="display:flex;align-items:center;gap:8px;padding:2px 4px 10px;margin-bottom:10px;border-bottom:1px solid #e6e5de"><span style="width:7px;height:7px;border-radius:999px;background:#6b6a62"></span><span style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#5c5b54">todo</span><span style="margin-left:auto;font-size:11.5px;font-weight:700;color:#6b6a62;font-variant-numeric:tabular-nums">1</span></div>
+            <div style="border:1px solid #e6e5de;border-radius:10px;padding:12px;background:#fff">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:6px">APP-007</div>
+              <div style="font-size:13px;font-weight:550;line-height:1.4;margin-bottom:10px;text-wrap:pretty">Restore purchases on fresh install</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#b42318"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:18px;height:18px;font-size:8.5px;background:#fee4e2;color:#b42318">?</span>unassigned</div>
+            </div>
+          </div>
+          <div style="border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;padding:12px">
+            <div style="display:flex;align-items:center;gap:8px;padding:2px 4px 10px;margin-bottom:10px;border-bottom:1px solid #e6e5de"><span style="width:7px;height:7px;border-radius:999px;background:#1d4ed8"></span><span style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#5c5b54">in progress</span><span style="margin-left:auto;font-size:11.5px;font-weight:700;color:#6b6a62;font-variant-numeric:tabular-nums">1</span></div>
+            <div style="border:1px solid #e6e5de;border-radius:10px;padding:12px;background:#fff">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:6px">APP-005</div>
+              <div style="font-size:13px;font-weight:550;line-height:1.4;margin-bottom:10px;text-wrap:pretty">Paywall copy and pricing constants</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c5b54"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:18px;height:18px;font-size:8.5px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>ios-developer</div>
+            </div>
+          </div>
+          <div style="border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;padding:12px">
+            <div style="display:flex;align-items:center;gap:8px;padding:2px 4px 10px;margin-bottom:10px;border-bottom:1px solid #e6e5de"><span style="width:7px;height:7px;border-radius:999px;background:#a15c07"></span><span style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#5c5b54">review</span><span style="margin-left:auto;font-size:11.5px;font-weight:700;color:#6b6a62;font-variant-numeric:tabular-nums">0</span></div>
+            <div style="border:1px dashed #e6e5de;border-radius:10px;padding:14px 12px;text-align:center;font-size:12px;color:#6b6a62">no tickets in review</div>
+          </div>
+          <div style="border:1px solid #fecdca;border-radius:12px;background:#fffbfa;padding:12px">
+            <div style="display:flex;align-items:center;gap:8px;padding:2px 4px 10px;margin-bottom:10px;border-bottom:1px solid #fecdca"><span style="width:7px;height:7px;border-radius:999px;background:#b42318"></span><span style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#b42318">blocked</span><span style="margin-left:auto;font-size:11.5px;font-weight:700;color:#b42318;font-variant-numeric:tabular-nums">1</span></div>
+            <div style="border:1px solid #fecdca;border-radius:10px;padding:12px;background:#fff">
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:6px">APP-004</div>
+              <div style="font-size:13px;font-weight:550;line-height:1.4;margin-bottom:10px;text-wrap:pretty">Subscription receipt validation</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c5b54;margin-bottom:9px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:18px;height:18px;font-size:8.5px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>ios-developer</div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px">
+                <span style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px dashed #f0c66b;border-radius:5px;padding:2px 6px">stranded</span>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#1d4ed8;background:#eff4ff;border:1px solid #c7d7fe;border-radius:5px;padding:2px 6px">needs APP-002</span>
+              </div>
+            </div>
+          </div>
+          <div style="border:1px solid #e6e5de;border-radius:12px;background:#fbfbf9;padding:12px">
+            <div style="display:flex;align-items:center;gap:8px;padding:2px 4px 10px;margin-bottom:10px;border-bottom:1px solid #e6e5de"><span style="width:7px;height:7px;border-radius:999px;background:#087443"></span><span style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#5c5b54">done</span><span style="margin-left:auto;font-size:11.5px;font-weight:700;color:#6b6a62;font-variant-numeric:tabular-nums">5</span></div>
+            <div style="border:1px solid #e6e5de;border-radius:10px;padding:12px;background:#fff;margin-bottom:8px"><div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:6px">APP-001</div><div style="font-size:13px;font-weight:550;line-height:1.4;margin-bottom:10px">Onboarding shell</div><div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c5b54"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:18px;height:18px;font-size:8.5px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>ios-developer</div></div>
+            <div style="border:1px solid #e6e5de;border-radius:10px;padding:12px;background:#fff;margin-bottom:8px"><div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:6px">APP-002</div><div style="font-size:13px;font-weight:550;line-height:1.4;margin-bottom:10px;text-wrap:pretty">Local store schema and migrations</div><div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c5b54;margin-bottom:9px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:18px;height:18px;font-size:8.5px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>ios-developer</div><span style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px dashed #f0c66b;border-radius:5px;padding:2px 6px">qa (static only)</span></div>
+            <div style="border:1px solid #e6e5de;border-radius:10px;padding:12px;background:#fff;margin-bottom:8px"><div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:6px">APP-003</div><div style="font-size:13px;font-weight:550;line-height:1.4;margin-bottom:10px">Daily reminder scheduler</div><div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c5b54"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:18px;height:18px;font-size:8.5px;background:hsl(310 70% 92%);color:hsl(310 55% 29%)">TM</span>tech-manager</div></div>
+            <div style="border:1px solid #e6e5de;border-radius:10px;padding:12px;background:#fff;margin-bottom:8px"><div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:6px">APP-006</div><div style="font-size:13px;font-weight:550;line-height:1.4;margin-bottom:10px">Journey coverage pass</div><div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c5b54;margin-bottom:9px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:18px;height:18px;font-size:8.5px;background:hsl(164 70% 92%);color:hsl(164 55% 29%)">QE</span>qa-engineer</div><span style="font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#a15c07;background:#fffaeb;border:1px dashed #f0c66b;border-radius:5px;padding:2px 6px">qa (static only)</span></div>
+            <div style="border:1px solid #e6e5de;border-radius:10px;padding:12px;background:#fff"><div style="font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:6px">APP-008</div><div style="font-size:13px;font-weight:550;line-height:1.4;margin-bottom:10px">Crash reporting hookup</div><div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c5b54"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:18px;height:18px;font-size:8.5px;background:hsl(303 70% 92%);color:hsl(303 55% 29%)">DE</span>devops-engineer</div></div>
+          </div>
+        </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px">
+          <div style="padding:16px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><div style="font-size:26px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;line-height:1.1">1h 42m</div><div style="font-size:12px;color:#6b6a62;margin-top:4px;line-height:1.4">median cycle time<br />claimed → closed</div></div>
+          <div style="padding:16px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><div style="font-size:26px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;line-height:1.1">80%</div><div style="font-size:12px;color:#6b6a62;margin-top:4px;line-height:1.4">review pass rate<br />5 reached review</div></div>
+          <div style="padding:16px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><div style="font-size:26px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;line-height:1.1">20%</div><div style="font-size:12px;color:#6b6a62;margin-top:4px;line-height:1.4">rework rate<br />1 of 5 returned</div></div>
+          <div style="padding:16px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><div style="font-size:26px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;line-height:1.1">4</div><div style="font-size:12px;color:#6b6a62;margin-top:4px;line-height:1.4">gates fired<br />ship 1 · journey 2 · approval 1</div></div>
+          <div style="padding:16px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff"><div style="font-size:26px;font-weight:680;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;line-height:1.1">11</div><div style="font-size:12px;color:#6b6a62;margin-top:4px;line-height:1.4">reviewer actions<br />in the whole log</div></div>
+        </div>
+
+        <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;overflow:hidden">
+          <header style="padding:13px 20px;border-bottom:1px solid #f0efe9;background:#fdfdfb"><h2 style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6b6a62;margin:0">Workload by owner</h2></header>
+          <div style="overflow-x:auto">
+          <table style="border-collapse:collapse;width:100%;min-width:680px;font-size:13px">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:10px 20px;border-bottom:1px solid #f0efe9;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Owner</th>
+                <th style="text-align:right;padding:10px 16px;border-bottom:1px solid #f0efe9;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Open</th>
+                <th style="text-align:right;padding:10px 16px;border-bottom:1px solid #f0efe9;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">In progress</th>
+                <th style="text-align:right;padding:10px 16px;border-bottom:1px solid #f0efe9;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">In review</th>
+                <th style="text-align:right;padding:10px 16px;border-bottom:1px solid #f0efe9;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Blocked</th>
+                <th style="text-align:right;padding:10px 16px;border-bottom:1px solid #f0efe9;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Stranded</th>
+                <th style="text-align:right;padding:10px 20px;border-bottom:1px solid #f0efe9;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Static only</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding:11px 20px;border-bottom:1px solid #f0efe9"><span style="display:flex;align-items:center;gap:9px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:22px;height:22px;font-size:9px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;white-space:nowrap">ios-developer</span></span></td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;font-variant-numeric:tabular-nums">1</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;font-variant-numeric:tabular-nums;color:#b42318;font-weight:650">1</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;font-variant-numeric:tabular-nums;color:#a15c07;font-weight:650">1</td>
+                <td style="padding:11px 20px;border-bottom:1px solid #f0efe9;text-align:right;font-variant-numeric:tabular-nums;color:#a15c07;font-weight:650">1</td>
+              </tr>
+              <tr>
+                <td style="padding:11px 20px;border-bottom:1px solid #f0efe9"><span style="display:flex;align-items:center;gap:9px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:22px;height:22px;font-size:9px;background:hsl(310 70% 92%);color:hsl(310 55% 29%)">TM</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">tech-manager</span></span></td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 20px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+              </tr>
+              <tr>
+                <td style="padding:11px 20px;border-bottom:1px solid #f0efe9"><span style="display:flex;align-items:center;gap:9px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:22px;height:22px;font-size:9px;background:hsl(164 70% 92%);color:hsl(164 55% 29%)">QE</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">qa-engineer</span></span></td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 20px;border-bottom:1px solid #f0efe9;text-align:right;font-variant-numeric:tabular-nums;color:#a15c07;font-weight:650">1</td>
+              </tr>
+              <tr>
+                <td style="padding:11px 20px;border-bottom:1px solid #f0efe9"><span style="display:flex;align-items:center;gap:9px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:22px;height:22px;font-size:9px;background:hsl(303 70% 92%);color:hsl(303 55% 29%)">DE</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">devops-engineer</span></span></td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 20px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+              </tr>
+              <tr>
+                <td style="padding:11px 20px"><span style="display:flex;align-items:center;gap:9px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:22px;height:22px;font-size:9px;background:#fee4e2;color:#b42318">?</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:#b42318">unassigned</span></span></td>
+                <td style="padding:11px 16px;text-align:right;font-variant-numeric:tabular-nums;color:#b42318;font-weight:650">1</td>
+                <td style="padding:11px 16px;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 16px;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:11px 20px;text-align:right;color:#6b6a62">0</td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ================= TEAM ================= -->
+      <sc-if value="{{ isTeam }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+          <h1 style="font-size:22px;font-weight:680;letter-spacing:-0.02em;margin:0">Team</h1>
+          <span style="font-size:12.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">tier-2 · ios-app · 4 active · 1 conditional · 2 off · docs/02-team-roster.md</span>
+          <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#5c5b54;border:1px solid #e6e5de;border-radius:8px;background:#fff;padding:6px 11px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b6a62" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4 2v-8z"></path></svg>All states<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b6a62" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border:1px solid #e6e5de;border-radius:12px;background:#fff;margin-bottom:20px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#087443" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><circle cx="12" cy="12" r="9"></circle><path d="m9 12 2 2 4-4"></path></svg>
+          <span style="font-size:13.5px;color:#087443"><b style="font-weight:650">CLEAR</b> — every off role in the roster names why it is off.</span>
+          <span style="margin-left:auto;font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace;white-space:nowrap">swept all 7 roster rows</span>
+        </div>
+
+        <div style="border:1px solid #e6e5de;border-radius:12px;background:#fff;overflow:hidden">
+          <div style="overflow-x:auto">
+          <table style="border-collapse:collapse;width:100%;min-width:820px;font-size:13px">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:11px 20px;border-bottom:1px solid #f0efe9;background:#fdfdfb;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Role</th>
+                <th style="text-align:left;padding:11px 16px;border-bottom:1px solid #f0efe9;background:#fdfdfb;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">State</th>
+                <th style="text-align:left;padding:11px 16px;border-bottom:1px solid #f0efe9;background:#fdfdfb;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Working on</th>
+                <th style="text-align:right;padding:11px 16px;border-bottom:1px solid #f0efe9;background:#fdfdfb;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Actions</th>
+                <th style="text-align:left;padding:11px 20px;border-bottom:1px solid #f0efe9;background:#fdfdfb;font-weight:600;color:#6b6a62;font-size:11px;letter-spacing:.06em;text-transform:uppercase">Trigger / reason it is off</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9"><span style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:26px;height:26px;font-size:10px;background:hsl(310 70% 92%);color:hsl(310 55% 29%)">TM</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600;white-space:nowrap">tech-manager</span></span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9"><span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:#087443"><span style="width:6px;height:6px;border-radius:999px;background:#087443"></span>active</span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9;color:#6b6a62">nothing on the board</td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9;text-align:right;font-variant-numeric:tabular-nums">61</td>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9;color:#5c5b54">always on — orchestrates every round</td>
+              </tr>
+              <tr>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9"><span style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:26px;height:26px;font-size:10px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600;white-space:nowrap">ios-developer</span></span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9"><span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:#087443"><span style="width:6px;height:6px;border-radius:999px;background:#087443"></span>active</span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9"><span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:nowrap">APP-005 <span style="color:#6b6a62">in_progress</span> · APP-004 <span style="color:#b42318">blocked</span></span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9;text-align:right;font-variant-numeric:tabular-nums">44</td>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9;color:#5c5b54">product type is ios-app</td>
+              </tr>
+              <tr>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9"><span style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:26px;height:26px;font-size:10px;background:hsl(101 70% 92%);color:hsl(101 55% 29%)">CR</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600;white-space:nowrap">code-reviewer</span></span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9"><span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:#087443"><span style="width:6px;height:6px;border-radius:999px;background:#087443"></span>active</span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9;color:#6b6a62">nothing on the board</td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9;text-align:right;font-variant-numeric:tabular-nums">27</td>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9;color:#5c5b54">every ticket entering review</td>
+              </tr>
+              <tr>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9"><span style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:26px;height:26px;font-size:10px;background:hsl(164 70% 92%);color:hsl(164 55% 29%)">QE</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600;white-space:nowrap">qa-engineer</span></span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9"><span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:#087443"><span style="width:6px;height:6px;border-radius:999px;background:#087443"></span>active</span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9"><span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:nowrap">APP-006 <span style="color:#6b6a62">done</span></span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9;text-align:right;font-variant-numeric:tabular-nums">16</td>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9;color:#5c5b54">tier-2 and above</td>
+              </tr>
+              <tr>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9"><span style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:26px;height:26px;font-size:10px;background:hsl(303 70% 92%);color:hsl(303 55% 29%)">DE</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600;white-space:nowrap">devops-engineer</span></span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9"><span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:#1d4ed8"><span style="width:6px;height:6px;border-radius:999px;background:#1d4ed8"></span>conditional</span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9"><span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:nowrap">APP-008 <span style="color:#6b6a62">done</span></span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9;text-align:right;font-variant-numeric:tabular-nums">9</td>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9;color:#5c5b54">spawned only when a release candidate is cut</td>
+              </tr>
+              <tr style="background:#fdfdfb">
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9"><span style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:26px;height:26px;font-size:10px;background:#f0efe9;color:#6b6a62">AD</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600;color:#6b6a62;white-space:nowrap">android-developer</span></span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9"><span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:#6b6a62"><span style="width:6px;height:6px;border-radius:999px;border:1.5px solid #6b6a62"></span>off</span></td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9;color:#6b6a62">nothing on the board</td>
+                <td style="padding:13px 16px;border-bottom:1px solid #f0efe9;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:13px 20px;border-bottom:1px solid #f0efe9;color:#5c5b54">product type is ios-app; no Android surface in scope</td>
+              </tr>
+              <tr style="background:#fdfdfb">
+                <td style="padding:13px 20px"><span style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:26px;height:26px;font-size:10px;background:#f0efe9;color:#6b6a62">SR</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:600;color:#6b6a62;white-space:nowrap">security-reviewer</span></span></td>
+                <td style="padding:13px 16px"><span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:#6b6a62"><span style="width:6px;height:6px;border-radius:999px;border:1.5px solid #6b6a62"></span>off</span></td>
+                <td style="padding:13px 16px;color:#6b6a62">nothing on the board</td>
+                <td style="padding:13px 16px;text-align:right;color:#6b6a62">0</td>
+                <td style="padding:13px 20px;color:#5c5b54">tier-3 role; this project is tier-2 and handles no third-party credentials</td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ================= INBOX ================= -->
+      <sc-if value="{{ isInbox }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:20px">
+          <div>
+            <h1 style="font-size:22px;font-weight:680;letter-spacing:-0.02em;margin:0">Founder Inbox</h1>
+            <p style="margin:6px 0 0;font-size:13px;color:#6b6a62">2 decisions no agent can make. Swept 42 messages and 148 board events for escalations addressed to the founder.</p>
+          </div>
+          <span style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:#fef3f2;border:1px solid #fecdca;color:#b42318;font-size:12px;font-weight:650;white-space:nowrap"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.18 14.18A1.5 1.5 0 0 0 3.4 20.5h17.2a1.5 1.5 0 0 0 1.29-2.46L13.71 3.86a1.5 1.5 0 0 0-2.42 0z"></path><path d="M12 9v4M12 17h.01"></path></svg>2 need attention</span>
+        </div>
+
+        <section style="border:1px solid #fecdca;border-radius:12px;background:#fff;margin-bottom:20px;overflow:hidden">
+          <header style="display:flex;align-items:center;gap:10px;padding:14px 20px;background:#fef3f2;border-bottom:1px solid #fecdca">
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b42318;background:#fff;border:1px solid #fecdca;border-radius:6px;padding:3px 8px">escalation</span>
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-004</span>
+            <h2 style="font-size:15px;font-weight:650;margin:0;letter-spacing:-0.01em">Receipt environment was never specified</h2>
+            <span style="margin-left:auto;display:flex;align-items:center;gap:7px;font-size:12px;color:#5c5b54"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:20px;height:20px;font-size:9px;background:hsl(170 70% 92%);color:hsl(170 55% 29%)">ID</span>ios-developer · since round 29</span>
+          </header>
+          <div style="padding:18px 20px 0">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#6b6a62;margin-bottom:8px">Context, quoted from the log</div>
+            <blockquote style="margin:0;padding:12px 16px;border-left:3px solid #e6e5de;background:#fbfbf9;border-radius:0 8px 8px 0;font-size:13.5px;line-height:1.6;color:#3d3c36;text-wrap:pretty">The requirement says "validate the receipt" without naming sandbox or production. Both are implementable; they fail differently at review. I am not going to guess this one.</blockquote>
+          </div>
+          <div style="padding:18px 20px">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#6b6a62;margin-bottom:8px">Recommendation</div>
+            <p style="margin:0;font-size:13.5px;line-height:1.6;text-wrap:pretty">Target sandbox for the sprint and open a follow-up ticket for production validation before the release gate.</p>
+            <p style="margin:6px 0 0;font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">recorded by code-reviewer · docs/team/messages.jsonl:118</p>
+          </div>
+          <form style="padding:16px 20px;border-top:1px solid #f0efe9;background:#fbfbf9;display:flex;flex-direction:column;gap:12px" onSubmit="{{ noSubmit }}">
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+              <span style="font-size:12.5px;font-weight:600;color:#5c5b54">Answer the open question and unblock</span>
+              <span style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">runs scripts/team-message.sh</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <input style="font:inherit;font-size:13px;padding:8px 11px;border:1px solid #e6e5de;border-radius:8px;background:#fff;color:#14140f;width:120px;font-family:ui-monospace,Menlo,monospace" value="APP-004" readonly="readonly" />
+              <textarea style="font:inherit;font-size:13px;padding:8px 11px;border:1px solid #e6e5de;border-radius:8px;background:#fff;color:#14140f;flex:1 1 320px;min-height:38px;resize:vertical">Target sandbox for this sprint.</textarea>
+              <button type="button" style="font:inherit;font-size:13px;font-weight:600;padding:9px 18px;border-radius:8px;border:1px solid #4f46e5;background:#4f46e5;color:#fff;cursor:pointer">Run command</button>
+            </div>
+            <pre style="margin:0;padding:12px 14px;background:#ecfdf3;border:1px solid #a9e5c3;border-radius:8px;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#065f38">$ node scripts/team-message.sh --ticket APP-004 --kind answer --body "Target sandbox for this sprint."
+exit 0
+recorded message m-0143 in docs/team/messages.jsonl</pre>
+          </form>
+        </section>
+
+        <section style="border:1px solid #fecdca;border-radius:12px;background:#fff;overflow:hidden">
+          <header style="display:flex;align-items:center;gap:10px;padding:14px 20px;background:#fef3f2;border-bottom:1px solid #fecdca">
+            <span style="font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#b42318;background:#fff;border:1px solid #fecdca;border-radius:6px;padding:3px 8px">escalation</span>
+            <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;font-weight:700;color:#4f46e5;white-space:nowrap;flex:0 0 auto">APP-006</span>
+            <h2 style="font-size:15px;font-weight:650;margin:0;letter-spacing:-0.01em">Journey gate cannot evaluate — the journeys file is missing</h2>
+            <span style="margin-left:auto;display:flex;align-items:center;gap:7px;font-size:12px;color:#5c5b54"><span style="display:inline-flex;align-items:center;justify-content:center;border-radius:999px;font-weight:700;line-height:1;width:20px;height:20px;font-size:9px;background:hsl(164 70% 92%);color:hsl(164 55% 29%)">QE</span>qa-engineer · since round 33</span>
+          </header>
+          <div style="padding:18px 20px 0">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#6b6a62;margin-bottom:8px">Context, quoted from the log</div>
+            <blockquote style="margin:0;padding:12px 16px;border-left:3px solid #e6e5de;background:#fbfbf9;border-radius:0 8px 8px 0;font-size:13.5px;line-height:1.6;color:#3d3c36;text-wrap:pretty">journey-gate exited 2: docs/40-journeys.md not found. APP-006 was closed on a static pass only. Closing the sprint without this file means no journey was ever exercised end to end, and the gate will not say otherwise.</blockquote>
+          </div>
+          <div style="padding:18px 20px">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#6b6a62;margin-bottom:8px">Recommendation</div>
+            <div style="display:flex;align-items:center;gap:9px;padding:11px 14px;border:1px dashed #f0c66b;border-radius:8px;background:#fffdf5;color:#a15c07;font-size:13.5px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"></path><path d="M12 17.5h.01"></path></svg>
+              <span><b>None recorded.</b> Nobody proposed a remedy for this escalation in the log. This page does not compose one.</span>
+            </div>
+          </div>
+          <form style="padding:16px 20px;border-top:1px solid #f0efe9;background:#fbfbf9;display:flex;flex-direction:column;gap:12px" onSubmit="{{ noSubmit }}">
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+              <span style="font-size:12.5px;font-weight:600;color:#5c5b54">Reopen the ticket</span>
+              <span style="font-size:11.5px;color:#6b6a62;font-family:ui-monospace,Menlo,monospace">runs scripts/board.mjs</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <input style="font:inherit;font-size:13px;padding:8px 11px;border:1px solid #e6e5de;border-radius:8px;background:#fff;color:#14140f;width:120px;font-family:ui-monospace,Menlo,monospace" value="APP-006" readonly="readonly" />
+              <textarea style="font:inherit;font-size:13px;padding:8px 11px;border:1px solid #e6e5de;border-radius:8px;background:#fff;color:#14140f;flex:1 1 320px;min-height:38px;resize:vertical">reopen: journeys file missing</textarea>
+              <button type="button" style="font:inherit;font-size:13px;font-weight:600;padding:9px 18px;border-radius:8px;border:1px solid #4f46e5;background:#4f46e5;color:#fff;cursor:pointer">Run command</button>
+            </div>
+            <pre style="margin:0;padding:12px 14px;background:#fffaeb;border:1px solid #f0c66b;border-radius:8px;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.6;color:#8a4b06">REFUSED: board.mjs will not move a ticket out of done without a recorded reason on the reopen event
+whitelist: answer-question, reopen-ticket, unblock-ticket, assign-owner
+exit 3</pre>
+          </form>
+        </section>
+      </sc-if>
+
+      <p style="font-size:11.5px;color:#6b6a62;margin-top:40px;line-height:1.7;max-width:760px">A read-only projection. Nothing on this page writes state — every action shells out to the same validated CLI the agents use and shows you the command and its exit code. A refusal is printed verbatim, because a refusal is a finding.</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1000}}">
+const ASIDE = 'flex:0 0 auto;min-width:0;overflow:hidden;background:#fbfbf9;border-right:1px solid #e6e5de;display:flex;flex-direction:column;position:sticky;top:0;align-self:flex-start;height:100vh';
+const NAV = 'display:flex;align-items:center;gap:10px;width:100%;font:inherit;font-size:13.5px;font-weight:500;padding:8px 10px;border:1px solid transparent;border-radius:8px;background:transparent;color:#5c5b54;cursor:pointer;text-align:left';
+const NAV_ON = 'display:flex;align-items:center;gap:10px;width:100%;font:inherit;font-size:13.5px;font-weight:600;padding:8px 10px;border:1px solid #d5d5fb;border-radius:8px;background:#eef0fe;color:#3b32c9;cursor:pointer;text-align:left';
+const CH = 'font:inherit;font-size:12.5px;font-weight:500;padding:6px 13px;border:1px solid #e6e5de;border-radius:999px;background:#fff;color:#5c5b54;cursor:pointer';
+const CH_ON = 'font:inherit;font-size:12.5px;font-weight:600;padding:6px 13px;border:1px solid #4f46e5;border-radius:999px;background:#eef0fe;color:#4f46e5;cursor:pointer';
+const SRC = 'display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:12px;font-weight:600;padding:5px 10px;border:1px solid #f0c66b;border-radius:999px;background:#fffdf5;color:#a15c07;cursor:pointer;white-space:nowrap;flex:0 0 auto';
+const SRC_LINK = 'font:inherit;font-size:12.5px;font-weight:600;color:#a15c07;background:transparent;border:0;border-bottom:1px solid currentColor;padding:0;margin-left:auto;cursor:pointer;white-space:nowrap';
+const COLLAPSE = 'display:flex;align-items:center;gap:10px;width:100%;font:inherit;font-size:12.5px;padding:7px 10px;border:1px solid transparent;border-radius:8px;background:transparent;color:#6b6a62;cursor:pointer;text-align:left';
+const NAMES = { mission: 'Mission Control', comms: 'Communications', board: 'Board', team: 'Team', inbox: 'Founder Inbox' };
+
+class Component extends DCLogic {
+  state = { tab: 'mission', channel: '', sources: false, rail: false };
+  renderVals() {
+    const t = this.state.tab, c = this.state.channel, wide = !this.state.rail;
+    const nav = (id) => (t === id ? NAV_ON : NAV);
+    const ch = (n) => (c === n ? CH_ON : CH);
+    return {
+      wide, rail: this.state.rail,
+      asideStyle: ASIDE + ';width:' + (wide ? '248px' : '60px'),
+      screenName: NAMES[t],
+      isMission: t === 'mission', isComms: t === 'comms', isBoard: t === 'board',
+      isTeam: t === 'team', isInbox: t === 'inbox',
+      navMission: nav('mission'), navComms: nav('comms'), navBoard: nav('board'),
+      navTeam: nav('team'), navInbox: nav('inbox'),
+      goMission: () => this.setState({ tab: 'mission' }),
+      goComms: () => this.setState({ tab: 'comms' }),
+      goBoard: () => this.setState({ tab: 'board' }),
+      goTeam: () => this.setState({ tab: 'team' }),
+      goInbox: () => this.setState({ tab: 'inbox' }),
+      chAll: ch(''), chIos: ch('ios'), chArtifacts: ch('artifacts'), chProduct: ch('product'),
+      // Threads carry the channels their messages were posted to; a channel is a query over the log.
+      showApp004: c === '' || ['ios', 'product'].includes(c),
+      showApp003: c === '' || ['ios', 'artifacts'].includes(c),
+      setAll: () => this.setState({ channel: '' }),
+      setIos: () => this.setState({ channel: 'ios' }),
+      setArtifacts: () => this.setState({ channel: 'artifacts' }),
+      setProduct: () => this.setState({ channel: 'product' }),
+      srcChip: SRC, srcLink: SRC_LINK, collapseBtn: COLLAPSE,
+      sourcesOpen: this.state.sources,
+      toggleSources: () => this.setState({ sources: !this.state.sources }),
+      toggleRail: () => this.setState({ rail: !this.state.rail }),
+      noSubmit: (e) => e.preventDefault(),
+    };
+  }
+}
+</script>
+</body>
+</html>

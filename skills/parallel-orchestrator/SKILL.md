@@ -53,12 +53,24 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 
 2. **Group by owner.** One agent invocation per owner, batched. iOS dev gets all their ready tickets in one prompt; same for Android; same for backend.
 
-2a. **Create one worktree per writing agent, then let the gate check you** (`agent-isolation`):
+2a. **Lease one slot per writing agent, then let the gate check you** (`agent-isolation`):
 
    ```bash
-   git worktree add .agent-wt/APP-001 -b feat/APP-001-short-slug
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" APP-001 APP-002 APP-003
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001,APP-004
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner android-developer --tickets APP-002
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" ios-developer android-developer
    ```
+
+   **The gate takes OWNERS now, because that is what has a tree each.** Step 2 above batches by
+   owner and step 3 below tells each agent to use "its worktree path" — those two sentences and a
+   worktree-per-ticket rule could not all be true at once, and the first owner with two ready
+   tickets is where it breaks (`agent-isolation` Rule 1 has the full argument). The owner cuts a
+   branch per ticket inside its slot, so branch-per-ticket and `code-reviewer`'s "this branch
+   contains only this ticket's files" both still hold.
+
+   `lease` refuses when the pool is full — that is the round's parallelism cap doing its job, and
+   raising it (`--pool N`) is a decision about how much of the machine the studio may use, not a
+   workaround to keep going.
 
    The gate is the last thing you run before the launch message, and **its exit code decides
    whether the launch happens**:
@@ -103,12 +115,26 @@ Called from `/app-build` or by the tech-manager once `docs/31-board.md` has tick
 
    Each agent's prompt must name **its worktree path** as the project root — never the repo root.
 
-4. **Each agent prompt** includes:
-   - The ticket ID(s)
-   - The board entry verbatim
-   - Pointers to PRD section, impl spec, design tokens
-   - The expected output contract (`DONE: APP-NNN ...` or `BLOCKED: APP-NNN ...`)
-   - Reminder: do not edit specs; flag blockers and stop
+4. **Compose each agent's prompt with `spawn-prompt.mjs` — do not hand-write it.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-prompt.mjs" compose \
+     --root . --ticket APP-NNN --role <owner> --slot .agent-wt/<owner>
+   ```
+
+   Use its stdout as the spawn message **verbatim**. It already contains the ticket ID, the board
+   entry, spec pointers, the worktree/slot path, and — the part that matters — **the six-field
+   output contract INLINED as literal text**, not a pointer to `team-protocol`.
+
+   **This is not a style preference.** The first agent ever spawned against this loop (2026-08-06,
+   H4) returned 1 of 6 contract fields. `report-check.mjs` was built in response. The very next
+   measured spawn (2026-08-07, H5) — with `report-check.mjs` live — returned **0 of 6**, because the
+   prompt said *"Return the CODE profile defined in `team-protocol`"* instead of containing it. The
+   identical ticket, role and slot, re-spawned with the contract pasted in literally (H5b), returned
+   all six. Same model, same role file — the only variable was whether the prompt text contained the
+   field labels or pointed at them. That is a dispatch failure, not a capability one, and it is now a
+   command instead of something to remember: `spawn-prompt.mjs verify --role <owner> --prompt <file>`
+   confirms a composed prompt actually contains the labels before you trust it.
 
 5. **Stream the reviews — do not wait for the whole batch.** As each developer Task returns
    `DONE: APP-NNN`, **verify the claim before you act on it**:

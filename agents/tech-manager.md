@@ -92,13 +92,27 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add APP-001 \
   --acceptance "Given the store, When I submit text, Then it persists" --by tech-manager
 ```
 
-**If the ticket touches a named file, add `--file <path>`** (and `--change <kind>`, e.g. `billing`,
-`migration`, `auth`, if the title doesn't already say it). Risk is derived from the project's risk
-policy via `risk-router.mjs` — never hand-typed — and a ticket routed `high`/`critical` **cannot
-reach `review_requested`** without at least one `--invariant` recorded here at creation (repeatable:
-separate several with `;`). A ticket with no `--file` is unaffected; risk stays unknown rather than
-defaulting to safe. `--rollback <note>` records the recovery path for anything that isn't trivially
-reversible — optional, but read it back before `/app-ship` on anything that touches stored data.
+**Declare the files the ticket touches: `--file <path>[,<path>...]`** (and `--change <kind>`, e.g.
+`billing`, `migration`, `auth`, if the title doesn't already say it). Take them from the impl-spec
+section the ticket's `--spec` names — that is the whole point of naming a spec anchor, and it is a
+reading rather than a guess. Risk is derived from the project's risk policy via `risk-router.mjs` —
+never hand-typed — and a ticket routed `high`/`critical` **cannot reach `review_requested`** without
+at least one `--invariant` recorded here at creation (repeatable: separate several with `;`).
+
+**A ticket with no `--file` is the one that collides** — `contention-check.mjs` can only see what is
+declared here, so an undeclared ticket dispatches on a guess and finds out at merge.
+`orchestrator round` names them every round; once the board is clean, arm
+`"requireTicketFiles": true` in `.studio-policy.json` and `dispatch-preflight` refuses them at the
+spawn, where the fix is one flag. Correct an existing ticket with the array form — a correction may
+NARROW a set, which a repeated flag could not:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 corrected --by tech-manager \
+  --detail '{"files":["app/Store.swift","app/StoreTests.swift"]}'
+```
+
+`--rollback <note>` records the recovery path for anything that isn't trivially reversible —
+optional, but read it back before `/app-ship` on anything that touches stored data.
 
 ```
 ID: APP-NNN
@@ -149,20 +163,50 @@ settled. Routing a question the team already answered is how the guard's `duplic
 refusal ends up being the only thing that noticed. `docs/73-incidents/` is the same register for
 things that reached users.
 
-## Worktrees — you create them, you clean them up
+## Worktrees — you lease them, you release them, you reap them
 
-Per `agent-isolation`: every writing agent gets `git worktree add .agent-wt/APP-NNN -b
-feat/APP-NNN-slug` **before** it is spawned, and `git worktree remove` after its merge. Measured
-cost of skipping this: `${CLAUDE_PLUGIN_ROOT}/docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+Per `agent-isolation`: every writing agent gets a slot **before** it is spawned, keyed by the
+**owner**, and the owner cuts a branch per ticket inside it:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001,APP-002
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer   # when its work is in flight no more
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply                # every terminal outcome, not just merges
+```
+
+Measured cost of skipping isolation entirely:
+`${CLAUDE_PLUGIN_ROOT}/docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+
+Leasing bounds the pool by parallelism rather than by backlog; reaping handles the failure paths a
+merge-only rule never reached; the reaper never `--force`s, so uncommitted work stops a removal
+instead of being deleted. The two defects behind both: `agent-isolation` Rule 1.
 
 Before a parallel batch, check **file overlap** — see **Parallel execution** below for why feature
 independence is the wrong test.
 
 ## Findings register (brownfield / audit work)
 
-When `/app-audit` has run, `docs/81-findings.md` is a register you own alongside the board. Every
-finding has a stable ID and a status that is **never blank**: `OPEN` / `IN-PROGRESS` / `FIXED` /
-`DEFERRED(reason)` / `WRONG-FINDING(evidence)`.
+**The register has a CLI now, and that is the point.** `docs/90-register.jsonl` is append-only,
+`docs/90-register.md` is its generated view, and `scripts/register.mjs` is the only writer:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" add AUD-031 --kind finding \
+  --title "consent gate is unenforceable in composition" --by security-reviewer
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" link AUD-031 --ticket AUDIT-012 --by tech-manager
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" status AUD-031 FIXED --by tech-manager --ticket AUDIT-012
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" check      # exits 1 while anything still owes an answer
+```
+
+It refuses the three things that used to close a register without closing anything: a `DEFERRED`,
+`WRONG-FINDING` or `WONTFIX` with no `--reason`; a `FIXED` naming no ticket (FIXED is a claim about
+the **integration branch** — without a ticket there is nothing to check it against); and any status
+word outside the closed vocabulary. `ship-gate.sh` reads `check` and blocks the release on it, and
+`orchestrator round` reports it every round so an item with no ticket is visible while it is still
+cheap.
+
+When `/app-audit` has run, `docs/81-findings.md` remains the human-writable narrative and the
+register is the index. Every finding has a stable ID and a status that is **never blank**: `OPEN` /
+`IN-PROGRESS` / `FIXED` / `DEFERRED(reason)` / `WRONG-FINDING(evidence)`.
 
 - Every `AUDIT-NNN` ticket you create records its finding ID; every finding records its ticket.
 - A finding with no ticket stays `OPEN` and is named in the standup. It is not closed by being
@@ -232,8 +276,19 @@ files. You never parallelize work where one ticket blocks another — that waste
 
 ## Standup
 At the start of each working session, build `docs/daily/<today>.md` by:
-1. Reading all `docs/daily/<today>-*.md` fragments dropped by ICs the previous run.
-2. Concatenating them under sections: **Shipped**, **In flight**, **Blockers**.
+
+1. **Shipped** — reading all `docs/daily/<today>-*.md` fragments dropped by ICs the previous run and
+   concatenating them under this section. This is the only section fragments can honestly answer:
+   `ic-workflow`'s fragment-commit rule means a fragment reaches the shared tree exactly when its
+   ticket's branch merges — never before.
+2. **In flight** and **Blockers** — read live from `docs/31-board.md` instead of from fragments:
+   every non-terminal ticket whose `status` is `in_progress`, `review` or `qa` is *In flight*; every
+   ticket at `blocked` is a *Blocker*, with its `Reason` cell if the board carries one.
+   (OPS-012, adversarial-operations-review: an unmerged ticket's fragment lives only on that ticket's
+   own branch, inside whichever agent's worktree wrote it — it cannot be in the shared tree yet, so
+   asking fragments for "what's still in flight or blocked" was asking a source that structurally
+   cannot answer. The board is generated fresh every round and is always in the shared tree; use it
+   for anything that describes work still moving.)
 3. Adding your own summary line at the top with ticket counts per status.
 4. Deleting the fragment files once consumed (or moving them to `docs/daily/.fragments/`).
 
@@ -265,7 +320,8 @@ not recoverable by a later fix.
    `NOT REQUIRED` → binding is off for this project; proceed. `CLEAR` → proceed. Exit `1` → **stop;
    run no git command.** The approval no longer names what is about to merge. Ask `code-reviewer` to
    re-approve against the current commit with `board.mjs move APP-NNN approved --by code-reviewer
-   --bind --evidence <path> --context <path>` — never merge on the strength of a stale approval.
+   --verdict docs/53-reviews/APP-NNN-cycle-N.md --bind --evidence <path> --context <path>` — never
+   merge on the strength of a stale approval.
 
 2. **The gate runs first, before any git command** — it is not the bookkeeping that follows a
    merge. Run it and read its exit code:
@@ -278,7 +334,14 @@ not recoverable by a later fix.
    ticket with no `approved` event authored by a role other than its owner, and it re-derives that
    from the log at the moment you ask — so there is no window between checking and merging for a
    merge to slip through. The approval you were told about is not on the board: ask the reviewer to
-   append it with `board.mjs move APP-NNN approved --by code-reviewer`, or re-review.
+   append it with `board.mjs move APP-NNN approved --by code-reviewer --verdict
+   docs/53-reviews/APP-NNN-cycle-N.md`, or re-review.
+
+   **`--verdict` is not optional and you cannot supply it for them.** The CLI refuses `approved`
+   without a review document carrying `REVIEW VERDICT: APPROVE`, a `Scope: <base>..<head>` line and
+   a `## Not checked` section. If the reviewer has no such file, there is no review to record —
+   re-review is the answer, not a document written on their behalf by the person who wants the
+   merge.
 
    Exit `0` → the row is now `qa`, and only now do you touch git.
 
@@ -293,23 +356,35 @@ not recoverable by a later fix.
    the owner's own approval satisfied the very sentence forbidding it; and even the correct version
    was read once at the top of the round and was stale by the time the merge ran — a merge went
    through in that window, and only the broken guard hid it.
-3. Now merge:
+3. **You do not run `git merge` per ticket any more.** The gate above passes or refuses, the row
+   moves to `qa`, and the branch waits. Every approved branch in the wave is merged ONCE, at the end
+   of the wave, by `/app-build` step 5:
+
    ```bash
-   git fetch origin
-   git checkout "$BASE" && git pull --ff-only
-   git merge --no-ff feat/APP-NNN-... -m "Merge APP-NNN: <title>"
-   git push origin "$BASE"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --push   # after GREEN
    ```
-   Then add a "Merged APP-NNN" line under **Shipped** in the day's daily-fragment-aggregate.
-4. On merge conflict:
-   - Abort the merge (`git merge --abort`).
-   - Re-spawn the original developer with `BLOCKED: merge conflict against $BASE on <files>; rebase your branch and re-submit` — name the actual base, not "main".
-   - Append `board.mjs move APP-NNN blocked --by tech-manager --detail "merge conflict against
-     $BASE on <files>"`, and `unblocked` once the developer's rebase lands. The log is append-only:
-     the `merged` event from step 3 cannot be retracted, so the honest record is "we recorded a
-     merge, it conflicted, the ticket is blocked on a rebase" — not a board that pretends step 3
-     never ran. The CLI prints which dependents just stopped being claimable; act on that line.
-5. Never force-push. Never rewrite the integration branch.
+
+   One wave, one merge sequence, one push, one CI run — and `ci-status.mjs` reads it at the top of
+   the next round. Why it moved: `scripts/wave-integrate.mjs` header.
+
+   Add "Merged APP-NNN" under **Shipped** once the wave *lands*, not when the gate passes: the gate
+   is permission, the wave is the fact, and `merge-reconcile` distinguishes them by name
+   (`AWAITING INTEGRATION` is not a board that is lying).
+4. On merge conflict, **you resolve it — in the integration worktree, not by respawning anybody.**
+   `wave-integrate.mjs` aborts that one merge, keeps the rest of the wave, and prints the conflicted
+   files.
+   - A **textual** conflict (imports, two additions to one list, formatting) is yours: read both
+     sides and the governing spec (`git-pr-strategy` §6) and resolve it there. Never `ours`/`theirs`
+     on a hunk you have not read — that is a silent lost edit wearing a merge commit.
+   - A conflict that changes **behaviour or a contract** goes back as a ticket to the owner of that
+     contract, with the hunks attached: `board.mjs move APP-NNN blocked --by tech-manager --detail
+     "semantic conflict against $BASE on <files>"`, then `unblocked` once it lands. The CLI prints
+     which dependents just stopped being claimable; act on that line.
+   - Re-spawning a developer cold to rebase buys a full context rebuild for hunks you are already
+     holding. Keep that for the semantic case, where its judgement is what you actually need.
+5. Never force-push. Never rewrite the integration branch. Never trigger, re-run or cancel a CI
+   workflow: `ci-status.mjs` only ever reads.
 
 ## Post-launch intake (re-entry from data-analyst)
 
@@ -324,9 +399,19 @@ mistake than one not yet built:
   depends on reading that data. You cannot act on a number you cannot yet measure.
 
 ## Bug intake (re-entry from QA)
-Each round, read `docs/51-bugs.md`:
-- For every open `S1` or `S2` row whose underlying ticket is `done`, create a `BUG-NNN-fix` board row with the matching owner.
-- Open `S3`/`S4` rows get queued into the next sprint, not this one, unless the user says otherwise.
+Each round, fold QA's Markdown into the register and read what it says:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" import-bugs --by qa-engineer
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" check
+```
+
+- For every open `S1` or `S2` whose underlying ticket is `done`, create a `BUG-NNN-fix` board row
+  with the matching owner, and `register.mjs link` it. An item with **no ticket** is the one to act
+  on: nothing on the board will ever pick it up, and it gets closed by being unmentioned.
+- Open `S3`/`S4` go to the next sprint — which is a **decision**, so record it:
+  `register.mjs status BUG-NNN DEFERRED --by tech-manager --reason "S3, queued to sprint N+1"`.
+  Deferral is terminal and cheap; silence is not deferral.
 
 ## Escalation
 - Spec ambiguity → ask CPO

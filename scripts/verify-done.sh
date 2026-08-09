@@ -9,7 +9,7 @@
 # This script makes the claim falsifiable. It is pure POSIX sh + git — no Node, no dependencies.
 #
 # Usage:
-#   scripts/verify-done.sh [--docs-only] <branch> [base] [test-command]
+#   scripts/verify-done.sh [--docs-only|--static] <branch> [base] [test-command]
 #
 # Examples:
 #   scripts/verify-done.sh feat/APP-001-login
@@ -53,13 +53,29 @@ set -u
 # looking legitimate, so the loop would re-spawn the developer forever. Two correct halves written
 # independently, disagreeing at the interface. Position-independent parsing is the fix; moving the
 # check to $3 would just relocate the seam.
+#
+# `--static` is parsed the same way and for the same reason. It is the per-ticket lane of the WAVE
+# INTEGRATION model (OPS-003, docs/reviews/2026-08-07-adversarial-operations-review.md): the branch
+# half of the claim is checked here, cheaply and with no toolchain, and the executable suite runs
+# ONCE for the whole wave in `wave-integrate.mjs` instead of once per ticket in a cold worktree.
+#
+# It deliberately exits 2, not 0. The tests genuinely have not run, so the honest word is CANNOT
+# EVALUATE and the honest board event is `verified_static` — which already refuses `closed` and
+# already blocks `ship-gate.sh`. `wave-integrate.mjs` is then what earns the real `verified`
+# (legal from `qa` precisely so a static verification can be upgraded, lib/events.mjs legalEvents).
+# No new event, no schema change, and no path from "nothing ran" to a green.
 DOCS_ONLY=0
+STATIC=0
 ARGC=$#
 i=0
 while [ "$i" -lt "$ARGC" ]; do
   i=$((i + 1))
   arg="$1"; shift
-  if [ "$arg" = "--docs-only" ]; then DOCS_ONLY=1; else set -- "$@" "$arg"; fi
+  case "$arg" in
+    --docs-only) DOCS_ONLY=1 ;;
+    --static)    STATIC=1 ;;
+    *)           set -- "$@" "$arg" ;;
+  esac
 done
 
 BRANCH="${1:-}"
@@ -67,13 +83,52 @@ BASE="${2:-main}"
 TEST_CMD="${3:-}"
 
 if [ -z "$BRANCH" ]; then
-  echo "verify-done: usage: verify-done.sh [--docs-only] <branch> [base] [test-command]" >&2
+  echo "verify-done: usage: verify-done.sh [--docs-only|--static] <branch> [base] [test-command]" >&2
+  echo "  test-command may be the literal word 'fast' or 'full' to take it from the project" >&2
+  echo "  profile (docs/team/project-profile.json) instead of hardcoding one here." >&2
   exit 2
 fi
+
+# `fast` / `full` RESOLVE FROM THE PROJECT PROFILE (F6) RATHER THAN BEING HARDCODED PER CALLER.
+#
+# This script ran ONE test command per ticket — whatever the caller passed, which in practice was
+# the whole suite, every time. A one-line ticket paid for the full matrix. The profile declares both
+# scopes so the loop can spend proportionally: `fast` per ticket, `full` at merge and before ship.
+#
+# NOTHING IS SUBSTITUTED WHEN THE PROFILE IS SILENT. project-profile.mjs exits 2 for an undeclared
+# scope and this passes that straight through, because a default test command would make "the tests
+# ran" true of a command nobody chose — the same class as an evidence-optional pass.
+case "$TEST_CMD" in
+  fast|full)
+    _scope="$TEST_CMD"
+    _resolved=$(node "$(dirname "$0")/project-profile.mjs" test-command --scope "$_scope" 2>&1)
+    if [ $? -ne 0 ]; then
+      echo "verify-done: CANNOT EVALUATE — asked for the '$_scope' test command, and:" >&2
+      echo "$_resolved" | sed 's/^/  /' >&2
+      exit 2
+    fi
+    TEST_CMD="$_resolved"
+    echo "verify-done: test scope '$_scope' resolved from the project profile: $TEST_CMD" >&2
+    ;;
+esac
 
 if [ "$DOCS_ONLY" -eq 1 ] && [ -n "$TEST_CMD" ]; then
   echo "verify-done: --docs-only takes no test command (got '$TEST_CMD')." >&2
   echo "  A docs ticket that does have a test is not a docs ticket — drop the flag." >&2
+  exit 2
+fi
+
+if [ "$STATIC" -eq 1 ] && [ -n "$TEST_CMD" ]; then
+  echo "verify-done: --static takes no test command (got '$TEST_CMD')." >&2
+  echo "  --static means the suite runs ONCE for the wave, in wave-integrate.mjs. Passing a command" >&2
+  echo "  here would run it per ticket, which is the cost --static exists to remove." >&2
+  exit 2
+fi
+
+if [ "$STATIC" -eq 1 ] && [ "$DOCS_ONLY" -eq 1 ]; then
+  echo "verify-done: --static and --docs-only are mutually exclusive." >&2
+  echo "  A docs ticket has no executable suite to defer; --docs-only already settles the tests as" >&2
+  echo "  n/a, which is a decision. --static records that they are still owed. Pick one." >&2
   exit 2
 fi
 
@@ -134,6 +189,17 @@ fi
 TESTS_STATUS="unverified"
 CANNOT_EVAL_WHY=""
 [ "$DOCS_ONLY" -eq 1 ] && TESTS_STATUS="n/a (docs-only)"
+[ "$STATIC" -eq 1 ] && TESTS_STATUS="deferred-to-wave"
+
+# THE CACHES MUST BE PINNED BEFORE THE TEST COMMAND IS BUILT, NOT AFTER IT RUNS.
+#
+# The command below executes in `$RUN_DIR`, which is either a per-round agent worktree or a
+# throwaway `mktemp -d` this script deletes on exit. Both are cold, and the second is cold FOREVER
+# — whatever it warms up dies with the trap. Sourcing this exports GRADLE_USER_HOME,
+# SWIFTPM_CACHE_PATH and STUDIO_DERIVED_DATA at the MAIN checkout's `.studio-cache/`, so the
+# subshell inherits them and the second ticket of a round compiles against the first one's cache.
+# See OPS-003; `build-env.sh --check` says honestly which of the three the project actually uses.
+. "$(dirname "$0")/build-env.sh"
 
 # Did the test command FAIL, or did it never actually RUN? The evidence is the output, and the
 # order of these three questions is the decision.
@@ -158,7 +224,22 @@ classify_test_outcome() {
     CANNOT_EVAL_WHY="the output names a missing or unusable toolchain, not a failing assertion"
     return 1
   fi
-  if grep -Eqi 'test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|expectation|[0-9]+ (passing|failing)|✗|✘' "$TEST_LOG"; then
+  # FOUND BY RUNNING A REAL WAVE (H7, 2026-08-08): a `node --test` project — the platform default
+  # for this plugin's own `cli`/`library` projects, and this plugin's own language — prints its TAP
+  # summary as `# tests N` / `# pass N` / `# fail N`, count AFTER the noun. Every alternative above
+  # was built around "N test(s) ... pass/fail", count BEFORE, so it never matched: a suite that ran
+  # green reported CANNOT EVALUATE over evidence sitting in the log being scanned. Found first by
+  # the agent working the ticket itself (recorded in its daily fragment, ticket surface untouched,
+  # correctly deferred to tech-manager) and independently by a wave-integrate.mjs run that hit the
+  # identical regex-shape gap in that file; both are fixed together rather than one at a time.
+  #
+  # FOUND BY RUNNING A REAL WAVE AGAIN (H9, 2026-08-09), same class, third test runner: AGP's
+  # `connectedDebugAndroidTest` on a real emulator prints `Starting N tests on <device>` /
+  # `Finished N tests on <device>`, then `BUILD SUCCESSFUL` — a real, passing instrumented run on a
+  # real emulator, and none of the alternatives above matched it either. `Finished N tests on` is
+  # the reliable anchor: AGP prints it once, always, as a completion marker independent of
+  # pass/fail, the same role `# tests N` plays for Node.
+  if grep -Eqi 'test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|expectation|[0-9]+ (passing|failing)|✗|✘|^#[[:space:]]*(tests|pass|fail)[[:space:]]+[0-9]+|Finished [0-9]+ tests? on' "$TEST_LOG"; then
     return 0
   fi
   CANNOT_EVAL_WHY="the output carries no evidence that a test suite ran at all (exit $TEST_RC, $(wc -l <"$TEST_LOG" | tr -d ' ') line(s) of output)"
@@ -219,6 +300,10 @@ if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
   fi
 
   if [ -z "$FAILURES" ] && [ "$TESTS_STATUS" != "cannot-run" ]; then
+    # Say, once per run, whether the caches this script just pinned actually apply to THIS command.
+    # An exported variable the project's own test command ignores is a saving nobody made, and
+    # silently believing in it is the shape of defect this repository keeps re-finding.
+    sh "$(dirname "$0")/build-env.sh" --check "$TEST_CMD" >&2 || true
     echo "verify-done: running tests on $BRANCH: $TEST_CMD" >&2
     # Capture, never discard. The verdict below tells the loop to "re-spawn the developer with
     # these failures verbatim" — and the output went to /dev/null, so there were no verbatim
@@ -271,6 +356,23 @@ if [ "$TESTS_STATUS" = "failing" ]; then
   quote_test_output
   echo "Next: re-spawn the developer with these failures verbatim. Do not move the board row to review."
   exit 1
+fi
+
+# 3a. The suite was DELIBERATELY deferred to the wave. Distinct from `unverified` because the action
+#     is different: nothing is missing, nothing is broken, and re-running this changes nothing.
+if [ "$TESTS_STATUS" = "deferred-to-wave" ]; then
+  echo "CANNOT EVALUATE: $BRANCH"
+  echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=deferred-to-wave"
+  echo "  The branch, the commits and the changed files all check out. The executable suite has NOT"
+  echo "  run — by design: --static defers it to the wave integration pass, which runs it ONCE on the"
+  echo "  merged tree rather than once per ticket in a cold worktree."
+  echo "  This is NOT a pass and NOT a rejection. Do not re-spawn the developer."
+  echo "Next: record the honest state, which unlocks review, approval and the merge gate:"
+  echo "    board.mjs move <ID> verified_static --by tech-manager --detail \"deferred to wave integration\""
+  echo "  It refuses \`closed\` and blocks ship-gate until something runs the suite. That something is"
+  echo "    node scripts/wave-integrate.mjs --root . --wave <N> --base $BASE"
+  echo "  whose green full run is what earns the real \`verified\` for every ticket in the wave."
+  exit 2
 fi
 
 # 3. The tests were never settled. The branch half of the claim IS verified — but the headline says

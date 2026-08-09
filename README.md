@@ -10,7 +10,7 @@ It takes your idea from **scope → design → code → review → store**, buil
 and fixing its own work, and stopping for you at only the two moments that matter:
 **what we're building** and **whether to ship**.
 
-[![version](https://img.shields.io/badge/version-2.0.0-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.0.0-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-lightgrey)]()
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A2BE2)]()
@@ -18,6 +18,12 @@ and fixing its own work, and stopping for you at only the two moments that matte
 *Ships as the **`app-dev-team`** Claude Code plugin — see [Install](#install).*
 
 </div>
+
+<p align="center">
+  <img src="docs/assets/control-room-mission.jpg" width="49%" alt="Mission Control — cause before consequence: why work isn't moving, budget position, active agents" />
+  <img src="docs/assets/control-room-team.jpg" width="49%" alt="The Team screen — every role's real state, and its Game of Thrones nickname" />
+</p>
+<p align="center"><i>The <a href="#watch-it-work-the-control-room">control room</a> — a live, read-only dashboard over the team's own append-only log.</i></p>
 
 ---
 
@@ -225,6 +231,30 @@ flowchart TD
 
 ---
 
+## Watch it work: the control room
+
+A live, read-only dashboard over the team's own append-only log — the same view a founder uses to
+watch the sprint instead of reading raw JSONL. Five screens: **Mission Control** (cause before
+consequence — why work isn't moving, budget position, active agents), **Communications** (real
+per-ticket threads, not narrated chatter), **Board** (kanban + per-owner load + the metrics that
+back it), **Team** (every role's real state and reason, GoT nicknames included), **Founder Inbox**
+(the three things a decision needs: context, recommendation, one whitelisted action).
+
+It never invents a number: a section it can't evaluate says so — dashed border, amber, `CANNOT
+EVALUATE` — instead of rendering an empty list that reads as "all clear." Zero runtime dependencies
+beyond React itself; it lives in `control-room/` with its own `package.json` so the plugin stays
+dependency-free.
+
+```bash
+cd control-room && npm install && npm run build
+node server.mjs --project /path/to/your/project --port 4174   # open http://localhost:4174
+```
+
+See [`control-room/README.md`](control-room/README.md) for live-development mode (hot reload on
+`:5174`, proxied to the data plane on `:4174`).
+
+---
+
 ## Use cases — who this is for
 
 | You are… | You use it to… |
@@ -367,6 +397,56 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 Every build agent invokes the `house-conventions` skill before working, plus `agent-isolation`
 (its own git worktree) and `team-protocol` (how it talks to the rest of the team). Roles are just
 Markdown files — add, remove, or retune them.
+
+The 18 above are the roles you'll spawn on a typical build; `agents/` holds 30 in total — the rest
+(`chief-of-staff`, `web-developer`, `test-automation-engineer`, `red-team-agent`,
+`product-manager`, `product-researcher`, `product-validator`, `release-auditor`,
+`privacy-reviewer`, `incident-commander`, `reliability-engineer`) activate conditionally, per
+`docs/02-team-roster.md`'s own recorded triggers. The control room's **Team** screen shows every
+one of them, active or off, with the reason either way.
+
+## Meet the studio 🐺🐉🦁
+
+Purely for fun — the control room UI gives every role a Game of Thrones name and house sigil,
+matched to what that role actually does in this system, not just picked at random. It's a
+**display-only nickname**: the real identifier (`tech-lead`, `android-developer`, …) is what every
+script, log line, board row, and git branch actually uses — nothing operational changes. Hover any
+avatar in the control room, or open the **Team** tab, to see it live.
+
+| House | Sigil | Role | Character | Why |
+|---|---|---|---|---|
+| Targaryen | 🐉 | `ceo` | **Daenerys Targaryen** | Sets the vision, makes the final call |
+| Lannister | 🦁 | `cpo` | **Tyrion Lannister** | The sharpest strategist in the room |
+| Stark | 🐺 | `cto` | **Ned Stark** | Principled architecture, no shortcuts |
+| Targaryen | 🐉 | `chief-of-staff` | **Jorah Mormont** | Utterly loyal right hand |
+| Stark | 🐺 | `tech-lead` | **Jon Snow** | Leads from the front, unblocks the pod |
+| Stark | 🐺 | `tech-manager` | **Sansa Stark** | Grew into the sharp administrator who runs the board |
+| Targaryen | 🐉 | `android-developer` | **Grey Worm** | Unsullied precision — executes exactly to spec |
+| Stark | 🐺 | `ios-developer` | **Arya Stark** | Independent, resourceful, gets it done her own way |
+| Stark | 🐺 | `backend-developer` | **Samwell Tarly** | Unglamorous, essential infrastructure work |
+| Stark | 🐺 | `web-developer` | **Gilly** | Resourceful, adapts to whatever the environment needs |
+| none | 🕷️ | `code-reviewer` | **Varys** | Sees the truth others miss, never rubber-stamps |
+| errant | ⚔️ | `qa-engineer` | **Brienne of Tarth** | Holds everyone to their stated oath |
+| Targaryen | 🐉 | `test-automation-engineer` | **Daario Naharis** | Precise and reliable, every time |
+| none | 🕷️ | `verification-engineer` | **Maester Luwin** | Meticulous — certifies constants, proves guard rules can fail |
+| errant | ⚔️ | `red-team-agent` | **Bronn** | Finds every weakness, fights dirty to win |
+| none | 🐦 | `monetization-engineer` | **Petyr "Littlefinger" Baelish** | Money, coin, and schemes |
+| Tyrell | 🌹 | `ux-architect` | **Margaery Tyrell** | Crafts the experience people fall in love with |
+| Baratheon | 🦌 | `product-designer` | **Shireen Baratheon** | Patient, thoughtful, cares how things feel |
+| errant | ⚔️ | `product-manager` | **Podrick Payne** | Quietly excellent, always delivers |
+| none | 🕷️ | `product-researcher` | **Maester Aemon** | Ancient wisdom, digs into what's actually true |
+| errant | ⚔️ | `product-validator` | **Yara Greyjoy** | Tests every plan ruthlessly before it sails |
+| Targaryen | 🐉 | `aso-specialist` | **Missandei** | Translator — crafts the message for every audience |
+| Stark | 🐺 | `data-analyst` | **Bran Stark** | The Three-Eyed Raven — sees all the data and patterns |
+| Baratheon | 🦌 | `devops-engineer` | **Gendry** | The blacksmith — forges the pipeline everyone else uses |
+| Baratheon | 🦌 | `release-manager` | **Davos Seaworth** | The onion knight — literally ships things |
+| errant | ⚔️ | `release-auditor` | **Barristan Selmy** | Incorruptible, double-checks before it's final |
+| errant | ⚔️ | `security-reviewer` | **Sandor "The Hound" Clegane** | Blunt protector, no sugarcoating |
+| Stark | 🐺 | `privacy-reviewer` | **Howland Reed** | Keeper of the realm's biggest secret |
+| errant | ⚔️ | `incident-commander` | **Beric Dondarrion** | Always answers when there's a fire to fight |
+| Stark | 🐺 | `reliability-engineer` | **Brandon "the Builder" Stark** | Built the Wall to last eight thousand years |
+
+
 
 ## Commands
 

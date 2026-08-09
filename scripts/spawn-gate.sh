@@ -7,12 +7,17 @@
 # hours did not make anyone apply it.
 #
 # So the rule stops being a convention the orchestrator remembers and becomes a command it runs.
-# Call this with the ticket IDs you are about to spawn writers for. It answers GO or REFUSED, and
-# on REFUSED it prints the exact commands that make it GO.
+# Call this with the OWNERS you are about to spawn writers for — not the tickets. The unit of
+# isolation is the WRITER: one owner working three tickets one after another in its own worktree
+# cannot collide with anyone; two owners in one tree can. `worktree-slot.mjs lease` creates
+# `.agent-wt/<owner>`, keyed the same way, since the slot model moved from per-ticket to per-owner
+# (OPS-005) — this usage comment named ticket IDs after that move and nobody had actually called it
+# since, caught only by running it for real during an adversarial re-review (2026-08-08). It
+# answers GO or REFUSED, and on REFUSED it prints the exact commands that make it GO.
 #
 # Usage:
-#   scripts/spawn-gate.sh APP-001 APP-002 [...]
-#   scripts/spawn-gate.sh --dir .agent-wt APP-001      (non-default worktree parent)
+#   scripts/spawn-gate.sh ios-developer android-developer [...]
+#   scripts/spawn-gate.sh --dir .agent-wt ios-developer     (non-default worktree parent)
 #
 # Exit codes:
 #   0  GO             — every writer named has its own worktree, or there is exactly one writer
@@ -20,7 +25,7 @@
 #                       of the rule, and it is stated in the output so it lands in the standup).
 #   1  REFUSED        — two or more writers and at least one has no worktree, OR the studio
 #                       emergency stop is set (`.studio-stop` / APP_TEAM_STOP). Spawn nobody.
-#   2  CANNOT EVALUATE — not a git repository, or no ticket IDs given. Not a pass.
+#   2  CANNOT EVALUATE — not a git repository, or no owner names given. Not a pass.
 
 set -u
 
@@ -53,8 +58,8 @@ set -f
 set -- $IDS
 set +f
 if [ $# -eq 0 ]; then
-  echo "CANNOT EVALUATE: no ticket IDs given"
-  echo "usage: spawn-gate.sh <TICKET-ID> [TICKET-ID ...]"
+  echo "CANNOT EVALUATE: no owner names given"
+  echo "usage: spawn-gate.sh <OWNER> [OWNER ...]"
   exit 2
 fi
 
@@ -134,7 +139,19 @@ echo "Spawn nobody. Two writers in one tree is the collision this plugin exists 
 echo "has been reproduced twice — most recently by the orchestrator that had just documented it"
 echo "(docs/research/2026-07-29-dry-run-4-findings.md, DR4-027: 22 files lost to one \`git reset\`)."
 echo
-echo "Create them, then re-run this gate:"
+echo "Create them, then re-run this gate."
+echo
+echo "PASS OWNERS, NOT TICKETS. The unit of isolation is the WRITER, not the ticket: two agents in"
+echo "one tree corrupt each other, while one agent working three tickets one after another in its"
+echo "own tree cannot corrupt anyone. Leasing a slot per owner is what makes"
+echo "parallel-orchestrator's 'one agent invocation per owner, batched' and 'each agent's prompt"
+echo "names ITS worktree path' both true at once — they could not both be true per ticket (OPS-005)."
+echo
+for id in $missing; do
+  echo "  node scripts/worktree-slot.mjs lease --owner $id --tickets APP-NNN,APP-NNN"
+done
+echo
+echo "For a project still keyed by ticket, the old shape still works and this gate still checks it:"
 for id in $missing; do
   echo "  git worktree add \"$DIR/$id\" -b \"feat/$id-short-slug\""
 done

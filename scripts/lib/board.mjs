@@ -300,6 +300,36 @@ function detectCycle(id, rowsById, stack = []) {
 }
 
 
+/**
+ * Has this ticket's code actually SHIPPED to the integration branch?
+ *
+ * ONE PREDICATE, BECAUSE THIS BELIEF HAS NOW PRODUCED THREE DEFECTS. `qa` used to mean "merged",
+ * full stop, and five readers plus two gates encoded that as `['qa','done'].includes(status)`. The
+ * wave model split the merge gate (PERMISSION) from the wave pass (FACT), and every one of those
+ * readers kept answering the old question:
+ *
+ *   EE-001  merge-reconcile called a pending wave a lying board, and it gates `orchestrator round`
+ *           — so the loop could not restart after any wave that did not go green.
+ *   B2      the `claimed` guard let a dependent start against a branch that lacked its dependency.
+ *   N1      trace, the dashboard, the control room, the message renderer and the doctor all still
+ *           tell a founder that gated-but-unlanded work has shipped.
+ *
+ * Patching the sixth site the same way would guarantee a seventh. `staticOnly` is the marker the
+ * renderer already writes for `qa (static only)`, and it is true exactly while a merge-gated ticket
+ * is waiting for the wave — so the distinction costs one function and no new state.
+ *
+ * A project that merges per ticket never sets it: `hasShipped` is then identical to the old test,
+ * which is why this can be swept across every reader without changing their behaviour.
+ */
+export function hasShipped(row) {
+  if (!row) return false;
+  const status = String(row.status ?? '');
+  if (status !== 'qa' && status !== 'done') return false;
+  // Both spellings: `staticOnly` on a parsed board row, `verifiedStatic` on a reduced event-log
+  // ticket. The two shapes reach different readers and neither should have to know which it holds.
+  return !(row.staticOnly === true || row.verifiedStatic === true);
+}
+
 export {
   KNOWN_OWNERS,
   BUILD_SPAWNABLE_OWNERS,

@@ -3,7 +3,68 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-07-30 · **Branch:** `revamp/phase-r-fixes` · **Suite:** 735 assertions green
+**Last updated:** 2026-08-06 · **Branch:** `feat/review-verdict-contract` (PR #30, all CI green)
+**Suite:** 1240 assertions · **Invariants:** 12/12 · **Version:** 3.0.0
+
+## THE NUMBER THAT MATTERS MOST, AND WHY IT IS AT THE TOP
+
+Across every recorded dry run: **19 tickets created, 1 reached `closed`.** Eleven never left
+`created`. That number appeared in no document, no assertion and none of six dry-run reports —
+every one of which analysed the QUALITY OF REFUSALS and not one of which counted whether anything
+moved.
+
+On 2026-08-06 three targeted experiments explained all of it, in about fifteen minutes, without
+spawning a single agent or building an app:
+
+| | | |
+|---|---|---|
+| **H1** | a ticket can be driven `created → closed` by hand | **HELD** — the pipeline works |
+| **H2** | a planned project cannot dispatch at all | **HELD** — the whole of 11-of-19 |
+| **H3** | post-merge transitions blocked by a missing artifact | **FALSIFIED** |
+
+**H2 is the headline.** `dispatch-preflight` requires four manifests in `docs/team/`, and on a fresh
+project that directory did not exist. Preflight died on the first one, `/app-build`'s own rule
+("a failed or unavailable check stops the spawn") stopped the round, and every ticket sat at
+`created` forever. **No command, agent or skill anywhere wrote any of those four files.** It was
+never agent diligence; the loop was structurally unable to start. Fixed by
+`scripts/team-bootstrap.mjs`, run from `/app-plan` step 4b.
+
+Three further defects were found the same day, each by running something rather than reading it:
+
+- **A ticket reached `done` with the code never merged.** `git merge` failed on a dirty tree and the
+  board accepted `merged`, `qa_passed` and `closed` anyway. The merge gate is a PRECONDITION that
+  runs before any git command by design, so it cannot confirm the merge afterwards — and nothing
+  did. Fixed by `scripts/merge-reconcile.mjs`, wired into `orchestrator round` and `ship-gate`.
+- **Five scripts were built, tested and invoked by nothing** — including
+  `foundation-conformance.mjs`, the twelve-invariant suite, which was in no CI and no command. Now
+  a rule: every top-level script must have a caller other than the test harness.
+- **The new stall detector was blind to the six tickets it was built to find.** `TERMINAL` included
+  `qa`, and all six parked tickets sit at `qa`.
+
+**The lesson, stated plainly because it is the most transferable thing here:** six dry runs spent
+days building fixture apps and produced reports whose findings were handed off and never landed.
+Three experiments with one falsifiable question each, a stopping condition, and no agents produced
+four fixes and a killed hypothesis in fifteen minutes. Engineering rule #2 was written down for
+months and never practised.
+
+## What is honestly still open
+
+- **`/app-ship` has never executed against a real submission.**
+- **Whether an AGENT following `app-build.md` reaches the same outcomes a careful hand does.** Every
+  finding above came from driving the CLI directly. That question needs a spawn.
+- **The eval lab's 12/12 is not evidence.** 13 of 15 fixtures name the detector written for them in
+  the same session, so it measures "does my grep match my own fixture". Re-baselining needs defects
+  from code nobody here wrote.
+- **Five of six product defect classes are unmechanised** (`knowledge/product-failure-corpus.md`).
+  PF-001 — the user's value discarded on the way to storage — is the highest severity and only
+  PARTIAL.
+- **12% of assertions are documentary** (`scripts/assertion-census.mjs`), proving an instruction
+  exists rather than that anything happens. Kept deliberately — they catch generator/validator
+  drift — but the single number "1240 assertions" flatters itself.
+
+> **Everything below §2 was written on 2026-07-30 and much of it is historical.** The arguments hold
+> and are worth reading; the state claims do not. §2 and the section above are the only parts that
+> describe today.
 
 ---
 
@@ -12,7 +73,10 @@ first and nothing else until you have.*
 | File | Why |
 |---|---|
 | `docs/HANDBOOK.md` | What the system is, its six beliefs, all roles, the loop. **Part 12 lists what is not finished** |
-| `docs/research/2026-07-29-dry-run-4-findings.md` | The register from the first real end-to-end run, plus the team's own review of its revamp. Every finding has a reproduction |
+| `docs/dry-runs/2026-08-06-*.md` | **The three targeted experiments of 2026-08-06** — hypothesis committed first, result recorded whatever it said. The shortest path to understanding what actually breaks |
+| `knowledge/product-failure-corpus.md` | The defect classes the APPS produce, each marked MECHANISED / PARTIAL / REVIEWER-ONLY |
+| `docs/25-engineering-rules.md` | The ten rules, each naming its enforcing mechanism **or stating it has none** |
+| `docs/research/2026-07-29-dry-run-4-findings.md` | The register from the first real end-to-end run. Historical; every finding has a reproduction |
 | `docs/2026-07-29-studio-os-plan.md` | The current plan: review of two improvement plans, position changes, phase order |
 | `knowledge/failure-corpus.md` | The six defect classes this codebase actually produces, and the *tell* for each |
 | `docs/2026-07-29-revamp-master-plan.md` | The earlier register (RV-NNN) — historical, mostly closed |
@@ -156,9 +220,15 @@ before `parseArgs` was ever reached — the probe passed without testing anythin
 the failure mode dry run 5 hit twice. **A refusal is evidence only when you know which layer
 refused.**
 
+⚠️ **The `add` line below used to read `add APP-001 "probe"`, and that spelling was broken** — the
+title is `--title`, so `"probe"` landed in a positional nothing read, the ticket was created with an
+empty title, and the command exited 0. The standing probe in the file that says "must never
+regress" was itself teaching the wrong invocation. `board.mjs` now refuses an extra positional
+rather than discarding it (2026-08-05), so the old line fails loudly instead of quietly.
+
 ```bash
 echo SENTINEL > victim.txt
-node scripts/board.mjs add APP-001 "probe" --by tech-manager
+node scripts/board.mjs add APP-001 --title probe --by tech-manager
 node scripts/board.mjs move APP-001 blocked --by tech-manager --detail "--board=$PWD/victim.txt"
 head -1 victim.txt        # must still read SENTINEL — and the move must have EXITED 0,
                           # because a refusal here means you tested the state machine again

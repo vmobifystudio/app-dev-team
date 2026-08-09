@@ -1,0 +1,17 @@
+# 90 — Register
+
+**GENERATED from `docs/90-register.jsonl` by `scripts/register.mjs`. Never edit this file** —
+the next append regenerates it and no rule in this plugin ever saw your edit.
+
+2 item(s) · **0 still owe an answer** · `register.mjs check` exits 1 while that number is above zero, and `ship-gate.sh` reads it.
+
+| ID | Kind | Sev | Status | Ticket | Title | Reason |
+|---|---|---|---|---|---|---|
+| OPS-010 | finding |  | **DEFERRED** | — | Code review is per-ticket, not batched by module (up to 7 agent spawns per ticket worst case) | Batching review by module trades reviewer independence for cost: a shared-module review that misses a defect misses it for every ticket in the batch at once, where per-ticket review at least gives each ticket its own read. This studio has already been burned by defects escaping review once (see docs/reviews/2026-08-07-pr31-code-review.md); the review's own text calls this a human decision, not an obvious bug. CTO call: keep per-ticket review. OPS-014 (review-pattern-scan.mjs) now gives most of batching's benefit (catching a shared root cause across tickets) without giving up independent reads, which is the better trade. |
+| OPS-011 | finding |  | **DEFERRED** | — | Developer retries escalate model tier but always reset context to cold, no warm-manager reuse | tech-manager/tech-lead already get warm-context reuse via manager-harness.mjs/manager-failover.mjs because those roles are long-lived, named, singleton agents for a project — the harness can address the same agent again. A developer retry is spawned fresh per ticket by design (parallel, disposable, no cross-ticket identity to reuse), and generalizing warm-reuse to it needs the harness to name and re-address an arbitrary prior IC agent, which is not guaranteed available portably across harnesses. Building a studio-specific workaround for one harness would be an abstraction with a single caller. CTO call: no separate mechanism; revisit only if a harness-level named-agent-reuse primitive becomes a portable assumption. |
+
+## Terminal statuses
+
+`FIXED` (needs the ticket that carried it) · `DEFERRED` · `WRONG-FINDING` · `WONTFIX`
+(the last three need a reason). `OPEN` and `IN-PROGRESS` are not terminal and block the ship gate.
+

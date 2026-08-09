@@ -80,6 +80,20 @@ When you find a defect, write to `docs/51-bugs.md` as a row:
 BUG-NNN | Ticket | Severity (S1..S4) | Platform | Steps to reproduce | Expected | Actual | Build | Resolution
 ```
 
+Then fold them into the register at `docs/90-register.jsonl`, which is what makes them impossible to
+lose:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . import-bugs --by qa-engineer
+```
+
+Your Markdown stays the place you write — it is human-readable, it reviews on a branch, and every
+agent file already points at it. What changes is that it is now a **source** that gets imported
+rather than the register itself. A bug that never became a board ticket used to be invisible to
+`board-doctor`, to `orchestrator round` and to the sprint summary, and got closed by being
+unmentioned; on the register it holds a non-terminal status and `ship-gate.sh` refuses the release
+until somebody decides about it. Deferring is a fine decision — it just has to be one.
+
 **`scripts/ship-gate.sh` reads these rows**, so two things about the shape are load-bearing, not
 style:
 

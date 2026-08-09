@@ -57,6 +57,7 @@ const risk = run('risk-router.mjs', ['--policy', resolve(root, String(flags.risk
 // blocking them would make the studio unusable to buy a guarantee it cannot offer anyway. What it
 // must never do is print CLEAR — and it does not; it says CANNOT EVALUATE in its own words.
 let contention = '';
+let contentionUnknown = false;
 try {
   contention = execFileSync(process.execPath, [
     resolve(here, 'contention-check.mjs'),
@@ -69,6 +70,7 @@ try {
     die(1, `contention-check refused this dispatch:\n${output}`);
   }
   contention = output || 'CONTENTION: CANNOT EVALUATE';
+  contentionUnknown = true;
 }
 
 // Global plugin enhancement plan (2026-08-03), P0.2's narrow first slice: this gate ran every check
@@ -100,6 +102,40 @@ if (existsSync(policyPath)) {
   try { policy = JSON.parse(readFileSync(policyPath, 'utf8')); }
   catch (error) { die(2, `cannot read .studio-policy.json: ${error.message}`); }
 }
+// OPS-007 — the half of contention control that was resting on an optional field.
+//
+// `contention-check.mjs` is wired here and works, and the deliberate non-fatal treatment of its
+// exit 2 above is correct as a DEFAULT: most tickets predate `--file`, and blocking them would make
+// the studio unusable to buy a guarantee it cannot offer anyway.
+//
+// What that leaves is a default ticket with NO contention protection at all. `tech-manager.md` makes
+// the field conditional ("**If** the ticket touches a named file"), so the ordinary ticket declares
+// nothing, this prints CANNOT EVALUATE, and both agents are dispatched onto the same file. The
+// stated fallback — `parallel-orchestrator` 2b, "list the files each ticket is LIKELY to touch" — is
+// a prediction by the role that has never opened the code. The measured cost of that prediction
+// being wrong: two "independent" tickets in one module, add/add conflicts on all 8 files.
+//
+// So a project may ARM it, the same way it arms approval binding, the audit anchor and the eval
+// baseline. Armed, a ticket that declares no files is refused AT DISPATCH — early, where the fix is
+// one `board.mjs add --file`, rather than at merge, where the fix is a rebase.
+if (policy.requireTicketFiles === true) {
+  if (contentionUnknown) {
+    die(
+      1,
+      `ticket ${flags.ticket} declares no files, and .studio-policy.json sets requireTicketFiles.\n` +
+        `${contention}\n` +
+        '  A ticket with no declared file set cannot be checked for collision against work already\n' +
+        '  in flight, so dispatching it is a bet that no other agent is in the same file. Declare\n' +
+        '  what it touches, from the impl spec section the ticket names:\n' +
+        `    node scripts/board.mjs move ${flags.ticket} corrected --by tech-manager \\\n` +
+        '      --detail \'{"files":["path/one.swift","path/two.swift"]}\'\n' +
+        '  (new tickets take `--file a,b` at `board.mjs add`; a correction carries the array,\n' +
+        '   because a correction may NARROW a file set and a repeated flag could only widen it.)\n' +
+        '  or drop requireTicketFiles for this project and accept the bet deliberately.'
+    );
+  }
+}
+
 const revamp = {};
 if (policy.requireAuditAnchor) {
   revamp.auditAnchor = run('audit-anchor.mjs', ['verify', '--log', resolve(root, 'docs/31-board-events.jsonl'), '--out', resolve(root, 'docs/team/audit-anchor.json')]);

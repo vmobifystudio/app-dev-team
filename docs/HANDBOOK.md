@@ -3,7 +3,10 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 52 top-level scripts (+9 shared libs) · 9 knowledge packs · 981 assertions
+**Scale:** 30 roles · 31 skills · 27 commands · 74 top-level scripts (+18 shared libs) · 10 knowledge packs · 1445 assertions
+
+*The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
+drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
 
 ---
 
@@ -694,7 +697,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
 | `journey-gate.mjs` | Proves a DECLARED P0 user journey completes — not that a process is alive |
-| `test.sh` | 981 assertions |
+| `test.sh` | 1252 assertions |
 | `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
@@ -1096,6 +1099,105 @@ wants. That is what the human gates and real users are still for, and no script 
 Every open item is specified with a reproduction: dry run 4 in
 `docs/research/2026-07-29-dry-run-4-findings.md`, dry run 5 in
 `docs/research/2026-07-30-dry-run-5-findings.md`.
+
+- **Operations-review closure batch, 2026-08-08.** `docs/reviews/2026-08-07-adversarial-operations-review.md`
+  rated the studio's unattended-operation readiness 3/10. Closed since, in order: OPS-001–008 and
+  the wave model itself (per-ticket static verification, one merge/build/test per wave — see
+  `knowledge/git-workflow.md`), then OPS-009 (an `answer` that resolves a `question` about an
+  already-`qa`/`done` ticket auto-files a register `assumption` item), OPS-012 (`tech-manager`'s
+  Standup sources *In flight*/*Blockers* from the live board, not daily fragments, which structurally
+  cannot exist yet for unmerged work), OPS-013 (a `verified_static` odometer reported every round by
+  `orchestrator round`, and — 2026-08-08 — given real teeth: `round-journal.mjs check` blocks once
+  the count has stayed above zero and non-decreasing for 3 reported rounds), OPS-014
+  (`review-pattern-scan.mjs` correlates `REQUEST CHANGES` findings across tickets by the file they
+  block on), and Future Conflict #1 (`wave-integrate.mjs --push` re-runs `merge-reconcile.mjs`
+  immediately after the ref moves, not only at the next round's start). OPS-010 (batch code review)
+  and OPS-011 (warm-context developer retries) were deliberately DEFERRED rather than built —
+  reasoning recorded on the register (`docs/90-register.jsonl`), not silently dropped.
+  An independent adversarial re-rating (run by a separate session with no access to this one's
+  claims, instructed to verify by executing code rather than reading it) then rated the result 5/10
+  and found two real gaps in what had just landed: the merge-block hook
+  (`hooks/block-shared-tree-destructive-git.sh`) only recognized literal `git merge`, so
+  `git push origin HEAD:main`, `git fetch . feat/x:main` (wave-integrate.mjs's own mechanism, run by
+  hand), and `git branch -f main feat/x` all moved the integration branch's ref undetected —
+  reproducing H6's governance-bypass class through a different git verb; and `scripts/test.sh` itself
+  carried an unescaped backtick pair in a double-quoted assertion label, so the suite was silently
+  swallowing a shell syntax error every run while still reporting N/N green. Both fixed same-day, the
+  hook extended to block all four ref-writing forms plus `update-ref`, the suite given a self-check
+  that fails loud if the same class of defect recurs.
+- **H7 — a real, parallel, two-agent sprint, 2026-08-08** (`docs/dry-runs/2026-08-08-h7-real-parallel-sprint.md`,
+  the first true concurrent multi-agent test since the wave model shipped — H6 had been corrected
+  mid-setup to one sequential agent). Two independent tickets, two real developer agents spawned in
+  the same message, each in its own leased worktree: both claimed, worked, committed and reported
+  with zero collision and zero stall — the specific 11-of-19 failure mode the original review
+  measured did not recur here. Two independent `code-reviewer` spawns re-ran the tests themselves
+  (one reintroduced four mutants by hand and watched three go red) before approving; the wave merged
+  both branches with the predicted zero conflicts; no governance rule was bypassed. Running it for
+  real, rather than against a hand-written fixture, found two live defects no unit test had reached:
+  `wave-integrate.mjs` and `scripts/verify-done.sh` both reported a genuinely green `node --test` run
+  (this plugin's own language, its documented `cli`/`library` platform default) as `CANNOT EVALUATE`,
+  because their ran-evidence regexes expected a test count before the noun ("N tests... pass") and
+  Node's own TAP summary puts it after (`# tests N`) — fixed in both files, one of the two found
+  independently by the IC agent itself, which correctly declined to edit a plugin script outside its
+  ticket's surface and recorded the finding in its daily fragment instead. The same run produced this
+  repository's first *measured* (not estimated) wave cost: 14.6 minutes wall-clock, 4 agent spawns,
+  0 retries, ~0 MB disk, from `docs/31-board-events.jsonl` timestamps rather than from reading the
+  process — E6 of the original review's cost/economics section, on one small wave. E1–E5 (a larger
+  sprint, more tickets, a designed-to-fail-review ticket, real dollar/token cost) remain open.
+- **A second isolation boundary closed, 2026-08-08: cross-worktree writes.**
+  `block-shared-tree-destructive-git.sh` closes DR4-027 (two writers, one shared checkout, 22 files
+  lost to a `git reset`) at the git-command layer. Nothing closed the identical collision at the
+  Write/Edit layer: an agent standing in its own worktree could reach straight into a *sibling*
+  worktree (`.agent-wt/<other-owner>/...`) and overwrite that owner's in-progress file directly — no
+  git command involved, so the git-layer hook never saw it. `agent-isolation` and `ic-workflow` both
+  say this in prose ("never leave your worktree", "another IC's code... is somebody else's"); this
+  repo's own measured lesson (H6) is that prose does not stop an agent. New PreToolUse hook
+  `hooks/block-cross-worktree-write.sh`, wired to `Write`/`Edit`/`MultiEdit`, refuses a write whose
+  resolved target falls inside a worktree other than the caller's own — including a shared-tree
+  agent reaching into any worktree at all. Its first version had the same macOS `/tmp` →
+  `/private/tmp` symlink trap `spawn-gate.sh`'s own header already named: resolving a not-yet-created
+  target directory naively made a same-worktree write read as cross-worktree. Caught by testing a
+  brand-new subdirectory, fixed by walking up to the nearest existing ancestor before resolving.
+- **H8 — a real `tech-manager` agent orchestrating a real REQUEST CHANGES retry, 2026-08-08**
+  (`docs/dry-runs/2026-08-08-h8-tech-manager-orchestrated-retry.md`). H7 tested the IC and reviewer
+  roles for real but had this session playing tech-manager by hand; H8 spawned a real
+  `app-dev-team:tech-manager` agent, handed it one ticket (`truncate(str, maxLen)`, spec written to
+  make a plausible off-by-one mistake without rigging the outcome), and let it run its own process —
+  dispatch, verify, request review, and, if needed, route a real retry — using its own role file and
+  the plugin's own scripts. The review's cycle-0 finding was genuine, not staged: `maxLen <= 0` sent
+  `slice`'s negative-offset-from-end behavior into inverting the truncation, returning a *longer*
+  string as `maxLen` shrank; the developer's own 17 tests never exercised it (all used `maxLen >= 2`).
+  The retry produced a real fix, proved against its own regression before applying it (17/3 on
+  unfixed code, reproducing the reviewer's numbers, then 20/20 fixed); the re-review did not
+  rubber-stamp it — it independently reverted the guard, reproduced the 17/3 failure by hand, and
+  added two of its own mutations. Also found before the real test began: the leased worktree was cut
+  before this session's spec edits landed on the fixture's `main`, so it was genuinely missing the
+  ticket's spec section — the developer correctly `BLOCKED` rather than guessing, `ic-workflow`'s
+  read-order rule holding under an unplanned failure, not just the documented case. Honest cost note
+  in the write-up: 295 minutes of session wall-clock end to end, but only ~10.8 minutes is the sum
+  of the five subagents' own reported compute time — the gap is this test's own harness shape
+  (`tech-manager` spawned as a subagent needing explicit wake-ups, not the top-level driver a real
+  `/app-build` round would use), not a claim about what a live round costs.
+- **H9 — a real Android toolchain and the full multi-role pipeline, 2026-08-09**
+  (`docs/dry-runs/2026-08-09-h9-android-toolchain-and-full-pipeline.md`). H7/H8 had only ever run against
+  Node; H9 pointed the studio at a real (non-Node) platform — a real JDK 21, a real Android SDK, and a real
+  emulator AVD, found on this machine rather than assumed absent — and ran five distinct role agents
+  (cpo, tech-lead, two developer attempts, two independent reviewers) plus this session as tech-manager
+  through two real tickets concurrently, per the user's explicit steer to prioritize breadth of role
+  demonstration over more toolchain depth. Both tickets reached `closed` through the real board state
+  machine, wave-integrated against a real emulator run (`Finished 3 tests on baby_growth_test(AVD) - 16`,
+  `BUILD SUCCESSFUL`). Two more real defects found by running it, not by inspection: (1) cpo and tech-lead
+  had written real SRS/PRD/impl-spec content to the shared tree but never committed it, so `git worktree
+  add` (which snapshots the last commit, never the live working tree) handed the next developer an empty
+  view — it correctly `BLOCKED` rather than guessing; fixed by a new `house-conventions` rule (shared-tree
+  writers commit before hand-off — this skill is referenced by 26 of 30 role files) and a new dirty-tree
+  warning on `worktree-slot.mjs lease` (excluding `docs/team/`'s own routine state churn, which would
+  otherwise fire on nearly every call); (2) a third RAN-evidence regex gap, same class as H7/H8's two
+  TAP-format gaps but a different shape — `wave-integrate.mjs`/`verify-done.sh` didn't recognize AGP's own
+  `connectedAndroidTest` completion line (`Finished N tests on <device>`), so a genuinely green emulator run
+  still scored `CANNOT EVALUATE`. Both fixes proven with a live `test.sh` fixture and a `mutate.sh` mutation
+  that reverts each fix and expects red (`M80`/`M81`; `M77`/`M78`'s anchors widened after the new regex
+  alternative drifted them). Full suite: 1451 passed, 0 failed. Mutation run: 4/4 caught.
 
 ---
 
