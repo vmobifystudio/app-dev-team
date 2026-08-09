@@ -7,7 +7,7 @@
  * a row here for the same reason it gets a row there.
  */
 import type { TeamScreen } from '../types';
-import { SectionCard } from '../ui';
+import { SectionCard, Avatar } from '../ui';
 
 export default function Team({ screen }: { screen: TeamScreen }) {
   if (screen.status === 'unavailable' && !screen.roles.length) {
@@ -56,7 +56,12 @@ export default function Team({ screen }: { screen: TeamScreen }) {
           <tbody>
             {screen.roles.map((role) => (
               <tr key={role.role} data-state={role.state}>
-                <td className="mono">{role.role}</td>
+                <td className="mono">
+                  <span className="rolecell">
+                    <Avatar name={role.role} size={24} />
+                    {role.role}
+                  </span>
+                </td>
                 <td>
                   <span className={`tag state-${role.state}`}>{role.state}</span>
                 </td>

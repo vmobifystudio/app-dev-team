@@ -15,11 +15,55 @@
  */
 import { useState, type ReactNode } from 'react';
 import type { ActionResult, Field, Item, Section, Status } from './types';
+import { IconByStatus } from './icons';
 
 export function StatusBadge({ status, count }: { status: Status; count?: number }) {
   const label =
     status === 'attention' ? `${count ?? ''} need attention`.trim() : status === 'unavailable' ? 'cannot evaluate' : status;
-  return <span className={`badge ${status}`}>{label}</span>;
+  const Glyph = IconByStatus[status];
+  return (
+    <span className={`badge ${status}`}>
+      {Glyph ? <Glyph size={12} /> : null}
+      {label}
+    </span>
+  );
+}
+
+/**
+ * A deterministic colored initial-circle for a name — "who" at a glance, in a list of many.
+ * The hue is derived from the name itself (a simple string hash), so the same person always gets
+ * the same color across every screen without a lookup table or a config file to keep in sync.
+ */
+function hue(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+function initials(name: string): string {
+  const parts = name.replace(/[_-]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export function Avatar({ name, size = 26 }: { name: string; size?: number }) {
+  const h = hue(name || '?');
+  return (
+    <span
+      className="avatar"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.max(10, size * 0.4),
+        background: `hsl(${h} 70% 92%)`,
+        color: `hsl(${h} 55% 32%)`,
+      }}
+      title={name}
+    >
+      {initials(name || '?')}
+    </span>
+  );
 }
 
 export function SectionCard({ section, children }: { section: Section; children?: ReactNode }) {

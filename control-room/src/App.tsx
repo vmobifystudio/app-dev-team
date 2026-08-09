@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { BoardScreen, CommsScreen, Screen, State, TeamScreen } from './types';
 import { StatusBadge } from './ui';
+import { RadarIcon, MessageIcon, ColumnsIcon, UsersIcon, InboxIcon, ShieldIcon, ShieldAlertIcon, LayersIcon, type IconComponent } from './icons';
 import Mission from './screens/Mission';
 import Comms from './screens/Comms';
 import Board from './screens/Board';
@@ -17,6 +18,13 @@ import Inbox from './screens/Inbox';
 import './styles.css';
 
 const ORDER = ['mission', 'comms', 'board', 'team', 'inbox'] as const;
+const NAV_ICON: Record<(typeof ORDER)[number], IconComponent> = {
+  mission: RadarIcon,
+  comms: MessageIcon,
+  board: ColumnsIcon,
+  team: UsersIcon,
+  inbox: InboxIcon,
+};
 
 export default function App() {
   const [state, setState] = useState<State | null>(null);
@@ -53,22 +61,28 @@ export default function App() {
   return (
     <main>
       <header className="top">
-        <div>
-          <h1>Studio control room</h1>
-          <div className="dim mono">
-            {state.project} · {state.generatedAt}
-            {state.readFrom ? ` · tickets from ${state.readFrom}` : ''} · {state.runtime.mode} on Node {state.runtime.node}
+        <div className="brand">
+          <span className="brandmark">
+            <LayersIcon size={18} />
+          </span>
+          <div>
+            <h1>Studio control room</h1>
+            <div className="brand-meta mono">
+              {state.project} · {state.generatedAt}
+              {state.readFrom ? ` · tickets from ${state.readFrom}` : ''} · {state.runtime.mode} on Node {state.runtime.node}
+            </div>
           </div>
         </div>
         <div className="pills">
           {state.sources.map((s) => (
-            <span className={`pill${s.ok ? '' : ' bad'}`} key={s.id} title={s.note || `${s.path} read`}>
+            <span className={`pill${s.ok ? ' good' : ' bad'}`} key={s.id} title={s.note || `${s.path} read`}>
               {s.id} {s.ok ? '✓' : '— unavailable'}
             </span>
           ))}
           {/* A rewritten `approved` is the cheapest way past a failed gate. A control room that
               showed the state without saying whether the log still hashes would report a forgery. */}
-          <span className={`pill${state.chain.ok ? '' : ' bad'}`} title={state.chain.reason || `${state.chain.chained} chained, ${state.chain.unchained} unchained`}>
+          <span className={`pill${state.chain.ok ? ' good' : ' bad'}`} title={state.chain.reason || `${state.chain.chained} chained, ${state.chain.unchained} unchained`}>
+            {state.chain.ok ? <ShieldIcon size={12} /> : <ShieldAlertIcon size={12} />}
             {state.chain.ok
               ? `log intact (${state.chain.chained} chained, ${state.chain.unchained} unchained)`
               : `LOG TAMPER: line ${state.chain.line}`}
@@ -84,8 +98,10 @@ export default function App() {
         {ORDER.map((id) => {
           const screen = screens.get(id);
           if (!screen) return null;
+          const Glyph = NAV_ICON[id];
           return (
             <button key={id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
+              <Glyph size={16} />
               {screen.title}
               <StatusBadge status={screen.status} count={typeof screen.count === 'number' ? (screen.count as number) : undefined} />
             </button>

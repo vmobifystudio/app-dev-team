@@ -7,7 +7,10 @@
  * page at all, and its absence is the design.
  */
 import type { Screen, Section } from '../types';
-import { SectionCard, StatusBadge } from '../ui';
+import { SectionCard, StatusBadge, Avatar } from '../ui';
+import { RefreshIcon, UsersIcon, RotateIcon, XCircleIcon, DollarIcon, RadarIcon } from '../icons';
+
+const BUDGET_ICON = { rounds: RefreshIcon, spawns: UsersIcon, retries: RotateIcon, refusals: XCircleIcon, spend: DollarIcon };
 
 function Budget({ section }: { section: Section }) {
   const data = section.data as { rounds: number; spawns: number; retries: number; refusals: number; spendUsd: number | null } | null;
@@ -24,12 +27,18 @@ function Budget({ section }: { section: Section }) {
           // screen a founder reads for money is the worst possible place to invent a number.
           ['spend', data.spendUsd === null ? 'not measurable' : `$${data.spendUsd.toFixed(2)}`],
         ] as const
-      ).map(([label, value]) => (
-        <div className="metric" key={label}>
-          <b>{value}</b>
-          <span className="dim">{label}</span>
-        </div>
-      ))}
+      ).map(([label, value]) => {
+        const Glyph = BUDGET_ICON[label];
+        return (
+          <div className="metric" key={label}>
+            <span className="micon"><Glyph size={17} /></span>
+            <div>
+              <b>{value}</b>
+              <span className="dim">{label}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -38,10 +47,13 @@ function Build({ section }: { section: Section }) {
   const data = section.data as { ticket: string; event: string; by: string; ts: string; detail: string } | null;
   if (!data) return null;
   return (
-    <p className="detail">
-      <span className="mono id">{data.ticket}</span> <b>{data.event}</b> by {data.by || 'nobody recorded'} · {data.ts}
-      {data.detail ? <span className="dim"> — {data.detail}</span> : null}
-    </p>
+    <div className="detail" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <Avatar name={data.by || '?'} size={26} />
+      <span>
+        <span className="mono id">{data.ticket}</span> <b>{data.event}</b> by {data.by || 'nobody recorded'} <span className="faint">· {data.ts}</span>
+        {data.detail ? <span className="dim"> — {data.detail}</span> : null}
+      </span>
+    </div>
   );
 }
 
@@ -50,10 +62,13 @@ export default function Mission({ screen }: { screen: Screen }) {
   return (
     <>
       <div className="headline">
-        <div>
-          <span className="dim">phase</span>
-          <b>{phase.phase}</b>
-          <span className="dim">derived — the log records no phase marker: {phase.derived}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span className="micon" style={{ width: 40, height: 40 }}><RadarIcon size={20} /></span>
+          <div>
+            <span className="dim">phase</span>
+            <b>{phase.phase}</b>
+            <span className="dim">derived — the log records no phase marker: {phase.derived}</span>
+          </div>
         </div>
         <StatusBadge status={screen.status} />
       </div>

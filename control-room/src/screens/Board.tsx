@@ -7,7 +7,16 @@
  * the cell a human reads, exactly as `board-render` writes it.
  */
 import type { BoardScreen } from '../types';
-import { SectionCard } from '../ui';
+import { SectionCard, Avatar } from '../ui';
+import { RefreshIcon, CircleDotIcon, EyeIcon, AlertOctagonIcon, CheckCircleIcon, ClockIcon, GitBranchIcon, type IconComponent } from '../icons';
+
+const COLUMN_ICON: Record<string, IconComponent> = {
+  todo: CircleDotIcon,
+  in_progress: RefreshIcon,
+  review: EyeIcon,
+  blocked: AlertOctagonIcon,
+  done: CheckCircleIcon,
+};
 
 const pct = (v: number | null) => (v === null ? 'n/a' : `${Math.round(v * 100)}%`);
 const dur = (ms: number | null) => {
@@ -29,24 +38,49 @@ export default function Board({ screen }: { screen: BoardScreen }) {
       {screen.columns.length ? (
         <div className="scroll">
           <div className="kanban">
-            {screen.columns.map((column) => (
-              <div className="col" key={column.status}>
-                <h4>
-                  {column.status.replace('_', ' ')} ({column.tickets.length})
-                </h4>
-                {column.tickets.map((ticket) => (
-                  <div className={`ticket${ticket.stranded || column.status === 'blocked' ? ' flag' : ''}`} key={ticket.id}>
-                    <b className="mono">{ticket.id}</b> {ticket.title}
-                    <div className="dim">
-                      {ticket.owner || 'unassigned'}
-                      {ticket.staticOnly ? ` · ${ticket.display}` : ''}
-                      {ticket.stranded ? ' · STRANDED' : ''}
-                      {ticket.dependsOn.length ? ` · depends on ${ticket.dependsOn.join(', ')}` : ''}
+            {screen.columns.map((column) => {
+              const Glyph = COLUMN_ICON[column.status] ?? CircleDotIcon;
+              return (
+                <div className="col" data-status={column.status} key={column.status}>
+                  <h4>
+                    <Glyph size={13} />
+                    {column.status.replace('_', ' ')}
+                    <span className="colcount">{column.tickets.length}</span>
+                  </h4>
+                  {column.tickets.map((ticket) => (
+                    <div className={`ticket${ticket.stranded || column.status === 'blocked' ? ' flag' : ''}`} key={ticket.id}>
+                      <div className="tline">
+                        <span className="mono id">{ticket.id}</span>
+                      </div>
+                      <span className="ttitle">{ticket.title}</span>
+                      <div className="towner">
+                        <Avatar name={ticket.owner || 'unassigned'} size={18} />
+                        {ticket.owner || 'unassigned'}
+                      </div>
+                      {ticket.staticOnly || ticket.stranded || ticket.dependsOn.length ? (
+                        <div className="tflags">
+                          {ticket.staticOnly ? (
+                            <span className="tag static_only">
+                              <ClockIcon size={10} /> {ticket.display}
+                            </span>
+                          ) : null}
+                          {ticket.stranded ? (
+                            <span className="tag stranded">
+                              <AlertOctagonIcon size={10} /> stranded
+                            </span>
+                          ) : null}
+                          {ticket.dependsOn.length ? (
+                            <span className="tag working">
+                              <GitBranchIcon size={10} /> needs {ticket.dependsOn.join(', ')}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                ))}
-              </div>
-            ))}
+                  ))}
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : (
@@ -83,30 +117,45 @@ export default function Board({ screen }: { screen: BoardScreen }) {
       {screen.metrics ? (
         <div className="metrics">
           <div className="metric">
-            <b>{dur(screen.metrics.medianCycleTimeMs)}</b>
-            <span className="dim">cycle time (median), claimed → closed</span>
+            <span className="micon"><ClockIcon size={17} /></span>
+            <div>
+              <b>{dur(screen.metrics.medianCycleTimeMs)}</b>
+              <span className="dim">cycle time (median), claimed → closed</span>
+            </div>
           </div>
           <div className="metric">
             {/* n/a, never 0% — an empty denominator reads as "every review failed". */}
-            <b>{pct(screen.metrics.reviewPassRate)}</b>
-            <span className="dim">review pass rate · {screen.metrics.reachedReview} reached review</span>
+            <span className="micon"><CheckCircleIcon size={17} /></span>
+            <div>
+              <b>{pct(screen.metrics.reviewPassRate)}</b>
+              <span className="dim">review pass rate · {screen.metrics.reachedReview} reached review</span>
+            </div>
           </div>
           <div className="metric">
-            <b>{pct(screen.metrics.reworkRate)}</b>
-            <span className="dim">rework rate</span>
+            <span className="micon"><RefreshIcon size={17} /></span>
+            <div>
+              <b>{pct(screen.metrics.reworkRate)}</b>
+              <span className="dim">rework rate</span>
+            </div>
           </div>
           <div className="metric">
-            <b>{Object.values(screen.metrics.gateFires).reduce((a, b) => a + b, 0)}</b>
-            <span className="dim">
-              gates fired ·{' '}
-              {Object.entries(screen.metrics.gateFires)
-                .map(([k, v]) => `${k} ${v}`)
-                .join(' · ')}
-            </span>
+            <span className="micon"><AlertOctagonIcon size={17} /></span>
+            <div>
+              <b>{Object.values(screen.metrics.gateFires).reduce((a, b) => a + b, 0)}</b>
+              <span className="dim">
+                gates fired ·{' '}
+                {Object.entries(screen.metrics.gateFires)
+                  .map(([k, v]) => `${k} ${v}`)
+                  .join(' · ')}
+              </span>
+            </div>
           </div>
           <div className="metric">
-            <b>{screen.metrics.reviewerActions}</b>
-            <span className="dim">reviewer actions in the whole log</span>
+            <span className="micon"><EyeIcon size={17} /></span>
+            <div>
+              <b>{screen.metrics.reviewerActions}</b>
+              <span className="dim">reviewer actions in the whole log</span>
+            </div>
           </div>
         </div>
       ) : (
