@@ -82,10 +82,18 @@ function ThreadView({ thread, structured }: { thread: Thread; structured: boolea
   );
 }
 
-export default function Comms({ screen }: { screen: CommsScreen }) {
+export default function Comms({ screen, query = '' }: { screen: CommsScreen; query?: string }) {
   const [channel, setChannel] = useState<string>('');
   const threads = screen.threads ?? [];
-  const shown = channel ? threads.filter((t) => t.messages.some((m) => m.meta.channels.includes(channel))) : threads;
+  const byChannel = channel ? threads.filter((t) => t.messages.some((m) => m.meta.channels.includes(channel))) : threads;
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? byChannel.filter(
+        (t) =>
+          t.ticket.toLowerCase().includes(q) ||
+          t.messages.some((m) => m.from.toLowerCase().includes(q) || m.summary.toLowerCase().includes(q))
+      )
+    : byChannel;
 
   return (
     <>

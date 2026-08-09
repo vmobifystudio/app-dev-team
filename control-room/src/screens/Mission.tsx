@@ -19,18 +19,18 @@ function Budget({ section }: { section: Section }) {
     <div className="metrics">
       {(
         [
-          ['rounds', data.rounds],
-          ['spawns', data.spawns],
-          ['retries', data.retries],
-          ['refusals', data.refusals],
+          ['rounds', data.rounds, false],
+          ['spawns', data.spawns, false],
+          ['retries', data.retries, false],
+          ['refusals', data.refusals, false],
           // Never "$0.00". The harness cannot measure token spend, and a fabricated zero on the one
           // screen a founder reads for money is the worst possible place to invent a number.
-          ['spend', data.spendUsd === null ? 'not measurable' : `$${data.spendUsd.toFixed(2)}`],
+          ['spend', data.spendUsd === null ? 'not measurable' : `$${data.spendUsd.toFixed(2)}`, data.spendUsd === null],
         ] as const
-      ).map(([label, value]) => {
+      ).map(([label, value, cannot]) => {
         const Glyph = BUDGET_ICON[label];
         return (
-          <div className="metric" key={label}>
+          <div className={`metric${cannot ? ' cannot' : ''}`} key={label}>
             <span className="micon"><Glyph size={17} /></span>
             <div>
               <b>{value}</b>

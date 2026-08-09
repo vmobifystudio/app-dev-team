@@ -15,7 +15,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import type { ActionResult, Field, Item, Section, Status } from './types';
-import { IconByStatus } from './icons';
+import { IconByStatus, CheckCircleIcon, AlertTriangleIcon, HelpCircleIcon } from './icons';
 
 export function StatusBadge({ status, count }: { status: Status; count?: number }) {
   const label =
@@ -47,22 +47,51 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-export function Avatar({ name, size = 26 }: { name: string; size?: number }) {
+/** `off` renders neutral grey; `unassigned` renders as a red `?` — the absence of an owner is a
+ * finding, not a person, so it does not get a hashed identity color like everyone else. */
+export function Avatar({
+  name,
+  size = 26,
+  variant,
+}: {
+  name: string;
+  size?: number;
+  variant?: 'off' | 'unassigned';
+}) {
   const h = hue(name || '?');
   return (
     <span
-      className="avatar"
-      style={{
-        width: size,
-        height: size,
-        fontSize: Math.max(10, size * 0.4),
-        background: `hsl(${h} 70% 92%)`,
-        color: `hsl(${h} 55% 32%)`,
-      }}
+      className={`avatar${variant ? ` ${variant}` : ''}`}
+      style={
+        variant
+          ? { width: size, height: size, fontSize: Math.max(10, size * 0.4) }
+          : {
+              width: size,
+              height: size,
+              fontSize: Math.max(10, size * 0.4),
+              // 32% lightness on the fill's own hue leaves several hues at 4.4:1, below AA at these
+              // sizes; 29% clears every hue.
+              background: `hsl(${h} 70% 92%)`,
+              color: `hsl(${h} 55% 29%)`,
+            }
+      }
       title={name}
     >
-      {initials(name || '?')}
+      {variant === 'unassigned' ? '?' : initials(name || '?')}
     </span>
+  );
+}
+
+/** A compact, full-width statement of a swept population and its result — used where a whole
+ * screen (not one card) needs a single verdict line, e.g. Team's roster summary. */
+export function VerdictBar({ status, children }: { status: Status; children: ReactNode }) {
+  const Glyph = status === 'attention' ? AlertTriangleIcon : status === 'unavailable' ? HelpCircleIcon : CheckCircleIcon;
+  const cls = status === 'unavailable' ? 'cannot' : status === 'attention' ? 'attention' : '';
+  return (
+    <div className={`verdictbar${cls ? ` ${cls}` : ''}`}>
+      <Glyph size={14} />
+      {children}
+    </div>
   );
 }
 

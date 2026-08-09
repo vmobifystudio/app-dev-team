@@ -225,6 +225,46 @@ export const LayersIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const ChevronDownIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+);
+
+export const SearchIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
+  </Icon>
+);
+
+export const SelectorIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m8 9 4-4 4 4" />
+    <path d="m16 15-4 4-4-4" />
+  </Icon>
+);
+
+export const PanelIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" />
+    <path d="M9 4v16" />
+  </Icon>
+);
+
+export const FilterIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 5h18l-7 8v6l-4 2v-8z" />
+  </Icon>
+);
+
+export const GroupIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="4" width="18" height="7" rx="2" />
+    <rect x="3" y="15" width="18" height="5" rx="2" />
+  </Icon>
+);
+
 export const IconByKind: Record<string, IconComponent> = {
   question: QuestionIcon,
   answer: CheckSquareIcon,
