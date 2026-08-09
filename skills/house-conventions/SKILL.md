@@ -60,6 +60,20 @@ and prevents a whole class of "this doesn't match how we build" rework.
 4. If you discover a genuinely new, reusable convention while working, add a `LEARNING:` line to
    that same fragment so `/app-learn` can fold it back into the KB after ship.
 
+5. **If you just wrote to a file OUTSIDE a leased worktree — a spec, the SRS, the PRD, the
+   backlog, an ADR/PDR/DDR, anything in the shared tree — commit it before you report done or hand
+   off.** `ic-workflow`'s branch-and-commit discipline is written for IC roles working inside a
+   worktree; it says nothing about the execs, `tech-lead`, `cpo`, and every other role that edits
+   `docs/` directly on the shared tree, and until this line existed nothing did. The failure is not
+   hypothetical: a `cpo` wrote a new requirement into the SRS/PRD and created a board ticket, a
+   `tech-lead` wrote the impl spec and handed off — neither committed — and the next command that
+   cut a fresh worktree for the developer (`git worktree add`, which snapshots the last COMMIT, not
+   the live working directory) produced a worktree missing both edits entirely. The developer
+   correctly `BLOCKED`, reporting a ticket and impl spec that "did not exist," because from git's
+   point of view they didn't yet. `git add <the files you touched> && git commit -m "..."` — explicit
+   paths, same rule `ic-workflow` gives ICs, for the same reason: a blanket `git add -A` from a
+   shared-tree role risks staging someone else's in-flight work.
+
 ## Anti-patterns
 
 - Writing code first and checking conventions later — the rework is the cost you were avoiding.

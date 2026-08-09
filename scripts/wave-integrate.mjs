@@ -293,7 +293,14 @@ const CANNOT_RUN = /command not found|: not found|no such file or directory|xcod
 // genuinely gone green reported CANNOT EVALUATE instead, over evidence sitting in the very output
 // being scanned. Fixed by recognizing the TAP summary line shape directly, not by widening the
 // existing alternatives (which would risk matching prose that merely mentions "tests" or "pass").
-const RAN = /test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|[0-9]+ (passing|failing)|^#\s*(tests|pass|fail)\s+[0-9]+/im;
+//
+// FOUND BY RUNNING A REAL WAVE AGAIN (H9, 2026-08-09), same class, third test runner: AGP's
+// `connectedDebugAndroidTest` on a real emulator prints `Starting N tests on <device>` /
+// `Finished N tests on <device>`, then `BUILD SUCCESSFUL` — no alternative above matches that
+// shape either. `Finished N tests on` is the reliable anchor: AGP prints it once, always, as a
+// completion marker independent of pass/fail (the exit code and BUILD FAILED/SUCCESSFUL carry the
+// verdict) — the same role `# tests N` plays for Node.
+const RAN = /test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|[0-9]+ (passing|failing)|^#\s*(tests|pass|fail)\s+[0-9]+|Finished [0-9]+ tests? on/im;
 const cannotRun = test.status === 126 || test.status === 127 || CANNOT_RUN.test(testOut) || !RAN.test(testOut);
 const green = test.status === 0 && !cannotRun;
 

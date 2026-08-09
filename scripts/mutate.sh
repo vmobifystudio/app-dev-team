@@ -199,9 +199,11 @@ M73@@scripts/orchestrator.mjs@@const staticOnly = [...tickets.values()].filter((
 M74@@scripts/messages.mjs@@if (candidate.kind === 'answer' && candidate.ticket !== TICKETLESS) {@@if (false) {@@an answer on an already-shipped ticket says it filed a register item
 M75@@scripts/review-pattern-scan.mjs@@.filter(([, tickets]) => tickets.size >= 2)@@.filter(([, tickets]) => tickets.size >= 99)@@two tickets blocking on the same file are correlated@@OPS-014: cross-ticket
 M76@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$REFBLOCK" ]; then@@if false; then@@a push refspec ending :main is blocked, even from a different branch entirely
-M77@@scripts/wave-integrate.mjs@@|^#\s*(tests|pass|fail)\s+[0-9]+/im;@@/im;@@a wave whose suite is Node's own `node --test` TAP summary is recognized as GREEN
-M78@@scripts/verify-done.sh@@|^#[[:space:]]*(tests|pass|fail)[[:space:]]+[0-9]+' "$TEST_LOG"; then@@' "$TEST_LOG"; then@@Node's own `node --test` TAP summary (count after the noun) verifies too
+M77@@scripts/wave-integrate.mjs@@|^#\s*(tests|pass|fail)\s+[0-9]+|Finished@@|Finished@@a wave whose suite is Node's own `node --test` TAP summary is recognized as GREEN
+M78@@scripts/verify-done.sh@@|^#[[:space:]]*(tests|pass|fail)[[:space:]]+[0-9]+|Finished@@|Finished@@Node's own `node --test` TAP summary (count after the noun) verifies too
 M79@@hooks/block-cross-worktree-write.sh@@if [ -n "$TARGET_WT" ] && [ "$TARGET_WT" != "$MY_WT" ]; then@@if false; then@@writing into a SIBLING worktree is blocked@@cross-worktree-write hook
+M80@@scripts/wave-integrate.mjs@@|Finished [0-9]+ tests? on/im;@@/im;@@AGP's own connectedAndroidTest completion line is recognized as GREEN
+M81@@scripts/verify-done.sh@@|Finished [0-9]+ tests? on' "$TEST_LOG"; then@@' "$TEST_LOG"; then@@AGP's own connectedAndroidTest completion line ('Finished N tests on <device>') verifies too
 CATALOGUE
 }
 

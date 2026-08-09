@@ -232,7 +232,14 @@ classify_test_outcome() {
   # the agent working the ticket itself (recorded in its daily fragment, ticket surface untouched,
   # correctly deferred to tech-manager) and independently by a wave-integrate.mjs run that hit the
   # identical regex-shape gap in that file; both are fixed together rather than one at a time.
-  if grep -Eqi 'test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|expectation|[0-9]+ (passing|failing)|✗|✘|^#[[:space:]]*(tests|pass|fail)[[:space:]]+[0-9]+' "$TEST_LOG"; then
+  #
+  # FOUND BY RUNNING A REAL WAVE AGAIN (H9, 2026-08-09), same class, third test runner: AGP's
+  # `connectedDebugAndroidTest` on a real emulator prints `Starting N tests on <device>` /
+  # `Finished N tests on <device>`, then `BUILD SUCCESSFUL` — a real, passing instrumented run on a
+  # real emulator, and none of the alternatives above matched it either. `Finished N tests on` is
+  # the reliable anchor: AGP prints it once, always, as a completion marker independent of
+  # pass/fail, the same role `# tests N` plays for Node.
+  if grep -Eqi 'test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|expectation|[0-9]+ (passing|failing)|✗|✘|^#[[:space:]]*(tests|pass|fail)[[:space:]]+[0-9]+|Finished [0-9]+ tests? on' "$TEST_LOG"; then
     return 0
   fi
   CANNOT_EVAL_WHY="the output carries no evidence that a test suite ran at all (exit $TEST_RC, $(wc -l <"$TEST_LOG" | tr -d ' ') line(s) of output)"

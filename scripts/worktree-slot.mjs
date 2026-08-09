@@ -147,6 +147,27 @@ function cmdLease() {
            '  is a decision about how much of this machine the studio may use, not a workaround.');
   }
 
+  // FOUND BY RUNNING A REAL SPRINT (H9, 2026-08-09): `git worktree add` snapshots the last COMMIT
+  // on the base branch, never the live working directory. A cpo wrote a new requirement into the
+  // SRS/PRD and a tech-lead wrote its impl spec, both directly on the shared tree, neither
+  // committed — and the worktree this command cut for the developer right after was missing both
+  // edits entirely, because from git's point of view they did not exist yet. The developer
+  // correctly `BLOCKED` on a ticket and spec it could not find. `house-conventions` §5 now tells
+  // every shared-tree-writing role to commit before handing off; this is the mechanical half —
+  // report-only (a dirty base tree is often unrelated to this lease), but loud, at the one moment
+  // it is still cheap to notice. Read BEFORE this command's own writes (the worktree it is about
+  // to create, its state file) so the count is what was dirty before THIS call, not padded by it.
+  //
+  // `docs/team/` is excluded from the count on purpose. Its own state files — this file's
+  // `worktree-slots.json`, `messages.jsonl`/`.md`, `runs.jsonl` — churn on every ordinary
+  // lease/release/message, so counting them would make the warning fire on nearly every call,
+  // which is how a gate gets ignored (this repo's own recurring lesson). The failure this exists
+  // to catch is a forgotten SPEC or REQUIREMENT commit, not the studio's own routine bookkeeping.
+  const dirtyBefore = git(['status', '--porcelain'])
+    .split('\n')
+    .filter((line) => line.trim() && !/(^|[\s"])docs\/team\//.test(line))
+    .join('\n');
+
   // Create the tree DETACHED at the base. Detached rather than on a branch because the IC cuts
   // `feat/APP-NNN-slug` itself as its first action (ic-workflow step 0) — creating a branch here
   // would either name one ticket of several, or leave a branch nobody asked for on every slot.
@@ -169,6 +190,15 @@ function cmdLease() {
   state.pool = POOL;
   state.slots = { ...(state.slots || {}), [owner]: { path: `${DIR}/${owner}`, tickets, base: flags.base ?? null, leasedAt: new Date().toISOString() } };
   writeState(state);
+
+  if (dirtyBefore) {
+    process.stdout.write(
+      `  NOTE: the base tree had ${dirtyBefore.split('\n').length} uncommitted path(s) before this lease.\n` +
+      '  This new worktree was cut from the last COMMIT, not the working directory — it will NOT see\n' +
+      '  them. If the ticket or spec this owner needs was just written and not yet committed, commit\n' +
+      '  it now or the developer will correctly report BLOCKED on work that, to git, does not exist yet.\n\n'
+    );
+  }
 
   process.stdout.write(
     `LEASED: ${DIR}/${owner}\n` +

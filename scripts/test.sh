@@ -3807,6 +3807,16 @@ ok "a zero exit with no ran-evidence is CANNOT EVALUATE, not tests=green"
   && ok "...and Node's own \`node --test\` TAP summary (count after the noun) verifies too" \
   || bad "...and Node's own \`node --test\` TAP summary (count after the noun) verifies too" "$(head -2 "$TMP/vdg3.txt")"
 
+# FOUND BY RUNNING A REAL WAVE AGAIN (H9, 2026-08-09), same class, third test runner: AGP's
+# `connectedDebugAndroidTest` on a real emulator prints `Starting N tests on <device>` /
+# `Finished N tests on <device>`, then `BUILD SUCCESSFUL` — a real, passing instrumented Android
+# test run, on a real emulator, that this gate still reported CANNOT EVALUATE for. Neither the
+# original alternatives nor the two TAP-summary fixes above matched AGP's own completion line.
+( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "printf 'Starting 3 tests on baby_growth_test(AVD) - 16\nFinished 3 tests on baby_growth_test(AVD) - 16\n\nBUILD SUCCESSFUL in 5s\n'" ) >"$TMP/vdg4.txt" 2>/dev/null
+[ $? = 0 ] && grep -q "tests=green" "$TMP/vdg4.txt" \
+  && ok "...and AGP's own connectedAndroidTest completion line ('Finished N tests on <device>') verifies too" \
+  || bad "...and AGP's own connectedAndroidTest completion line ('Finished N tests on <device>') verifies too" "$(head -2 "$TMP/vdg4.txt")"
+
 # --- the integration branch resolver's input was never written by anyone ------------------------
 # `grep -rn "Integration branch" agents/ skills/ commands/` returned NOTHING: no role was told to
 # emit the line, so the resolver found no declaration on every real project and fell back to `main`
@@ -8124,6 +8134,7 @@ assert_has "$TMP/reg-show.json" "crashes on rotate" "...importing the DESCRIPTIO
 # check 9 rejects it), and one spawn per ticket throws away the batching step 2 exists for.
 WS="$TMP/wslot"; rm -rf "$WS"; mkdir -p "$WS/docs"
 ( cd "$WS" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf '.agent-wt/\n' > .gitignore && git add .gitignore && git commit -qm gitignore \
   && git commit -q --allow-empty -m init ) >/dev/null 2>&1
 printf 'Integration branch: main\n' > "$WS/docs/23-git-strategy.md"
 ws_() { ( cd "$WS" && node "$HERE/worktree-slot.mjs" --root . "$@" ); }
@@ -8150,6 +8161,30 @@ assert_exit 0 "...and releasing frees the slot for the next owner" \
 # A released lease leaves the TREE, and the reaper is what reclaims it — with its dirty check intact.
 ( cd "$WS" && node "$HERE/worktree-reap.mjs" --root . ) >"$TMP/ws2.txt" 2>&1
 assert_has "$TMP/ws2.txt" "ios-developer" "a released slot's tree becomes the reaper's problem, not a silent leak"
+
+# --- worktree-slot: a dirty base tree is warned about, not silently forgotten (H9, 2026-08-09) -----
+#
+# `git worktree add` snapshots the last COMMIT, never the live working directory. A cpo wrote a new
+# requirement into the SRS/PRD and a tech-lead wrote its impl spec, both directly on the shared
+# tree, neither committed — and the worktree cut for the developer right after was missing both
+# edits entirely, because from git's point of view they did not exist yet. The developer correctly
+# BLOCKED on a ticket and spec it could not find, a real result from a real dry run, not staged.
+#
+# `docs/23-git-strategy.md` in this fixture has never actually been committed (written after the
+# initial empty commit, never staged) — a genuinely clean baseline needs it tracked first, or the
+# "clean" control case below is not actually clean.
+( cd "$WS" && git add docs/23-git-strategy.md && git commit -q -m "track git-strategy.md" ) >/dev/null 2>&1
+echo "uncommitted spec edit" >> "$WS/docs/23-git-strategy.md"
+ws_ lease --owner qa-engineer --tickets APP-777 >"$TMP/ws3.txt" 2>&1
+assert_has "$TMP/ws3.txt" "uncommitted path(s) before this lease" "leasing into a dirty base tree warns that the new worktree will not see it"
+assert_has "$TMP/ws3.txt" "LEASED" "...but still leases — this is advisory, a dirty tree is often unrelated to this lease"
+( cd "$WS" && git checkout -q -- docs/23-git-strategy.md ) >/dev/null 2>&1
+ws_ release --owner qa-engineer >/dev/null 2>&1
+ws_ lease --owner qa-engineer --tickets APP-777 >"$TMP/ws4.txt" 2>&1
+grep -q "uncommitted path" "$TMP/ws4.txt" \
+  && bad "...and a CLEAN base tree gets no such warning" "$(cat "$TMP/ws4.txt")" \
+  || ok "...and a CLEAN base tree gets no such warning"
+ws_ release --owner qa-engineer >/dev/null 2>&1
 
 # --- wave-integrate: merge once, test once, push once (OPS-002 / OPS-003 / OPS-008) ---------------
 #
@@ -8266,6 +8301,33 @@ PPJSON
 [ $? = 0 ] && ok "a wave whose suite is Node's own \`node --test\` TAP summary is recognized as GREEN" \
   || bad "a wave whose suite is Node's own \`node --test\` TAP summary is recognized as GREEN" "$(tail -8 "$TMP/wit.txt")"
 assert_has "$TMP/wit.txt" "WAVE RESULT: GREEN" "...not CANNOT EVALUATE over evidence already in the log"
+
+# FOUND BY RUNNING A REAL WAVE AGAIN (H9, 2026-08-09), same class, third test runner: AGP's
+# `connectedDebugAndroidTest` on a real emulator prints `Starting N tests on <device>` /
+# `Finished N tests on <device>`, then `BUILD SUCCESSFUL` — a real, passing instrumented Android
+# test run this gate still reported CANNOT EVALUATE for, over evidence sitting in its own log.
+WITA="$TMP/wave-agp"; rm -rf "$WITA"; mkdir -p "$WITA/docs/team" "$WITA/docs/53-reviews"
+cat > "$WITA/docs/team/project-profile.json" <<'PPJSON'
+{"schema":"project-profile/v1","platform":"android","toolchain":{},"test":{"fast":"printf 'Starting 1 tests on fake-avd\nFinished 1 tests on fake-avd\n\nBUILD SUCCESSFUL in 1s\n'","full":"printf 'Starting 1 tests on fake-avd\nFinished 1 tests on fake-avd\n\nBUILD SUCCESSFUL in 1s\n'"}}
+PPJSON
+( cd "$WITA" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf 'docs/\n' > .gitignore \
+  && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
+  && git add -A && git commit -q -m init \
+  && git checkout -q -b feat/APP-902 main && echo x > f.txt && git add f.txt && git commit -q -m APP-902 \
+  && git checkout -q main
+  node "$HERE/board.mjs" add APP-902 --title t --owner android-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-902 claimed --by android-developer
+  node "$HERE/board.mjs" move APP-902 done_reported --by android-developer
+  node "$HERE/board.mjs" move APP-902 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-902 review_requested --by android-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-902\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-902-cycle-0.md
+  node "$HERE/board.mjs" move APP-902 approved --by code-reviewer --verdict docs/53-reviews/APP-902-cycle-0.md
+  node "$HERE/board.mjs" move APP-902 merged --by tech-manager ) >/dev/null 2>&1
+( cd "$WITA" && node "$HERE/wave-integrate.mjs" --root . --wave 1 ) >"$TMP/wita.txt" 2>&1
+[ $? = 0 ] && ok "a wave whose suite is AGP's own connectedAndroidTest completion line is recognized as GREEN" \
+  || bad "a wave whose suite is AGP's own connectedAndroidTest completion line is recognized as GREEN" "$(tail -8 "$TMP/wita.txt")"
+assert_has "$TMP/wita.txt" "WAVE RESULT: GREEN" "...not CANNOT EVALUATE over a real instrumented pass already in the log"
 
 # --- ship-gate reads the register (OPS-004) --------------------------------------------------------
 #
