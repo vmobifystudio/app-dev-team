@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { BoardScreen, CommsScreen, Screen, State, TeamScreen } from './types';
 import { StatusBadge } from './ui';
-import { RadarIcon, MessageIcon, ColumnsIcon, UsersIcon, InboxIcon, ShieldIcon, ShieldAlertIcon, LayersIcon, type IconComponent } from './icons';
+import { RadarIcon, MessageIcon, ColumnsIcon, UsersIcon, InboxIcon, ShieldIcon, ShieldAlertIcon, LayersIcon, CheckCircleIcon, AlertTriangleIcon, type IconComponent } from './icons';
 import Mission from './screens/Mission';
 import Comms from './screens/Comms';
 import Board from './screens/Board';
@@ -76,7 +76,8 @@ export default function App() {
         <div className="pills">
           {state.sources.map((s) => (
             <span className={`pill${s.ok ? ' good' : ' bad'}`} key={s.id} title={s.note || `${s.path} read`}>
-              {s.id} {s.ok ? '✓' : '— unavailable'}
+              {s.ok ? <CheckCircleIcon size={12} /> : <AlertTriangleIcon size={12} />}
+              {s.id} {s.ok ? '' : '— unavailable'}
             </span>
           ))}
           {/* A rewritten `approved` is the cheapest way past a failed gate. A control room that

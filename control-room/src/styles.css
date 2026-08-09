@@ -75,6 +75,9 @@ nav button {
 nav button svg { flex: 0 0 auto; }
 nav button:hover { background: var(--bg-raised); color: var(--fg); }
 nav button.on { background: var(--card); color: var(--fg); border-color: var(--line); font-weight: 600; box-shadow: var(--shadow-sm); }
+nav button:focus-visible, .channels button:focus-visible, button:focus-visible {
+  outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
 
 /* ---------- badges ---------- */
 .badge {
@@ -111,10 +114,18 @@ nav button.on { background: var(--card); color: var(--fg); border-color: var(--l
 .card[data-status="info"] > header { background: var(--bluebg); }
 .swept { margin: 0; padding: 8px 16px; font-size: 12px; color: var(--faint); border-bottom: 1px solid var(--line-soft); }
 .swept.top { border: 0; padding-left: 0; }
-.note, .banner { margin: 0; padding: 11px 16px; font-size: 13px; color: var(--amber); }
+/* A note's color follows its OWN section's status, not a fixed amber — a caption inside a CLEAR or
+   INFO section is not a warning, and rendering it as one is how a color system stops meaning
+   anything. `.banner` (a standalone message, not nested in a status card) stays amber by default;
+   that is a real warning shape on its own, not a caption borrowing one. */
+.note { margin: 0; padding: 11px 16px; font-size: 13px; color: var(--amber); }
+.card[data-status="clear"] .note { color: var(--green); }
+.card[data-status="info"] .note { color: var(--blue); }
+.card[data-status="attention"] .note { color: var(--red); }
 .banner {
+  margin: 0 0 16px; padding: 11px 16px; font-size: 13px; color: var(--amber);
   display: flex; align-items: flex-start; gap: 9px;
-  border: 1px solid var(--amber-line); border-radius: var(--radius-sm); background: var(--amberbg); margin-bottom: 16px;
+  border: 1px solid var(--amber-line); border-radius: var(--radius-sm); background: var(--amberbg);
 }
 .banner svg { flex: 0 0 auto; margin-top: 2px; }
 .banner.bad { color: var(--red); background: var(--redbg); border-color: var(--red-line); }
@@ -163,9 +174,13 @@ table.roster tr[data-state="off"] td { opacity: 0.55; }
 }
 
 /* ---------- kanban ---------- */
+/* `flex: 1 0 220px` with no ceiling let one populated column (the common case — most tickets
+   cluster in one or two statuses) stretch to fill the entire row on its own, producing sparse
+   cards with a lot of dead space. A max-width keeps a column the width of a column whether it is
+   holding one ticket or twenty, the same way Trello/Linear/GitHub Projects do it. */
 .kanban { display: flex; gap: 14px; padding: 14px 0; align-items: flex-start; }
 .kanban .col {
-  flex: 1 0 220px; min-width: 220px; background: var(--bg-raised);
+  flex: 1 1 220px; min-width: 220px; max-width: 280px; background: var(--bg-raised);
   border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; max-height: 640px; overflow-y: auto;
 }
 .kanban .col > h4 {
