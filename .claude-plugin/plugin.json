@@ -1,6 +1,6 @@
 {
   "name": "app-dev-team",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "An autonomous app development studio for Claude Code. 30 role agents (CEO/CPO/CTO, chief-of-staff, product-manager/validator/researcher, tech-lead/tech-manager, iOS/Android/backend/web devs, monetization, ux-architect/product-designer, code review, QA, test-automation, verification, release-auditor/manager, security, privacy, red-team, reliability, incident-commander, ASO, DevOps, data) run in parallel behind gates that fail closed. Event-sourced board and message log, a founder-intent record the team cannot edit, mutation-tested rules, an evaluation laboratory that names the defects nothing can catch, and a control room. Takes an idea to a submission-ready build — store upload and publishing stay human-owned. Zero runtime dependencies.",
   "author": {
     "name": "Amol Pomane",

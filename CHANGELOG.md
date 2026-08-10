@@ -3,6 +3,67 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.1.0] — 2026-08-10
+
+No breaking changes — new gates, new skills, one real vulnerability found and closed in a gate
+that shipped earlier this same cycle. Full suite: 1469 passed, 0 failed.
+
+**A review-verdict enforcement hook — and a real exploit found in its own first version.**
+`hooks/require-review-verdict.sh` is a Claude Code `SubagentStop` hook: a `code-reviewer` subagent
+cannot stop until the board's own event log shows a real recorded verdict, or a documented `BLOCKED`
+refusal. Built after a `code-reviewer` spawned as a named teammate went idle three times reviewing
+this plugin's own PR, producing nothing. v1 checked the *agent's own transcript* for the right
+words — an independent review (spawned as a one-shot agent specifically to check this hook) proved
+live that a transcript merely *quoting* the required command satisfied it with zero work done, and
+that the hook's own refusal message contained the trigger words, so it could fire at most once ever.
+Rewritten: verification now reads `docs/31-board-events.jsonl` directly. A false claim in a
+transcript cannot forge a real log line the way it can forge a sentence. Proven with mutation tests
+(M82/M84); `Stop`/`SubagentStop` support in plugin `hooks.json` confirmed against Claude Code's own
+docs before any of this was built on it.
+
+**`wave-integrate.mjs --check-baseline`.** Opt-in, additive. On a failed wave, checks whether the
+unmodified integration branch also fails the same suite before blaming the tickets in it — never
+turns a real failure into a pass, only tells you whether it pre-dates the wave. Wired into
+`tech-manager.md`'s real invocation (it shipped once already reachable only from its own test).
+
+**`process-tiering` skill.** How much process a ticket carries now scales with its existing
+`--estimate` (XS–XL) instead of every ticket walking the same weight of ceremony — except nothing
+ever lightens for a ticket touching auth, payments, PII, or anything `security-reviewer` owns,
+regardless of size. Guidance, not a hard gate, until it earns one the way every mechanical check
+here did: proven against a measured cost first.
+
+**Two additions to `code-reviewer`:** it now exercises a ticket's acceptance criteria black-box,
+*before* opening the diff (the safe subset of a full builder/verifier information barrier — a
+reviewer who reads the code first is reasoning from the same source that may have produced the
+bug), and a new required check that the diff and the impl spec still agree, in both directions
+(scope creep is a finding too, not just a missing item).
+
+**`defect-hunting` §1b and §3b.** §1b: prove a diff's own new code is actually reachable — the
+trigger case was this plugin's own control-room work shipping an exported, never-imported
+component. §3b: a test must be provably able to fail, the same discipline §3 already requires of
+guard rules, extended to ordinary unit/regression tests.
+
+**The control room got a full visual and structural redesign** — sidebar/top-bar shell, a hardened
+four-state token system (`cannot-evaluate` always carries a second signal, a dashed border, never
+just a color), a fixed-width kanban track, wired search/filters. Plus, purely for fun and
+display-only: every role gets a Game of Thrones name and house sigil in the Team screen and as
+Avatar tooltips — the real role identifier is unchanged everywhere it actually matters (scripts,
+board, git branches, logs).
+
+**Two dormant branches recovered.** `feat/f4-f5-writers-and-root` (a git boundary is not a project
+boundary — writes could land in the wrong nested git repo) and `feat/f14-f15-evidence` (eight
+findings from the plugin's own `code-reviewer`, including an idempotency-key collision that
+silently dropped a retried transition instead of erroring) had been sitting unmerged since Aug 4.
+Both merge cleanly with current `main`; both are in now.
+
+**H9 — a real Android toolchain dry run**, proving the studio against a real (non-Node) platform
+for the first time: real JDK 21, real Android SDK, a real emulator, a five-role pipeline
+(`cpo → tech-lead → developer → reviewer → tech-manager`) running two tickets concurrently. Found
+and fixed two more real defects the same way every defect in this changelog was found — by running
+it: uncommitted shared-tree writes blocking a developer that correctly `BLOCKED` rather than
+guessing, and a third RAN-evidence regex gap (AGP's own instrumented-test completion line, after
+two earlier TAP-format gaps). Full write-up: `docs/dry-runs/2026-08-09-h9-android-toolchain-and-full-pipeline.md`.
+
 ## [Unreleased]
 
 **EE-002 — the S1 the last review filed and this PR had not addressed.** `app-build.md`'s wave
