@@ -15,7 +15,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import type { ActionResult, Field, Item, Section, Status } from './types';
-import { IconByStatus, CheckCircleIcon, AlertTriangleIcon, HelpCircleIcon } from './icons';
+import { IconByStatus } from './icons';
 import { personaFor } from './personas';
 
 export function StatusBadge({ status, count }: { status: Status; count?: number }) {
@@ -83,19 +83,6 @@ export function Avatar({
     >
       {variant === 'unassigned' ? '?' : initials(name || '?')}
     </span>
-  );
-}
-
-/** A compact, full-width statement of a swept population and its result — used where a whole
- * screen (not one card) needs a single verdict line, e.g. Team's roster summary. */
-export function VerdictBar({ status, children }: { status: Status; children: ReactNode }) {
-  const Glyph = status === 'attention' ? AlertTriangleIcon : status === 'unavailable' ? HelpCircleIcon : CheckCircleIcon;
-  const cls = status === 'unavailable' ? 'cannot' : status === 'attention' ? 'attention' : '';
-  return (
-    <div className={`verdictbar${cls ? ` ${cls}` : ''}`}>
-      <Glyph size={14} />
-      {children}
-    </div>
   );
 }
 
