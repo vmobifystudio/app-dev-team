@@ -144,9 +144,21 @@ editing a Markdown table. So two checks run mechanically rather than on trust:
 - **DONE verification** (`scripts/verify-done.sh`) checks a developer's `DONE: APP-NNN` against git
   before the row moves to review — branch exists, commits are actually there, files changed, and
   the test command exits zero. A self-reported "tests: all green" is never taken at face value.
+- **Review verdict enforcement** (`hooks/require-review-verdict.sh`) is a Claude Code `SubagentStop`
+  hook: a `code-reviewer` subagent cannot stop until the board's own event log shows a real
+  `approved`/`changes` verdict it recorded, or a documented `BLOCKED` refusal. Found live, on this
+  plugin's own PR review: a reviewer went idle three times, producing nothing, and two nudges didn't
+  change that. The first version of this hook checked the *agent's own transcript* for the right
+  words — an independent review reproduced that a transcript merely *quoting* the required command
+  satisfied it with zero work done. It now checks the append-only log directly; a false claim can't
+  forge a real log line the way it can forge a sentence.
+- **Base-vs-head regression check** (`scripts/wave-integrate.mjs --check-baseline`) — on a failed
+  wave, checks whether the unmodified integration branch *also* fails the same suite before blaming
+  the tickets in it. Opt-in and additive: it changes nothing about a green wave, and never turns a
+  real failure into a pass — it only tells you whether the failure pre-dates the wave.
 
-Both are plain Node + POSIX `sh` with no dependencies, and the `board-doctor` skill carries a manual
-checklist so a vanilla install without Node still performs the check by hand.
+Every gate above is plain Node + POSIX `sh` with no dependencies, and the `board-doctor` skill
+carries a manual checklist so a vanilla install without Node still performs the check by hand.
 
 ### How the agents coordinate
 
@@ -200,6 +212,13 @@ organised by **data path** found dozens of live defects:
   be watched failing before they are trusted.
 
 `verification-engineer` owns this at release time and gates `/app-ship`.
+
+Two more additions to the review itself: it now exercises a ticket's acceptance criteria **black-box,
+before opening the diff** — running the actual behavior rather than reading the code first, so the
+reviewer isn't reasoning from the same source that may have produced the bug. And how much ceremony a
+review carries scales with the ticket's own size (`process-tiering`, XS through XL) — a one-line fix
+doesn't walk the same process as a multi-screen feature, except nothing ever lightens for a ticket
+touching auth, payments, PII, or anything `security-reviewer` owns, regardless of size.
 
 ### The team checks itself
 
