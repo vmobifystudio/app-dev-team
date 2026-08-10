@@ -8295,6 +8295,38 @@ assert_has "$TMP/wi2.txt" "CANDIDATE tickets" "...naming candidates from the cha
 assert_has "$TMP/wi2.txt" "APP-003" "...and the candidate is the ticket that actually broke it"
 assert_has "$TMP/wi2.txt" "not a verdict" "...stated as a heuristic, because attributing by feel is the alternative"
 
+# --- wave-integrate --check-baseline: was this wave's failure already broken before it started? ----
+#
+# Mined from studying unohee/OpenSwarm (docs/research/2026-08-10-github-survey-six-orchestrators.md)
+# — opt-in, additive, changes nothing about the default FAIL verdict or exit code. It only adds,
+# when the wave fails, whether the UNCHANGED base ref also fails this same suite: a boolean
+# comparison reusing the already-hardened RAN/CANNOT_RUN detection, never a per-test name/count diff.
+( cd "$WI" && git worktree remove --force .agent-wt/integration-wave-2; git worktree prune; git branch -D integration/wave-2 ) >/dev/null 2>&1   # wi2 above left this branch AND its worktree behind (FAIL sets keep=true); both must go before the same wave number can re-run
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 2 --check-baseline ) >"$TMP/wi2b.txt" 2>&1
+[ $? = 1 ] && ok "--check-baseline changes NOTHING about the exit code — still FAIL, still exit 1" \
+           || bad "--check-baseline changes NOTHING about the exit code — still FAIL, still exit 1" "$(tail -5 "$TMP/wi2b.txt")"
+assert_has "$TMP/wi2b.txt" "BASELINE CHECK: main passes this same suite" "main (unmodified) passes, so this wave is confirmed to have introduced the failure"
+assert_has "$TMP/wi2b.txt" "This wave introduced the failure" "...stated as a confirmation, not a guess, because it's a real base-ref run, not a heuristic"
+
+# The other direction: a failure that PRE-DATES the wave — main itself is already broken by
+# something unrelated to any ticket in this wave.
+( cd "$WI" && git checkout -q main && echo BAD > feature-broken.txt && git add feature-broken.txt \
+  && git commit -q -m "pre-existing breakage, unrelated to any ticket" ) >/dev/null 2>&1
+wave_mk 006 OK; wave_drive 006
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 4 --check-baseline ) >"$TMP/wi2c.txt" 2>&1
+[ $? = 1 ] && ok "a wave whose failure pre-dates it still FAILS — this never masks a real red suite" \
+           || bad "a wave whose failure pre-dates it still FAILS — this never masks a real red suite" "$(tail -5 "$TMP/wi2c.txt")"
+assert_has "$TMP/wi2c.txt" "BASELINE CHECK: main ALSO fails this same suite" "the unmodified base ref fails too — this failure may pre-date the wave"
+assert_has "$TMP/wi2c.txt" "may PRE-DATE" "...an operator reading this knows not to blame APP-006 on sight"
+( cd "$WI" && git checkout -q main && git rm -q feature-broken.txt && git commit -q -m "clean up the pre-existing breakage fixture" ) >/dev/null 2>&1
+
+# Without the flag, the message never appears at all — this is opt-in, not a silent default change.
+( cd "$WI" && git worktree remove --force .agent-wt/integration-wave-2; git worktree prune; git branch -D integration/wave-2 ) >/dev/null 2>&1   # same re-run-needs-a-clean-branch-and-worktree reason as above
+( cd "$WI" && node "$HERE/wave-integrate.mjs" --root . --wave 2 ) >"$TMP/wi2d.txt" 2>&1
+grep -q "BASELINE CHECK" "$TMP/wi2d.txt" \
+  && bad "no --check-baseline flag means no baseline check at all — opt-in, not a default" "$(cat "$TMP/wi2d.txt")" \
+  || ok "no --check-baseline flag means no baseline check at all — opt-in, not a default"
+
 # A CONFLICT COSTS ITSELF, NOT THE WAVE. Per-ticket merging blocked on the first conflict and sent a
 # cold developer to rebase; here the other approved work still integrates.
 ( cd "$WI" && git checkout -q -b feat/APP-004 main && echo left > shared.txt && git add shared.txt && git commit -q -m APP-004 \

@@ -73,6 +73,16 @@ const { flags } = parseArgs(process.argv.slice(2), {
   valueFlags: new Set(['root', 'project-root', 'base', 'wave', 'test-command', 'log', 'dir']),
   die,
 });
+// --check-baseline: opt-in, additive, changes NOTHING about the default verdict. Mined from
+// studying unohee/OpenSwarm's base-vs-head verification (docs/research/2026-08-10-...). Their
+// version diffs individual failing-test NAMES between base and head — this repo's RAN-evidence work
+// (three separate test-runner output-format gaps found across H7/H8/H9) is proof that per-framework
+// output parsing is exactly the class of thing that is fragile and easy to get quietly wrong. This
+// does the safe subset instead: a boolean comparison (did the UNCHANGED base ref also fail this same
+// suite, yes or no), using the RAN/CANNOT_RUN detection already hardened three times over, no new
+// parsing. It never turns a real failure into a pass — it only adds, on a FAIL, whether the failure
+// pre-existed on $BASE, which is exactly the distinction that stops a wave being blamed for
+// something already broken before it started.
 
 let ROOT;
 if (typeof flags.root === 'string') {
@@ -306,6 +316,28 @@ const green = test.status === 0 && !cannotRun;
 
 process.stdout.write(`\n${testOut.split('\n').slice(-30).map((l) => `  | ${l}`).join('\n')}\n`);
 
+// --check-baseline: run the SAME command against the UNCHANGED $BASE, in a throwaway sibling
+// worktree, cleaned up unconditionally — nobody needs to inspect an unmodified base ref the way a
+// failing merged tree needs inspecting. Reuses the exact RAN/CANNOT_RUN classification above; this
+// is a boolean ("did base also fail"), never a count or a named-test diff.
+function baselineAlsoFails() {
+  const BWT = resolve(ROOT, '.agent-wt', `integration-wave-${WAVE}-baseline`);
+  rmSync(BWT, { recursive: true, force: true });
+  const add = gitTry(['worktree', 'add', '--detach', BWT, BASE], { cwd: ROOT });
+  if (!add.ok) return { checked: false, reason: `could not check out ${BASE} to compare: ${add.out}` };
+  try {
+    const baseTest = spawnSync('sh', ['-c', `. "${resolve(HERE, 'build-env.sh')}" && ${TEST_CMD}`], { cwd: BWT, encoding: 'utf8' });
+    const baseOut = `${baseTest.stdout || ''}${baseTest.stderr || ''}`;
+    const baseCannotRun = baseTest.status === 126 || baseTest.status === 127 || CANNOT_RUN.test(baseOut) || !RAN.test(baseOut);
+    const baseGreen = baseTest.status === 0 && !baseCannotRun;
+    if (baseCannotRun) return { checked: false, reason: `${BASE} could not be evaluated either — no comparison to make` };
+    return { checked: true, baseFailed: !baseGreen };
+  } finally {
+    gitTry(['worktree', 'remove', '--force', BWT], { cwd: ROOT });
+    rmSync(BWT, { recursive: true, force: true });
+  }
+}
+
 // --- attribute -----------------------------------------------------------------------------------------
 function candidatesFor(output) {
   const named = [];
@@ -332,9 +364,20 @@ if (cannotRun) {
 
 if (!green) {
   const blamed = candidatesFor(testOut);
+  let baselineNote = '';
+  if (flags['check-baseline']) {
+    const b = baselineAlsoFails();
+    baselineNote = !b.checked
+      ? `\n  BASELINE CHECK: not possible — ${b.reason}\n`
+      : b.baseFailed
+        ? `\n  BASELINE CHECK: ${BASE} ALSO fails this same suite, unmodified. This failure may PRE-DATE\n` +
+          `  the wave — do not assume this wave introduced it before reading the output above.\n`
+        : `\n  BASELINE CHECK: ${BASE} passes this same suite, unmodified. This wave introduced the failure.\n`;
+  }
   process.stdout.write(
     '\n  WAVE RESULT: FAIL — the merged tree does not pass its own suite.\n' +
     '  The wave does not advance. No ticket in it gets a real `verified`.\n' +
+    baselineNote +
     (blamed.length
       ? `\n  CANDIDATE tickets (their changed files are named in the output): ${blamed.join(', ')}\n` +
         '  This is a CANDIDATE LIST, not a verdict. It is a filename match on test output, which is a\n' +

@@ -74,6 +74,16 @@ and prevents a whole class of "this doesn't match how we build" rework.
    paths, same rule `ic-workflow` gives ICs, for the same reason: a blanket `git add -A` from a
    shared-tree role risks staging someone else's in-flight work.
 
+6. **Read what your role names, not the whole tree.** `ic-workflow`'s input contract already scopes
+   a developer to exactly three things — the ticket row, the PRD/impl-spec sections it points to,
+   and its own subtree — for a reason: a role that re-reads the full PRD, every prior standup, and
+   every sibling ticket "to be safe" burns budget on context it was never going to use and makes the
+   next context-window compaction more likely mid-ticket. Read the pack this skill names, the doc
+   your input contract names, and nothing wider unless a specific question sends you looking for it.
+   This is not a license to skip house-conventions or defect-hunting's own required reads — it is
+   the same discipline pointed at everything *else*: a role file that grew barnacles ("also skim
+   the last five standups") over time is exactly the kind of accretion this rule exists to refuse.
+
 ## Anti-patterns
 
 - Writing code first and checking conventions later — the rework is the cost you were avoiding.

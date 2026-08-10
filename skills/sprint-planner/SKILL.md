@@ -48,6 +48,11 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    anchor (`prd#F-001 + arch§3`) so devs don't grep, `--acceptance` is the Given/When/Then,
    `--notes` is free text only.
 
+   **`--estimate` also drives how much process the ticket carries** — see `process-tiering`. An
+   XS/S ticket doesn't need the same ceremony an L/XL one does; if the track isn't the default
+   (M/"standard"), say so explicitly in `--notes` (e.g. `"track: floor"`) so `tech-lead` and
+   `code-reviewer` don't have to re-derive it.
+
 6. **The event log — `docs/31-board-events.jsonl`, one JSON object per line, append-only.**
 
    ```json
