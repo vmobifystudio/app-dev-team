@@ -204,6 +204,7 @@ M78@@scripts/verify-done.sh@@|^#[[:space:]]*(tests|pass|fail)[[:space:]]+[0-9]+|
 M79@@hooks/block-cross-worktree-write.sh@@if [ -n "$TARGET_WT" ] && [ "$TARGET_WT" != "$MY_WT" ]; then@@if false; then@@writing into a SIBLING worktree is blocked@@cross-worktree-write hook
 M80@@scripts/wave-integrate.mjs@@|Finished [0-9]+ tests? on/im;@@/im;@@AGP's own connectedAndroidTest completion line is recognized as GREEN
 M81@@scripts/verify-done.sh@@|Finished [0-9]+ tests? on' "$TEST_LOG"; then@@' "$TEST_LOG"; then@@AGP's own connectedAndroidTest completion line ('Finished N tests on <device>') verifies too
+M82@@hooks/require-review-verdict.sh@@if [ "$WROTE_VERDICT_FILE" = 1 ] && [ "$RECORDED_EVENT" = 1 ]; then@@if true; then@@a code-reviewer stopping with NEITHER a verdict file nor a recorded event is BLOCKED
 CATALOGUE
 }
 

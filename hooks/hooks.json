@@ -37,6 +37,17 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "code-reviewer",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/require-review-verdict.sh\""
+          }
+        ]
+      }
     ]
   }
 }
