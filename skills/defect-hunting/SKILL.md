@@ -58,6 +58,39 @@ fix. Patching only the path the ticket names leaves every sibling caller broken.
 
 ---
 
+## 1b. Prove the new code is reachable — and its required companions exist
+
+Found in this studio's own work, by a review that finally checked mechanically instead of by eye:
+a component (`VerdictBar`) was written, exported, and never imported anywhere. It typechecked. It
+built. It shipped in a merged PR. Nothing in §1–§4 would have caught it, because §1 asks whether a
+value's *other* writers and readers agree with each other — this is the narrower, cheaper question
+of whether the diff's *own* new code is ever reached by anything at all.
+
+### The question that does the work
+
+> **"Who calls this, outside its own definition?"**
+
+Applied to every function, component, type, constant, or route the diff introduces.
+
+### Procedure
+
+1. For each new symbol the diff adds, search for a real call/reference site **outside the file that
+   defines it** (or outside its own declaration, for a symbol used only within one file). `export`ed
+   with zero importers is the specific, mechanical shape to catch — `grep -rn '<Name>' src/ | grep
+   -v '<file that defines it>'` at minimum; prefer an AST-aware search (`ast-grep`) over plain
+   `grep`/`rg` where the language has one available, since text search false-negatives on a renamed
+   reference or a match sitting inside a comment or string.
+2. **Missing co-changes** — the same "enumerate" discipline as §1, aimed at what a change like this
+   one *always* requires alongside it, not at what it says it changed: an implementation with no
+   test file for it, a new database column with no migration, a new API handler with no route
+   registration, a changed struct/type with no update to its (de)serialization. Name the class of
+   companion this diff's *kind* of change requires, then confirm each one is actually present.
+3. Dead code found this way is not a style nit — it is unreviewed, untested surface area sitting in
+   the codebase looking finished. Either wire it in or delete it. "Leave it for later" is how it
+   becomes permanent.
+
+---
+
 ## 2. Never certify a number by reading it — execute it
 
 An age-aware plausibility envelope read perfectly sensibly, survived 35 sprints and every review.
@@ -163,6 +196,31 @@ Only executing it exposed it.
 
 Test your checker against a fixture with known-good and known-bad cases before you trust one word
 of its output.
+
+---
+
+## 3b. A test that cannot fail is worse than no test
+
+§3 is about guard rules and lint checks. This is the same failure shape one level down, in ordinary
+unit and regression tests: **a test that is green regardless of whether the code is correct.** This
+studio's own gates this session checked *whether tests ran* (the RAN-evidence regex work) —
+never *whether the tests could catch anything*. Both are real gaps, and they are different gaps.
+
+### The shapes to grep for, in review of any new or changed test
+
+| Shape | What it actually verifies |
+|---|---|
+| Tautology | the test's own literal, restated (`assertEqual(2+2, 4)`, or asserting a constant against itself) |
+| Framework re-verification | that the test framework, mocking library, or language runtime works, not that this code does |
+| Identity mock | a mock configured to return exactly what the assertion checks for — the test cannot see the code under test at all |
+| Call-sequence-only | asserts a function was *called*, never asserts what it *did* or *returned* |
+| Self-referential fixture | the "expected" value is computed by the same logic being tested, not an independent reference |
+
+### The check
+
+**Reintroduce the bug this test is supposed to catch (§3's mutation step, applied here) and confirm
+the test goes red.** A test that stays green through a real mutation is exactly as worthless as a
+guard rule that stays green through one — it is not a weaker test, it is not a test.
 
 ---
 
@@ -291,6 +349,12 @@ Attach to any `code-reviewer` or audit verdict:
 
 - [ ] Named the data this change touches, and enumerated **every** writer and reader of it
 - [ ] Checked the edit / cancel / failure / restore / import paths, not just the happy path
+- [ ] **Every new symbol the diff exports has a real caller outside its own definition (§1b)** — or
+      is named here as dead code to delete before merge
+- [ ] **Missing co-changes checked (§1b)** — new code has its test file, a new column has its
+      migration, a new handler is registered, a changed type has its (de)serialization updated
+- [ ] **Any new or changed test survives a real mutation of the code it covers (§3b)** — not just
+      typechecks or reads as reasonable
 - [ ] **Followed each user-supplied or user-visible value across the boundary (§4b)** — named the
       line that reads it and the line that writes it, and confirmed they are the same value
 - [ ] **Ran the round trip with a distinguishable value** (never `0`, never today's date, never the
