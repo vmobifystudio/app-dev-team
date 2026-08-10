@@ -361,12 +361,17 @@ not recoverable by a later fix.
    of the wave, by `/app-build` step 5:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE" --check-baseline
    node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --push   # after GREEN
    ```
 
    One wave, one merge sequence, one push, one CI run — and `ci-status.mjs` reads it at the top of
    the next round. Why it moved: `scripts/wave-integrate.mjs` header.
+
+   **`--check-baseline` costs nothing on a GREEN wave** (it only runs on FAIL) **and answers the one
+   question a FAIL report otherwise leaves you guessing**: did this wave introduce the failure, or
+   was `$BASE` already broken by something no ticket in this wave touched? Without it you are reading
+   candidate-file heuristics blind to which world you are in.
 
    Add "Merged APP-NNN" under **Shipped** once the wave *lands*, not when the gate passes: the gate
    is permission, the wave is the fact, and `merge-reconcile` distinguishes them by name
