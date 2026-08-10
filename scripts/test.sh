@@ -3664,6 +3664,46 @@ echo 'not json' | sh "$CWH" >/dev/null 2>&1
             || bad "an unparseable payload fails open, same rule as the git-layer hook"
 rm -rf "$CWT"
 
+# --- require-review-verdict hook: a code-reviewer subagent stopping with nothing recorded ----------
+#
+# Measured live, this session: a code-reviewer spawned as a named interactive teammate to review
+# this plugin's own PR #32 went idle three times, produced no verdict file, no board.mjs event, and
+# no findings message. Two direct nudges did not change that. code-reviewer.md already says the
+# verdict must be persisted — this hook makes "did anything get recorded" a command instead of a hope.
+RVH="$HERE/../hooks/require-review-verdict.sh"
+RVT=$(mktemp -d)
+rv_payload() {  # <transcript path> <last_assistant_message>
+  printf '{"hook_event_name":"SubagentStop","agent_type":"code-reviewer","transcript_path":"%s","last_assistant_message":"%s"}' "$1" "$2"
+}
+# A transcript with neither a verdict file write nor a recorded board event: the observed incident.
+printf '{"role":"assistant","content":"reading the diff..."}\n' > "$RVT/silent.jsonl"
+rv_payload "$RVT/silent.jsonl" "still looking at this" | sh "$RVH" >"$TMP/rv-silent.txt" 2>&1
+[ $? = 2 ] && ok "a code-reviewer stopping with NEITHER a verdict file nor a recorded event is BLOCKED" \
+           || bad "a code-reviewer stopping with NEITHER a verdict file nor a recorded event is BLOCKED" "$(cat "$TMP/rv-silent.txt")"
+assert_has "$TMP/rv-silent.txt" "PR #32" "the refusal names the incident this hook exists to stop from recurring"
+# A verdict file written but never recorded via board.mjs — half the contract, still blocked.
+printf '{"role":"assistant","content":"Write docs/53-reviews/APP-001-cycle-1.md"}\n' > "$RVT/half.jsonl"
+rv_payload "$RVT/half.jsonl" "wrote my notes" | sh "$RVH" >/dev/null 2>&1
+[ $? = 2 ] && ok "...and writing the verdict file WITHOUT recording it via board.mjs is still BLOCKED" \
+           || bad "...and writing the verdict file WITHOUT recording it via board.mjs is still BLOCKED"
+# Both present: the real, complete outcome.
+printf '{"role":"assistant","content":"Write docs/53-reviews/APP-001-cycle-1.md"}\n{"role":"assistant","content":"Bash: node board.mjs move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-1.md"}\n' > "$RVT/full.jsonl"
+rv_payload "$RVT/full.jsonl" "APPROVED: APP-001" | sh "$RVH" >/dev/null 2>&1
+[ $? = 0 ] && ok "a verdict file AND a recorded board.mjs event together are ALLOWED to stop" \
+           || bad "a verdict file AND a recorded board.mjs event together are ALLOWED to stop"
+# A documented BLOCKED refusal (e.g. self-review) is the third legitimate outcome — no file, no
+# event, by design — and must not be caught by the same gate that stops silent idle-outs.
+rv_payload "$RVT/silent.jsonl" "BLOCKED: APP-001\\nReason: self-review" | sh "$RVH" >/dev/null 2>&1
+[ $? = 0 ] && ok "a documented BLOCKED refusal (self-review) is ALLOWED to stop with neither" \
+           || bad "a documented BLOCKED refusal (self-review) is ALLOWED to stop with neither"
+echo 'not json' | sh "$RVH" >/dev/null 2>&1
+[ $? = 0 ] && ok "an unparseable payload fails open, same rule as every other hook" \
+           || bad "an unparseable payload fails open, same rule as every other hook"
+rv_payload "$RVT/does-not-exist.jsonl" "hello" | sh "$RVH" >/dev/null 2>&1
+[ $? = 0 ] && ok "an unreadable transcript path fails open rather than blocking on its own confusion" \
+           || bad "an unreadable transcript path fails open rather than blocking on its own confusion"
+rm -rf "$RVT"
+
 echo "gates that could not fire"
 # --------------------------------------------------------------------------------------------
 # Every assertion below is a gate that was proven, by execution, to be incapable of catching the
