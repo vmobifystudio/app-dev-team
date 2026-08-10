@@ -31,9 +31,12 @@ export default function Team({ screen, query = '' }: { screen: TeamScreen; query
   for (const role of screen.roles) byState[role.state] = (byState[role.state] ?? 0) + 1;
 
   const q = query.trim().toLowerCase();
-  const roles = screen.roles.filter(
-    (r) => (!stateFilter || r.state === stateFilter) && (!q || r.role.toLowerCase().includes(q))
-  );
+  const roles = screen.roles.filter((r) => {
+    if (stateFilter && r.state !== stateFilter) return false;
+    if (!q) return true;
+    const persona = personaFor(r.role);
+    return r.role.toLowerCase().includes(q) || (persona ? persona.name.toLowerCase().includes(q) : false);
+  });
 
   return (
     <>
