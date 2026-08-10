@@ -60,13 +60,13 @@
     },
     {
       "id": "code-reviewer",
-      "version": "1.0.4",
+      "version": "1.0.6",
       "owner": "code-reviewer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-08-10",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.3",
-      "content_hash": "fd7e4cb9424697eec244a4365e2edb68b20380169186802bfc2a3854058ed96c"
+      "rollback_version": "1.0.5",
+      "content_hash": "8a06b47ff71360ed5f8e25c0b7ba4f08933d75a674f665a5322289e20b98bcbd"
     },
     {
       "id": "cpo",

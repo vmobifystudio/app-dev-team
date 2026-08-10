@@ -46,7 +46,9 @@ restore? On import? On sync? On each remaining enum case?
 Before approving any change that touches persisted or user-visible state:
 
 1. Name the data the change touches — the field, the row, the preference, the entitlement.
-2. **Enumerate every writer.** `grep` the field name across the whole repo, not the module.
+2. **Enumerate every writer.** `grep` the field name across the whole repo, not the module —
+   prefer `ast-grep` where the language has one available, same reasoning as §1b: text search
+   false-negatives on a renamed reference or a match sitting inside a comment or string.
    Create, edit, import, sync, restore, migration, reset-to-default, and every failure branch.
 3. **Enumerate every reader**, same way.
 4. Show the invariant holding **on each one**. A validation that one producer applies and another
