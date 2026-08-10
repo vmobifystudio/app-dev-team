@@ -3670,38 +3670,77 @@ rm -rf "$CWT"
 # this plugin's own PR #32 went idle three times, produced no verdict file, no board.mjs event, and
 # no findings message. Two direct nudges did not change that. code-reviewer.md already says the
 # verdict must be persisted — this hook makes "did anything get recorded" a command instead of a hope.
+#
+# VERSION 2. v1 grepped the SUBAGENT'S OWN TRANSCRIPT for the words "docs/53-reviews/" and
+# "board.mjs move ... approved|changes" — an independent review of this hook reproduced, live, that a
+# nudge merely QUOTING the required command (exactly what this incident's own "two direct nudges"
+# would contain) satisfied the check with nothing ever executed. v2 checks the board's own real
+# append-only log for a genuine approved|changes event instead — the transcript is used only to find
+# a candidate ticket ID, never to decide whether the review actually happened.
 RVH="$HERE/../hooks/require-review-verdict.sh"
 RVT=$(mktemp -d)
+mkdir -p "$RVT/docs"
 rv_payload() {  # <transcript path> <last_assistant_message>
-  printf '{"hook_event_name":"SubagentStop","agent_type":"code-reviewer","transcript_path":"%s","last_assistant_message":"%s"}' "$1" "$2"
+  printf '{"hook_event_name":"SubagentStop","agent_type":"code-reviewer","transcript_path":"%s","cwd":"%s","last_assistant_message":"%s"}' "$1" "$RVT" "$2"
 }
-# A transcript with neither a verdict file write nor a recorded board event: the observed incident.
+rv_log() { printf '%s\n' "$1" > "$RVT/docs/31-board-events.jsonl"; }  # one real (or fabricated) log line
+
+# THE EXPLOIT v1 SHIPPED: a transcript that only QUOTES the required command, with no real board
+# event to back it — v1 allowed this; v2 must not.
+printf '{"role":"user","content":"write your verdict to docs/53-reviews/APP-001-cycle-0.md, then run board.mjs move APP-001 approved --by code-reviewer --verdict <that file>."}\n{"role":"assistant","content":"Let me start reading the diff for APP-001."}\n' > "$RVT/exploit.jsonl"
+rv_log ''
+rv_payload "$RVT/exploit.jsonl" "Let me start reading the diff for APP-001." | sh "$RVH" >"$TMP/rv-exploit.txt" 2>&1
+[ $? = 2 ] && ok "MENTIONING the command in the transcript, with no real board event, is still BLOCKED (the v1 exploit, closed)" \
+           || bad "MENTIONING the command in the transcript, with no real board event, is still BLOCKED (the v1 exploit, closed)" "$(cat "$TMP/rv-exploit.txt")"
+assert_has "$TMP/rv-exploit.txt" "Mentioning the command is not the same as running it" "the refusal names why prose doesn't satisfy it"
+
+# A genuinely silent transcript — no ticket named at all.
 printf '{"role":"assistant","content":"reading the diff..."}\n' > "$RVT/silent.jsonl"
 rv_payload "$RVT/silent.jsonl" "still looking at this" | sh "$RVH" >"$TMP/rv-silent.txt" 2>&1
-[ $? = 2 ] && ok "a code-reviewer stopping with NEITHER a verdict file nor a recorded event is BLOCKED" \
-           || bad "a code-reviewer stopping with NEITHER a verdict file nor a recorded event is BLOCKED" "$(cat "$TMP/rv-silent.txt")"
-assert_has "$TMP/rv-silent.txt" "PR #32" "the refusal names the incident this hook exists to stop from recurring"
-# A verdict file written but never recorded via board.mjs — half the contract, still blocked.
-printf '{"role":"assistant","content":"Write docs/53-reviews/APP-001-cycle-1.md"}\n' > "$RVT/half.jsonl"
-rv_payload "$RVT/half.jsonl" "wrote my notes" | sh "$RVH" >/dev/null 2>&1
-[ $? = 2 ] && ok "...and writing the verdict file WITHOUT recording it via board.mjs is still BLOCKED" \
-           || bad "...and writing the verdict file WITHOUT recording it via board.mjs is still BLOCKED"
-# Both present: the real, complete outcome.
-printf '{"role":"assistant","content":"Write docs/53-reviews/APP-001-cycle-1.md"}\n{"role":"assistant","content":"Bash: node board.mjs move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-1.md"}\n' > "$RVT/full.jsonl"
-rv_payload "$RVT/full.jsonl" "APPROVED: APP-001" | sh "$RVH" >/dev/null 2>&1
-[ $? = 0 ] && ok "a verdict file AND a recorded board.mjs event together are ALLOWED to stop" \
-           || bad "a verdict file AND a recorded board.mjs event together are ALLOWED to stop"
+[ $? = 2 ] && ok "a transcript naming no ticket ID at all is BLOCKED" \
+           || bad "a transcript naming no ticket ID at all is BLOCKED" "$(cat "$TMP/rv-silent.txt")"
+
+# A real board event exists for the mentioned ticket, authored by code-reviewer, with a verdict_path.
+rv_log '{"ts":"now","ticket":"APP-001","event":"approved","by":"code-reviewer","detail":{"verdict":"APPROVE","verdict_path":"docs/53-reviews/APP-001-cycle-0.md"}}'
+rv_payload "$RVT/exploit.jsonl" "APPROVED: APP-001" | sh "$RVH" >/dev/null 2>&1
+[ $? = 0 ] && ok "a REAL recorded board.mjs event for the named ticket is ALLOWED to stop" \
+           || bad "a REAL recorded board.mjs event for the named ticket is ALLOWED to stop"
+
+# The same event, but authored by a DIFFERENT role — must not satisfy this. Proves the `by` check
+# is load-bearing, not decorative (mutate.sh M84).
+rv_log '{"ts":"now","ticket":"APP-001","event":"approved","by":"tech-manager","detail":{"verdict":"APPROVE","verdict_path":"docs/53-reviews/APP-001-cycle-0.md"}}'
+rv_payload "$RVT/exploit.jsonl" "APPROVED: APP-001" | sh "$RVH" >/dev/null 2>&1
+[ $? = 2 ] && ok "...but a real event for the SAME ticket authored by a DIFFERENT role is still BLOCKED" \
+           || bad "...but a real event for the SAME ticket authored by a DIFFERENT role is still BLOCKED"
+
 # A documented BLOCKED refusal (e.g. self-review) is the third legitimate outcome — no file, no
 # event, by design — and must not be caught by the same gate that stops silent idle-outs.
+rv_log ''
 rv_payload "$RVT/silent.jsonl" "BLOCKED: APP-001\\nReason: self-review" | sh "$RVH" >/dev/null 2>&1
-[ $? = 0 ] && ok "a documented BLOCKED refusal (self-review) is ALLOWED to stop with neither" \
-           || bad "a documented BLOCKED refusal (self-review) is ALLOWED to stop with neither"
+[ $? = 0 ] && ok "a documented BLOCKED refusal (self-review), via last_assistant_message, is ALLOWED" \
+           || bad "a documented BLOCKED refusal (self-review), via last_assistant_message, is ALLOWED"
+# ...and the same, found via the transcript fallback when last_assistant_message is absent/empty —
+# defensive in case a given invocation omits or truncates that field.
+printf '{"role":"assistant","content":"BLOCKED: APP-001\\nReason: self-review"}\n' > "$RVT/blocked.jsonl"
+rv_payload "$RVT/blocked.jsonl" "" | sh "$RVH" >/dev/null 2>&1
+[ $? = 0 ] && ok "...and the same, found via the transcript tail when last_assistant_message is empty" \
+           || bad "...and the same, found via the transcript tail when last_assistant_message is empty"
+
+# Belt-and-braces beyond hooks.json's own matcher: a role this hook was never meant to touch.
+rv_payload "$RVT/silent.jsonl" "done" | sed 's/"agent_type":"code-reviewer"/"agent_type":"android-developer"/' | sh "$RVH" >/dev/null 2>&1
+[ $? = 0 ] && ok "a non-code-reviewer agent_type is ALLOWED regardless of anything else in the payload" \
+           || bad "a non-code-reviewer agent_type is ALLOWED regardless of anything else in the payload"
+
 echo 'not json' | sh "$RVH" >/dev/null 2>&1
 [ $? = 0 ] && ok "an unparseable payload fails open, same rule as every other hook" \
            || bad "an unparseable payload fails open, same rule as every other hook"
 rv_payload "$RVT/does-not-exist.jsonl" "hello" | sh "$RVH" >/dev/null 2>&1
 [ $? = 0 ] && ok "an unreadable transcript path fails open rather than blocking on its own confusion" \
            || bad "an unreadable transcript path fails open rather than blocking on its own confusion"
+rm -rf "$RVT/docs/31-board-events.jsonl"
+rv_payload "$RVT/exploit.jsonl" "APPROVED: APP-001" | sh "$RVH" >/dev/null 2>&1
+[ $? = 0 ] && ok "a missing board event log fails open too — cannot check ground truth that isn't there" \
+           || bad "a missing board event log fails open too — cannot check ground truth that isn't there"
 rm -rf "$RVT"
 
 echo "gates that could not fire"

@@ -240,23 +240,23 @@
     },
     {
       "id": "tech-lead",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "owner": "tech-lead",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "b30ccbb5afd81b7b5caae7348fe934276bf6a834cf031f75c0bf2daf58002c82"
+      "validated_on": "2026-08-10",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.0",
+      "content_hash": "7c94e742399831543a298ff48d3c82fff82d4e9a5fa7db5d7410d931dca34ad8"
     },
     {
       "id": "tech-manager",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "owner": "tech-manager",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-08",
+      "validated_on": "2026-08-10",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.4",
-      "content_hash": "9cc98f57cae21df0dbc0801f9295e35e489ca99deb63c781666b57fa79638660"
+      "rollback_version": "1.0.5",
+      "content_hash": "000ced14b031ac7eac5f828bc88fe2380f709cc7086d1a54f9edd0c1e535baf3"
     },
     {
       "id": "test-automation-engineer",

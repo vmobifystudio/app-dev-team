@@ -50,6 +50,8 @@
  * Usage:
  *   wave-integrate.mjs --wave <N> [--root <path>] [--base <branch>] [--test-command "..."] [--push]
  *   wave-integrate.mjs --wave <N> --dry-run        report what would be merged, touch nothing
+ *   wave-integrate.mjs --wave <N> --check-baseline on a FAIL, also report whether $BASE (unmodified)
+ *                                                   fails this same suite too — costs nothing on GREEN
  *
  * Exit codes:
  *   0  the wave merged clean and the suite ran green
@@ -321,7 +323,14 @@ process.stdout.write(`\n${testOut.split('\n').slice(-30).map((l) => `  | ${l}`).
 // failing merged tree needs inspecting. Reuses the exact RAN/CANNOT_RUN classification above; this
 // is a boolean ("did base also fail"), never a count or a named-test diff.
 function baselineAlsoFails() {
-  const BWT = resolve(ROOT, '.agent-wt', `integration-wave-${WAVE}-baseline`);
+  // Deliberately NOT prefixed `integration-wave-`: worktree-reap.mjs's liveness() treats that
+  // prefix as "an integration worktree, never auto-reaped" — correct for the real merged tree at
+  // WT, wrong for this throwaway baseline checkout, which the comment above already says is
+  // "cleaned up unconditionally... nobody needs to inspect" it. If a crash ever skips the `finally`
+  // below (a signal the process can't catch), a leaked worktree under this name is treated as an
+  // ordinary orphan by the reaper — checked against the board, not permanently protected — instead
+  // of silently becoming exactly the disk-ceiling-eating "kept forever" artifact it was named to avoid.
+  const BWT = resolve(ROOT, '.agent-wt', `wave-${WAVE}-baseline-check`);
   rmSync(BWT, { recursive: true, force: true });
   const add = gitTry(['worktree', 'add', '--detach', BWT, BASE], { cwd: ROOT });
   if (!add.ok) return { checked: false, reason: `could not check out ${BASE} to compare: ${add.out}` };
@@ -366,7 +375,15 @@ if (!green) {
   const blamed = candidatesFor(testOut);
   let baselineNote = '';
   if (flags['check-baseline']) {
-    const b = baselineAlsoFails();
+    // An optional diagnostic must never be able to hide the primary FAIL report it is annotating —
+    // an uncaught exception here (a git error, a killed sh) would otherwise crash the process before
+    // "WAVE RESULT: FAIL" ever prints, replacing the one message a human needs with a stack trace.
+    let b;
+    try {
+      b = baselineAlsoFails();
+    } catch (e) {
+      b = { checked: false, reason: `baseline check crashed: ${e && e.message ? e.message : e}` };
+    }
     baselineNote = !b.checked
       ? `\n  BASELINE CHECK: not possible — ${b.reason}\n`
       : b.baseFailed
