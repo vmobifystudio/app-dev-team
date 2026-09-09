@@ -3567,6 +3567,19 @@ assert_exit 0 "still allows discarding one file"     hk "git checkout -- mine.sw
 assert_exit 0 "still allows a path-scoped stash"     hk "git stash push -- one.swift"
 assert_exit 0 "never touches a read-only git command" hk "git status"
 
+# Dotfiles and explicitly-relative paths are path-scoped and therefore safe. The trailing-dot
+# patterns used to match these too (`git add .` also matching `git add .gitignore`), so the hook
+# refused the very alternative its BLOCKED message recommends. Every safe-form case above starts
+# with a letter, which is why this went unnoticed until it blocked real work on 2026-09-07.
+assert_exit 0 "allows staging a dotfile"             hk "git add .gitignore"
+assert_exit 0 "allows discarding one dotfile"        hk "git checkout -- .gitignore"
+assert_exit 0 "allows restoring a dotted path"       hk "git restore .github/workflows/ci.yml"
+assert_exit 0 "allows an explicitly-relative path"   hk "git add ./src/one.swift"
+# ...while the repo-wide forms they were hiding behind stay blocked.
+assert_exit 2 "still blocks a bare git add ."        hk "git add ."
+assert_exit 2 "still blocks git add . in a chain"    hk "git add . && git commit -m x"
+assert_exit 2 "still blocks a bare git restore ."    hk "git restore ."
+
 # Portability: the first version extracted the command with GNU-only sed alternation, which BSD sed
 # fails SILENTLY — CMD came back empty and the hook allowed everything. It could not fire, written
 # on the day this repo spent hunting rules that cannot fire, and caught only by running it.
@@ -3597,6 +3610,15 @@ assert_exit 2 "...and blocks a bare 'git merge <branch>' with no flag at all —
 # instructions, discovered by running them for real while landing H6's own wave.
 assert_exit 0 "...but ALLOWS --ff-only — wave-integrate.mjs's own documented fallback" \
   hkm "git merge --ff-only integration/wave-1"
+# Read-only plumbing that merely begins with the letters "git merge" writes nothing and must not be
+# refused — blocking `git merge-base --is-ancestor` makes it impossible to ASK whether work is
+# already merged, which is exactly the question an audit needs. Found in use, 2026-09-09.
+assert_exit 0 "...allows git merge-base (read-only ancestry query)" \
+  hkm "git merge-base --is-ancestor HEAD main"
+assert_exit 0 "...allows git merge-tree (read-only conflict dry run)" \
+  hkm "git merge-tree main integration/wave-1"
+assert_exit 0 "...allows git mergetool" hkm "git mergetool"
+assert_exit 0 "...allows aborting an in-progress merge" hkm "git merge --abort"
 ( cd "$HKM" && git checkout -q -b feat/x main ) >/dev/null 2>&1
 assert_exit 0 "...and a merge on a FEATURE branch (not the integration branch) is untouched" \
   hkm "git merge --no-ff main"

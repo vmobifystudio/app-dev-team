@@ -133,8 +133,15 @@ done
 [ -n "$DECLARED" ] || DECLARED="main"
 
 case "$CMD" in
-  *"--ff-only"*) MERGE_CMD=0 ;;
-  *"git merge"*) MERGE_CMD=1 ;;
+  *"--ff-only"*|*"--abort"*|*"--continue"*|*"--quit"*) MERGE_CMD=0 ;;
+  # `git merge` needs a boundary after it, or it also swallows the read-only plumbing that merely
+  # starts with those letters: `git merge-base` (ancestry queries), `git merge-tree` (conflict dry
+  # runs), `git merge-file`, and `git mergetool`. None of them write a ref or create a commit, and
+  # blocking `git merge-base --is-ancestor` — the natural way to ASK whether work was already
+  # merged — turns an audit question into a refusal. Found in use, 2026-09-09, while checking
+  # whether one agent's force-push had dropped another's commits. Same shape as the trailing-dot
+  # bug below: a substring pattern with no boundary.
+  *"git merge"|*"git merge "*) MERGE_CMD=1 ;;
   *) MERGE_CMD=0 ;;
 esac
 if [ "$MERGE_CMD" = "1" ]; then
@@ -233,13 +240,21 @@ DIRTY=$(git status --porcelain -uall 2>/dev/null | head -n 1)
 # Each pattern discards or sweeps work the caller may not have written. A path-scoped command
 # (`git checkout -- src/one.swift`, `git add src/`) is NOT matched: explicit paths are the
 # documented safe form, and banning them would ban the alternative we tell people to use.
+# A trailing-dot pattern needs a BOUNDARY after the dot, or it swallows every dotfile and every
+# explicitly-relative path. `*"git add ."*` also matched `git add .gitignore`; `git checkout -- .`
+# also matched `git checkout -- .gitignore`; `git restore .` also matched `git restore .github/x`;
+# and all three matched `git add ./src/a`. So the hook refused exactly the path-scoped commands the
+# comment below promises are safe, and that its own BLOCKED message prints as the alternative — a
+# gate that refuses its own escape hatch is a gate that gets switched off. Found in use, 2026-09-07,
+# blocking `git add .gitignore` three times in a row. The existing safe-form tests all used paths
+# that begin with a letter (`src/one.swift`, `mine.swift`), which is why this survived them.
 NORM=$(printf '%s' "$CMD" | tr -s ' ')
 VERDICT=""
 case "$NORM" in
-  *"git checkout -- ."*|*"git checkout -- :/"*)   VERDICT="git checkout -- . discards every uncommitted change in the tree" ;;
+  *"git checkout -- ."|*"git checkout -- ."[!A-Za-z0-9_./-]*|*"git checkout -- :/"*)   VERDICT="git checkout -- . discards every uncommitted change in the tree" ;;
   *"git checkout -f"*|*"git switch -f"*|*"git switch --discard-changes"*)
                                                    VERDICT="a forced checkout/switch discards every uncommitted change in the tree" ;;
-  *"git restore ."*|*"git restore -- ."*|*"git restore --staged --worktree"*|*"git restore -SW"*)
+  *"git restore ."|*"git restore ."[!A-Za-z0-9_./-]*|*"git restore -- ."|*"git restore -- ."[!A-Za-z0-9_./-]*|*"git restore --staged --worktree"*|*"git restore -SW"*)
                                                    VERDICT="git restore over the whole tree discards every uncommitted change" ;;
   *"git reset --hard"*|*"git reset --keep"*)       VERDICT="git reset --hard/--keep discards uncommitted changes in the tree" ;;
   *"git clean -"*)                                 VERDICT="git clean deletes untracked files, including another agent's new files" ;;
@@ -249,7 +264,7 @@ case "$NORM" in
   *"git stash"*)
     # `git stash push -- <path>` is scoped and fine; a bare stash sweeps the whole tree.
     case "$NORM" in *"git stash"*" -- "*) : ;; *) VERDICT="git stash sweeps the whole tree, including work you did not write — this is the exact command that cost 22 files on 2026-07-29" ;; esac ;;
-  *"git add -A"*|*"git add --all"*|*"git add ."*)  VERDICT="git add -A/. stages another agent's half-written files into your commit" ;;
+  *"git add -A"*|*"git add --all"*|*"git add ."|*"git add ."[!A-Za-z0-9_./-]*)  VERDICT="git add -A/. stages another agent's half-written files into your commit" ;;
   *"git commit -a"*)                               VERDICT="git commit -a commits every modified tracked file, including files you did not write" ;;
 esac
 [ -n "$VERDICT" ] || exit 0
