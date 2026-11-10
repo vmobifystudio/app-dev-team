@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI now writes real code. Here is what it looks like. · Research Feed</title>
+<meta name="description" content="Researchers looked at AI-written code in real projects. It runs longer, flags more high-risk spots, and gets rewritten more.">
+<link rel="canonical" href="http://localhost:8787/s/ai-written-code-in-the-wild/">
+<meta name="rf:ai-assisted" content="true"><meta name="rf:score-rules" content="1.0.0">
+<meta name="rf:license" content="CC_BY"><meta name="rf:based-on" content="arXiv:2603.27130v2">
+<meta property="og:title" content="AI now writes real code. Here is what it looks like."><meta property="og:description" content="Researchers looked at AI-written code in real projects. It runs longer, flags more high-risk spots, and gets rewritten more. Score 35/100 (automated opinion).">
+<meta property="og:type" content="article"><meta property="og:url" content="http://localhost:8787/s/ai-written-code-in-the-wild/">
+<link rel="stylesheet" href="/assets/app.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"AI now writes real code. Here is what it looks like.","description":"Researchers looked at AI-written code in real projects. It runs longer, flags more high-risk spots, and gets rewritten more.","datePublished":"2026-11-10T13:46:22.047Z","publisher":{"@type":"Organization","name":"Vizmaya"},"isBasedOn":{"@type":"ScholarlyArticle","name":"A Large-Scale Empirical Study of AI-Generated Code in Real-World Repositories","url":"https://arxiv.org/abs/2603.27130v2","license":"http://creativecommons.org/licenses/by/4.0"},"creativeWorkStatus":"AI-assisted","additionalProperty":[{"@type":"PropertyValue","name":"digitalSourceType","value":"http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"}]}</script>
+</head><body class="story" data-slug="ai-written-code-in-the-wild" data-state="published">
+<a class="skip" href="#k1">Skip to story</a>
+<div class="progress" aria-hidden="true"><i></i></div>
+<header class="top"><a href="/" class="back">← Feed</a><span class="brand">Research Feed</span>
+<div class="actions"><button type="button" id="share">Share</button><button type="button" id="save" aria-pressed="false">Save</button><button type="button" id="listen" aria-pressed="false">Listen</button></div></header>
+<div id="status-banner" hidden class="banner bad" role="status"></div>
+<main id="story" tabindex="-1">
+<section class="cover">
+  <p class="field">AI &amp; software</p>
+  <h1>AI now writes real code. Here is what it looks like.</h1><p class="deck">Researchers looked at AI-written code in real projects. It runs longer, flags more high-risk spots, and gets rewritten more.</p>
+  <p class="badges"><span class="chip chip-score big" title="Automated opinion. Research signal. Not investment advice.">Score 35/100 <small>medium confidence · Automated opinion</small></span> <span class="chip">AI-assisted</span> <span class="chip chip-warn">Preprint</span> <span class="chip">License: CC BY 4.0</span> <span class="chip chip-warn">Based on v2</span></p>
+  <div class="banner warn" role="note"><strong>Preprint.</strong> This paper is not peer reviewed yet.</div><div class="banner warn" role="note"><strong>Based on v2.</strong> A newer version (v3) exists and has not been reviewed by us yet.</div>
+  <p class="hint">Scroll down. One idea per card.</p>
+</section>
+<section class="card card-hook" id="k1" aria-labelledby="k1-h" data-card="0">
+  <div class="kicker">Hook · 1 of 15</div>
+  <h2 id="k1-h">AI writes code now. Is it any good?</h2>
+  <p class="s">Programmers now let AI write parts of the apps you use.</p><p class="s">So here is a fair question.</p><p class="s">Does AI code look different from code written by people?</p><p class="src"><span>Source: paper, abstract and introduction</span></p>
+</section>
+<section class="card card-question" id="k2" aria-labelledby="k2-h" data-card="1">
+  <div class="kicker">Question · 2 of 15</div>
+  <h2 id="k2-h">Where do you look for the answer?</h2>
+  <p class="s">Earlier studies used small tests built in a lab.</p><p class="s">This team went to real projects on GitHub instead.</p><p class="s">GitHub is a site where programmers share and save their code.</p><p class="src"><span>Source: paper, abstract and introduction; section 3.1</span></p>
+</section>
+<section class="card card-point" id="k3" aria-labelledby="k3-h" data-card="2">
+  <div class="kicker">3 of 15</div>
+  <h2 id="k3-h">First, find the AI fingerprints</h2>
+  <p class="s">They found 12,749 saves of code where AI helped.</p><p class="s">A save point, called a commit, comes with a short note from the programmer.</p><p class="s">Those saves touched 19,816 files.</p><p class="s">In a hand check of 100 samples, 88 were truly AI code.</p><p class="src"><span>Source: paper, section 3.1</span></p>
+</section>
+<section class="card card-point" id="k4" aria-labelledby="k4-h" data-card="3">
+  <div class="kicker">4 of 15</div>
+  <h2 id="k4-h">A fair test needs fair partners</h2>
+  <p class="s">They also gathered 36,467 files written by people.</p><p class="s">Those human files were matched to the AI files to cancel out project quirks.</p><p class="src"><span>Source: paper, section 3.1</span></p>
+</section>
+<section class="card card-chart" id="k5" aria-labelledby="k5-h" data-card="4">
+  <div class="kicker">Chart · 5 of 15</div>
+  <h2 id="k5-h">AI files run longer</h2>
+  <p class="s">The average AI file has 256.57 lines. The average human file has 192.68.</p><p class="s">That is 33% longer.</p><figure class="vis"><svg viewBox="0 0 360 100" width="100%" role="img" aria-labelledby="ai-written-code-in-the-wild-k5t" class="chart"><title id="ai-written-code-in-the-wild-k5t">Two bars. The AI bar, 256.57 lines, is longer than the human bar, 192.68 lines.</title><defs><pattern id="ai-written-code-in-the-wild-k5h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="6" fill="currentColor" opacity=".35"/></pattern></defs><rect x="8" y="6" width="12" height="12" class="s0"/><text x="24" y="16" class="lbl">AI code</text><rect x="128" y="6" width="12" height="12" class="s1"/><text x="144" y="16" class="lbl">Human code</text><text x="8" y="42" class="lbl">Lines per file</text><rect x="8" y="48" width="230.0" height="14" class="s0" rx="2"/><text x="244.0" y="59" class="val">256.57</text><rect x="8" y="66" width="172.7" height="14" class="s1" rx="2"/><text x="186.7" y="77" class="val">192.68</text></svg><figcaption><strong>Lines per file, average</strong> Rebuilt from the paper's numbers. Not a copy of any paper figure.<span class="sr"> Description: Two bars. The AI bar, 256.57 lines, is longer than the human bar, 192.68 lines.</span></figcaption></figure><p class="src"><span>Source: paper, Table 2</span><br><span class="computed">computed: (a-b)/b*100 with a = 256.57, b = 192.68 gives 33 ((256.57-192.68)/192.68*100)</span></p>
+</section>
+<section class="card card-point" id="k6" aria-labelledby="k6-h" data-card="5">
+  <div class="kicker">6 of 15</div>
+  <h2 id="k6-h">Longer, but not from comments</h2>
+  <p class="s">Comments make up 18.01% of AI code and 17.96% of human code.</p><p class="s">Blank lines are 15.15% of AI code and 13.46% of human code.</p><p class="s">So the extra length is plain code, not extra notes.</p><blockquote class="q"><p>"The increased size of AI-generated code is not driven by additional comments, but by expanded code structures"</p><footer>Tianhao Mao and co-authors, arXiv:2603.27130v2, CC BY 4.0</footer></blockquote><p class="src"><span>Source: paper, Table 2; section 4.3</span></p>
+</section>
+<section class="card card-question" id="k7" aria-labelledby="k7-h" data-card="6">
+  <div class="kicker">Question · 7 of 15</div>
+  <h2 id="k7-h">Longer is not worse. But is it safer?</h2>
+  <p class="s">A long file can still be a good file.</p><p class="s">So the team ran a code scanner over everything.</p><p class="s">A scanner flags spots that might hide a bug or a security hole.</p><p class="src"><span>Source: paper, Table 13</span></p>
+</section>
+<section class="card card-chart" id="k8" aria-labelledby="k8-h" data-card="7">
+  <div class="kicker">Chart · 8 of 15</div>
+  <h2 id="k8-h">Counting the red flags</h2>
+  <p class="s">For equal amounts of code, the scanner raised 12.81 flags on AI code and 11.58 on human code.</p><p class="s">Critical flags were rarer in AI code: 0.042 against 0.052.</p><figure class="vis"><svg viewBox="0 0 360 286" width="100%" role="img" aria-labelledby="ai-written-code-in-the-wild-k8t" class="chart"><title id="ai-written-code-in-the-wild-k8t">Four pairs of bars. For all flags the two are close. For critical, AI is slightly lower. For high risk and medium risk, AI is higher.</title><defs><pattern id="ai-written-code-in-the-wild-k8h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="6" fill="currentColor" opacity=".35"/></pattern></defs><rect x="8" y="6" width="12" height="12" class="s0"/><text x="24" y="16" class="lbl">AI code</text><rect x="128" y="6" width="12" height="12" class="s1"/><text x="144" y="16" class="lbl">Human code</text><text x="8" y="42" class="lbl">All flags</text><rect x="8" y="48" width="230.0" height="14" class="s0" rx="2"/><text x="244.0" y="59" class="val">12.81</text><rect x="8" y="66" width="207.9" height="14" class="s1" rx="2"/><text x="221.9" y="77" class="val">11.58</text><text x="8" y="104" class="lbl">Critical</text><rect x="8" y="110" width="185.8" height="14" class="s0" rx="2"/><text x="199.8" y="121" class="val">0.042</text><rect x="8" y="128" width="230.0" height="14" class="s1" rx="2"/><text x="244.0" y="139" class="val">0.052</text><text x="8" y="166" class="lbl">High risk</text><rect x="8" y="172" width="230.0" height="14" class="s0" rx="2"/><text x="244.0" y="183" class="val">0.934</text><rect x="8" y="190" width="114.3" height="14" class="s1" rx="2"/><text x="128.3" y="201" class="val">0.464</text><text x="8" y="228" class="lbl">Medium risk</text><rect x="8" y="234" width="230.0" height="14" class="s0" rx="2"/><text x="244.0" y="245" class="val">0.282</text><rect x="8" y="252" width="148.4" height="14" class="s1" rx="2"/><text x="162.4" y="263" class="val">0.182</text></svg><figcaption><strong>Scanner flags for equal amounts of code</strong> Each pair has its own scale. Rebuilt from the paper's numbers.<span class="sr"> Description: Four pairs of bars. For all flags the two are close. For critical, AI is slightly lower. For high risk and medium risk, AI is higher.</span></figcaption></figure><p class="src"><span>Source: paper, Table 13</span></p>
+</section>
+<section class="card card-climax" id="k9" aria-labelledby="k9-h" data-card="8">
+  <div class="kicker">The big one · 9 of 15</div>
+  <h2 id="k9-h">High-risk flags double</h2>
+  <p class="s">High-risk flags show up 2.01 times as often in AI code.</p><p class="s">Medium-risk flags also rise, from 0.182 to 0.282.</p><p class="s">Only the critical flags go the other way.</p><p class="src"><span>Source: paper, Table 13</span><br><span class="computed">computed: a/b with a = 0.934, b = 0.464 gives 2.01 (0.934/0.464)</span></p>
+</section>
+<section class="card card-question" id="k10" aria-labelledby="k10-h" data-card="9">
+  <div class="kicker">Question · 10 of 15</div>
+  <h2 id="k10-h">Does that hold for every language?</h2>
+  <p class="s">An average can hide a split.</p><p class="s">Let us look inside the average.</p>
+</section>
+<section class="card card-contested" id="k11" aria-labelledby="k11-h" data-card="10">
+  <div class="kicker">Contested · 11 of 15</div>
+  <h2 id="k11-h">Contested: the average hides a split</h2>
+  <p class="s">Headline: AI code has 2.01 times the high-risk flags.</p><p class="s">In JavaScript it is 4.02 against 1.14 for people.</p><p class="s">In TypeScript it flips: 0.078 against 0.794.</p><p class="s">The paper itself calls the effect language-dependent.</p><div class="contested" role="note"><strong>Contested.</strong> The single headline number mixes languages that move in opposite directions. Read it as a pattern in some languages, not a law.</div><p class="src"><span>Source: paper, Table 13; Table 15; section 4.5</span><br><span class="computed">computed: a/b with a = 0.934, b = 0.464 gives 2.01 (0.934/0.464)</span></p>
+</section>
+<section class="card card-chart" id="k12" aria-labelledby="k12-h" data-card="11">
+  <div class="kicker">Chart · 12 of 15</div>
+  <h2 id="k12-h">Smaller saves, bigger rewrites</h2>
+  <p class="s">The average AI commit changes 24.70 lines. A human commit changes 152.02.</p><p class="s">But within 90 days, AI commits see 3.19 lines changed again, against 0.275 for human commits.</p><p class="s">That is 11.6 times as much.</p><figure class="vis"><svg viewBox="0 0 360 162" width="100%" role="img" aria-labelledby="ai-written-code-in-the-wild-k12t" class="chart"><title id="ai-written-code-in-the-wild-k12t">Two pairs of bars. In the commit, AI changes far fewer lines than people. Changed again later, AI is far higher.</title><defs><pattern id="ai-written-code-in-the-wild-k12h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="6" fill="currentColor" opacity=".35"/></pattern></defs><rect x="8" y="6" width="12" height="12" class="s0"/><text x="24" y="16" class="lbl">AI commits</text><rect x="128" y="6" width="12" height="12" class="s1"/><text x="144" y="16" class="lbl">Human commits</text><text x="8" y="42" class="lbl">In the commit</text><rect x="8" y="48" width="37.4" height="14" class="s0" rx="2"/><text x="51.4" y="59" class="val">24.70</text><rect x="8" y="66" width="230.0" height="14" class="s1" rx="2"/><text x="244.0" y="77" class="val">152.02</text><text x="8" y="104" class="lbl">Changed again within 90 days</text><rect x="8" y="110" width="230.0" height="14" class="s0" rx="2"/><text x="244.0" y="121" class="val">3.19</text><rect x="8" y="128" width="19.8" height="14" class="s1" rx="2"/><text x="33.8" y="139" class="val">0.275</text></svg><figcaption><strong>Lines changed per commit, average</strong> Each pair has its own scale. Rebuilt from the paper's numbers.<span class="sr"> Description: Two pairs of bars. In the commit, AI changes far fewer lines than people. Changed again later, AI is far higher.</span></figcaption></figure><p class="src"><span>Source: paper, Table 17; section 3.3</span><br><span class="computed">computed: a/b with a = 3.19, b = 0.275 gives 11.6 (3.19/0.275)</span></p>
+</section>
+<section class="card card-anim" id="k13" aria-labelledby="k13-h" data-card="12">
+  <div class="kicker">Animation · 13 of 15</div>
+  <h2 id="k13-h">Code that gets touched again</h2>
+  <p class="s">Picture each save as a stone dropped in a pond.</p><p class="s">The ripples are the later edits that follow.</p><figure class="vis"><svg viewBox="0 0 360 200" width="100%" role="img" aria-labelledby="ai-written-code-in-the-wild-k13t" class="anim"><title id="ai-written-code-in-the-wild-k13t">A stone drops into water and rings spread outward.</title>
+<line x1="0" y1="110" x2="360" y2="110" class="wave"/>
+<circle cx="180" cy="110" r="6" class="stone"/>
+<ellipse cx="180" cy="110" rx="10" ry="4" class="ring r1"/><ellipse cx="180" cy="110" rx="10" ry="4" class="ring r2"/><ellipse cx="180" cy="110" rx="10" ry="4" class="ring r3"/>
+<text x="180" y="190" text-anchor="middle" class="lbl">a save, and the edits that follow</text></svg><figcaption><strong>Ripples after a save</strong> Animation, no numbers. Small drop with big ripples stands for the AI pattern in the last card.<span class="sr"> Description: A small stone drops into water and rings spread outward, showing later edits that follow a save.</span></figcaption></figure>
+</section>
+<section class="card card-point" id="k14" aria-labelledby="k14-h" data-card="13">
+  <div class="kicker">14 of 15</div>
+  <h2 id="k14-h">Different slip-ups with secrets</h2>
+  <p class="s">Secrets like API keys should never sit inside code.</p><p class="s">For equal amounts of code, AI code hard-codes keys or tokens at a rate of 0.194, against 0.098 for people.</p><p class="s">That is 1.98 times as often.</p><p class="s">People hard-code more passwords: 1.02 against 0.703.</p><p class="src"><span>Source: paper, Table 16</span><br><span class="computed">computed: a/b with a = 0.194, b = 0.098 gives 1.98 (0.194/0.098)</span></p>
+</section>
+<section class="card card-payoff" id="k15" aria-labelledby="k15-h" data-card="14">
+  <div class="kicker">Payoff · 15 of 15</div>
+  <h2 id="k15-h">What this changes</h2>
+  <p class="s">Treat AI code like a fast helper's first draft.</p><p class="s">Expect more length, a closer security read, and more rewrites.</p><p class="s">This is a preprint, so other experts have not yet reviewed it.</p><p class="s">It shows patterns across many projects. It does not prove that AI caused them.</p><p class="src"><span>Source: paper, Table 13; Table 17</span></p>
+</section>
+<section class="card card-end" id="end">
+  <div class="kicker">End</div><h2>About the score</h2>
+  <span class="chip chip-score" title="Automated opinion. Research signal. Not investment advice.">Score 35/100 <small>medium confidence · Automated opinion</small></span><details class="scorebox" ><summary>How this score works (rules v1.0.0)</summary>
+<p><strong>Automated opinion. Research signal. Not investment advice.</strong></p>
+<p>26.1 of 75 available points. Confidence: medium.</p>
+<table><thead><tr><th>Signal</th><th>Points</th><th>How, and where it came from</th></tr></thead><tbody><tr class="ok"><td>Citations per month vs field average</td><td>14.1 / 30</td><td>7 citations over 7.5 months = 0.9390000000000001 per month. Field average used: 1 per month (assumption). Ratio 0.9390000000000001.<br><code>points = 30 x min(1, (citations_per_month / field_average) / 2)</code><br><small>Source: OpenAlex · <a href="https://api.openalex.org/works/https://doi.org/10.48550/arxiv.2603.27130" rel="nofollow noopener">link</a> · cited_by_count = 7 · fetched 2026-11-10</small></td></tr><tr class="unavailable"><td>Patent citations (Lens.org)</td><td>not counted (max 15)</td><td>Lens.org patent-citation lookup needs an API key. Not collected in this demo. Not counted as zero.<br><code>0 patents = 0, 1 or 2 = 8, 3 or more = 15</code><br><small>Source: Lens.org · <a href="https://www.lens.org" rel="nofollow noopener">link</a></small></td></tr><tr class="ok"><td>Code or data released</td><td>0 / 15</td><td>Code released: no. Data released: no (promised, not yet public).<br><code>code released = 10, dataset released = 5, promised only = 0 (cap 15)</code><br><small>Source: Paper text · The paper says the dataset will be made public. No link found on 2026-11-10. · section 1</small></td></tr><tr class="ok"><td>Industry co-authors</td><td>0 / 15</td><td>0 of 5 authors at industry institutions.<br><code>none = 0, at least 1 = 8, at least 25% of authors = 15</code><br><small>Source: OpenAlex institution types · <a href="https://api.openalex.org/works/https://doi.org/10.48550/arxiv.2603.27130" rel="nofollow noopener">link</a> · all 5 authorships: institution type = education · fetched 2026-11-10</small></td></tr><tr class="unavailable"><td>Funder type (stated in the paper)</td><td>not counted (max 10)</td><td>No funder is named in the paper text we read.<br><code>government or nonprofit = 10, industry = 6, none stated = not counted</code><br><small>Source: Paper text · section 6</small></td></tr><tr class="ok"><td>Readiness cues found in the paper</td><td>12 / 15</td><td>4 cue(s): validation_sample (Sec. 3.1); matched_controls (Sec. 3.1); significance_tests (Sec. 3.3); real_world_data (Sec. 3.1).<br><code>3 points per cue from a closed list, up to 5 cues. Each cue needs a source locator.</code><br><small>Source: Paper text (AI-extracted, rule-checked against closed list) · section 3</small></td></tr></tbody></table>
+<p><code>score = round(100 x earned_points / available_weight). Unavailable signals are removed from both sides, never counted as 0.</code></p>
+<p>Only outside signals count. We never use anything the authors can edit. Nobody can pay to change a score, and sponsored stories use the same rules. We score the work, never the person. <a href="/about/#score">Read the full rules</a>.</p>
+<p><button type="button" class="linkbtn" data-report="dispute">Dispute this score</button> · reviewed within 48 hours (assumption)</p></details>
+  <h2>Credits</h2><p class="credit" id="credit">Source paper: A Large-Scale Empirical Study of AI-Generated Code in Real-World Repositories. Tianhao Mao, Dongfang Zhao, Haixu Tang, Xiaofeng Wang, Hang Zhang, Indiana University Bloomington and Nanyang Technological University. arXiv:2603.27130v2, 3 Apr 2026. Preprint, not peer reviewed. Paper license: CC BY 4.0. This story reuses 1 short quote from the paper under CC BY 4.0, shown in quotation marks with credit. It reuses none of the paper's figures. No photos used. Not affiliated with or endorsed by the authors or Indiana University Bloomington or Nanyang Technological University. AI-assisted: drafted by an AI model, numbers re-checked by a second automated step, approved by a Vizmaya editor.</p>
+  <p class="actionrow"><button type="button" data-report="error">Report an error</button> <button type="button" data-report="takedown">I am an author: remove this story</button></p>
+  <p class="fine">We fix reported errors within 24 hours. A reply of "remove" takes the story down the same day. Facts are rebuilt from the paper's numbers. This is research, not investment advice and not an offer of any kind.</p>
+</section>
+</main>
+<div id="caption" class="caption" aria-live="polite" hidden></div>
+<dialog id="report"><form method="dialog" id="reportform"><h3 id="reporttitle">Report</h3>
+<label>What is wrong?<textarea name="body" required rows="4"></textarea></label>
+<label>Your email (so we can reply)<input type="email" name="contact" required></label>
+<menu><button value="cancel" formnovalidate>Cancel</button><button value="send" class="primary">Send</button></menu><p id="reportmsg" role="status"></p></form></dialog>
+<script id="story-data" type="application/json">{"slug":"ai-written-code-in-the-wild","title":"AI now writes real code. Here is what it looks like.","text":"Programmers now let AI write parts of the apps you use. So here is a fair question. Does AI code look different from code written by people? Earlier studies used small tests built in a lab. This team went to real projects on GitHub instead. GitHub is a site where programmers share and save their code. They found 12,749 saves of code where AI helped. A save point, called a commit, comes with a short note from the programmer. Those saves touched 19,816 files. In a hand check of 100 samples, 88 were truly AI code. They also gathered 36,467 files written by people. Those human files were matched to the AI files to cancel out project quirks. The average AI file has 256.57 lines. The average human file has 192.68. That is 33% longer. Comments make up 18.01% of AI code and 17.96% of human code. Blank lines are 15.15% of AI code and 13.46% of human code. So the extra length is plain code, not extra notes. A long file can still be a good file. So the team ran a code scanner over everything. A scanner flags spots that might hide a bug or a security hole. For equal amounts of code, the scanner raised 12.81 flags on AI code and 11.58 on human code. Critical flags were rarer in AI code: 0.042 against 0.052. High-risk flags show up 2.01 times as often in AI code. Medium-risk flags also rise, from 0.182 to 0.282. Only the critical flags go the other way. An average can hide a split. Let us look inside the average. Headline: AI code has 2.01 times the high-risk flags. In JavaScript it is 4.02 against 1.14 for people. In TypeScript it flips: 0.078 against 0.794. The paper itself calls the effect language-dependent. The average AI commit changes 24.70 lines. A human commit changes 152.02. But within 90 days, AI commits see 3.19 lines changed again, against 0.275 for human commits. That is 11.6 times as much. Picture each save as a stone dropped in a pond. The ripples are the later edits that follow. Secrets like API keys should never sit inside code. For equal amounts of code, AI code hard-codes keys or tokens at a rate of 0.194, against 0.098 for people. That is 1.98 times as often. People hard-code more passwords: 1.02 against 0.703. Treat AI code like a fast helper's first draft. Expect more length, a closer security read, and more rewrites. This is a preprint, so other experts have not yet reviewed it. It shows patterns across many projects. It does not prove that AI caused them.","url":"http://localhost:8787/s/ai-written-code-in-the-wild/"}</script>
+<script src="/assets/story.js" defer></script>
+</body></html>

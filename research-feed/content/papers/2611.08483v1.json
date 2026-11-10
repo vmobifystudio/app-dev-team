@@ -1,0 +1,14 @@
+{
+  "arxiv_id": "2611.08483", "version": "v1",
+  "title": "SwarmEvolve: Latent Agent Swarms for Evolutionary Discovery and Optimization",
+  "authors": ["Qile Jiang", "George Em Karniadakis"],
+  "institutions": ["Brown University"],
+  "submitted_on": "2026-11-05", "first_submitted_on": "2026-11-05",
+  "date_label": "5 Nov 2026", "peer_reviewed": false,
+  "field": "AI agents", "arxiv_category": "cs.AI",
+  "abs_snapshot": "data/abs/2611.08483v1.txt",
+  "facts": "data/facts/2611.08483v1.json",
+  "draft": "content/drafts/2611.08483v1.json",
+  "signals": "content/signals/2611.08483v1.json",
+  "photos": []
+}

@@ -1,0 +1,14 @@
+{
+  "arxiv_id": "2603.27130", "version": "v2",
+  "title": "A Large-Scale Empirical Study of AI-Generated Code in Real-World Repositories",
+  "authors": ["Tianhao Mao", "Dongfang Zhao", "Haixu Tang", "Xiaofeng Wang", "Hang Zhang"],
+  "institutions": ["Indiana University Bloomington", "Nanyang Technological University"],
+  "submitted_on": "2026-04-03", "first_submitted_on": "2026-03-28",
+  "date_label": "3 Apr 2026", "peer_reviewed": false,
+  "field": "AI & software", "arxiv_category": "cs.SE",
+  "abs_snapshot": "data/abs/2603.27130v2.txt",
+  "facts": "data/facts/2603.27130v2.json",
+  "draft": "content/drafts/2603.27130v2.json",
+  "signals": "content/signals/2603.27130v2.json",
+  "photos": []
+}
