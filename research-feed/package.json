@@ -1,0 +1,16 @@
+{
+  "name": "research-feed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Free-to-read feed of Vizmaya-format research stories. Zero dependencies. Node 22.13+.",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "demo": "node --no-warnings src/cli.js demo",
+    "start": "node --no-warnings src/cli.js serve",
+    "build": "node --no-warnings src/cli.js build",
+    "jobs": "node --no-warnings src/cli.js jobs",
+    "test": "node --no-warnings --test test/*.test.js",
+    "finance": "python3 finance/build_model.py"
+  }
+}

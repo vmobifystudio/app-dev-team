@@ -1,0 +1,18 @@
+{
+ "status": "pass",
+ "n": 6,
+ "tier": "IDEAS_ONLY",
+ "story_text_sha256": "95f20151d47f99ec8c319d9033ab62520550f13960bbb6ac127c4fbbb345dbbe",
+ "shared_ngrams": [],
+ "shared_count": 0,
+ "longest_shared_run_words": 0,
+ "quotes_verified": [
+  {
+   "quote": "The increased size of AI-generated code is not driven by additional comments, but by expanded code structures",
+   "verbatim_in_source": true
+  }
+ ],
+ "source_sha256": "dc63fd42fff48e70352ff4e1ac5922de7e69bd19cdaf8f8d7b7063bd1dd39dda",
+ "recorded_at": "2026-11-10T13:37:33.766Z",
+ "note": "Recorded verdict. The paper text itself is not stored in this repo."
+}
