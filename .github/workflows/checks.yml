@@ -175,7 +175,7 @@ jobs:
           node-version: '20'
 
       - name: A sample of gates must still bite
-        # A sample rather than all 16: each mutation runs the entire suite (~1 min). The full
+        # A sample rather than all 83: each mutation runs the entire suite. The full
         # catalogue is a local and pre-release run. `--sample` spreads across the catalogue rather
         # than taking the first N, because consecutive entries share target files and a sample that
         # only ever probes one script says nothing about the rest.

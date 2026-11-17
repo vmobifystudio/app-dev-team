@@ -3,8 +3,35 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-08-06 · **Branch:** `feat/review-verdict-contract` (PR #30, all CI green)
-**Suite:** 1240 assertions · **Invariants:** 12/12 · **Version:** 3.0.0
+**Last updated:** 2026-11-17 · **Branch:** `fix/e2e-review-sweep` (on top of `main` at `3bedced`, #44)
+**Suite:** 1471 of 1485 passed (14 failing — see the entry below) · **Invariants:** 12/12 · **Version:** 3.1.0
+
+## 2026-11-17 — the end-to-end review (`fix/e2e-review-sweep`)
+
+An end-to-end walk of `/app-run` → init → plan → build → ship, each defect reproduced against a
+scratch project before it was fixed. What it found, plainly:
+
+- **The review-verdict hook never fired.** Claude Code names plugin agents `app-dev-team:code-reviewer`
+  and the hook matched only `code-reviewer`. It also disarmed itself on its own refusal text and let a
+  hand-typed verdict line through. Fixed; a verdict now has to pass `board.mjs verify`.
+- **The build loop stalled after round one.** Preflight went stale after the first board move and the
+  first merge, and `project-profile.json` was never filled in. `/app-build` now re-snapshots every
+  round, and `/app-plan` hands the profile to `devops-engineer`.
+- **`/app-ship` could never pass.** Nothing wrote the runtime result its readiness check reads.
+  `runtime-gate.sh --record` writes it, and `/app-ship` now re-checks the built candidate before the
+  release audit.
+- **The merge gate checked the wrong commit.** `approval-check --ticket` with the branch tip.
+- **No agent could actually use a skill** — none had the `Skill` tool. All 30 do now; spawners gain
+  `Agent`, five reviewers gain `Write`.
+- **Prose that pointed at nothing:** a nonexistent `run-ledger.mjs list`, "increment Cycles", a
+  promise that `release-manager` uploads (it never does), a deleted role's name.
+- **The docs caught up:** README, HANDBOOK, CONTRIBUTING, CHANGELOG and `knowledge/README.md` now
+  match the tree (30 roles · 27 commands · 32 skills · 9 packs, both dashboards, both corpora).
+- **Still open:** `team-doctor` reports 31 findings at this commit — 30 `prompt_registry_stale` (the
+  agent files changed; the registry was not re-synced) and one `path_spelling` in
+  `commands/app-build.md`. The suite's 14 failures at this commit sit in the same area (team-doctor
+  coherence, the "planned project could not dispatch" fixture, dispatch-preflight); a fixture fix
+  has since landed on `main`.
 
 ## THE NUMBER THAT MATTERS MOST, AND WHY IT IS AT THE TOP
 
@@ -78,7 +105,7 @@ months and never practised.
 | `docs/25-engineering-rules.md` | The ten rules, each naming its enforcing mechanism **or stating it has none** |
 | `docs/research/2026-07-29-dry-run-4-findings.md` | The register from the first real end-to-end run. Historical; every finding has a reproduction |
 | `docs/2026-07-29-studio-os-plan.md` | The current plan: review of two improvement plans, position changes, phase order |
-| `knowledge/failure-corpus.md` | The six defect classes this codebase actually produces, and the *tell* for each |
+| `knowledge/failure-corpus.md` | The seven defect classes this codebase actually produces, and the *tell* for each |
 | `docs/2026-07-29-revamp-master-plan.md` | The earlier register (RV-NNN) — historical, mostly closed |
 
 ---
