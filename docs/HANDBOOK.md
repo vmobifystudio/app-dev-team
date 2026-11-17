@@ -2,8 +2,8 @@
 
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
-**Version:** 2.0.0 (`main`) · **Date:** 2026-08-01
-**Scale:** 30 roles · 31 skills · 27 commands · 74 top-level scripts (+18 shared libs) · 10 knowledge packs · 1445 assertions
+**Version:** 3.1.0 (`main`) · **Date:** 2026-11-17
+**Scale:** 30 roles · 32 skills · 27 commands · 74 top-level scripts (+18 shared libs) · 9 knowledge packs · 1485 assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
 drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
@@ -12,7 +12,7 @@ drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
 
 ## Part 1 — What this is
 
-A team of AI specialists that takes an app from an idea to a shipped build, or takes an existing
+A team of AI specialists that takes an app from an idea to a submission-ready build, or takes an existing
 codebase and closes the gap between it and your standards. It runs inside Claude Code as a plugin.
 
 The thing that distinguishes it from "an AI that writes an app" is not that it has more agents. It
@@ -22,6 +22,9 @@ Most of this document is about that distrust — where it is enforced, how, and 
 time it was absent.
 
 ## Current state — 2026-08-01
+
+> **Historical snapshot.** Everything below in this section was later committed, pushed and released
+> (v2.0.0, then 3.0.0 and 3.1.0) — read `CHANGELOG.md` and `docs/RESUME.md` for the current edge.
 
 This is the authoritative snapshot after the Revamp implementation checkpoints and the
 strategy-review closure pass that followed. The repository is on `main`. The Revamp checkpoints
@@ -209,8 +212,8 @@ Live examples, all found by breaking the code and watching whether anything noti
 - A guard proving worktree isolation that keyed on worktrees existing — and therefore stood down in
   exactly the incident it was written for.
 
-The counter-rule: **a new rule ships with a demonstration of it failing.** Phase 8 makes this
-mechanical (`scripts/mutate.sh`), because a discipline that depends on a reviewer remembering is
+The counter-rule: **a new rule ships with a demonstration of it failing.** `scripts/mutate.sh` makes this
+mechanical, because a discipline that depends on a reviewer remembering is
 itself a rule that cannot fail.
 
 ### 2.3 Gates fail closed, and "cannot evaluate" is its own answer
@@ -335,7 +338,7 @@ silent error is most expensive.
 |---|---|---|
 | `devops-engineer` | sonnet | Git strategy, CI, signing, flavors, secrets |
 | `security-reviewer` | opus | Pre-ship security pass, severity-classified findings |
-| `release-manager` | **opus** | Versioning, signing, store upload, release notes |
+| `release-manager` | **opus** | Versioning, signing, submission-ready build, release notes — never uploads |
 
 `release-manager` is opus because it is the only role that performs **irreversible** actions. The
 riskiest actor should not be the cheapest model.
@@ -558,7 +561,7 @@ say, not the other way around — fix the role file first if the two ever disagr
 | `/app-plan` | Turn backlog + specs into a parallel-friendly board |
 | `/app-build` | The sprint loop (§8) |
 | `/app-review` | Review a single branch |
-| `/app-ship` | Readiness gates → release manager → confirm before upload |
+| `/app-ship` | Readiness gates → release manager → release audit → submission-ready build; the founder uploads |
 | `/app-preflight` | Verify branch, ticket, dependency, policy, version, and source-of-truth context before work |
 | `/app-context` | Create or verify a deterministic context snapshot before review or irreversible work |
 | `/app-run-status` | Audit durable run leases, checkpoints, and orphaned attempts |
@@ -573,13 +576,14 @@ say, not the other way around — fix the role file first if the two ever disagr
 | `/app-manager-failover` | Decide whether a manager lease permits continuation or requires failover |
 | `/app-manager-harness` | Compare warm and cold manager state contracts against the same scenario |
 | `/app-status` | Board, blockers, metrics, open questions, budget position |
-| `/app-dashboard` | The control room (§9) |
+| `/app-dashboard` | The zero-dependency diagnostic dashboard (§9) |
+| `/app-control-room` | The control room — five screens over the same read layer (§9) |
 | `/app-portfolio` | N projects ranked by attention needed |
 | `/app-learn` | Fold learnings — successes **and failures** — into the knowledge base |
 | `/app-team` | List the roster |
 
 **Two human gates, and only two:** scope-lock (approve what we're building) and ship (confirm the
-upload). Everything between streams as standups.
+release; the founder does the store upload). Everything between streams as standups.
 
 ---
 
@@ -634,12 +638,20 @@ The governing constraint: **nothing writes state except through the validated CL
 act — unblock, answer, assign — but only by invoking the same commands agents use, showing the
 command and its exit code, and displaying refusals verbatim.
 
+`control-room/` (`/app-control-room`) is the product interface over the same read layer
+(`scripts/lib/project.mjs`) and the same action whitelist (`scripts/lib/actions.mjs`): five screens —
+Mission Control, Communications, Board, Team, Founder Inbox — served on `localhost:4174`. It is
+React + Vite with its own `package.json`, and optional: nothing is gated on it, and when its build
+breaks, the dashboard above still works. See `control-room/README.md`.
+
 ---
 
 ## Part 10 — The knowledge base
 
 `knowledge/` — the studio's accumulated taste, so output is production-grade rather than generic:
-stack defaults, iOS and Android conventions, monetization, analytics, ASO, git workflow.
+stack defaults, iOS and Android conventions, monetization, analytics, ASO, git workflow — plus two
+failure corpora: `failure-corpus.md` (defects in the studio's own gates) and
+`product-failure-corpus.md` (defects in the apps it builds).
 
 ### The failure corpus
 
@@ -654,6 +666,7 @@ wrong, one entry per defect **class** with the *tell* — what a reviewer greps 
 | FC-004 The gate that fails open on a renamed input | *What does this print when the file is missing or renamed?* |
 | FC-005 The check whose own input nobody writes | For every artifact a rule reads, name the step that writes it |
 | FC-006 The proxy trigger that misses its own incident | **Replay the incident in its actual configuration** |
+| FC-007 The specification that confirms itself | Walk a green claim's `src:` chain upward — name the step that compares it to the founder's own words |
 
 **The mechanism that makes it more than a document:** an instance dated *after* its class's rule
 shipped is a **blocking** finding, and it names the rule rather than the incident:
@@ -697,12 +710,12 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
 | `journey-gate.mjs` | Proves a DECLARED P0 user journey completes — not that a process is alive |
-| `test.sh` | 1252 assertions |
-| `mutate.sh` | *(Phase 8)* Breaks the code and reports which mutations the suite failed to notice |
+| `test.sh` | The assertion suite over committed fixtures; it prints its own total |
+| `mutate.sh` | Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
 
 **Zero runtime dependencies.** Node stdlib and POSIX `sh` only — no `package.json`, no
-`node_modules`. That is a security property as much as a portability one.
+`node_modules` at the plugin root (the optional `control-room/` UI has its own). That is a security property as much as a portability one.
 
 ---
 

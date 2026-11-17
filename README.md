@@ -99,7 +99,7 @@ flowchart TD
         RM[Release Manager]
     end
 
-    idea --> EXEC --> MGMT --> ENG --> GROW --> REL --> ship([📦 Shipped app on the store])
+    idea --> EXEC --> MGMT --> ENG --> GROW --> REL --> ship([📦 Submission-ready build — you upload])
 ```
 
 The engineers work **in parallel**. The code reviewer is a real gate — nothing merges until it
@@ -120,7 +120,7 @@ flowchart LR
     C --> D["/app-build loop<br/>parallel devs → code review →<br/>merge → QA → bug fixes → standup"]
     D --> E["ship-readiness<br/>store assets · security · analytics"]
     E --> G2{{"🚀 GATE 2<br/>ship<br/><i>you confirm</i>"}}
-    G2 --> F([📦 store upload])
+    G2 --> F([📦 submission-ready build<br/><i>you upload</i>])
 
     style G1 fill:#fde68a,stroke:#b45309,color:#000
     style G2 fill:#bbf7d0,stroke:#15803d,color:#000
@@ -132,8 +132,10 @@ guessing and building the wrong thing.
 
 ### Board integrity — the loop can't quietly drop work
 
-The board is the team's only memory across agent invocations, and every row is written by an agent
-editing a Markdown table. So two checks run mechanically rather than on trust:
+The board is the team's only memory across agent invocations. It is event-sourced: agents append
+transitions to `docs/31-board-events.jsonl` through `scripts/board.mjs`, which refuses illegal ones,
+and `docs/31-board.md` is a generated view nobody edits. On top of that, four checks run
+mechanically rather than on trust:
 
 - **Board doctor** (`scripts/board-doctor.mjs`) runs before *any* agent is spawned, every round.
   It catches the failure the loop is structurally blind to: a ticket whose dependency is `blocked`
@@ -306,7 +308,7 @@ See [`control-room/README.md`](control-room/README.md) for live-development mode
 
 | | 🤖 One AI agent improvising | 🏗️ **AI App Studio** |
 |---|---|---|
-| **Structure** | One context doing everything; forgets the plan | 18 focused roles with clear handoffs and ownership |
+| **Structure** | One context doing everything; forgets the plan | 30 focused roles with clear handoffs and ownership |
 | **Code review** | None — it ships whatever it wrote | A real review gate; nothing merges until it passes |
 | **Quality bar** | Generic AI defaults | Your house conventions + ~25 iOS specialist auditors |
 | **Parallelism** | Sequential, slow | Engineers build features in parallel |
@@ -330,7 +332,7 @@ This repo is its own Claude Code **marketplace**, so installing is two commands.
 > 💡 **AI App Studio** is the friendly name for the **`app-dev-team`** plugin — that's the ID you
 > install and the command prefix (`/app-*`) you'll use.
 
-The plugin is enabled automatically — its 18 agents, 11 commands, and skills are now available.
+The plugin is enabled automatically — its 30 agents, 27 commands, and 32 skills are now available.
 Run `/plugin` anytime to browse, enable/disable, or remove it. To update later, re-run
 `/plugin marketplace add vmobifystudio/app-dev-team` and reinstall.
 
@@ -389,7 +391,7 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 
 ---
 
-## The roster (18 agents)
+## The roster (30 agents)
 
 | Layer | Agent | Owns |
 |---|---|---|
@@ -411,13 +413,13 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 | | `data-analyst` | Analytics schema, instrumentation check, post-launch KPIs |
 | **Platform & Release** | `devops-engineer` | Git strategy, CI, signing, flavors, secrets hygiene |
 | | `security-reviewer` | Pre-ship MASVS pass, severity-classified findings |
-| | `release-manager` | Versioning, signing, store upload, release notes |
+| | `release-manager` | Versioning, signing, submission-ready build, release notes — never uploads |
 
 Every build agent invokes the `house-conventions` skill before working, plus `agent-isolation`
 (its own git worktree) and `team-protocol` (how it talks to the rest of the team). Roles are just
 Markdown files — add, remove, or retune them.
 
-The 18 above are the roles you'll spawn on a typical build; `agents/` holds 30 in total — the rest
+The 19 above are the roles you'll spawn on a typical build; `agents/` holds 30 in total — the rest
 (`chief-of-staff`, `web-developer`, `test-automation-engineer`, `red-team-agent`,
 `product-manager`, `product-researcher`, `product-validator`, `release-auditor`,
 `privacy-reviewer`, `incident-commander`, `reliability-engineer`) activate conditionally, per
@@ -491,8 +493,10 @@ avatar in the control room, or open the **Team** tab, to see it live.
 | `/app-incident` | Record operational incidents and release-health response. |
 | `/app-manager-failover` | Inspect manager leases and decide HOLD, FAILOVER, or BLOCK. |
 | `/app-manager-harness` | Compare warm and cold manager state contracts against the same scenario. |
-| `/app-ship [version]` | Parallel security + ASO + analytics readiness → release-manager. Confirms before any upload. |
+| `/app-ship [version]` | Parallel security + ASO + analytics readiness → release-manager → independent release audit → a signed, submission-ready build. Nothing is uploaded — the store upload is yours. |
 | `/app-status` | Vision, sprint goal, board doctor verdict, board summary, blockers, latest standup. |
+| `/app-dashboard` | The zero-dependency diagnostic dashboard (`scripts/studio-dashboard.mjs`, `:4173`) — one file, Node stdlib, works when the UI build is broken; `--export` writes a static snapshot. |
+| `/app-control-room` | The full control room (`control-room/`, `:4174`) — five screens; build it once with `npm install && npm run build`. |
 | `/app-portfolio` | **(Many apps)** Ranks every registered project by **attention needed** — where should the next hour go? An unreadable project is reported as unreadable, never omitted. |
 | `/app-learn <app paths>` | Mines a shipped app's conventions into the **living** House KB; flags conflicts for your decision. Its failure pass harvests findings into the failure corpus and flags any class that **recurred after its rule shipped**. |
 | `/app-team` | Lists the roster. |
@@ -513,6 +517,7 @@ Every build agent reads the relevant pack first:
 | `aso.md` | Screenshot automation, Play Data Safety, store-readiness gate |
 | `git-workflow.md` | Branch model, commit conventions, versioning, CI, secrets |
 | `failure-corpus.md` | **The defect classes this codebase actually produces** — the tell a reviewer greps for, the dated instances, and the rule that now catches each one |
+| `product-failure-corpus.md` | **The defect classes the apps produce** — each marked mechanised, partial or reviewer-only, so a known gap never looks covered |
 
 The operating skills also include `context-preflight`, `dependency-policy`, `policy-checker`, and
 `git-pr-strategy`. These are invoked before implementation, dependency/toolchain changes, sensitive
@@ -522,8 +527,9 @@ reviews, and Git/PR lifecycle actions; they complement rather than duplicate `ag
 It's **living** — `/app-learn` folds new learnings from each shipped app back in, and flags
 conflicts (it never silently overwrites a convention).
 
-Every pack but one learns from apps that **shipped**, which means the KB only ever learned from
-success. `failure-corpus.md` is the other half: `code-reviewer` and `verification-engineer` run its
+Every pack but two learns from apps that **shipped**, which means the KB only ever learned from
+success. The two corpora are the other half — `product-failure-corpus.md` for the apps' defects,
+`failure-corpus.md` for the studio's own: `code-reviewer` and `verification-engineer` run its
 tells before improvising their own, because prior information about what goes wrong *here* beats a
 generic checklist of what could go wrong anywhere. Its most valuable output is a class that recurs
 **after its rule shipped** — `team-doctor` fails on that, because it is proof the rule does not work.
@@ -542,14 +548,23 @@ soft-routed — absent ones degrade gracefully to the House KB defaults):
 ```
 CLAUDE.md                    project conventions (seeded from the House KB)
 docs/
-  00-vision · 01-intake · 10-prd · 11-backlog
-  12-flows · 13-design-tokens · 14-components · 15-aso
-  20-architecture · 21-engineering-principles · 22-impl-spec-{ios,android,backend}
-  23-git-strategy · 40-api · 41-monetization
-  50-test-plan · 51-bugs · 52-analytics
-  60-releases · 70-security-review
-  80-audit.md                  (brownfield: gap report vs the House KB)
-  daily/standup-YYYY-MM-DD.md
+  00-founder-intent/           your own words — the team cannot edit them
+  00-vision · 01-intake · 02-team-roster · 03-decision-rights
+  10-prd · 11-backlog · 12-flows · 13-design-tokens · 14-components · 15-aso
+  16-research · 16-intent-validation · 16-pdr/ · 17-founder-inbox · 17-ddr/
+  20-architecture · 21-engineering-principles · 22-impl-spec-{ios,android,web,backend}
+  23-git-strategy · 24-adr/ · 25-assumptions/
+  30-sprint-plan · 31-board-events.jsonl (source) → 31-board.md · 32-board-view.md (generated)
+  33-rounds.jsonl · 34-dashboard.html (exported snapshot)
+  40-api · 41-monetization
+  50-test-plan · 51-bugs · 52-analytics · 53-reviews/ · 54-evidence/ · evidence/
+  60-releases · 70-security-review · 71-verification · 72-release-audit · 72-waivers/
+  73-privacy-review · 73-incidents/ · 74-red-team · 75-reliability-review
+  80-audit · 81-findings      (brownfield: gap report and findings register)
+  90-learnings
+  daily/                       standups and per-agent fragments
+  team/                        messages.jsonl → messages.md, project-profile.json, policy,
+                               schedule, gate results (runtime-result.json, ship-gate-verdict.json)
 ios/   android/   backend/   (per scope)
 ```
 
@@ -568,7 +583,8 @@ the two moments that actually need a human: **what we're building**, and **wheth
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md). Everything here is Markdown — no build step.
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Agents, commands, skills and knowledge packs are Markdown;
+the gates are dependency-free Node and POSIX `sh`. Only the optional `control-room/` UI has a build step.
 
 ## License
 

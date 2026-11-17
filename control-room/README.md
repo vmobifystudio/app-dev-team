@@ -131,7 +131,7 @@ Shared with the plugin, and deliberately living there rather than here:
 ## SQLite
 
 `node:sqlite` is stdlib from **Node 22.5** and would give the control room an indexed projection of
-the log. Node 20 is the floor here and is LTS into 2026, so it is gated and reported in the header:
+the log. Node 20 is the floor here, so it is gated and reported in the header:
 on any Node it degrades to a JSONL scan. It would be a **projection built from the log** either way —
 the append-only log is the source of truth in both worlds, so its absence costs speed and nothing
 else.
