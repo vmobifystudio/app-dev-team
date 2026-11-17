@@ -4218,6 +4218,9 @@ grep -q 'report-check' "$HERE/../commands/app-build.md" \
 # docs/team/*.json manifests feeding the most consequential gate were outside its scope, so the
 # check written for this exact class never looked where it had happened.
 TBS="$TMP/team-bootstrap"; rm -rf "$TBS"; mkdir -p "$TBS/docs" "$TBS/src"
+# A planned project has a PRD. The generated docs/31-board.md is no longer a context source —
+# board.mjs rewrites it on every move, which made preflight STALE after the first claim.
+echo "# PRD" > "$TBS/docs/10-prd.md"
 ( cd "$TBS" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
   && echo x > a.txt && git add -A && git commit -qm base ) >/dev/null 2>&1
 ( cd "$TBS" && node "$BD" add APP-001 --title t --owner ios-developer --by tech-manager ) >/dev/null 2>&1
@@ -4255,6 +4258,18 @@ assert_has "$TMP/out" 'role is not declared' "...and an undeclared role is refus
 ( cd "$TBS" && node "$HERE/team-bootstrap.mjs" --root "$TBS" ) >/dev/null 2>&1
 [ $? = 1 ] && ok "re-running refuses to overwrite — an edited policy is not a bootstrap's to reset" \
            || bad "re-running refuses to overwrite — an edited policy is not a bootstrap's to reset"
+
+# ONE SPAWN PER RUN, EVER. The manifest hashed docs/31-board.md, which board.mjs rewrites on every
+# move, and pinned HEAD, which every wave merge moves; nothing refreshed it. So the first claim made
+# every later preflight STALE, and the first merge made it STALE for good.
+CMV() { node "$HERE/context-manifest.mjs" verify --root "$TBS" --manifest "$TBS/docs/team/context-manifest.json" >/dev/null 2>&1; }
+( cd "$TBS" && node "$BD" move APP-001 claimed --by ios-developer ) >/dev/null 2>&1
+CMV && ok "a board move does not make the context manifest STALE (the generated board is not a source)" \
+    || bad "a board move does not make the context manifest STALE (the generated board is not a source)"
+( cd "$TBS" && git commit -q --allow-empty -m wave ) >/dev/null 2>&1
+( cd "$TBS" && node "$HERE/team-bootstrap.mjs" --root "$TBS" --context-only ) >/dev/null 2>&1
+CMV && ok "after a merge moves HEAD, --context-only re-snapshots it FRESH (what /app-build runs each round)" \
+    || bad "after a merge moves HEAD, --context-only re-snapshots it FRESH (what /app-build runs each round)"
 
 grep -q 'team-bootstrap' "$HERE/../commands/app-plan.md" \
   && ok "...and /app-plan runs it, so the writer FC-005 was missing now exists in the pipeline" \
@@ -8568,6 +8583,7 @@ grep -q "BLOCKED  the register has item" "$TMP/sgr2.txt" \
 # untested while looking tested. That is this file's own recurring defect (a check whose fixture
 # cannot reach it), caught here by the assertion count moving by 1 instead of 4.
 DPF="$TMP/dpf"; rm -rf "$DPF"; mkdir -p "$DPF/docs" "$DPF/src"
+echo "# PRD" > "$DPF/docs/10-prd.md"   # a planned project has a PRD; the generated board is no longer a context source
 ( cd "$DPF" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
   && echo x > a.txt && git add -A && git commit -qm base ) >/dev/null 2>&1
 # APP-001 declares NO files — the ordinary ticket. APP-002 declares one, and is the control: the
