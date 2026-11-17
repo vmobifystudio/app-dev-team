@@ -445,10 +445,14 @@ fi
 # giving QA a structured, one-line verdict the gate can key on instead of reading prose: a plan with
 # no verdict line is CANNOT EVALUATE, same as every other missing-input case in this file, not a
 # silent pass.
+# MARKDOWN EMPHASIS IS STRIPPED FIRST. `QA VERDICT: **HOLD**` and `**QA VERDICT:** HOLD` missed the
+# HOLD pattern, so an earlier cycle's plain `QA VERDICT: GO` in the same plan won and the gate
+# passed a release QA had held. Any HOLD line, however it is emphasised, outranks every GO.
+QAV=$(tr -d '*_' < "$PLAN" 2>/dev/null | grep -iE '^[[:space:]]*QA VERDICT:' || true)
 if [ -f "$PLAN" ]; then
-  if grep -qE '^QA VERDICT:[[:space:]]*HOLD\b' "$PLAN" 2>/dev/null; then
-    block "$(grep -E '^QA VERDICT:[[:space:]]*HOLD\b' "$PLAN" | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
-  elif grep -qE '^QA VERDICT:[[:space:]]*GO\b' "$PLAN" 2>/dev/null; then
+  if printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD\b'; then
+    block "$(printf '%s\n' "$QAV" | grep -iE 'QA VERDICT:[[:space:]]*HOLD\b' | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
+  elif printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*GO\b'; then
     :
   else
     unknown_unless_waived "qa-verdict" \

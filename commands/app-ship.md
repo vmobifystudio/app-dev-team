@@ -114,7 +114,11 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
       **A waiver is a founder decision, so it is recorded as one.** After the user approves it here,
       append the matching line to `docs/00-founder-intent/decisions.md`:
-      `<date> FOUNDER DECISION: waiver — <artifact>, <reason>. Approved by <who>.`
+      `<date> FOUNDER DECISION: waiver — <everything after "WAIVED:" on the release line, copied
+      verbatim> — Approved by <who>.`
+      The copy has to be verbatim: `trace.mjs` clears a waiver only when the decision line contains
+      the text that follows `WAIVED:` (its first 80 characters). A paraphrase — `<artifact>,
+      <reason>` — names the same waiver to a human and to the gate names nothing, so it stays red.
       `scripts/trace.mjs --only gates` detects every `WAIVED:` line and stays red until that record
       exists — which is the point: the release record says a gate was skipped, and only the founder
       record says a human chose it.
@@ -210,7 +214,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      recorded differently:
      - **No journey declared** → this is a *planning* gap, not a tooling one. `ux-architect`'s
        screen-and-state inventory already names the ids. Declare at least one P0 journey (see
-       `docs/team/journeys/README.md`) and re-run — do not waive it, because the waiver would be
+       `${CLAUDE_PLUGIN_ROOT}/docs/team/journeys/README.md`; `qa-engineer` declares them) and re-run — do not waive it, because the waiver would be
        recording that nobody ever stated what this product must do.
      - **No driver available** → follow step 1a's produce-or-waive rule: make it evaluable, or
        record `WAIVED: journey gate — <who waived it> — <reason>` in `docs/60-releases.md` and

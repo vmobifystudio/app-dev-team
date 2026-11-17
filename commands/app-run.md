@@ -134,7 +134,10 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      deletion · legal disclosure · visual direction · paid infrastructure · **any waiver of a failed
      or unavailable gate** — and no founder decision covers it. Stop the loop and ask. The exit is
      one appended line in `docs/00-founder-intent/decisions.md`; the exit is never an agent deciding
-     the trigger was fine, and `--yolo` does not clear one.
+     the trigger was fine, and `--yolo` does not clear one. Exit 2 is CANNOT EVALUATE — almost
+     always a missing `docs/00-founder-intent/` (`/app-init` step 0, `/app-onboard` step 5b). It is
+     not a pass: create the record before the next round rather than running rounds blind to the
+     gates it exists to fire.
    - **Escalate to the user only** for: a blocker the team can't resolve, the 2-cycle review cap
      being hit, the budget ceiling, a fired founder gate, or a scope/architecture conflict. Surface
      verbatim with a proposed answer.

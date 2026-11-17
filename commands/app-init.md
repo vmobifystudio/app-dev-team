@@ -49,6 +49,12 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    Skip either if the roster has it `off`: on `utility` both are, `cpo` merged into `ceo` above and
    `cto` into `tech-lead` below.
 
+3a. **When both ran, re-spawn `ceo` to arbitrate.** It reads `docs/10-prd.md` and
+   `docs/20-architecture.md`, resolves any conflict between them (a P0 the architecture prices at
+   months, a constraint the PRD ignores), and appends the resolution to `docs/00-vision.md` as an
+   addendum — or writes `no conflicts` there. `ceo.md` has always said it arbitrates after both
+   report back; no step ever brought it back, so conflicts reached Gate 1 unarbitrated.
+
 4. **Spawn the `active` roles among `ux-architect`, `product-designer`, `tech-lead`, and `devops-engineer` in parallel**
    in a single message:
    - `ux-architect` reads PRD, writes docs/12-flows.md — flows and the screen-and-state inventory.

@@ -726,6 +726,7 @@ const CANONICAL_PATHS = [
   'docs/team/ship-gate-verdict.json',        // ship-gate.sh --record's last verdict
   'docs/team/memory.jsonl',                  // memory-curator.mjs's proposed/reviewed ledger
   'docs/team/journeys/README.md',            // the journey-declaration contract journey-gate reads
+  'docs/team/journeys/<journey-id>.json',    // one declared P0 journey — qa-engineer writes, journey-gate reads
   // ADDED 2026-08-06 when the wiring pass discovered these were read by CODE but unknown to this
   // list, so any command that named them was reported as a variant spelling. The check was right —
   // one spelling per artifact — and its list was simply behind the gates that had been added since.

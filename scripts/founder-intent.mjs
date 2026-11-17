@@ -50,6 +50,14 @@ const add = (code, where, detail, action) => findings.push({ code, where, detail
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
+// APPEND-ONLY FILES are recorded with their byte length, and verified by their recorded PREFIX.
+// decisions.md is where every later founder decision is appended — /app-init, /app-run and
+// /app-ship all say so — but it was hashed like the brief, so the first appended decision made the
+// whole record TAMPERED and `--write` then refused forever. An append keeps the prefix; an edit
+// anywhere in the recorded part still breaks it.
+const APPEND_ONLY = new Set(['decisions.md']);
+const lengths = new Map();  // file -> recorded byte length (append-only files only)
+
 /** Every file under the record, relative to it, sorted, POSIX-spelled. `MANIFEST.sha256` excluded. */
 function recordedFiles(dir) {
   const out = [];
@@ -73,14 +81,15 @@ function parseManifest(text) {
     const d = line.match(/^#\s*body-sha256:\s*([0-9a-f]{64})\s*$/);
     if (d) { digest = d[1]; continue; }
     if (line.startsWith('#') || !line.trim()) continue;
-    const m = line.match(/^([0-9a-f]{64})\s\s(.+)$/);
-    if (m) entries.set(m[2].trim(), m[1]);
+    const m = line.match(/^([0-9a-f]{64})\s\s(.+?)(?:\s\s(\d+))?$/);
+    if (m) { entries.set(m[2].trim(), m[1]); if (m[3] !== undefined) lengths.set(m[2].trim(), Number(m[3])); }
   }
   return { entries, digest };
 }
 
 const bodyLines = (entries) =>
-  [...entries.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([p, h]) => `${h}  ${p}`);
+  [...entries.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([p, h]) => (lengths.has(p) ? `${h}  ${p}  ${lengths.get(p)}` : `${h}  ${p}`));
 
 // --- run -----------------------------------------------------------------------------------------
 
@@ -96,16 +105,39 @@ if (present.length === 0) {
   report(2, `CANNOT EVALUATE — ${DIR}/ exists and is empty. A record with nothing in it cannot support a PRD; product-validator returns INTENT: CANNOT EVALUATE against it.`);
 }
 
-const hashes = new Map(present.map((f) => [f, sha256(readFileSync(join(dir, f)))]));
+const contents = new Map(present.map((f) => [f, readFileSync(join(dir, f))]));
+const hashes = new Map(present.map((f) => [f, sha256(contents.get(f))]));
 const prior = existsSync(manifestPath) ? parseManifest(readFileSync(manifestPath, 'utf8')) : null;
+
+/** Does the file on disk still hold what was recorded? For append-only files: the recorded prefix. */
+const holds = (file, recorded) => {
+  if (hashes.get(file) === recorded) return true;
+  if (!APPEND_ONLY.has(file)) return false;
+  const buf = contents.get(file);
+  if (lengths.has(file)) {
+    const len = lengths.get(file);
+    return buf.length >= len && sha256(buf.subarray(0, len)) === recorded;
+  }
+  // A manifest written before lengths were recorded: the recorded content ended at SOME line
+  // boundary of today's file, if this is an append. Check each one rather than strand the project.
+  for (let i = buf.indexOf(10); i !== -1; i = buf.indexOf(10, i + 1)) {
+    if (sha256(buf.subarray(0, i + 1)) === recorded) return true;
+  }
+  return false;
+};
+const record = (entries, file) => {
+  entries.set(file, hashes.get(file));
+  if (APPEND_ONLY.has(file)) lengths.set(file, contents.get(file).length);
+};
 
 if (WRITE) {
   const entries = new Map(prior ? prior.entries : []);
   const changed = [];
   const added = [];
-  for (const [file, hash] of hashes) {
-    if (!entries.has(file)) { entries.set(file, hash); added.push(file); }
-    else if (entries.get(file) !== hash) changed.push(file);
+  for (const file of hashes.keys()) {
+    if (!entries.has(file)) { record(entries, file); added.push(file); }
+    else if (!holds(file, entries.get(file))) changed.push(file);
+    else record(entries, file);  // unchanged, or an append to an append-only file
   }
   // A DELETION IS A CHANGE. This loop walked `hashes` — the files still ON DISK — so a recorded
   // file that had been DELETED was neither in `changed` nor in `added`: `--write` exited 0 saying
@@ -143,6 +175,7 @@ if (!prior) {
 }
 
 const expectedDigest = sha256(bodyLines(prior.entries).join('\n'));
+// (verify path) the digest above is over the lines as RECORDED, lengths included.
 if (prior.digest && prior.digest !== expectedDigest) {
   add('intent_manifest_tampered', `${DIR}/${MANIFEST}`,
     'The manifest\'s own body digest does not match its lines. A line was edited or removed — which is how a recorded file gets un-recorded without its hash ever being seen to disagree.',
@@ -154,7 +187,7 @@ for (const [file, hash] of prior.entries) {
     add('intent_record_removed', `${DIR}/${file}`,
       'Recorded in the manifest and no longer on disk. The founder record is append-only; a removal is a deletion of the only external oracle this team has.',
       'Restore the file from git history.');
-  } else if (hashes.get(file) !== hash) {
+  } else if (!holds(file, hash)) {
     add('intent_record_modified', `${DIR}/${file}`,
       `Content hash disagrees with the manifest (recorded ${hash.slice(0, 12)}…, found ${hashes.get(file).slice(0, 12)}…). The founder's words were edited after they were recorded, so every document derived from them is now derived from something else.`,
       'Restore the recorded content, and record the founder\'s new words as a new dated entry in decisions.md instead.');

@@ -69,6 +69,17 @@ Dimension (optional, default = all): $ARGUMENTS
    never scheduled, deferred, or even contradicted** — four review rounds missed it, because
    reviewers check what was done, not what was left out.
 
+   **Record every finding in the machine register too** — `ship-gate.sh` reads
+   `docs/90-register.jsonl`, never this Markdown table, so a finding written only here was invisible
+   to the one gate that blocks a release on an open S1/S2:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" add <ID> --kind finding --severity S1..S4 \
+     --title "<one-line description>" --by <the role that found it>
+   ```
+
+   When step 3 files the ticket, `register.mjs link <ID> --ticket AUDIT-NNN --by tech-manager`.
+
 3. **Build the remediation backlog.** Spawn `tech-manager` to turn findings into `AUDIT-NNN` tickets
    on `docs/31-board.md`, prioritized by severity, each carrying its violated-rule + Safe/Risky tag.
    Risky tickets also get a short written plan and are marked `needs-approval`.

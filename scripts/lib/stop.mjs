@@ -27,7 +27,19 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+
+// The main tree's root, seen from anywhere inside it — including a linked worktree or a subdirectory,
+// where `root` alone missed a .studio-stop written at the repository root and the kill switch did
+// nothing for the agent that was actually running.
+function mainRoot(from) {
+  try {
+    const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+      { cwd: from, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return common ? dirname(common) : '';
+  } catch { return ''; }
+}
 
 const STOP_FILE = '.studio-stop';
 
@@ -39,8 +51,9 @@ export function readStop(root = process.cwd()) {
   if (process.env.APP_TEAM_STOP) {
     return { stopped: true, source: 'APP_TEAM_STOP', reason: String(process.env.APP_TEAM_STOP) };
   }
-  const path = join(root, STOP_FILE);
-  if (!existsSync(path)) return { stopped: false, source: '', reason: '' };
+  const main = mainRoot(root);
+  const path = [join(root, STOP_FILE), main && join(main, STOP_FILE)].filter(Boolean).find((p) => existsSync(p));
+  if (!path) return { stopped: false, source: '', reason: '' };
   let reason;
   try {
     reason = readFileSync(path, 'utf8').trim();

@@ -115,6 +115,21 @@ SECURITY: FAIL              (≥1 critical or high)
 
 `/app-ship` reads this line. `FAIL` stops the release.
 
+# Privacy mode — utility tier only
+
+When `docs/02-team-roster.md` has `privacy-reviewer` `off` (utility tier), its gate is **not**
+`N/A`: you run it. Read `${CLAUDE_PLUGIN_ROOT}/agents/privacy-reviewer.md` and work its checklist
+(data inventory, consent, retention, third-party sharing, regional obligation) as a second pass —
+a separate evidence set, not a few extra lines in the security findings. Write
+`docs/73-privacy-review.md` in its format and return its line **as well as** yours:
+
+```
+PRIVACY: PASS | PASS WITH NOTES | FAIL
+```
+
+`/app-ship` step 2 waits for both lines. Skipping this leaves the privacy gate with no verdict on
+every utility release — one reviewer, never one checklist (`role-activation` §Tier deltas).
+
 # Waivers — `docs/72-waivers/`
 
 Sometimes a finding is accepted rather than fixed: a medium risk the product accepts for one

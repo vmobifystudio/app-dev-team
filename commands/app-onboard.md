@@ -72,6 +72,20 @@ something to work against.
    No command created this file. Observed live: an agent reported raising a question on the channel
    when the channel had never existed, and nothing contradicted it.
 
+5b. **Record the founder's words**, exactly as `/app-init` step 0 does: create
+   `docs/00-founder-intent/` (copy `${CLAUDE_PLUGIN_ROOT}/docs/00-founder-intent/README.md` into
+   it), write the user's stated goal for this app **verbatim and dated** (if they gave none, write
+   that: `<date> — onboarded with no stated goal; the as-built app is the baseline`), add an empty
+   `decisions.md`, and record it:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root . --write
+   ```
+
+   Brownfield used to skip this. Then `founder-intent.mjs` and `trace.mjs --only gates` exited `2`
+   on every round of `/app-run` — Gate 1 was always CANNOT EVALUATE, and the per-round founder-gate
+   check could never say whether a pricing change or a waiver had been approved.
+
 6. **Summary.** Print the docs produced, the detected stack, the roster headline (tier, product
    type, which roles are off and why), and the suggested next step: `/app-audit` to grade the app
    against the House KB and build a remediation plan.

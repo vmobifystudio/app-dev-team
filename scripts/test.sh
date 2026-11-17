@@ -1116,6 +1116,13 @@ assert_exit 1 "an explicit QA VERDICT: HOLD blocks the release, not just a note"
 assert_has "$TMP/out" "QA VERDICT: HOLD" "...and the gate quotes the verdict"
 assert_has "$TMP/out" "before overriding" "...and points at the exit criteria to read first"
 
+# An EMPHASISED hold after an earlier cycle's plain GO. `**HOLD**` missed the HOLD pattern, the GO
+# line matched, and the gate passed a release QA had held.
+mkship qaholdmd ''
+printf '# Test plan\n\n## Cycle 1\nQA VERDICT: GO\n\n## Cycle 2\n**QA VERDICT:** **HOLD** — journey broken after the last merge.\n' \
+  > "$TMP/qaholdmd/docs/50-test-plan.md"
+assert_exit 1 "a markdown-emphasised HOLD outranks an earlier plain GO in the same plan" sh "$HERE/ship-gate.sh" "$TMP/qaholdmd"
+
 # ...and the mirror: a structured GO clears even when hold-shaped words appear elsewhere in the
 # file, so the gate is reading the one authoritative line, not re-running the old loose grep.
 mkship qago ''
@@ -2929,6 +2936,11 @@ assert_has "$TMP/sg1.txt" "SERIALIZED" "...and labels it SERIALIZED rather than 
 [ $? = 1 ] && ok "refuses when only SOME of the batch is isolated" \
            || bad "refuses when only SOME of the batch is isolated"
 assert_has "$TMP/sg3.txt" "APP-003" "...naming the ticket that is missing one, not just the count"
+# The same owner twice passed each name's isolation check and printed "GO: 2 writing agents, each
+# isolated" — two writers in ONE worktree, the DR4-027 collision with a green light on it.
+( cd "$WT" && sh "$SG" APP-001 APP-001 ) >"$TMP/sg5.txt" 2>&1
+[ $? = 1 ] && ok "refuses the SAME owner named twice (two writers, one worktree)" \
+           || bad "refuses the SAME owner named twice (two writers, one worktree)" "$(cat "$TMP/sg5.txt")"
 
 NOGIT="$TMP/nogit"; mkdir -p "$NOGIT"
 ( cd "$NOGIT" && sh "$SG" APP-001 APP-002 ) >"$TMP/sg4.txt" 2>&1
@@ -5307,6 +5319,18 @@ assert_exit 1 "--write REFUSES to re-record a changed file" node "$FI" --project
 node "$FI" --project-root "$TMP/fi" --write --json > "$TMP/fiw.json" 2>/dev/null
 assert_finding "$TMP/fiw.json" intent_write_refused "...and says so rather than laundering the record"
 
+# decisions.md IS APPEND-ONLY, NOT IMMUTABLE. Every founder decision after Gate 1 is appended to it —
+# /app-run, /app-ship and the trace gates all say so — but it was hashed like the brief, so the first
+# appended decision made the record TAMPERED and --write refused forever after.
+rm -rf "$TMP/fi5"; cp -R "$FIX/trace-clean" "$TMP/fi5"
+node "$FI" --project-root "$TMP/fi5" --write >/dev/null 2>&1
+echo "2026-11-17 FOUNDER DECISION: waiver — a test waiver. Approved by founder." >> "$TMP/fi5/docs/00-founder-intent/decisions.md"
+assert_exit 0 "an APPENDED decision leaves the founder record INTACT" node "$FI" --project-root "$TMP/fi5"
+assert_exit 0 "...and --write records the append" node "$FI" --project-root "$TMP/fi5" --write
+printf '0a\nREWRITTEN\n.\nw\nq\n' | ed -s "$TMP/fi5/docs/00-founder-intent/decisions.md" 2>/dev/null \
+  || { printf 'REWRITTEN\n' | cat - "$TMP/fi5/docs/00-founder-intent/decisions.md" > "$TMP/fi5.tmp" && mv "$TMP/fi5.tmp" "$TMP/fi5/docs/00-founder-intent/decisions.md"; }
+assert_exit 1 "...but an edit INSIDE the recorded part of decisions.md is still TAMPERED" node "$FI" --project-root "$TMP/fi5"
+
 # The other two directions: a source that arrived and was never recorded is indistinguishable from
 # one the team invented; a recorded source that vanished is a deleted oracle.
 rm -rf "$TMP/fi2"
@@ -5973,6 +5997,16 @@ assert_has "$TMP/out" "cleared by an operator" "...and says an agent does not cl
 
 assert_exit 0 "...and clearing the file resumes" \
   sh -c 'cd "$1" && rm -f .studio-stop && node "$2/round-journal.mjs" check --journal r.jsonl' sh "$STOPD" "$HERE"
+
+# THE STOP WAS INVISIBLE FROM A WORKTREE OR SUBDIRECTORY. Both checks looked only at the current
+# top level / cwd, so an orchestrator standing in .agent-wt/<x> or docs/ sailed past a stop set at
+# the repository root — the one place the operator is told to write it.
+( cd "$STOPD" && git commit -q --allow-empty -m i && git worktree add -q .agent-wt/K-001 && mkdir -p sub ) >/dev/null 2>&1
+assert_exit 1 "spawn-gate run from INSIDE a linked worktree still sees the root's stop file" \
+  sh -c 'cd "$1" && echo halt > .studio-stop && cd .agent-wt/K-001 && sh "$2/spawn-gate.sh" K-001' sh "$STOPD" "$HERE"
+assert_exit 1 "round-journal check run from a SUBDIRECTORY still sees the root's stop file" \
+  sh -c 'cd "$1" && echo halt > .studio-stop && cd sub && node "$2/round-journal.mjs" check --journal ../r.jsonl' sh "$STOPD" "$HERE"
+rm -f "$STOPD/.studio-stop"
 
 # Per-agent ceilings. The studio total can read healthy while one role burns the whole budget on
 # one ticket. PROVEN BY: removing the perAgent loop from cmdCheck — totals stayed green at 25

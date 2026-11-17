@@ -133,7 +133,9 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 
      `import-bugs` folds `docs/51-bugs.md` into `docs/90-register.jsonl` through the parser
      `ship-gate.sh` already uses, so QA keeps writing the Markdown it always wrote and nothing is
-     lost by nobody reading it. `check` exits 1 while anything still owes an answer. Here that is a **report** — open bugs
+     lost by nobody reading it. Exit `2` from `import-bugs` before QA's first pass just means
+     `docs/51-bugs.md` does not exist yet — expected, not a failure; say so and continue. `check`
+     exits 1 while anything still owes an answer. Here that is a **report** — open bugs
      mid-sprint are what a sprint is for — and at ship it is a **refusal**. For every open `S1`/`S2`
      with no ticket, cut a `BUG-NNN-fix` row and link it:
 
@@ -448,7 +450,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      that ticket before the merge gate**, passing the branch, `$BASE`, and the named constants and
      rules verbatim. Its `VERIFICATION: PASS` / `VERIFICATION: FAIL` gates the merge **alongside**
      the review verdict: `FAIL` blocks the merge exactly as a `REQUEST CHANGES` would, and is
-     re-worked the same way: write `docs/53-reviews/APP-NNN-verification-N.md` opening with
+     re-worked the same way: write `docs/53-reviews/APP-NNN-cycle-N.md` opening with
      `REQUEST CHANGES — VERIFICATION: FAIL` and the findings, record it with
      `board.mjs move APP-NNN changes --by tech-manager --verdict <that file>`, and re-spawn the
      developer. Cycles are derived from `changes` events — nobody edits a column — so this counts
@@ -636,7 +638,8 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      - **No journey declared** → **rows may not move `qa → done` this wave.** This is a planning
        gap, not a tooling one: `ux-architect`'s screen-and-state inventory already names the ids, so
        declaring one is cheap, and its absence means nobody has written down what this product must
-       do. Declare it and re-run. Letting the wave advance here is how a sprint reaches `/app-ship`
+       do. Spawn `qa-engineer` to declare it (`docs/team/journeys/<journey-id>.json`, see its Journey declarations
+       deliverable) and re-run. Letting the wave advance here is how a sprint reaches `/app-ship`
        with no P0 journey ever stated — and `/app-ship` will then ask the same question with more at
        stake (codex, PR #21).
      - **No driver available** → rows may advance on QA's own verdict, but **nothing may record this

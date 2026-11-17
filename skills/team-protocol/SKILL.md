@@ -309,6 +309,7 @@ Canonical paths, used verbatim by the loop — no other spelling is recognised:
 | ship-gate.sh's last recorded verdict | `docs/team/ship-gate-verdict.json` |
 | memory-curator.mjs's proposed/reviewed ledger | `docs/team/memory.jsonl` |
 | The journey-declaration contract (journey-gate) | `docs/team/journeys/README.md` |
+| A declared P0 journey, one file per journey (qa-engineer writes, journey-gate reads) | `docs/team/journeys/<journey-id>.json` |
 | journey-gate's recorded verdict, read by the readiness reducer | `docs/team/journey-result.json` |
 | runtime-gate's recorded verdict, read by the readiness reducer | `docs/team/runtime-result.json` |
 | The project's platform, pinned toolchain and test scopes (F6) | `docs/team/project-profile.json` |

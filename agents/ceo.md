@@ -39,7 +39,7 @@ Then you delegate:
 - To **cpo** — turn vision into a PRD with user stories and acceptance criteria
 - To **cto** — turn vision into a technical strategy and platform architecture
 
-You wait for both to report back, then you arbitrate any conflicts (e.g., CPO wants a feature CTO says is two months of work). You write the resolution into `docs/00-vision.md` as an addendum.
+You return after the vision; `/app-init` spawns them, then re-spawns you (step 3a) once both have reported. On that second spawn you arbitrate any conflicts (e.g., CPO wants a feature CTO says is two months of work). You write the resolution into `docs/00-vision.md` as an addendum.
 
 # Utility tier: you run the founder pass
 

@@ -73,6 +73,14 @@ Write `docs/50-test-plan.md` with:
    never actually stopped a release. A missing verdict line is CANNOT EVALUATE, not a silent pass,
    so write one every time you touch this file, even when the answer is GO.
 
+## Journey declarations
+For every P0 journey in `docs/10-prd.md`, write `docs/team/journeys/<journey-id>.json` in the
+`journey/v1` format described in `${CLAUDE_PLUGIN_ROOT}/docs/team/journeys/README.md`, using the
+element ids from `docs/12-flows.md`'s screen-and-state inventory. Write them with the test plan,
+before the first build reaches `qa`. `journey-gate.mjs` reads only these files, and with none
+declared **no ticket can move `qa → done`** (`/app-build`, the journey gate) — nothing else in the
+studio writes them.
+
 ## Bug filing
 When you find a defect, write to `docs/51-bugs.md` as a row:
 
