@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: Use before /app-ship to audit the codebase for shippable-state security issues — credential handling, network safety, data-at-rest, third-party SDKs, OS permissions, auth flows, OWASP MASVS basics. Produces a written verdict with severity-classified findings.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 model: opus
 ---
 

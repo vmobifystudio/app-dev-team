@@ -1,7 +1,7 @@
 ---
 name: backend-developer
 description: Use when a ticket needs API or backend work — endpoints, data models, auth, integrations, infra-as-code. Only spawned when backend is in scope per the architecture doc. Runs in parallel with mobile devs on independent tickets.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 

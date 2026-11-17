@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
 
 const die = (code, message) => { process.stderr.write(`approval-check: ${message}\n`); process.exit(code); };
-const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['log', 'policy', 'head', 'base']), die });
+const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['log', 'policy', 'head', 'base', 'ticket']), die });
 const logPath = resolve(String(flags.log || 'docs/31-board-events.jsonl'));
 const policyPath = resolve(String(flags.policy || '.studio-policy.json'));
 if (!existsSync(policyPath)) { console.log('APPROVAL CHECK: NOT REQUIRED — no .studio-policy.json'); process.exit(0); }
@@ -15,7 +15,10 @@ let policy; try { policy = JSON.parse(readFileSync(policyPath, 'utf8')); } catch
 if (!policy.requireApprovalBinding) { console.log('APPROVAL CHECK: NOT REQUIRED — strict binding is disabled'); process.exit(0); }
 if (!existsSync(logPath)) die(2, `no event log at ${logPath}`);
 let events; try { events = readFileSync(logPath, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line)); } catch (e) { die(2, `cannot parse event log: ${e.message}`); }
-const approvals = events.filter((event) => event.event === 'approved');
+// --ticket scopes the check to ONE ticket. The merge gate runs this per ticket with --head at that
+// ticket's branch tip; checking every approval in the log against one feature branch made each
+// OTHER ticket's (correct) approval read as "not an ancestor" and blocked every merge.
+const approvals = events.filter((event) => event.event === 'approved' && (!flags.ticket || event.ticket === flags.ticket));
 if (!approvals.length) { console.log('APPROVAL CHECK: CLEAR — no approvals require binding'); process.exit(0); }
 const issues = [];
 function git(args) { try { return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; } }

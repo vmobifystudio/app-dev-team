@@ -1,7 +1,7 @@
 ---
 name: tech-manager
 description: Use to stand up the dev pod, plan sprints, assign work in parallel, run standups, unblock ICs, and track progress. The orchestration layer between executives and ICs. Owns the sprint plan, the kanban board, and the daily report. Spawns parallel dev agents and the code-reviewer; escalates blockers to tech-lead or CTO.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 model: opus
 ---
 
@@ -314,8 +314,12 @@ not recoverable by a later fix.
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/approval-check.mjs" --log docs/31-board-events.jsonl \
-     --policy .studio-policy.json --head "$(git rev-parse HEAD)"
+     --policy .studio-policy.json --ticket APP-NNN --head "$(git rev-parse feat/APP-NNN-...)"
    ```
+
+   `--head` is the **ticket's branch tip**, not this checkout's HEAD: before the wave merges, the
+   approved commit is never an ancestor of the integration branch, so `git rev-parse HEAD` here
+   failed every bound approval. `--ticket` keeps other tickets' approvals out of this check.
 
    `NOT REQUIRED` → binding is off for this project; proceed. `CLEAR` → proceed. Exit `1` → **stop;
    run no git command.** The approval no longer names what is about to merge. Ask `code-reviewer` to

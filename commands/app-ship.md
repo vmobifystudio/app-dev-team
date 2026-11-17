@@ -26,6 +26,13 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    the subject of the whole release. A build from a dirty tree records as such and reads STALE
    forever after; that is not a bug to work around.
 
+   **On a first pass there is no release artifact yet** — `release-manager` builds it in step 3 — and
+   the runtime and journey results are produced in step 1b. So skip `record` when no release build
+   exists for this HEAD, and expect `orchestrator ship` below to exit `2` naming **only** the
+   `artifact`, `runtime` and `journey` gates. That is the expected shape here, not a pass: step 3b
+   re-runs this check after the build and it must be `0` there. Anything else it names (board doctor,
+   `ship-gate.sh`) is resolved in step 1a now.
+
    Then:
 
    ```bash
@@ -159,7 +166,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    closes, and no other precondition in this command would notice:
 
    ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root .
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
    ```
 
    - Exit `0` → the app builds and launches. Quote the evidence paths from
@@ -271,6 +278,23 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    If any returns a blocker, stop and surface the combined list; do not proceed to release.
 
 3. **Spawn `release-manager`** as a Task with the version (if given) and the precondition checklist. It either returns `SHIP CANDIDATE: vX.Y.Z` or `BLOCKED: ...`.
+
+3b. **Bind the candidate release-manager just built, then re-check it.** Its version bump moved
+   HEAD, so every gate result from step 1b now describes the previous commit and reads STALE. On
+   the candidate's HEAD:
+
+   ```bash
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
+     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh, as in 1b
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
+     --artifact <the .ipa/.aab path release-manager named> --platform ios|android --variant release \
+     --by release-manager
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" ship
+   ```
+
+   This `orchestrator ship` must exit `0` before step 3a. Exit `1`/`2` here is handled exactly as in
+   step 1, except that nothing is "expected" any more: the artifact exists and every gate has run.
 
 3a. **Spawn `release-auditor`** — *you* spawn it, **never `release-manager`**, and only after step 3
    has assembled the candidate. It reads the artifacts, not the summaries: `docs/60-releases.md`,

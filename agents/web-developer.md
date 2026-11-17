@@ -1,7 +1,7 @@
 ---
 name: web-developer
 description: Use to implement web features from a ticket — TypeScript, a React/Next-shaped stack, and the browser platform. Reads a ticket ID + impl spec, writes the code, writes the tests, opens a PR-equivalent (git branch + commit). Multiple instances run in parallel on independent tickets. This is the IC that makes product type `web-app` staffed.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 

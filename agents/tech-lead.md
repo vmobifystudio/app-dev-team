@@ -1,7 +1,7 @@
 ---
 name: tech-lead
 description: Use to translate architecture into per-platform implementation specs, to design module boundaries, to set patterns the dev pod will reuse, and to make hands-on technical calls during execution. Hands-on senior engineer. Pairs with the dev pod, unblocks them on design questions, and owns the impl specs.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 model: opus
 ---
 

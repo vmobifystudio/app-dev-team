@@ -1,7 +1,7 @@
 ---
 name: ceo
 description: Use as the top-level orchestrator at the start of any new app project, or when the user wants strategic direction, scope decisions, prioritization tradeoffs, or a go/no-go call on a feature. Owns vision, success metrics, and final scope. Delegates product depth to CPO and engineering depth to CTO.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 model: opus
 ---
 

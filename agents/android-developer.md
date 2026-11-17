@@ -1,7 +1,7 @@
 ---
 name: android-developer
 description: Use to implement Android features in Kotlin/Jetpack Compose from a ticket. Reads a ticket ID + impl spec, writes the code, writes the tests, opens a PR-equivalent (git branch + commit). Multiple instances run in parallel on independent tickets.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 

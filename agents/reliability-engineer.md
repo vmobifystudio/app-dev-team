@@ -1,7 +1,7 @@
 ---
 name: reliability-engineer
 description: Use on flagship work for the reliability review dimension — offline behaviour, retries, idempotency, sync conflict resolution, state restoration, and recovery from interruption. Conditional role. Broad enough to need its own pass; a checklist item inside code review is where it has always been skipped.
-tools: Read, Glob, Grep, Bash
+tools: Read, Write, Glob, Grep, Bash, Skill
 model: opus
 ---
 

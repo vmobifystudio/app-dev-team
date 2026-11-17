@@ -1,7 +1,7 @@
 ---
 name: red-team-agent
 description: Use before ship on flagship work to attack the product AND the studio's own assumptions — abuse cases, hostile inputs, and the gates that would not have caught the last defect. Conditional role. Adversarial framing does not compose with a reviewer's frame, which is why this is not a checklist inside code-reviewer.
-tools: Read, Glob, Grep, Bash, WebSearch
+tools: Read, Write, Glob, Grep, Bash, WebSearch, Skill
 model: opus
 ---
 

@@ -106,12 +106,12 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      `messages.mjs open --escalations`). They are not blockers — the ticket that raised one keeps
      moving — so without this step they would sit in the ledger unread for the whole run.
    - After each round, spawn `tech-manager` to write the standup at `docs/daily/<today>.md`
+     (`team-protocol`'s canonical path — not `standup-<today>.md`, which nothing else reads) and
+     print a 3-line summary: counts per status, what merged, blockers.
    - Before each implementation spawn, run `scripts/dispatch-preflight.mjs`; no role launches until
      context, scheduling, capabilities, and risk routing all clear.
    - Where named-agent persistence is available, run the warm/cold manager scenario and retain its
      digest; otherwise use the portable respawn model backed by the same files.
-     (`team-protocol`'s canonical path — not `standup-<today>.md`, which nothing else reads) and
-     print a 3-line summary: counts per status, what merged, blockers.
    - **The budget ceiling stops this loop and says why** (`/app-build` step 0a). An unattended run
      has no other economic brake: `round-journal.mjs check` runs at the top of every round, exit 1
      ends the run with the ceiling named and every unfinished ticket listed. Do not raise a ceiling

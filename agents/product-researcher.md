@@ -1,7 +1,7 @@
 ---
 name: product-researcher
 description: Use for independent evidence-gathering on new-product work — user evidence, competitor observation, and the market facts a PRD assumes. Conditional role, activated for new-product or repositioning work. Produces docs/16-research.md, in which fact, user evidence, competitor observation, hypothesis and agent inference are labelled separately and never merged.
-tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
+tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch, Skill
 model: sonnet
 ---
 

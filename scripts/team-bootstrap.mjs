@@ -44,7 +44,13 @@
  * Refuses to overwrite by default: a project's edited policy is not something a bootstrap gets to
  * reset. `--force` for a deliberate reset.
  *
- * Usage:  team-bootstrap.mjs [--root <dir>] [--force]
+ * Usage:  team-bootstrap.mjs [--root <dir>] [--force] [--context-only]
+ *
+ * --context-only re-snapshots docs/team/context-manifest.json and touches nothing else. /app-build
+ * runs it at the top of every round: the manifest pins git HEAD, and every wave merge moves HEAD, so
+ * a manifest taken once at /app-plan went STALE at the first merge and refused every spawn after it.
+ * The snapshot is "the context this round's agents were given" — a planning doc that changes
+ * mid-round still reads STALE, which is the property the gate exists for.
  * Exit:   0 written, or already present
  *         1 refused — files exist and --force was not given
  *         2 cannot evaluate — the root does not exist
@@ -152,7 +158,7 @@ const MANIFESTS = {
 
 mkdirSync(TEAM, { recursive: true });
 
-const existing = Object.keys(MANIFESTS).filter((f) => existsSync(join(TEAM, f)));
+const existing = flags['context-only'] ? [] : Object.keys(MANIFESTS).filter((f) => existsSync(join(TEAM, f)));
 if (existing.length && !flags.force) {
   die(1, `these already exist in docs/team/: ${existing.join(', ')}\n` +
          '  Refusing to overwrite — an edited policy is not something a bootstrap resets.\n' +
@@ -160,7 +166,7 @@ if (existing.length && !flags.force) {
 }
 
 const written = [];
-for (const [name, body] of Object.entries(MANIFESTS)) {
+for (const [name, body] of flags['context-only'] ? [] : Object.entries(MANIFESTS)) {
   writeFileSync(join(TEAM, name), `${JSON.stringify(body, null, 2)}\n`);
   written.push(name);
 }
@@ -170,7 +176,7 @@ for (const [name, body] of Object.entries(MANIFESTS)) {
 // freshness claim the gate exists to check.
 const ctx = join(TEAM, 'context-manifest.json');
 let ctxNote;
-if (existsSync(ctx) && !flags.force) {
+if (existsSync(ctx) && !flags.force && !flags['context-only']) {
   ctxNote = 'context-manifest.json already present — left alone';
 } else {
   // The sources are the project's own planning documents — what an agent's context actually IS.
@@ -179,7 +185,10 @@ if (existsSync(ctx) && !flags.force) {
   // nobody named. So they are discovered from what the project has, and their absence is reported
   // as "this project has not been planned yet" rather than papered over.
   const candidates = ['docs/10-prd.md', 'docs/20-architecture.md', 'docs/11-srs.md', 'docs/12-flows.md',
-    'docs/21-engineering-principles.md', 'docs/31-board.md'];
+    'docs/21-engineering-principles.md'];
+  // NOT docs/31-board.md: it is a generated view that board.mjs rewrites on EVERY move, so hashing
+  // it made preflight STALE the moment the first ticket was claimed — one spawn per round, ever.
+  // The board's own integrity is board-doctor's and `board.mjs verify`'s job.
   const sources = candidates.filter((c) => existsSync(join(ROOT, c)));
   if (!sources.length) {
     ctxNote = 'context-manifest.json NOT created — this project has no planning documents yet.\n' +

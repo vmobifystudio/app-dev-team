@@ -67,7 +67,7 @@ first token on its line, and names its source and its verifier:
 | Requirement | `F-NNN` | `docs/10-prd.md` | `O-NNN` | product-validator |
 | Story | `S-NNN` | `docs/11-backlog.md` | `F-NNN` | cpo |
 | Criterion | `AC-NNN` | `docs/10-prd.md` | `F-NNN` | `T-NNN` |
-| Design | `D-NNN` | `docs/12-flows.md` | `F-NNN` | ux-designer |
+| Design | `D-NNN` | `docs/12-flows.md` | `F-NNN` | ux-architect |
 | Ticket | `APP-NNN` | `docs/31-board.md`, Feature column | `F-NNN` | code-reviewer |
 | Code | the branch and commit on the ticket | — | its ticket | code-reviewer |
 | Test | `T-NNN` | `docs/50-test-plan.md` | `AC-NNN` | qa-engineer |

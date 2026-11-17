@@ -1,7 +1,7 @@
 ---
 name: product-validator
 description: Use before scope-lock, and again whenever the PRD or the backlog changes materially, to check the derived product documents against the founder's own recorded words. Compares docs/00-founder-intent/ to docs/10-prd.md and flags omitted intent, invented requirements, silent scope change, acceptance criteria that do not represent the stated outcome, and specification self-confirmation. Reports to the founder gate, never to the roles whose work it checks. It can block scope-lock.
-tools: Read, Glob, Grep, Bash
+tools: Read, Write, Glob, Grep, Bash, Skill
 model: opus
 ---
 

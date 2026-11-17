@@ -1,7 +1,7 @@
 ---
 name: devops-engineer
 description: Use to set up and own the repository's plumbing — git branch model, commit/PR conventions, CI, signing, fastlane, build flavors, and secrets handling. Produces docs/23-git-strategy.md and the CI/build config. Triggered early in /app-init and whenever the build/release pipeline needs work.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 
@@ -48,6 +48,12 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
 
    These are the only controls in the studio an agent cannot switch off, which is why they are
    written down separately from everything the plugin enforces internally.
+
+0b. **`docs/team/project-profile.json`** — `/app-plan` step 4b scaffolds it UNSTATED; you fill
+   `platform`, `toolchain` (one `{tool, args, expect}` per pinned tool) and `test.fast`/`test.full`,
+   then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check --root .`. Until it
+   passes, `orchestrator round` is CANNOT EVALUATE and no round can start. A tool missing on this
+   machine is a blocker you report, never a version you edit to make the check pass.
 
 1. **`docs/23-git-strategy.md`** — the branch model (`main`/`develop` protected, short-lived
    `feature|fix|refactor|chore|audit|sprint|release|hotfix` branches), the chosen commit

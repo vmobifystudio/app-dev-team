@@ -3741,12 +3741,45 @@ rv_log ''
 rv_payload "$RVT/silent.jsonl" "BLOCKED: APP-001\\nReason: self-review" | sh "$RVH" >/dev/null 2>&1
 [ $? = 0 ] && ok "a documented BLOCKED refusal (self-review), via last_assistant_message, is ALLOWED" \
            || bad "a documented BLOCKED refusal (self-review), via last_assistant_message, is ALLOWED"
-# ...and the same, found via the transcript fallback when last_assistant_message is absent/empty —
-# defensive in case a given invocation omits or truncates that field.
-printf '{"role":"assistant","content":"BLOCKED: APP-001\\nReason: self-review"}\n' > "$RVT/blocked.jsonl"
-rv_payload "$RVT/blocked.jsonl" "" | sh "$RVH" >/dev/null 2>&1
-[ $? = 0 ] && ok "...and the same, found via the transcript tail when last_assistant_message is empty" \
-           || bad "...and the same, found via the transcript tail when last_assistant_message is empty"
+# THE TRANSCRIPT-TAIL FALLBACK WAS THE SELF-DISARM. This hook's own refusal quotes `BLOCKED: APP-NNN`;
+# once that stderr reached the transcript, the tail scan let every later stop through. Only the final
+# message, anchored at its start, counts now.
+printf '{"role":"assistant","content":"reading"}\n{"role":"user","content":"If you cannot review this ticket at all, say so explicitly: `BLOCKED: APP-NNN` with the reason. APP-001"}\n' > "$RVT/blocked.jsonl"
+rv_payload "$RVT/blocked.jsonl" "still reading" | sh "$RVH" >/dev/null 2>&1
+[ $? = 2 ] && ok "the hook's OWN refusal text in the transcript does not disarm it" \
+           || bad "the hook's OWN refusal text in the transcript does not disarm it"
+rv_payload "$RVT/silent.jsonl" "I was not BLOCKED: anything, just done. APP-001" | sh "$RVH" >/dev/null 2>&1
+[ $? = 2 ] && ok "BLOCKED: mid-sentence is not a refusal — only a final message STARTING with it is" \
+           || bad "BLOCKED: mid-sentence is not a refusal — only a final message STARTING with it is"
+
+# PLUGIN AGENTS ARE NAMESPACED: Claude Code reports `app-dev-team:code-reviewer`. Comparing the raw
+# string exited 0 for the plugin's only reviewer, so the hook enforced nothing in a real install.
+rv_log ''
+rv_payload "$RVT/exploit.jsonl" "done" | sed 's/"agent_type":"code-reviewer"/"agent_type":"app-dev-team:code-reviewer"/' | sh "$RVH" >/dev/null 2>&1
+[ $? = 2 ] && ok "the NAMESPACED reviewer (app-dev-team:code-reviewer) with nothing recorded is BLOCKED" \
+           || bad "the NAMESPACED reviewer (app-dev-team:code-reviewer) with nothing recorded is BLOCKED"
+node -e 'const m=require(process.argv[1]).hooks.SubagentStop[0].matcher, r=new RegExp(m);
+  process.exit(r.test("code-reviewer") && r.test("app-dev-team:code-reviewer") && !r.test("x-code-reviewer") ? 0 : 1)' "$HERE/../hooks/hooks.json"
+[ $? = 0 ] && ok "hooks.json's SubagentStop matcher matches the namespaced reviewer (an exact 'code-reviewer' never fired)" \
+           || bad "hooks.json's SubagentStop matcher matches the namespaced reviewer (an exact 'code-reviewer' never fired)"
+
+# A FORGED LINE. One `echo >>` from the reviewer's Bash tool carries every substring the grep wants;
+# board.mjs verify is what it cannot forge once the log has a real chained line.
+RVF=$(mktemp -d); ( cd "$RVF" && git init -q && mkdir docs && node "$HERE/board.mjs" add APP-001 --title t --owner ios-developer >/dev/null 2>&1 )
+echo '{"ticket":"APP-001","event":"approved","by":"code-reviewer","verdict_path":"x"}' >> "$RVF/docs/31-board-events.jsonl"
+printf '{"hook_event_name":"SubagentStop","agent_type":"code-reviewer","transcript_path":"%s","cwd":"%s","last_assistant_message":"done"}' "$RVT/exploit.jsonl" "$RVF" | sh "$RVH" >/dev/null 2>&1
+[ $? = 2 ] && ok "a verdict line hand-appended after the chain (not written by board.mjs) is BLOCKED" \
+           || bad "a verdict line hand-appended after the chain (not written by board.mjs) is BLOCKED"
+rm -rf "$RVF"
+
+# THE REVIEWER STANDS IN ITS WORKTREE; board.mjs writes the MAIN tree's log. Reading $CWD/docs
+# trapped a reviewer who had recorded a real verdict.
+RVW=$(mktemp -d); ( cd "$RVW" && git init -q && git commit -q --allow-empty -m i && git worktree add -q .agent-wt/code-reviewer 2>/dev/null; mkdir -p docs )
+echo '{"ts":"now","ticket":"APP-001","event":"approved","by":"code-reviewer","detail":{"verdict_path":"docs/53-reviews/APP-001-cycle-0.md"}}' > "$RVW/docs/31-board-events.jsonl"
+printf '{"hook_event_name":"SubagentStop","agent_type":"code-reviewer","transcript_path":"%s","cwd":"%s","last_assistant_message":"done"}' "$RVT/exploit.jsonl" "$RVW/.agent-wt/code-reviewer" | sh "$RVH" >/dev/null 2>&1
+[ $? = 0 ] && ok "a reviewer in its own worktree finds the verdict it recorded in the MAIN tree's log" \
+           || bad "a reviewer in its own worktree finds the verdict it recorded in the MAIN tree's log"
+rm -rf "$RVW"
 
 # Belt-and-braces beyond hooks.json's own matcher: a role this hook was never meant to touch.
 rv_payload "$RVT/silent.jsonl" "done" | sed 's/"agent_type":"code-reviewer"/"agent_type":"android-developer"/' | sh "$RVH" >/dev/null 2>&1

@@ -1,7 +1,7 @@
 ---
 name: qa-engineer
 description: Use to write test plans against the PRD's acceptance criteria, to run end-to-end test passes on a build, and to file bugs. Runs in parallel with development — writes the test plan as the impl spec lands, executes once builds are available.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 model: sonnet
 ---
 

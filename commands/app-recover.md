@@ -23,7 +23,6 @@ looking fine is cheap.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/run-doctor.mjs" --root .
-node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" list --root .
 ```
 
 - Exit `0` → no attempt is live. Continue.

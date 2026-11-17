@@ -1,7 +1,7 @@
 ---
 name: chief-of-staff
 description: Use as the single founder interface — prepares decision briefs, tracks unresolved commitments, ensures every founder decision reaches a specification, and maintains docs/17-founder-inbox.md. Exists to reduce founder load, so it is only worth running if it removes more decisions than it creates.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 

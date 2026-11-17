@@ -1,7 +1,7 @@
 ---
 name: product-designer
 description: Use to compose the screens in the ux-architect's inventory — layout, hierarchy, interaction, visual quality — and to own the design tokens and component inventory. Produces docs/13-design-tokens.md and docs/14-components.md. Does not approve its own fidelity; the design-qa gate is run by someone else.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 

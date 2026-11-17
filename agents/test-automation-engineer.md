@@ -1,7 +1,7 @@
 ---
 name: test-automation-engineer
 description: Use on flagship work to build and own test infrastructure — the harness, the device and state matrix, CI test execution, evidence-bundle capture, and flake detection. Conditional role, distinct from qa-engineer's exploratory and acceptance passes. Writes code, so it runs the IC workflow.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 

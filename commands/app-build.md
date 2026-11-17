@@ -12,8 +12,9 @@ Before spawning any ticket owner, run the unified dispatch gate:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-preflight.mjs" \
-  --root <project> --ticket <ID> --context "$CONTEXT_MANIFEST" --schedule "$SCHEDULE_PLAN" \
-  --capability "$CAPABILITY_MANIFEST" --risk "$RISK_POLICY" \
+  --root <project> --ticket <ID> --context docs/team/context-manifest.json \
+  --schedule docs/team/schedule.json --capability docs/team/capabilities.json \
+  --risk docs/team/risk-policy.json \
   --role <role> --operation write --path <changed-path> --file <changed-file> --change <summary>
 ```
 
@@ -78,6 +79,17 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      going), or a declared tool at the wrong version.
    - Exit `2` → **CANNOT EVALUATE. Also not a pass.** Usually no board yet (`/app-plan` first), or
      no `docs/team/project-profile.json` so the toolchain is UNPROVEN. Supply what it names.
+
+   On a clear round, **re-snapshot the context this round's agents will be given** before the first
+   dispatch preflight:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs" --root . --context-only
+   ```
+
+   The context manifest pins git HEAD, and every wave merge moves HEAD. Without this, the manifest
+   taken at `/app-plan` goes STALE at the first merge and `dispatch-preflight` refuses every spawn
+   for the rest of the run. It touches nothing but `docs/team/context-manifest.json`.
 
    **If a project has no event log yet but does have a hand-written `docs/31-board.md`**, migrate
    once before this step, then continue as normal:
@@ -436,7 +448,11 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      that ticket before the merge gate**, passing the branch, `$BASE`, and the named constants and
      rules verbatim. Its `VERIFICATION: PASS` / `VERIFICATION: FAIL` gates the merge **alongside**
      the review verdict: `FAIL` blocks the merge exactly as a `REQUEST CHANGES` would, and is
-     re-worked the same way (re-spawn the developer, increment `Cycles`).
+     re-worked the same way: write `docs/53-reviews/APP-NNN-verification-N.md` opening with
+     `REQUEST CHANGES — VERIFICATION: FAIL` and the findings, record it with
+     `board.mjs move APP-NNN changes --by tech-manager --verdict <that file>`, and re-spawn the
+     developer. Cycles are derived from `changes` events — nobody edits a column — so this counts
+     toward the 2-cycle cap like any other rejection.
 
      If a verdict is missing both fields, ask the reviewer for them before merging — a verdict that
      does not say whether it found a constant is not a verdict you can act on, and treating a
@@ -476,11 +492,15 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      line in the designer's own checklist.
 
      Verdict is `DESIGN QA: PASS` or `DESIGN QA: FAIL — <n> item(s)`. A `FAIL` blocks the merge
-     exactly as a `REQUEST CHANGES` does and is re-worked the same way — re-spawn the ticket's
-     owner, increment `Cycles` — with the verdict persisted alongside the review at
-     `docs/53-reviews/APP-NNN-cycle-N.md`.
+     exactly as a `REQUEST CHANGES` does and is re-worked the same way — persist it at
+     `docs/53-reviews/APP-NNN-cycle-N.md` opening with `REQUEST CHANGES — DESIGN QA: FAIL`, record
+     `board.mjs move APP-NNN changes --by tech-manager --verdict <that file>` (that event IS the
+     cycle; nobody edits a column), and re-spawn the ticket's owner.
    - `APPROVED` (and `VERIFICATION: PASS`, if one was required above) → the reviewer appends
-     `board.mjs move APP-NNN approved --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md`.
+     `board.mjs move APP-NNN approved --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md`
+     — plus `--bind --evidence <path> --context <path>` when `.studio-policy.json` sets
+     `requireApprovalBinding` (the `/app-init` default). Without `--bind` the merge gate's
+     `approval-check` refuses the approval.
      **The path moved from `--detail` to `--verdict`, and that is the whole change**: `--detail` was
      free text nothing opened, so an approval could name a file that did not exist, or name nothing
      at all. `--verdict` is read, parsed and hashed onto the event — the append is refused if the
@@ -556,7 +576,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    on the integration branch, before spawning `qa-engineer`**:
 
    ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root .
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
    ```
 
    **Why here and not per-ticket after `verify-done.sh`:** one app build per wave instead of one per

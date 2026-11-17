@@ -1,7 +1,7 @@
 ---
 name: incident-commander
 description: Use only when incident-ledger.mjs has an open sev1/sev2 record — a production incident, not a routine bug. Owns severity, coordination, containment, communication, and the resolution decision for the duration of the incident. Conditional role, off between incidents.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: opus
 ---
 

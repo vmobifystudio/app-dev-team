@@ -98,29 +98,35 @@ LAST_MSG=$(extract_field "last_assistant_message")
 # the wrong role (developer, tech-lead, qa-engineer — none of which ever write docs/53-reviews/) is
 # the worst possible blast radius for a matcher assumption this script never itself verified. If
 # agent_type is present and is not code-reviewer, this hook has nothing to do with this subagent.
-if [ -n "$AGENT_TYPE" ] && [ "$AGENT_TYPE" != "code-reviewer" ]; then
+#
+# PLUGIN AGENTS ARE NAMESPACED. Claude Code reports this plugin's reviewer as
+# `app-dev-team:code-reviewer`, not `code-reviewer`. Comparing the raw string made this hook exit 0
+# for the only reviewer it exists to police — it enforced nothing. Compare the unqualified name.
+if [ -n "$AGENT_TYPE" ] && [ "${AGENT_TYPE##*:}" != "code-reviewer" ]; then
   exit 0
 fi
 
 # A documented BLOCKED refusal (e.g. self-review) is a legitimate third outcome — code-reviewer.md's
 # own format is `BLOCKED: APP-NNN` at the start of the response. It produces neither a review file nor
 # a board.mjs verdict event by design, and it is self-explaining, unlike the silent idle-out this hook
-# exists to catch. `last_assistant_message` is part of the documented SubagentStop payload; the
-# transcript-scan fallback below is defensive in case a given invocation omits or truncates it.
-BLOCKED=0
+# exists to catch. ANCHORED to the start of the final message, and ONLY that message: an unanchored
+# `*BLOCKED:*` let "I was not BLOCKED: anything" through, and the old transcript-tail scan matched
+# this hook's OWN refusal text below (which quotes `BLOCKED: APP-NNN`) — the self-disarm v2 was
+# written to remove, reintroduced one layer down.
 case "$LAST_MSG" in
-  *BLOCKED:*) BLOCKED=1 ;;
+  BLOCKED:*) exit 0 ;;
 esac
-if [ "$BLOCKED" = 0 ] && [ -n "$TRANSCRIPT" ] && [ -r "$TRANSCRIPT" ]; then
-  tail -20 "$TRANSCRIPT" 2>/dev/null | grep -q 'BLOCKED:' && BLOCKED=1
-fi
-[ "$BLOCKED" = 1 ] && exit 0
 
 # Everything past here needs the transcript ONLY to find a candidate ticket ID — never to decide
 # whether the review actually happened. A false claim in the transcript cannot forge a log line.
 [ -n "$TRANSCRIPT" ] && [ -r "$TRANSCRIPT" ] || exit 0
 
-LOG="${CWD:-.}/docs/31-board-events.jsonl"
+# The reviewer usually stands in its own linked worktree, whose docs/ is a stale committed copy;
+# board.mjs (lib/root.mjs) writes the MAIN tree's log. Read the log where it is written, or a real
+# verdict looks missing and the reviewer is trapped on every stop.
+ROOT=${CWD:-.}
+COMMON=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && ROOT=$(dirname "$COMMON")
+LOG="$ROOT/docs/31-board-events.jsonl"
 [ -r "$LOG" ] || exit 0
 
 # Ticket IDs this subagent's transcript mentions — the studio's own convention, `[A-Z]+-[0-9]+`
@@ -151,6 +157,18 @@ for id in $CANDIDATES; do
     break
   fi
 done
+
+# A matching line is only ground truth if board.mjs wrote it. One `echo >> log` from the reviewer's
+# own Bash tool forges all four substrings; the hash chain is what it cannot forge. `verify` fails on
+# any line appended without the CLI. No node means board.mjs could not have run either — keep the grep.
+if [ "$RECORDED" = 1 ] && command -v node >/dev/null 2>&1; then
+  BOARD="$(dirname "$0")/../scripts/board.mjs"
+  if [ -r "$BOARD" ] && ! (cd "$ROOT" && node "$BOARD" verify >/dev/null 2>&1); then
+    echo "BLOCKED — the board event log's audit chain is broken (node scripts/board.mjs verify)." >&2
+    echo "A verdict line that board.mjs did not write is not a recorded verdict." >&2
+    exit 2
+  fi
+fi
 
 [ "$RECORDED" = 1 ] && exit 0
 

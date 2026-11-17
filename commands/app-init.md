@@ -113,8 +113,9 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      worse than the opt-in gap they were meant to close. `requireDurableRuns` and
      `requireApprovalBinding` have no such ordering problem — `run-ledger.mjs` and
      `approval-check.mjs` degrade to CANNOT EVALUATE on an empty/absent log rather than erroring at
-     spawn time, and only `ship-gate.sh` (release time, by which point real activity exists) checks
-     them — so they default on safely. Turn the other three on explicitly, per project, once their
+     spawn time — so they default on safely. Neither is checked at spawn: `ship-gate.sh` checks both
+     at release, and the merge gate (`tech-manager` step 1a) checks the ticket's own approval, which
+     is why `code-reviewer` approves with `--bind` on such a project. Turn the other three on explicitly, per project, once their
      prerequisite exists: `requireAuditAnchor` after the board has its first ticket and someone runs
      `audit-anchor.mjs create`; `requireEvaluation` once the project has its own `eval/manifest.json`;
      `requirePromptRegistry` is a studio-repo concept and does not apply to a shipped project at all.

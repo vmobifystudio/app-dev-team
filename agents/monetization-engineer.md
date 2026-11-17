@@ -1,7 +1,7 @@
 ---
 name: monetization-engineer
 description: Use to implement revenue — StoreKit 2 / Play Billing subscriptions and IAP, the paywall gateway, AdMob ads with consent, frequency caps, and NO-AD zones. Owns docs/41-monetization.md. Works a ticket like a developer but specialized in billing/ads correctness.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: opus
 ---
 

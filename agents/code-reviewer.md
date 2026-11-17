@@ -1,7 +1,7 @@
 ---
 name: code-reviewer
 description: Use after a developer finishes a ticket and before tech-manager merges. Reviews a single branch / diff against the impl spec, the engineering principles, and the ticket acceptance criteria. Produces an approve / request-changes verdict with line-level notes.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 model: opus
 ---
 

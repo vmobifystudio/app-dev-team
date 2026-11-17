@@ -1,7 +1,7 @@
 ---
 name: verification-engineer
 description: Use to certify anything the team asserts but nobody executed — a threshold or constant that makes a real-world claim, a new guard rule/lint rule/architecture test, a "swept every instance" claim, or a batch of agent reports. Runs the thing instead of reading it. Triggered before /app-ship, at the end of /app-audit, and whenever a ticket adds a rule, a baseline, or a constant.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: opus
 ---
 

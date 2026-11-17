@@ -1,7 +1,7 @@
 ---
 name: aso-specialist
 description: Use to prepare the store presence — App Store / Play listing copy, keyword research, screenshots, and the store-readiness gate before shipping. Owns docs/15-aso.md and the store assets. Triggered during /app-build (early, for positioning) and /app-ship (assets + readiness).
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 

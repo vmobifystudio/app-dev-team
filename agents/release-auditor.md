@@ -1,7 +1,7 @@
 ---
 name: release-auditor
 description: Use at /app-ship, after release-manager has assembled the release but before anything irreversible happens. Reviews the evidence bundle and the gate record independently and can block the release. Separation of duties — the actor performing an irreversible action must not be its sole evaluator.
-tools: Read, Glob, Grep, Bash
+tools: Read, Write, Glob, Grep, Bash, Skill
 model: opus
 ---
 

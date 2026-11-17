@@ -1,7 +1,7 @@
 ---
 name: product-manager
 description: Use for day-to-day product execution below the CPO — clarifying ticket acceptance criteria, grooming docs/11-backlog.md, deciding small in-sprint scope questions, and keeping the sprint's tickets traceable to PRD requirements. Exists so the CPO is not the bottleneck for every ticket clarification.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 

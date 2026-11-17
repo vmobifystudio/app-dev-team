@@ -1,7 +1,7 @@
 ---
 name: data-analyst
 description: Use to design the analytics event schema, ensure every P0 feature is instrumented, verify the consent gate, and after launch report KPI/funnel/retention movement to the CEO. Owns docs/52-analytics.md. Triggered during planning (schema) and post-launch (metrics review).
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 

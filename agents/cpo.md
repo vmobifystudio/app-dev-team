@@ -1,7 +1,7 @@
 ---
 name: cpo
 description: Use after the CEO has set vision, or whenever the project needs product depth — PRD, user stories, acceptance criteria, prioritization, scope cuts, feature tradeoffs, or stakeholder communication. Owns the PRD and the product backlog. Delegates information architecture and flows to ux-architect, screen composition to product-designer, and day-to-day ticket clarification to product-manager.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 model: opus
 ---
 

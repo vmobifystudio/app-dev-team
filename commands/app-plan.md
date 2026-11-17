@@ -103,6 +103,19 @@ Focus (optional): $ARGUMENTS
    need more than that, and it is better to widen it deliberately than to discover mid-sprint that
    the gate was never going to allow the work.
 
+   **`docs/team/project-profile.json` is scaffolded UNSTATED and nothing else fills it**, so
+   `orchestrator round` returns CANNOT EVALUATE ("toolchain UNPROVEN") on round 1 of every new
+   project. Spawn `devops-engineer` to fill `platform`, `toolchain` (one `{tool, args, expect}` per
+   tool pinned in `docs/20-architecture.md` / `knowledge/stack-defaults.md`) and `test.fast` /
+   `test.full`, then confirm it holds on this machine:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check --root .
+   ```
+
+   A tool that is genuinely not installed here is reported, not guessed around — that is a blocker
+   for the user, stated before the sprint starts rather than discovered when the first build breaks.
+
 5. **Hand off.** When a human invoked `/app-plan` directly, ask "ready to launch the pod with
    `/app-build`?" and do not auto-launch.
 

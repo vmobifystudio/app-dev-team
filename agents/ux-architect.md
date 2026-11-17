@@ -1,7 +1,7 @@
 ---
 name: ux-architect
 description: Use to turn PRD user journeys into information architecture, navigation model, flows, and the screen-and-state inventory the dev pod builds against. Owns docs/12-flows.md. Hands the screen inventory to product-designer, who composes each screen.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 

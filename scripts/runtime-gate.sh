@@ -48,14 +48,21 @@ need_value() {
 # one shared scheme; anything ambiguous is CANNOT EVALUATE rather than a guess.
 SCHEME_OPT=${SCHEME_OPT:-}
 
+# --record writes the verdict as gate-result/v1 to <project-root>/docs/team/runtime-result.json —
+# the file lib/readiness.mjs folds into `orchestrator ship`. Nothing wrote it before, so readiness
+# was CANNOT_EVALUATE forever and `orchestrator ship` could never exit 0. Opt-in, because this gate
+# also runs against fixtures inside the plugin's own tree, which must not grow a docs/team/.
+RECORD=0
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --platform)     need_value $# "--platform";     PLATFORM=${2:-}; shift 2 ;;
     --project-root) need_value $# "--project-root"; ROOT=${2:-}; shift 2 ;;
     --scheme)       need_value $# "--scheme";       SCHEME_OPT=${2:-}; shift 2 ;;
+    --record)       RECORD=1; shift ;;
     -h|--help)      sed -n '1,30p' "$0"; exit 0 ;;
     *) echo "runtime-gate: unknown argument '$1'" >&2
-       echo "usage: runtime-gate.sh [--platform ios|android|auto] [--project-root <path>] [--scheme <name>]" >&2
+       echo "usage: runtime-gate.sh [--platform ios|android|auto] [--project-root <path>] [--scheme <name>] [--record]" >&2
        exit 2 ;;
   esac
 done
@@ -67,6 +74,17 @@ esac
 
 [ -d "$ROOT" ] || { echo "runtime-gate: no such directory: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
+
+record() {  # <PASS|FAIL|CANNOT_EVALUATE> — bound to HEAD and tree cleanliness, like journey-gate
+  [ "$RECORD" = 1 ] || return 0
+  head=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
+  if [ -z "$head" ]; then hj=null; dj=null
+  else hj="\"$head\""; [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ] && dj=true || dj=false; fi
+  mkdir -p "$ROOT/docs/team" 2>/dev/null &&
+  printf '{\n  "schema": "gate-result/v1",\n  "gate": "runtime-gate",\n  "subject": { "head": %s, "dirty": %s },\n  "evaluated_at": "%s",\n  "result": "%s"\n}\n' \
+    "$hj" "$dj" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$ROOT/docs/team/runtime-result.json" ||
+    echo "runtime-gate: could not write $ROOT/docs/team/runtime-result.json" >&2
+}
 
 # Pin the shared toolchain caches (OPS-003). This gate builds once per WAVE, so it is not the
 # repeated cost the caches were added for — but it runs on the same machine minutes after
@@ -174,6 +192,7 @@ if [ "$HAS_IOS" -eq 0 ] && [ "$HAS_ANDROID" -eq 0 ]; then
   echo "                    Point --project-root at the app repository, or drop --platform."
   echo
   echo "RESULT: CANNOT EVALUATE — this is NOT a pass. The app was never built or launched."
+  record CANNOT_EVALUATE
   exit 2
 fi
 
@@ -482,10 +501,10 @@ echo
 case "$WORST" in
   1) echo "RESULT: FAIL — the app does not build or does not launch. Do not advance this ticket."
      echo "        Re-spawn the developer with the compiler output above verbatim."
-     exit 1 ;;
+     record FAIL; exit 1 ;;
   2) echo "RESULT: CANNOT EVALUATE — this is NOT a pass. Something above was never actually run."
      echo "        Report it as CANNOT EVALUATE in the standup; do not record it as verified."
-     exit 2 ;;
+     record CANNOT_EVALUATE; exit 2 ;;
   *) echo "RESULT: PASS — the app built and launched. Evidence paths are listed above."
-     exit 0 ;;
+     record PASS; exit 0 ;;
 esac

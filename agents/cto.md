@@ -1,7 +1,7 @@
 ---
 name: cto
 description: Use after the CEO sets vision, or whenever the project needs technical strategy — platform choice, architecture, build-vs-buy, technology selection, scalability/security/cost tradeoffs, or arbitration between dev pods. Owns the architecture doc and engineering principles. Delegates implementation planning to tech-lead and execution coordination to tech-manager.
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 model: opus
 ---
 
