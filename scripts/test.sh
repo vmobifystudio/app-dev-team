@@ -3585,6 +3585,47 @@ assert_exit 2 "still blocks a bare git restore ."    hk "git restore ."
 # on the day this repo spent hunting rules that cannot fire, and caught only by running it.
 assert_exit 2 "parses the payload without GNU sed extensions" hk "git stash"
 
+# v4: a shell tokenizer, not substring matching (independent review, 2026-11). hkj builds the payload
+# with real JSON escaping and a `cwd` field, and runs the hook from a directory that is NOT a repo —
+# so only the payload's cwd (or a segment's own cd / -C) can name the tree being judged.
+HKN=$(mktemp -d)
+HKC=$(mktemp -d); ( cd "$HKC" && git init -q . && git commit -q --allow-empty -m i ) >/dev/null 2>&1
+hkj() {  # <payload cwd> <command>
+  ( cd "$HKN" && node -e 'console.log(JSON.stringify({tool_name:"Bash",tool_input:{command:process.argv[1]},cwd:process.argv[2]}))' "$2" "$1" | sh "$HOOK" )
+}
+NL='
+'
+TABC=$(printf '\t')
+# A — JSON \n and \t decode to a real newline and tab; a newline ends a command like ; does.
+assert_exit 2 "a TAB inside the command decodes to whitespace, not the letter t (git<TAB>reset --hard)" hkj "$HKD" "git${TABC}reset --hard"
+assert_exit 2 "a newline separates commands, like ;" hkj "$HKD" "git status${NL}git stash"
+# B — the destructive flag anywhere in its own segment, past git's global options.
+for c in "git -C . reset --hard" "git -c core.x=y stash" "git reset -q --hard" "git reset HEAD --hard" \
+         "git checkout ." "git checkout HEAD -- ." "git restore --worktree ." "git restore -W ." \
+         "git commit --all -m x" "git commit -m x -a" "git commit -am x" "git add -u" "git add :/"; do
+  assert_exit 2 "dirty tree: blocks $c" hkj "$HKD" "$c"
+done
+# ...and a command that RUNS git indirectly is still read.
+for c in "bash -c 'git stash'" "sh <<'EOF'${NL}git reset --hard${NL}EOF" "(git stash)" 'echo "$(git stash)"' \
+         "if true; then git stash; fi" "FOO=1 git stash" "# don't${NL}git stash"; do
+  assert_exit 2 "dirty tree: blocks git run indirectly — $(printf '%s' "$c" | tr '\n' ' ')" hkj "$HKD" "$c"
+done
+# D — the tree judged is the one the command runs in, not the hook process's own cwd.
+assert_exit 2 "the payload's cwd is the tree judged (hook process standing outside any repo)" hkj "$HKD" "git stash"
+assert_exit 2 "cd <dirty tree> && git reset --hard, from a clean cwd, is blocked" hkj "$HKC" "cd $HKD && git reset --hard"
+assert_exit 2 "git -C <dirty tree> reset --hard, from a clean cwd, is blocked" hkj "$HKC" "git -C $HKD reset --hard"
+assert_exit 2 "a tree that cannot be known statically (cd \"\$X\") fails CLOSED for a destructive verb" hkj "$HKC" 'cd "$X" && git reset --hard'
+assert_exit 0 "cd <clean tree> && git reset --hard, from a dirty cwd, is allowed" hkj "$HKD" "cd $HKC && git reset --hard"
+assert_exit 0 "git -C <clean tree> stash, from a dirty cwd, is allowed" hkj "$HKD" "git -C $HKC stash"
+# E — read-only and path-scoped forms, and pattern text that is only an ARGUMENT, stay allowed.
+for c in "git stash list" "git stash show -p" "git stash pop" "git stash apply" "git add -A src/" "git branch -Dx" \
+         'grep -n "git add -A" README.md' 'git log --grep="git reset --hard"' "echo '# git stash'" \
+         "cat > f.sh <<'EOF'${NL}git add .${NL}git reset --hard${NL}EOF" \
+         "git commit -m \"\$(cat <<'EOF'${NL}fix: don't \"git add -A\" here${NL}git reset --hard${NL}EOF${NL})\""; do
+  assert_exit 0 "dirty tree: allows $(printf '%s' "$c" | tr '\n' ' ')" hkj "$HKD" "$c"
+done
+rm -rf "$HKN" "$HKC"
+
 # a raw `git merge` onto the integration branch, by anyone at all (H6, 2026-08-07).
 # A qa-engineer agent, mid real sprint, ran `git merge --no-ff` directly onto `main` — its own role
 # file says "you never merge your own work", and it did it anyway. No board event backed it: no
@@ -3619,6 +3660,13 @@ assert_exit 0 "...allows git merge-tree (read-only conflict dry run)" \
   hkm "git merge-tree main integration/wave-1"
 assert_exit 0 "...allows git mergetool" hkm "git mergetool"
 assert_exit 0 "...allows aborting an in-progress merge" hkm "git merge --abort"
+# The exemption is PER SEGMENT: v1-v3 let --ff-only anywhere exempt every merge in the command.
+assert_exit 2 "...but --ff-only in ONE segment does not exempt a --no-ff merge in the next" \
+  hkm "git merge --ff-only integration/wave-1; git merge --no-ff integration/wave-1"
+assert_exit 2 "...and git pull --no-ff of another branch is the same merge, spelled differently" \
+  hkm "git pull --no-ff origin integration/wave-1"
+assert_exit 0 "...while a plain git pull, or a pull of the integration branch itself, is untouched" \
+  hkm "git pull; git pull origin main"
 ( cd "$HKM" && git checkout -q -b feat/x main ) >/dev/null 2>&1
 assert_exit 0 "...and a merge on a FEATURE branch (not the integration branch) is untouched" \
   hkm "git merge --no-ff main"
@@ -3639,6 +3687,12 @@ assert_exit 2 "git update-ref moving main's pointer at the plumbing layer is blo
 # False-positive check: a similarly-prefixed branch name must not trip a substring match.
 assert_exit 0 "...but a push to a DIFFERENT branch that merely starts with the same name is not" \
   hkm "git push origin feat/x:mainline"
+# The same moves, spelled the ways v1-v3's fixed strings did not anticipate.
+for c in "git push origin feat/x:refs/heads/main" "git push origin +main" "git push origin main --force" \
+         "git push origin --delete main" "git branch --force main feat/x" "git update-ref -d refs/heads/main"; do
+  assert_exit 2 "the integration branch's ref cannot be moved by: $c" hkm "$c"
+done
+assert_exit 0 "...while pushing local main to remote main (no force) stays allowed" hkm "git push origin main:main"
 assert_exit 0 "...and the documented safe landing sequence (checkout, ff-only merge, push) still works" \
   hkm "git checkout main && git merge --ff-only integration/wave-1 && git push origin main"
 rm -rf "$HKM"
@@ -3681,6 +3735,23 @@ assert_exit 2 "...and the same new-subdirectory shape into a sibling worktree is
   cwh "$CWT/.agent-wt/ios-developer" "$CWT/.agent-wt/android-developer/a/b/c/deep.js"
 ( cd "$CWT/.agent-wt/ios-developer" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"x"}}' "$CWT/.agent-wt/android-developer/src/other.js" | sh "$CWH" ) >"$TMP/cwh1.txt" 2>&1
 assert_has "$TMP/cwh1.txt" "DR4-027" "the refusal names the incident this class of collision reproduces"
+# A target that ALREADY EXISTS was never resolved: the walk started at the file, `cd` on a file
+# failed, and the raw string was compared (independent review, 2026-11). Symlinks and `..` walked
+# straight into a sibling, and under a symlinked temp root the caller's own existing file was refused.
+ME="$CWT/.agent-wt/ios-developer"; OTHER="$CWT/.agent-wt/android-developer"
+echo x > "$OTHER/src/f.swift"; echo x > "$ME/src/exists.js"
+ln -s "$OTHER/src/f.swift" "$ME/link.swift"; ln -s ../android-developer "$ME/linkdir"
+ln -s src/exists.js "$ME/selflink.js"; ln -s loop "$ME/loop"
+assert_exit 0 "an EXISTING file in your own worktree is allowed (even under a symlinked temp root)" cwh "$ME" "$ME/src/exists.js"
+assert_exit 2 "a symlink in your own worktree pointing at a sibling's file is blocked" cwh "$ME" "$ME/link.swift"
+assert_exit 2 "a path through a symlinked directory into a sibling is blocked" cwh "$ME" "$ME/linkdir/src/f.swift"
+assert_exit 2 "a .. path into a sibling's existing file is blocked" cwh "$ME" "$ME/../android-developer/src/f.swift"
+assert_exit 2 "a .. path through a directory that does not exist is blocked" cwh "$ME" "$ME/nope/../../android-developer/src/f.swift"
+assert_exit 0 "a symlink to your OWN file is allowed" cwh "$ME" "$ME/selflink.js"
+assert_exit 0 "a symlink loop terminates instead of hanging the hook" cwh "$ME" "$ME/loop"
+if [ -d "$CWT/.AGENT-WT" ]; then  # case-insensitive filesystem (default APFS)
+  assert_exit 2 "on a case-insensitive filesystem, .AGENT-WT/<sibling> is still the sibling" cwh "$ME" "$CWT/.AGENT-WT/android-developer/src/f.swift"
+fi
 echo 'not json' | sh "$CWH" >/dev/null 2>&1
 [ $? = 0 ] && ok "an unparseable payload fails open, same rule as the git-layer hook" \
             || bad "an unparseable payload fails open, same rule as the git-layer hook"

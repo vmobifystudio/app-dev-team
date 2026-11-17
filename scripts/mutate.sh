@@ -136,8 +136,8 @@ M09@@scripts/lib/events.mjs@@if (!state.verified) {@@if (false) {@@review_reques
 M10@@scripts/integration-branch.sh@@integration branch is not recoverable by a later fix. Create the branch, or fix the doc."@@integration branch is not recoverable by a later fix."; echo "$FALLBACK"; exit 0@@a declared branch that does not exist is exit 2, never a fallback
 M11@@scripts/lib/messages.mjs@@if (recent >= MAX_PER_ROLE) {@@if (false) {@@the per-role cap refuses the eleventh message of a round
 M12@@scripts/lib/messages.mjs@@if (roles.size > MAX_CHAIN) {@@if (roles.size > MAX_CHAIN + 1) {@@a fifth role on one ticket's thread is refused
-M13@@hooks/block-shared-tree-destructive-git.sh@@[ -n "$DIRTY" ] || exit 0@@[ -z "$DIRTY" ] || exit 0@@dirty tree: blocks git stash
-M14@@hooks/block-shared-tree-destructive-git.sh@@*"git stash"*)@@*"zzzz-no-such-command"*)@@dirty tree: blocks git stash
+M13@@hooks/block-shared-tree-destructive-git.sh@@[ -n "$DIRTY" ] || continue@@[ -z "$DIRTY" ] || continue@@dirty tree: blocks git stash
+M14@@hooks/block-shared-tree-destructive-git.sh@@} else if (sc == "stash") {@@} else if (sc == "zzzz-no-such-command") {@@dirty tree: blocks git stash
 M15@@scripts/verify-done.sh@@grep -Eqi 'command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|cannot be located|[Uu]nable to find a destination|GradleWrapperMain|permission denied|not recognized as an internal'@@grep -Eqi 'zzzz-this-pattern-matches-nothing'@@a missing toolchain is CANNOT EVALUATE, not REJECTED
 M16@@scripts/round-journal.mjs@@if (t.spawns >= caps.spawns) breached.push@@if (t.spawns > caps.spawns) breached.push@@the spawn ceiling fires independently of the round ceiling
 M17@@scripts/lib/capabilities.mjs@@if (!allowed.includes(actor)) {@@if (false) {@@a designer may not write a gate event (verified)
@@ -207,6 +207,8 @@ M81@@scripts/verify-done.sh@@|Finished [0-9]+ tests? on' "$TEST_LOG"; then@@' "$
 M82@@hooks/require-review-verdict.sh@@[ "$RECORDED" = 1 ] && exit 0@@exit 0@@still BLOCKED (the v1 exploit, closed)
 M83@@scripts/wave-integrate.mjs@@baseFailed: !baseGreen };@@baseFailed: false };@@the unmodified base ref fails too — this failure may pre-date the wave
 M84@@hooks/require-review-verdict.sh@@grep '"by":"code-reviewer"' | grep -F '"verdict_path"'@@grep -F '"verdict_path"'@@a real event for the SAME ticket authored by a DIFFERENT role is still BLOCKED
+M85@@hooks/block-cross-worktree-write.sh@@[ -L "$ABS_TARGET" ] && [ "$hops" -lt 40 ] || break@@break@@a symlink in your own worktree pointing at a sibling's file is blocked@@cross-worktree-write hook
+M86@@hooks/block-shared-tree-destructive-git.sh@@if (c == "\n" || c == ";" ||@@if (c == ";" ||@@a newline separates commands, like ;
 CATALOGUE
 }
 

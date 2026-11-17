@@ -83,20 +83,49 @@ esac
 # not-yet-created subdirectory of `/tmp/...` resolved to a different absolute string than
 # `$(pwd -P)` for a caller standing in the SAME worktree — read as two different worktrees, and a
 # same-worktree write was refused. Caught by testing a brand-new subdirectory, not by reading it.
-tail=""
-walk="$ABS_TARGET"
-while [ ! -e "$walk" ] && [ "$walk" != "/" ] && [ -n "$walk" ]; do
-  tail="$(basename "$walk")/$tail"
-  walk=$(dirname "$walk")
+#
+# THE WALK STARTED AT THE FILE, which missed every target that already exists (independent review,
+# 2026-11): `[ -e ]` was true at once, `cd` on a FILE failed, and the raw string was compared —
+# no symlink and no `..` ever resolved. With the caller in `.agent-wt/me`, all of these were
+# allowed into a sibling: `me/link.swift` (a symlink to the sibling's file), `me/linkdir/src/f.swift`
+# (a symlinked directory), `me/../other/src/f.swift`, `me/nope/../../other/src/f.swift`. And under
+# a symlinked root (`/tmp`, `/var/folders` on macOS) the caller's OWN existing files were refused.
+#
+# So: normalise `.`/`..` lexically first (what the Write tool's own path.resolve does), resolve the
+# PARENT through its nearest existing ancestor with `cd -P`, and follow a symlinked final component
+# (bounded, so a link loop cannot hang the hook) — repeating until nothing is a link. The external
+# `/bin/pwd -P` (getcwd) returns ON-DISK case on macOS, so `.Agent-WT/other` resolves to
+# `.agent-wt/other` for free; sh's builtin `pwd -P` keeps the case as typed, hence not the builtin.
+norm() {
+  printf '%s\n' "$1" | awk -F/ '{
+    n = 0
+    for (i = 1; i <= NF; i++) { if ($i == "" || $i == ".") continue; if ($i == "..") { if (n) n--; continue } a[++n] = $i }
+    out = ""; for (i = 1; i <= n; i++) out = out "/" a[i]
+    print (out == "" ? "/" : out)
+  }'
+}
+ABS_TARGET=$(norm "$ABS_TARGET")
+hops=0
+while :; do
+  tail=$(basename "$ABS_TARGET")
+  walk=$(dirname "$ABS_TARGET")
+  while [ ! -d "$walk" ] && [ "$walk" != "/" ]; do
+    tail="$(basename "$walk")/$tail"
+    walk=$(dirname "$walk")
+  done
+  RESOLVED_BASE=$(cd -P "$walk" 2>/dev/null && { /bin/pwd -P 2>/dev/null || pwd -P; }) || RESOLVED_BASE="$walk"
+  ABS_TARGET="${RESOLVED_BASE%/}/$tail"
+  [ -L "$ABS_TARGET" ] && [ "$hops" -lt 40 ] || break
+  hops=$((hops + 1))
+  link=$(readlink "$ABS_TARGET")
+  case "$link" in
+    /*) ABS_TARGET=$(norm "$link") ;;
+    *)  ABS_TARGET=$(norm "$RESOLVED_BASE/$link") ;;
+  esac
 done
-RESOLVED_BASE=$(cd "$walk" 2>/dev/null && pwd -P) || RESOLVED_BASE="$walk"
-case "$tail" in
-  */) tail="${tail%/}" ;;
-esac
-if [ -n "$tail" ]; then ABS_TARGET="$RESOLVED_BASE/$tail"; else ABS_TARGET="$RESOLVED_BASE"; fi
 
 # Which worktree, if any, is the CALLER standing in right now?
-CWD=$(pwd -P)
+CWD=$(/bin/pwd -P 2>/dev/null || pwd -P)
 worktree_of() {
   # Prints the worktree root (…/.agent-wt/<name> or …/.claude/worktrees/<name>) that $1 sits
   # inside, or nothing if $1 is not inside one. Pure string matching on the path — deliberately not
