@@ -43,112 +43,439 @@
 # Anything unparseable is ALLOWED. A hook that blocks on its own confusion is a hook that gets
 # removed the first time it misfires on a legitimate command.
 
+#
+# HOW A COMMAND IS READ — a small shell tokenizer, not substring matching
+#
+# v1–v3 matched fixed substrings against the raw command (`*"git reset --hard"*`). An independent
+# review (2026-11) reproduced both failure directions of that, live:
+#   - FALSE NEGATIVES: `git reset -q --hard`, `git reset HEAD --hard`, `git -C . reset --hard`,
+#     `git -c k=v stash`, `git checkout .`, `git commit -m x -a`, `git add -u`, `git add :/` — all
+#     exit 0 on a dirty tree, because the destructive flag was not where the fixed string expected.
+#     And `--ff-only` ANYWHERE in the command exempted EVERY merge in it
+#     (`git merge --ff-only x; git merge --no-ff feat`).
+#   - FALSE POSITIVES that blocked real work: `grep -n "git add -A" README.md`,
+#     `git log --grep="git reset --hard"`, a heredoc whose BODY mentions `git add .`, and
+#     `git stash list` — the pattern text appeared, but no such git command would run.
+#   - The JSON extractor turned `\n` into a literal `n`, so a multi-line command was one glued line.
+#
+# So the command is now tokenized the way a shell would: quotes make one word (a quoted string is
+# an ARGUMENT, never a command), heredoc bodies are dropped (they are data — except when fed to
+# `sh`/`bash`, which runs them), `$(...)`, backticks, `( )`, `sh -c`/`bash -c` and `eval` are parsed
+# recursively (they DO execute), and the command splits into segments on `; && || | & ( )` and
+# newline. A segment matters only when `git` is its COMMAND WORD (after env assignments and
+# `if/then/do/sudo/env/…`), and each segment is judged on its own subcommand and flags — so an
+# exemption flag exempts only its own segment. The awk program prints one line per segment that
+# needs a verdict; the shell below gives it one.
+#
+#   D <TAB> - <TAB> dir <TAB> reason     repo-wide destructive — blocked only if `dir` is dirty
+#   M <TAB> ref|- <TAB> dir <TAB> verb   a merge — blocked if `dir` has the integration branch
+#                                         checked out (and `ref`, when given, is not that branch)
+#   R <TAB> ref <TAB> dir <TAB> verb     a ref write — blocked if `ref` IS the integration branch
+#
+# WHICH TREE. v1–v3 checked the hook PROCESS's own cwd. The payload carries the caller's `cwd`, and
+# a segment can `cd X &&` or `git -C X` somewhere else entirely, so dirtiness is evaluated in the
+# directory each segment actually runs in. A directory that cannot be known statically (`cd "$X"`,
+# `cd -`, a missing path) FAILS CLOSED, for the destructive class only.
+#
+# ponytail: a static tokenizer, not a shell. Aliases, functions, `xargs git …`, and a command
+# string assembled at runtime are out of reach — closing those means not being a static hook.
+
 set -u
 
 PAYLOAD=$(cat 2>/dev/null || true)
 [ -n "$PAYLOAD" ] || exit 0
 
-# Pull the command out without a JSON parser (there is none, and this must stay dependency-free).
+# Pull a string out without a JSON parser (there is none, and this must stay dependency-free).
 #
 # The first version of this used `\(...\|...\)` alternation, which is a GNU sed extension. BSD sed
 # — i.e. macOS, i.e. the machine this plugin is mostly used on — does not support it and fails the
 # substitution SILENTLY, leaving CMD empty, so the hook exited 0 and allowed everything. A gate that
 # cannot fire, written on the day this repo spent hunting gates that cannot fire, and caught only
 # because it was tested rather than read. Keep this POSIX; there is a portability assertion for it.
-CMD=$(printf '%s' "$PAYLOAD" | tr '\n' ' ' | awk '
+#
+# `\n` and `\t` decode to a real newline and tab. Decoding them to the bare letter (as v1–v3 did)
+# made `git<TAB>reset --hard` read as `gittreset` and glued every line of a heredoc with an `n`.
+json_str() {
+  printf '%s' "$PAYLOAD" | tr '\n' ' ' | awk -v key="\"$1\"" '
   {
-    i = index($0, "\"command\"");
+    i = index($0, key);
     if (i == 0) exit;
-    rest = substr($0, i + 9);
+    rest = substr($0, i + length(key));
     j = index(rest, "\"");
     if (j == 0) exit;
     rest = substr(rest, j + 1);
     out = "";
     for (k = 1; k <= length(rest); k++) {
       c = substr(rest, k, 1);
-      if (c == "\\") { k++; out = out substr(rest, k, 1); continue }
+      if (c == "\\") {
+        k++; c = substr(rest, k, 1);
+        if (c == "n" || c == "r") c = "\n"; else if (c == "t") c = "\t";
+        out = out c; continue
+      }
       if (c == "\"") break;
       out = out c;
     }
-    print out;
-  }')
+    printf "%s", out;
+  }'
+}
+CMD=$(json_str command)
 [ -n "$CMD" ] || exit 0
-
 case "$CMD" in *git*) ;; *) exit 0 ;; esac
 
-# Resolved once, used by both checks below. Not a git repository -> nothing here to guard.
-ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+BASE=$(json_str cwd)
+[ -n "$BASE" ] && [ -d "$BASE" ] || BASE=$(pwd)
 
-# --- a raw `git merge` INTO the integration branch, by anyone at all ------------------------------
-#
-# FOUND BY RUNNING A REAL SPRINT (H6, 2026-08-07). A `qa-engineer` agent, told in its own role file
-# "you never merge your own work — tech-manager merges", ran `git merge --no-ff` directly onto
-# `main` anyway. No board event backed it — no `review_requested`, no `approved`, no `merged` — so
-# the work landed on the branch every other ticket builds from with zero provenance and zero review.
-# `board.mjs` could not have stopped this: the rule it enforces is which EVENTS may be appended to
-# the log, and this command never touched the log at all. It is DR4-027's shape at the git layer —
-# a rule that was prose, defeated by an agent with a shell — caught by the same kind of hook that
-# closed that one.
-#
-# THIS IS NOT A ROLE CHECK, because a hook has no reliable signal for which subagent is running —
-# the payload carries a command, not an identity. It is a PATTERN check, and the pattern it refuses
-# is one this repository has independently decided is always wrong now, for anyone: merging
-# directly into the checked-out integration branch via `git merge`. `wave-integrate.mjs` used to do
-# exactly this — `git merge --ff-only` on the live checkout — and B1 (the review that shipped
-# alongside this hook) replaced it with a ref update precisely because merging into a checkout you
-# might not even be standing on is unsafe. If the studio's OWN merge tool no longer does this, an
-# agent should not be doing it by hand either — regardless of role.
-#
-# So this fires whenever: (a) the command contains `git merge`, (b) it is NOT `--ff-only`, and
-# (c) the branch currently checked out in this tree is the project's DECLARED integration branch.
-#
-# `--ff-only` IS SPECIFICALLY EXEMPT, and that took a second pass to get right. `wave-integrate.mjs`
-# prints exactly one documented manual fallback — `git checkout $BASE && git merge --ff-only
-# $WAVE_BRANCH && git push origin $BASE` — for landing an already-vetted, fully-tested wave onto
-# the integration branch by hand. Running the first version of THIS hook against that exact command
-# (while landing H6's own wave) blocked it: a fast-forward-only merge cannot create a merge commit,
-# cannot lose history, and cannot land anything that was not already a strict descendant of HEAD —
-# it is the same operation `wave-integrate.mjs`'s own `git fetch . src:dst` performs, in a git
-# subcommand that happens to be spelled `merge`. The risk this hook exists to stop is a `--no-ff`
-# (or plain) merge that FABRICATES a merge commit combining an unreviewed branch into the
-# integration branch — which is exactly the qa-engineer's `git merge --no-ff -m "..." <branch>`
-# that started this. Gating on the literal `--ff-only` flag, rather than trying to compute whether
-# history WOULD allow a fast-forward, keeps this a static check with no side effects.
-# Resolved unconditionally, once, and used by every ref-aware check below — not only the merge
-# check. Moving this out of the `MERGE_CMD` branch is deliberate: the ref-writing bypasses further
-# down (push/fetch refspec, branch -f, update-ref) need $DECLARED too, and none of them contain the
-# word "merge", so gating this resolution on MERGE_CMD left them with an empty $DECLARED and nothing
-# to compare against.
-#
+SEGS=$(printf '%s\n' "$CMD" | awk -v base="$BASE" -v home="${HOME:-}" '
+function emit(kind, ref, dir, why) { printf "%s\t%s\t%s\t%s\n", kind, (ref == "" ? "-" : ref), dir, why }
+
+# A directory a segment runs in, or "?" when it cannot be known without running anything.
+function joindir(cur, x) {
+  if (cur == "?" || x == "" || x == "-" || x ~ /[$`*?]/) return "?"
+  if (x ~ /^~/) { if (home == "") return "?"; x = home substr(x, 2) }
+  return (x ~ /^\//) ? x : cur "/" x
+}
+
+# A pathspec that names the whole tree.
+function whole(x) { return x == "." || x == "./" || x == ":/" || x == ":/." || x == ":(top)" || x == "*" }
+function heads(r) { sub(/^refs\/heads\//, "", r); return r }
+function has(A, na, f,    j) { for (j = 1; j <= na; j++) { if (A[j] == "--") return 0; if (A[j] == f) return 1 } return 0 }
+function pos(A, na, P,    j, np, dd) {
+  split("", P); np = 0; dd = 0
+  for (j = 1; j <= na; j++) { if (!dd && A[j] == "--") { dd = 1; continue } if (dd || A[j] !~ /^-/) P[++np] = A[j] }
+  return np
+}
+function anywhole(P, np,    j) { for (j = 1; j <= np; j++) if (whole(P[j])) return 1; return 0 }
+
+# First word that is actually run: past env assignments and shell keywords/wrappers.
+function cmdat(W, nw,    i) {
+  for (i = 1; i <= nw && (W[i] ~ /^[A-Za-z_][A-Za-z0-9_]*=/ || W[i] in SKIP); i++) ;
+  return i
+}
+
+function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all, st, wt, x, q, c, k, L) {
+  np = pos(A, na, P)
+  if (sc == "reset") {
+    if (has(A, na, "--hard") || has(A, na, "--keep") || has(A, na, "--merge"))
+      emit("D", "", d, "git reset --hard/--keep discards uncommitted changes in the tree")
+  } else if (sc == "checkout" || sc == "switch") {
+    if (has(A, na, "-f") || has(A, na, "--force") || has(A, na, "--discard-changes"))
+      emit("D", "", d, "a forced checkout/switch discards every uncommitted change in the tree")
+    else if (sc == "checkout" && anywhole(P, np))
+      emit("D", "", d, "git checkout -- . discards every uncommitted change in the tree")
+  } else if (sc == "restore") {
+    st = has(A, na, "-S") || has(A, na, "--staged"); wt = has(A, na, "-W") || has(A, na, "--worktree")
+    if (has(A, na, "-SW") || has(A, na, "-WS")) st = wt = 1
+    if ((st && wt) || (!st && anywhole(P, np)))
+      emit("D", "", d, "git restore over the whole tree discards every uncommitted change")
+  } else if (sc == "clean") {
+    if (na > np && !has(A, na, "-n") && !has(A, na, "--dry-run"))
+      emit("D", "", d, "git clean deletes untracked files, including another agent'"'"'s new files")
+  } else if (sc == "push") {
+    force = 0
+    for (j = 1; j <= na && A[j] != "--"; j++) if (A[j] == "-f" || A[j] ~ /^--force/) force = 1
+    del = has(A, na, "-d") || has(A, na, "--delete")
+    for (j = 2; j <= np; j++) {
+      r = P[j]; plus = sub(/^\+/, "", r)
+      if (index(r, ":")) { src = r; sub(/:.*$/, "", src); dst = r; sub(/^[^:]*:/, "", dst) } else src = dst = r
+      if (plus || force || del || heads(src) != heads(dst)) emit("R", heads(dst), d, "push")
+      if (plus) force = 1
+    }
+    if (force) emit("D", "", d, "a force push rewrites published history others may have based work on")
+  } else if (sc == "fetch") {
+    for (j = 2; j <= np; j++) if (index(P[j], ":")) { dst = P[j]; sub(/^[^:]*:/, "", dst); emit("R", heads(dst), d, "fetch") }
+  } else if (sc == "branch") {
+    force = 0
+    for (j = 1; j <= na && A[j] != "--"; j++) if (A[j] == "-f" || A[j] == "--force" || A[j] == "-M" || A[j] == "-C") force = 1
+    if (force) for (j = 1; j <= np; j++) emit("R", heads(P[j]), d, "branch")
+    if (has(A, na, "-D") || (force && (has(A, na, "-d") || has(A, na, "--delete"))))
+      emit("D", "", d, "git branch -D deletes an unmerged branch and the commits only it referenced")
+  } else if (sc == "update-ref") {
+    if (np >= 1 && P[1] ~ /^refs\/heads\//) emit("R", heads(P[1]), d, "update-ref")
+  } else if (sc == "stash") {
+    # list/show/pop/apply/branch/create/store do not discard the tree. A bare stash, push and save
+    # sweep it — unless path-scoped after `--`. drop/clear destroy entries on the stack every
+    # worktree of this repo shares.
+    x = (na ? A[1] : "")
+    if (x == "drop" || x == "clear")
+      emit("D", "", d, "git stash drop/clear destroys stash entries, and every worktree of this repo shares that stack")
+    else if (x == "" || x == "push" || x == "save" || x ~ /^-/) {
+      for (j = 1; j <= na && A[j] != "--"; j++) ;
+      if (j > na) emit("D", "", d, "git stash sweeps the whole tree, including work you did not write — this is the exact command that cost 22 files on 2026-07-29")
+    }
+  } else if (sc == "add") {
+    all = 0
+    for (j = 1; j <= na && A[j] != "--"; j++) if (A[j] == "-A" || A[j] == "--all" || A[j] == "-u" || A[j] == "--update") all = 1
+    if (anywhole(P, np) || (all && np == 0))
+      emit("D", "", d, "git add -A/-u/. stages another agent'"'"'s half-written files into your commit")
+  } else if (sc == "commit") {
+    # Option VALUES are skipped, or `git commit -m -a` style messages would read as flags.
+    all = 0; k = 0; split("", L)
+    for (j = 1; j <= na; j++) {
+      x = A[j]
+      if (x == "--") { for (j++; j <= na; j++) L[++k] = A[j]; break }
+      if (x == "--all") all = 1
+      else if (x ~ /^--(message|file|reuse-message|reedit-message|template|author|date|fixup|squash|cleanup|trailer)$/) j++
+      else if (x ~ /^--/) ;
+      else if (x ~ /^-./) {
+        for (q = 2; q <= length(x); q++) {
+          c = substr(x, q, 1)
+          if (c == "a") all = 1
+          if (index("mFCct", c)) { if (q == length(x)) j++; break }
+        }
+      } else L[++k] = x
+    }
+    if (all || anywhole(L, k))
+      emit("D", "", d, "git commit -a commits every modified tracked file, including files you did not write")
+  } else if (sc == "merge") {
+    if (!has(A, na, "--ff-only") && !has(A, na, "--abort") && !has(A, na, "--continue") && !has(A, na, "--quit"))
+      emit("M", "", d, "merge")
+  } else if (sc == "pull") {
+    if (!has(A, na, "--ff-only")) {
+      if (has(A, na, "--no-ff")) emit("M", "", d, "pull")
+      else if (np >= 2) emit("M", heads(P[2]), d, "pull")
+    }
+  }
+}
+
+# One segment. Returns the directory later segments run in (a `cd` carries forward).
+function seg(W, nw, dir,    i, j, cmd, g, A, na, x) {
+  i = cmdat(W, nw)
+  if (i > nw) return dir
+  cmd = W[i]
+  if (cmd == "cd" || cmd == "pushd") {
+    for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
+    return joindir(dir, (j <= nw) ? W[j] : home)
+  }
+  if (cmd ~ /(^|\/)(ba|z|da|k)?sh$/) {
+    for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) { if (j < nw) parse(W[j + 1], dir); break }
+    return dir
+  }
+  if (cmd == "eval") { x = ""; for (j = i + 1; j <= nw; j++) x = x " " W[j]; parse(x, dir); return dir }
+  if (cmd != "git" && cmd !~ /\/git$/) return dir
+  # git global options: -C moves the tree, --work-tree names it, the rest are skipped.
+  g = dir
+  for (i++; i <= nw; i++) {
+    x = W[i]
+    if (x == "-C") { i++; g = joindir(g, (i <= nw) ? W[i] : ""); continue }
+    if (x == "--work-tree") { i++; g = joindir(g, (i <= nw) ? W[i] : ""); continue }
+    if (x ~ /^--work-tree=/) { g = joindir(g, substr(x, 13)); continue }
+    if (x == "-c" || x == "--git-dir" || x == "--namespace" || x == "--config-env" || x == "--super-prefix") { i++; continue }
+    if (x ~ /^-/) continue
+    break
+  }
+  if (i > nw) return dir
+  na = 0; split("", A)
+  for (j = i + 1; j <= nw; j++) A[++na] = W[j]
+  classify(W[i], A, na, g)
+  return dir
+}
+
+# <<DELIM at s[i]: records the delimiter, returns the index of its last character.
+function heredoc(s, i, PD, PT, k,    c, d) {
+  PT[k] = 0
+  if (substr(s, i, 1) == "-") { PT[k] = 1; i++ }
+  while (substr(s, i, 1) == " " || substr(s, i, 1) == "\t") i++
+  d = ""
+  for (; i <= length(s); i++) {
+    c = substr(s, i, 1)
+    if (c ~ /[ \t\n;&|<>()]/) break
+    if (c != "\047" && c != "\"" && c != "\\") d = d c
+  }
+  PD[k] = d
+  return i - 1
+}
+
+# s[i] is a newline that ends a line with pending heredocs: skip their bodies, parsing any body
+# fed to a shell (PS[k]). Returns the index of the last newline consumed.
+function bodies(s, i, PD, PT, PS, np, dir,    k, e, n, line, body) {
+  n = length(s)
+  for (k = 1; k <= np; k++) {
+    body = ""
+    while (i < n) {
+      e = index(substr(s, i + 1), "\n")
+      line = e ? substr(s, i + 1, e - 1) : substr(s, i + 1)
+      i = e ? i + e : n
+      if (PT[k]) sub(/^\t+/, "", line)
+      if (line == PD[k]) break
+      body = body line "\n"
+    }
+    if (PS[k]) parse(body, dir)
+  }
+  return i
+}
+
+# Index of the `)` closing a `(` whose contents start at s[i]. Quotes and heredocs are skipped.
+function matchclose(s, i,    n, d, c, k, PD, PT, PS, np) {
+  n = length(s); d = 1; np = 0
+  for (; i <= n; i++) {
+    c = substr(s, i, 1)
+    if (c == "\\") { i++; continue }
+    if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) return n + 1; i += k; continue }
+    if (c == "\"") { i = skipdq(s, i + 1); continue }
+    if (c == "<" && substr(s, i + 1, 2) != "<<" && substr(s, i + 1, 1) == "<") { np++; PS[np] = 0; i = heredoc(s, i + 2, PD, PT, np); continue }
+    if (c == "\n" && np) { i = bodies(s, i, PD, PT, PS, np, ""); np = 0; continue }
+    if (c == "(") d++
+    else if (c == ")" && --d == 0) return i
+  }
+  return n + 1
+}
+function skipdq(s, i,    n, c, k) {
+  n = length(s)
+  for (; i <= n; i++) {
+    c = substr(s, i, 1)
+    if (c == "\\") { i++; continue }
+    if (c == "\"") return i
+    if (c == "$" && substr(s, i + 1, 1) == "(") { i = matchclose(s, i + 2); continue }
+    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) return n + 1; i += k }
+  }
+  return n + 1
+}
+
+# Double-quoted text from s[i]: sets DQ to its value, runs any $(...) / `...` inside it, returns
+# the index of the closing quote.
+function dq(s, i, dir,    n, c, e, k, out) {
+  n = length(s); out = ""
+  for (; i <= n; i++) {
+    c = substr(s, i, 1)
+    if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out c; continue }
+    if (c == "\"") break
+    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); parse(substr(s, i + 2, e - i - 2), dir); out = out "$(...)"; i = e; continue }
+    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; parse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
+    out = out c
+  }
+  DQ = out
+  return i
+}
+
+function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k) {
+  n = length(s); nw = 0; w = ""; inw = 0; np = 0; split("", W)
+  for (i = 1; i <= n + 1; i++) {
+    c = (i <= n) ? substr(s, i, 1) : "\n"
+    if (c == "\\") { i++; if (i <= n && substr(s, i, 1) != "\n") { w = w substr(s, i, 1); inw = 1 } continue }
+    if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w substr(s, i + 1, k - 1); i += k; inw = 1; continue }
+    if (c == "\"") { i = dq(s, i + 1, dir); w = w DQ; inw = 1; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); parse(substr(s, i + 2, e - i - 2), dir); w = w "$(...)"; i = e; inw = 1; continue }
+    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; parse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
+    if (c == "#" && !inw) { while (i <= n && substr(s, i, 1) != "\n") i++; i--; continue }
+    if (c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<") {
+      if (inw) { W[++nw] = w; w = ""; inw = 0 }
+      np++; PS[np] = (cmdat(W, nw) <= nw && W[cmdat(W, nw)] ~ /(^|\/)(ba|z|da|k)?sh$/)
+      i = heredoc(s, i + 2, PD, PT, np); continue
+    }
+    if (c == " " || c == "\t") { if (inw) { W[++nw] = w; w = ""; inw = 0 } continue }
+    if (c == "(" && !inw) { e = matchclose(s, i + 1); parse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
+    if (c == "\n" || c == ";" || c == "|" || c == ")" || (c == "&" && substr(s, i - 1, 1) !~ /[<>]/ && substr(s, i + 1, 1) != ">")) {
+      if (inw) { W[++nw] = w; w = ""; inw = 0 }
+      if (nw) { dir = seg(W, nw, dir); nw = 0; split("", W) }
+      if (c == "\n" && np) { i = bodies(s, i, PD, PT, PS, np, dir); np = 0 }
+      continue
+    }
+    w = w c; inw = 1
+  }
+}
+
+BEGIN { split("command exec nohup time env sudo then do else elif if while until ! { }", t, " "); for (k in t) SKIP[t[k]] = 1 }
+{ s = s (NR > 1 ? "\n" : "") $0 }
+END { parse(s, base) }
+')
+[ -n "$SEGS" ] || exit 0
+
 # Mirror scripts/integration-branch.sh's own resolution — declared in docs/23-git-strategy.md
 # (or docs/20-architecture.md), falling back to `main` only when no such doc exists at all. Kept
 # deliberately minimal and dependency-free rather than shelling out to that script, because this
 # hook must not assume any repo-relative path (like $CLAUDE_PLUGIN_ROOT) is set in its own process.
-DECLARED=""
-for doc in "$ROOT/docs/23-git-strategy.md" "$ROOT/docs/20-architecture.md"; do
-  [ -f "$doc" ] || continue
-  DECLARED=$(sed -nE 's/.*[Ii]ntegration branch[[:space:]]*(:|=|—|–|-|\||is)[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\2/p' "$doc" | head -n 1)
-  [ -n "$DECLARED" ] && break
-done
-[ -n "$DECLARED" ] || DECLARED="main"
+# Resolved per repository, because a segment's `cd`/`-C` can name a different one.
+declared_for() {
+  d=""
+  for doc in "$1/docs/23-git-strategy.md" "$1/docs/20-architecture.md"; do
+    [ -f "$doc" ] || continue
+    d=$(sed -nE 's/.*[Ii]ntegration branch[[:space:]]*(:|=|—|–|-|\||is)[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\2/p' "$doc" | head -n 1)
+    [ -n "$d" ] && break
+  done
+  printf '%s' "${d:-main}"
+}
 
-case "$CMD" in
-  *"--ff-only"*|*"--abort"*|*"--continue"*|*"--quit"*) MERGE_CMD=0 ;;
-  # `git merge` needs a boundary after it, or it also swallows the read-only plumbing that merely
-  # starts with those letters: `git merge-base` (ancestry queries), `git merge-tree` (conflict dry
-  # runs), `git merge-file`, and `git mergetool`. None of them write a ref or create a commit, and
-  # blocking `git merge-base --is-ancestor` — the natural way to ASK whether work was already
-  # merged — turns an audit question into a refusal. Found in use, 2026-09-09, while checking
-  # whether one agent's force-push had dropped another's commits. Same shape as the trailing-dot
-  # bug below: a substring pattern with no boundary.
-  *"git merge"|*"git merge "*) MERGE_CMD=1 ;;
-  *) MERGE_CMD=0 ;;
-esac
-if [ "$MERGE_CMD" = "1" ]; then
-  HEAD=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-  if [ -n "$HEAD" ] && [ "$HEAD" = "$DECLARED" ]; then
+TAB=$(printf '\t')
+while IFS="$TAB" read -r KIND REF DIR WHY; do
+  [ -n "$KIND" ] || continue
+  GDIR=$DIR
+  [ "$GDIR" = "?" ] && GDIR=""
+  ROOT=""
+  [ -n "$GDIR" ] && ROOT=$(git -C "$GDIR" rev-parse --show-toplevel 2>/dev/null)
+
+  if [ "$KIND" = "D" ]; then
+    # --- is there anything here to destroy? -----------------------------------------------------
+    #
+    # The first version gated on agent worktrees existing (.agent-wt/, .claude/worktrees/). The
+    # security review found the hole by probing both states: DR4-027 — the incident this hook was
+    # written for — was two writers in ONE shared checkout with NO worktrees, so the hook stood down
+    # in exactly the configuration that caused it. The trigger is the harm, not a proxy for it:
+    # **uncommitted work exists in the tree this command runs in.** A clean tree keeps every
+    # command, so this still cannot fire on everything — a gate that refuses constantly gets
+    # switched off, and a switched-off gate protects nothing.
+    if [ -n "$ROOT" ]; then
+      DIRTY=$(git -C "$GDIR" status --porcelain -uall 2>/dev/null | head -n 1)
+      DIRTY_N=$(git -C "$GDIR" status --porcelain -uall 2>/dev/null | grep -c . || echo "?")
+    elif [ -n "$GDIR" ] && [ -d "$GDIR" ]; then
+      continue   # a real directory that is not a repository: nothing here to guard
+    else
+      DIRTY="unknown"; DIRTY_N="an unknown number of"   # cannot tell which tree: fail closed
+    fi
+    [ -n "$DIRTY" ] || continue
     cat >&2 <<EOF
-BLOCKED — a raw \`git merge\` directly onto the integration branch (\`$DECLARED\`).
+BLOCKED — repo-wide destructive git command, and the tree it runs in has uncommitted work.
+
+  command : $CMD
+  tree    : $DIR
+  why     : $WHY
+  at risk : $DIRTY_N uncommitted path(s) in that tree
+
+There is uncommitted work here — yours, another agent's, or both. This is the
+\`agent-isolation\` Rule 2 ban, enforced rather than described — it was prose on
+2026-07-29 and 22 files were lost to exactly this (DR4-027).
+
+Instead:
+  - stage explicit paths            git add path/one path/two
+  - discard one file you wrote      git checkout -- path/you/wrote
+  - need a clean tree to test?      copy the repo to a temp dir and test there;
+                                    never clean the tree others are working in
+  - found changes you did not make? STOP and report them. Do not discard
+                                    anything you did not write (Rule 5).
+EOF
+    exit 2
+  fi
+
+  # Merge and ref checks need a repository; a segment whose tree is unknown is judged in the
+  # caller's own tree, since that is the integration branch it can reach.
+  if [ -z "$ROOT" ]; then
+    [ -n "$GDIR" ] && continue
+    GDIR=$BASE
+    ROOT=$(git -C "$GDIR" rev-parse --show-toplevel 2>/dev/null) || continue
+  fi
+  DECLARED=$(declared_for "$ROOT")
+
+  if [ "$KIND" = "M" ]; then
+    # --- a raw `git merge` INTO the integration branch, by anyone at all -------------------------
+    #
+    # FOUND BY RUNNING A REAL SPRINT (H6, 2026-08-07). A `qa-engineer` agent, told in its own role
+    # file "you never merge your own work — tech-manager merges", ran `git merge --no-ff` directly
+    # onto `main` anyway. No board event backed it, so the work landed on the branch every other
+    # ticket builds from with zero provenance and zero review. THIS IS NOT A ROLE CHECK — the
+    # payload carries a command, not an identity. It refuses a pattern this repository has decided
+    # is always wrong now, for anyone: merging directly into the checked-out integration branch.
+    #
+    # `--ff-only` IS SPECIFICALLY EXEMPT: wave-integrate.mjs prints exactly one documented manual
+    # fallback — `git checkout $BASE && git merge --ff-only $WAVE_BRANCH && git push origin $BASE` —
+    # and a fast-forward cannot fabricate a merge commit or lose history. `--abort/--continue/--quit`
+    # finish or unwind a merge rather than fabricating one. The exemption is PER SEGMENT: v1–v3 let
+    # `--ff-only` anywhere in the command exempt every merge in it. `git merge-base/-tree/-file`
+    # and `git mergetool` are different subcommands and never reach this. `git pull --no-ff`, or a
+    # pull of some OTHER branch, is the same merge spelled differently.
+    HEAD=$(git -C "$GDIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+    if [ -n "$HEAD" ] && [ "$HEAD" = "$DECLARED" ]; then
+      if [ "$REF" = "-" ] || [ "$REF" != "$DECLARED" ]; then
+        cat >&2 <<EOF
+BLOCKED — a raw \`git $WHY\` directly onto the integration branch (\`$DECLARED\`).
 
   command : $CMD
   why     : merging straight onto the checkout every other ticket builds from leaves no board
@@ -167,41 +494,34 @@ Instead:
   - resolving a real conflict by hand?    do it in a DEDICATED worktree
                                            (.agent-wt/integration-wave-N), never on this checkout
 EOF
-    exit 2
+        exit 2
+      fi
+    fi
+    continue
   fi
-fi
 
-# --- ref-writing bypasses of the merge check above ------------------------------------------------
-#
-# FOUND BY ADVERSARIAL RE-REVIEW (2026-08-08), by probing the check above with commands that move
-# the integration branch's REF without ever calling `git merge`. All three exited 0 against it,
-# because it only recognizes the literal words `git merge` — and none of the three need the
-# integration branch checked out in THIS tree at all, so the `HEAD == $DECLARED` precondition that
-# gates the merge check above is irrelevant here by construction:
-#
-#   git push origin HEAD:main             moves the REMOTE ref via a refspec, no merge command
-#   git fetch . feat/x:main                moves the LOCAL ref directly — this is wave-integrate.mjs's
-#                                           own sanctioned mechanism (`git fetch . src:dst`), run by
-#                                           hand instead of through its checks and its board record
-#   git branch -f main feat/x              force-moves the branch pointer, no merge object at all
-#   git update-ref refs/heads/main <sha>   the same move, spelled at the plumbing layer
-#
-# Each reproduces H6's exact class: unreviewed code lands on the branch every ticket builds from,
-# with no review_requested, no approved, no merged event — without the word "merge" ever appearing.
-NORM_REF=$(printf '%s' "$CMD" | tr -s ' ')
-REFBLOCK=""
-case "$NORM_REF" in
-  *"git push "*":$DECLARED"|*"git push "*":$DECLARED "*)
-    REFBLOCK="a push refspec ending :$DECLARED moves the integration branch's ref on the remote — no merge, no board event" ;;
-  *"git fetch "*":$DECLARED"|*"git fetch "*":$DECLARED "*)
-    REFBLOCK="a fetch refspec ending :$DECLARED moves the integration branch's LOCAL ref directly — this is wave-integrate.mjs's own mechanism, run by hand instead of through it" ;;
-  *"git branch -f $DECLARED"|*"git branch -f $DECLARED "*|*"git branch -M $DECLARED"|*"git branch -M $DECLARED "*)
-    REFBLOCK="git branch -f/-M force-moves $DECLARED's pointer directly — no merge object, no history check" ;;
-  *"update-ref refs/heads/$DECLARED"*)
-    REFBLOCK="git update-ref moves $DECLARED's pointer at the plumbing layer — the same effect as branch -f" ;;
-esac
-if [ -n "$REFBLOCK" ]; then
-  cat >&2 <<EOF
+  # --- ref-writing bypasses of the merge check above ----------------------------------------------
+  #
+  # FOUND BY ADVERSARIAL RE-REVIEW (2026-08-08): commands that move the integration branch's REF
+  # without ever calling `git merge`, and without needing it checked out in this tree at all:
+  #   git push origin HEAD:main / feat:refs/heads/main / +main / main --force / --delete main
+  #   git fetch . feat/x:main        wave-integrate.mjs's own `git fetch . src:dst`, run by hand
+  #   git branch -f|--force|-M|-C main …
+  #   git update-ref [-d] refs/heads/main …
+  # Each reproduces H6's exact class: unreviewed code lands on the branch every ticket builds
+  # from, with no board event — without the word "merge" ever appearing. A plain
+  # `git push origin main` (local main to remote main, no force) is the documented landing step.
+  REFBLOCK=""
+  if [ "$REF" = "$DECLARED" ]; then
+    case "$WHY" in
+      push)  REFBLOCK="a push that rewrites or forces $DECLARED on the remote (a refspec ending :$DECLARED, +$DECLARED, --force, or --delete) — no merge, no board event" ;;
+      fetch) REFBLOCK="a fetch refspec ending :$DECLARED moves the integration branch's LOCAL ref directly — this is wave-integrate.mjs's own mechanism, run by hand instead of through it" ;;
+      branch) REFBLOCK="git branch -f/--force/-M/-C force-moves $DECLARED's pointer directly — no merge object, no history check" ;;
+      update-ref) REFBLOCK="git update-ref moves $DECLARED's pointer at the plumbing layer — the same effect as branch -f" ;;
+    esac
+  fi
+  if [ -n "$REFBLOCK" ]; then
+    cat >&2 <<EOF
 BLOCKED — a git command that moves the integration branch's ref (\`$DECLARED\`) without a merge,
 a review, or wave-integrate.mjs.
 
@@ -215,79 +535,10 @@ Instead:
   - land a whole wave         node scripts/wave-integrate.mjs --wave <N> [--push]
   - move it by hand?          git checkout $DECLARED && git merge --ff-only <wave-branch> && git push origin $DECLARED
 EOF
-  exit 2
-fi
-
-# --- is there anything here to destroy? ---------------------------------------------------------
-#
-# The first version gated on agent worktrees existing (.agent-wt/, .claude/worktrees/). The security
-# review found the hole by probing both states: DR4-027 — the incident this hook was written for —
-# was two writers in ONE shared checkout with NO worktrees, so the hook stood down in exactly the
-# configuration that caused it. It protected the isolated case and went silent in the unisolated
-# one. A guard for an incident that does not fire on that incident.
-#
-# The trigger is now the harm, not a proxy for it: **uncommitted work exists in this tree.** That is
-# what a repo-wide destructive command destroys, and it is the same loss whether the work belongs to
-# a sibling agent or to the human sitting at the keyboard — a solo developer with dirty state has
-# MORE to lose from `git reset --hard`, not less, which the worktree proxy had exactly backwards.
-#
-# A clean tree keeps every command, so this still cannot fire on everything. That matters: a gate
-# that refuses constantly gets switched off, and a switched-off gate protects nothing.
-DIRTY=$(git status --porcelain -uall 2>/dev/null | head -n 1)
-[ -n "$DIRTY" ] || exit 0
-
-# --- is the command repo-wide destructive? ------------------------------------------------------
-# Each pattern discards or sweeps work the caller may not have written. A path-scoped command
-# (`git checkout -- src/one.swift`, `git add src/`) is NOT matched: explicit paths are the
-# documented safe form, and banning them would ban the alternative we tell people to use.
-# A trailing-dot pattern needs a BOUNDARY after the dot, or it swallows every dotfile and every
-# explicitly-relative path. `*"git add ."*` also matched `git add .gitignore`; `git checkout -- .`
-# also matched `git checkout -- .gitignore`; `git restore .` also matched `git restore .github/x`;
-# and all three matched `git add ./src/a`. So the hook refused exactly the path-scoped commands the
-# comment below promises are safe, and that its own BLOCKED message prints as the alternative — a
-# gate that refuses its own escape hatch is a gate that gets switched off. Found in use, 2026-09-07,
-# blocking `git add .gitignore` three times in a row. The existing safe-form tests all used paths
-# that begin with a letter (`src/one.swift`, `mine.swift`), which is why this survived them.
-NORM=$(printf '%s' "$CMD" | tr -s ' ')
-VERDICT=""
-case "$NORM" in
-  *"git checkout -- ."|*"git checkout -- ."[!A-Za-z0-9_./-]*|*"git checkout -- :/"*)   VERDICT="git checkout -- . discards every uncommitted change in the tree" ;;
-  *"git checkout -f"*|*"git switch -f"*|*"git switch --discard-changes"*)
-                                                   VERDICT="a forced checkout/switch discards every uncommitted change in the tree" ;;
-  *"git restore ."|*"git restore ."[!A-Za-z0-9_./-]*|*"git restore -- ."|*"git restore -- ."[!A-Za-z0-9_./-]*|*"git restore --staged --worktree"*|*"git restore -SW"*)
-                                                   VERDICT="git restore over the whole tree discards every uncommitted change" ;;
-  *"git reset --hard"*|*"git reset --keep"*)       VERDICT="git reset --hard/--keep discards uncommitted changes in the tree" ;;
-  *"git clean -"*)                                 VERDICT="git clean deletes untracked files, including another agent's new files" ;;
-  *"git push --force"*|*"git push -f "*|*"git push --force-with-lease"*)
-                                                   VERDICT="a force push rewrites published history others may have based work on" ;;
-  *"git branch -D"*)                               VERDICT="git branch -D deletes an unmerged branch and the commits only it referenced" ;;
-  *"git stash"*)
-    # `git stash push -- <path>` is scoped and fine; a bare stash sweeps the whole tree.
-    case "$NORM" in *"git stash"*" -- "*) : ;; *) VERDICT="git stash sweeps the whole tree, including work you did not write — this is the exact command that cost 22 files on 2026-07-29" ;; esac ;;
-  *"git add -A"*|*"git add --all"*|*"git add ."|*"git add ."[!A-Za-z0-9_./-]*)  VERDICT="git add -A/. stages another agent's half-written files into your commit" ;;
-  *"git commit -a"*)                               VERDICT="git commit -a commits every modified tracked file, including files you did not write" ;;
-esac
-[ -n "$VERDICT" ] || exit 0
-
-DIRTY_N=$(git status --porcelain -uall 2>/dev/null | grep -c . || echo "?")
-
-cat >&2 <<EOF
-BLOCKED — repo-wide destructive git command, and this tree has uncommitted work.
-
-  command : $CMD
-  why     : $VERDICT
-  at risk : $DIRTY_N uncommitted path(s) in this tree
-
-There is uncommitted work here — yours, another agent's, or both. This is the
-\`agent-isolation\` Rule 2 ban, enforced rather than described — it was prose on
-2026-07-29 and 22 files were lost to exactly this (DR4-027).
-
-Instead:
-  - stage explicit paths            git add path/one path/two
-  - discard one file you wrote      git checkout -- path/you/wrote
-  - need a clean tree to test?      copy the repo to a temp dir and test there;
-                                    never clean the tree others are working in
-  - found changes you did not make? STOP and report them. Do not discard
-                                    anything you did not write (Rule 5).
+    exit 2
+  fi
+done <<EOF
+$SEGS
 EOF
-exit 2
+
+exit 0
