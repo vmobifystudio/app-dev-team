@@ -4,7 +4,7 @@
 first and nothing else until you have.*
 
 **Last updated:** 2026-11-17 · **Branch:** `fix/e2e-review-sweep` (on top of `main` at `3bedced`, #44)
-**Suite:** 1471 of 1485 passed (14 failing — see the entry below) · **Invariants:** 12/12 · **Version:** 3.1.0
+**Suite:** 1551 passed, 0 failed · **Mutation sample:** all caught · **Eval lab:** passes · **Invariants:** 12/12 · **Version:** 3.1.0
 
 ## 2026-11-17 — the end-to-end review (`fix/e2e-review-sweep`)
 
@@ -27,11 +27,16 @@ scratch project before it was fixed. What it found, plainly:
   promise that `release-manager` uploads (it never does), a deleted role's name.
 - **The docs caught up:** README, HANDBOOK, CONTRIBUTING, CHANGELOG and `knowledge/README.md` now
   match the tree (30 roles · 27 commands · 32 skills · 9 packs, both dashboards, both corpora).
-- **Still open:** `team-doctor` reports 31 findings at this commit — 30 `prompt_registry_stale` (the
-  agent files changed; the registry was not re-synced) and one `path_spelling` in
-  `commands/app-build.md`. The suite's 14 failures at this commit sit in the same area (team-doctor
-  coherence, the "planned project could not dispatch" fixture, dispatch-preflight); a fixture fix
-  has since landed on `main`.
+- **More fixed in the same pass:** the destructive-git hook now tokenises the command (quoted text,
+  heredocs, `-C`/`-c`, `cd X &&`, chains) instead of substring-matching it, so it stops blocking
+  `grep "git add -A"` and commit-message heredocs and starts blocking `git -C . reset --hard`,
+  `git push origin +main` and friends; the cross-worktree hook resolves symlinks and `..`; the kill
+  switch is seen from worktrees and subdirectories; `decisions.md` is append-only rather than
+  immutable; brownfield gets a founder record; `qa-engineer` declares the P0 journeys; audit
+  findings reach the register `ship-gate` reads; `security-reviewer` has its utility privacy mode.
+- **Still open:** the new destructive-git tokenizer was only exercised under macOS awk — CI on
+  ubuntu is its first mawk run. And everything here was proven by driving the CLI and the hooks,
+  not by an agent following the commands end to end; that still needs a real spawned run.
 
 ## THE NUMBER THAT MATTERS MOST, AND WHY IT IS AT THE TOP
 
