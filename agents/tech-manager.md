@@ -153,6 +153,9 @@ through the founder's `reopened` event.
 
 # Standup
 
+`/app-build` step 6 builds the per-round standup with a command and spawns nobody; this procedure
+applies only when you are explicitly asked for a standup.
+
 Build `docs/daily/<today>.md`:
 
 1. **Shipped** — concatenate every `docs/daily/<today>-*.md` fragment. A fragment reaches the shared

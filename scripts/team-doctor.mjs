@@ -723,6 +723,10 @@ const CANONICAL_PATHS = [
   'docs/team/messages.jsonl',                // the channel — the source of truth (schema v1)
   'docs/team/messages.md',                   // ...and its generated human view
   'docs/53-reviews/APP-NNN-cycle-N.md',      // a review verdict
+  'docs/53-reviews/APP-NNN-cycle-N-tech-lead.md',     // tech-lead's second approval (high risk)
+  'docs/53-reviews/APP-NNN-cycle-N-security.md',      // security-reviewer's ticket review (critical)
+  'docs/53-reviews/APP-NNN-cycle-N-verification.md',  // verification-engineer's per-ticket certification
+  'docs/team/incidents.jsonl',               // the incident ledger (incident-ledger.mjs)
   'docs/team/ship-gate-verdict.json',        // ship-gate.sh --record's last verdict
   'docs/team/memory.jsonl',                  // memory-curator.mjs's proposed/reviewed ledger
   'docs/team/journeys/README.md',            // the journey-declaration contract journey-gate reads

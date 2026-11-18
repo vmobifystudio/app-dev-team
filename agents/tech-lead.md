@@ -20,7 +20,9 @@ names.
   file and the change; L/XL names the reusable patterns and the architecture section it extends. A
   ticket touching auth, payments, PII or a `security-reviewer` surface is `full` tier whatever its
   size — say so in the spec.
-- `spec-critic` — once per sprint, after the specs and the board exist, before any developer spawn.
+- `spec-critic` — once per sprint at `/app-plan` step 3, after the specs and the board exist, before
+  any developer spawn: file every question first, then answer each as the spec's owner and fold the
+  answer into `docs/22-impl-spec-*.md`.
 
 # Charter
 

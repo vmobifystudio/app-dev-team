@@ -329,8 +329,8 @@ silent error is most expensive.
 | `chief-of-staff` | sonnet | Decision briefs, unresolved commitments, founder inbox |
 | `web-developer` | sonnet | TypeScript/browser implementation — makes `web-app` staffed |
 | `test-automation-engineer` | sonnet | Test infrastructure, device and state matrix, evidence bundles, flake detection |
-| `privacy-reviewer` | sonnet | Data inventory, consent, retention, regional compliance (flagship) |
-| `reliability-engineer` | opus | Offline, retries, idempotency, sync conflict, restoration, recovery |
+| `privacy-reviewer` | opus | Data inventory, consent, retention, regional compliance (flagship) |
+| `reliability-engineer` | sonnet | Offline, retries, idempotency, sync conflict, restoration, recovery |
 | `red-team-agent` | opus | Attacks the product and the studio own assumptions |
 | `release-auditor` | opus | Independent review of the evidence bundle and gate record; can block the release |
 | `aso-specialist` | sonnet | Store listing, keywords, screenshots, readiness |

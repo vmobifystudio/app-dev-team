@@ -28,6 +28,7 @@ and prevents a whole class of "this doesn't match how we build" rework.
    | Pick stack / versions / libraries | `stack-defaults.md` |
    | Write or review iOS code | `ios-conventions.md` (+ `stack-defaults.md`) |
    | Write or review Android code | `android-conventions.md` (+ `stack-defaults.md`) |
+   | Write or review web code, web spec, web CI | `web-conventions.md` (not `stack-defaults.md`) |
    | Add ads, IAP, or a paywall | `monetization.md` |
    | Add analytics / events / KPIs | `analytics.md` |
    | Prepare store assets / submission | `aso.md` |
