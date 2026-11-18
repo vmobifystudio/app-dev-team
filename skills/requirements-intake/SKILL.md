@@ -1,6 +1,6 @@
 ---
 name: requirements-intake
-description: Use at the very start of a new app project to turn a one-line idea or rough brief into docs/01-intake.md — "build an app", "I have an idea for an app". Run by /app-init (and /app-run through it).
+description: On an app-dev-team project, use at the start of /app-init (and /app-run through it) to turn the founder's one-line idea or rough brief into docs/01-intake.md.
 ---
 
 # Requirements intake

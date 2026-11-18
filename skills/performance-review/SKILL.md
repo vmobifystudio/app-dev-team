@@ -10,7 +10,8 @@ This is a review dimension with existing auditors behind it, not a standing role
 Performance is a budget, and a budget only exists if something can exceed it. The budgets live in
 `docs/20-architecture.md` §8; if that section is empty, that is the finding.
 
-Spawn the platform auditor first and fold its findings in — `axiom:swiftui-performance-analyzer`,
+The reviewer or orchestrator (a role whose tools include `Task`/`Agent`) runs the platform auditor
+and folds its findings in — an IC never spawns one. `axiom:swiftui-performance-analyzer`,
 `axiom:swift-performance-analyzer`, `axiom:memory-auditor`, `axiom:energy-auditor` on Apple
 platforms. **All external and optional** (separate plugins) — missing → record
 `N/A: <tool> — not installed`, walk the list below by hand, never file the absence as a defect.

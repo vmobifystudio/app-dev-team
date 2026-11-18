@@ -1,6 +1,6 @@
 ---
 name: dependency-policy
-description: Use when a ticket adds or upgrades a dependency, SDK, toolchain or lockfile, and before release — audits versions, compatibility, licenses and upgrade evidence. Used by ICs, code-reviewer and devops-engineer.
+description: On an app-dev-team project, use when a ticket adds or upgrades a dependency, SDK, toolchain or lockfile, and before release — audits versions, compatibility, licenses and upgrade evidence. Used by ICs, code-reviewer and devops-engineer.
 ---
 
 # Dependency policy

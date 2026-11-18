@@ -1,7 +1,7 @@
 ---
 description: Grade an existing app against the Mobify Studio House KB and Axiom standards — fan out the specialist auditors, produce a severity-ranked gap report, build a remediation backlog, then fix (safe fixes automatically, risky changes only with your approval)
 argument-hint: [dimension or "all" — e.g. security, monetization, ios, android; default = all] [--yolo]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 ---
 
 # /app-audit — Grade the app, then close the gaps
@@ -17,7 +17,9 @@ Dimension (optional, default = all): $ARGUMENTS
 ## Steps
 
 1. **Fan out the auditors in parallel** (single message), matched to the detected platform(s). Each
-   checks ONE dimension against the House KB pack it owns and returns findings, read-only:
+   checks ONE dimension against the House KB pack it owns and returns findings, read-only. Tell every
+   code-reading auditor to run the `defect-hunting` skill (§1 data paths, §2 execute constants)
+   first — a screen-by-screen read misses the second writer:
    - **iOS** — `code-reviewer` grading against `ios-conventions.md`, always. The `axiom:*` auditors
      are **external and optional** (separate plugin, not this one's `skills/`) and are listed in
      exactly one place: the canonical auditor list in `agents/code-reviewer.md`. Read the roster and

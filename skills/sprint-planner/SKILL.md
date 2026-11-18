@@ -1,6 +1,6 @@
 ---
 name: sprint-planner
-description: Use to convert the backlog into a runnable sprint with parallel ticket assignment and dependency tracking. Loaded by tech-manager when /app-plan spawns it; triggers on "plan the sprint" or "what does the pod do next".
+description: On an app-dev-team project, use to convert docs/11-backlog.md into a runnable sprint on the event-sourced board, with parallel ticket assignment and dependency tracking. Loaded by tech-manager when /app-plan spawns it.
 ---
 
 # Sprint planner
@@ -27,7 +27,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 5. **Board — create tickets through the CLI. Never hand-write the table.**
 
    `docs/31-board.md` is a **generated view**. The source of truth is the append-only event log
-   `docs/31-board-events.jsonl`, and `scripts/board.mjs` is its only writer. A ticket is created by:
+   `docs/31-board-events.jsonl`, and `${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs` is its only writer. A ticket is created by:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add APP-001 \
@@ -103,7 +103,10 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    | `blocked` recomputes readiness for dependents | dependents stranded by a mid-round block |
    | any event on an unknown ticket is refused | `malformed_row` |
 
-   Mutations during the sprint:
+   Mutations during the sprint. Under `requireActorTokens` every gate event below (`verified`,
+   `verified_static`, `rejected`, `approved`, `changes`, `merged`, `qa_passed`, `qa_failed`,
+   `closed`, `reopened`) also carries `--token <T>` — an agent's from its composed prompt, the
+   orchestrator's minted inline (`/app-build` §Tokens), the founder's never minted by an agent:
 
    ```bash
    board.mjs move APP-001 claimed --by android-developer
@@ -182,7 +185,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    states it used to report, so anything the doctor still finds arrived by a hand edit, a legacy
    board, or a bug. Both still run, on purpose.
 
-10. **Self-metrics.** `deriveMetrics(events)` in `scripts/lib/events.mjs` takes the parsed log (not a
+10. **Self-metrics.** `deriveMetrics(events)` in `${CLAUDE_PLUGIN_ROOT}/scripts/lib/events.mjs` takes the parsed log (not a
     path — one read path only) and returns cycle time per ticket, review pass rate, rework rate,
     gate-fire counts (`rejected`/`changes`/`qa_failed`/`blocked`), tickets per round, and median
     cycle time. `board.mjs show` prints the summary; `show --json` emits the whole object. This is

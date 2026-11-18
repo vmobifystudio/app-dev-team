@@ -6,6 +6,9 @@ allowed-tools: Read, Bash
 
 # /app-manager-harness — prove warm/cold manager interchangeability
 
+Arguments: $ARGUMENTS — they fill the `<...>` placeholders below; a path argument replaces the
+default path shown.
+
 Run the same persisted-state scenario in both modes:
 
 ```sh

@@ -3,7 +3,7 @@
 Loaded from `team-protocol` SKILL.md when a send is refused, or when you audit a ledger.
 
 Two agents can burn a whole budget agreeing with each other. Hard limits, with **one implementation**
-in `scripts/lib/messages.mjs`: `team-message.sh` calls it to refuse the send, `board-doctor` calls it
+in `${CLAUDE_PLUGIN_ROOT}/scripts/lib/messages.mjs`: `team-message.sh` calls it to refuse the send, `board-doctor` calls it
 to audit a log written by hand or migrated around it. Never restate the numbers elsewhere — two
 copies disagree.
 

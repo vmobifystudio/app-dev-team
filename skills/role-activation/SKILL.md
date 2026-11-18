@@ -1,6 +1,6 @@
 ---
 name: role-activation
-description: Use at project start (/app-init, /app-onboard, /app-run) to decide which roles this product needs and write docs/02-team-roster.md, and whenever a command is about to spawn or gate on a role that may be off.
+description: On an app-dev-team project, use at project start (/app-init, /app-onboard, /app-run) to decide which roles this product needs and write docs/02-team-roster.md, and whenever a command is about to spawn or gate on a role that may be off.
 ---
 
 # Role activation

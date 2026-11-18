@@ -6,6 +6,9 @@ allowed-tools: Read, Bash, Glob, Grep
 
 # /app-preflight — establish context before acting
 
+Arguments: $ARGUMENTS — they fill the `<...>` placeholders below; a path argument replaces the
+default path shown.
+
 Run `context-preflight.mjs` first. Then run `dependency-check.mjs` when dependency manifests exist,
 `version-consistency-check.mjs` when a release record exists, and `policy-check.mjs` when the project
 has `.studio-policy.json`. Exit `1` is a blocker; exit `2` is `CANNOT EVALUATE`, never a pass.

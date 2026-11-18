@@ -52,14 +52,14 @@ log-derived section reads **CANNOT EVALUATE**, never "clear" and never silently 
 
 ## The three actions
 
-The same whitelist as `/app-dashboard` — literally the same module, `scripts/lib/actions.mjs`.
+The same whitelist as `/app-dashboard` — literally the same module, `${CLAUDE_PLUGIN_ROOT}/scripts/lib/actions.mjs`.
 Anything else is refused by the server, not hidden by the page.
 
 - **Unblock a ticket** — requires a recorded reason
 - **Answer an open question** — name the artifact you folded the answer into
 - **Assign an unowned artifact** — records a `decision` on the team ledger
 
-Each shells out to `scripts/board.mjs` or `scripts/team-message.sh` and shows the command and its
+Each shells out to `${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs` or `${CLAUDE_PLUGIN_ROOT}/scripts/team-message.sh` and shows the command and its
 exit code. **If the CLI refuses, the refusal is printed verbatim.**
 
 ## Which one to open

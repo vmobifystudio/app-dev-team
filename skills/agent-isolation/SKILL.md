@@ -1,6 +1,6 @@
 ---
 name: agent-isolation
-description: Use before spawning any agent that writes files, and as every developer/fixer agent's first and last action — one git worktree per writer, explicit-path staging, confirm the mutation landed. Used by the /app-build orchestrator and every IC.
+description: On an app-dev-team project, use before spawning any agent that writes files, and as every IC's first and last action — one git worktree per writer, explicit-path staging, confirm the mutation landed. Used by the /app-build orchestrator and every IC.
 ---
 
 # Agent isolation
@@ -9,15 +9,17 @@ Parallel agents that share one working tree corrupt each other, silently: every 
 `DONE`, the tests pass, and the review reads a diff that contains someone else's changes. A
 read-only agent is not exempt — one `git add -A` ships whatever another agent left in the tree.
 
-**Spawning agents?** Read `references/orchestrator.md` — leasing one worktree per writer
-(`worktree-slot.mjs`), cleanup on every terminal outcome, which shared-tree writes are safe, and the
-`spawn-gate.sh` check you run before the launch message. Everything below applies to every agent.
+Everything below applies to every agent. The spawning half (leases, the `spawn-gate.sh` check,
+reaping, which shared-tree
+writes are safe, a project that cannot use worktrees) is `references/orchestrator.md` — the
+`/app-build` loop already runs its commands, so read it only when one of those questions comes up.
 
 ## Rule 1 — work only in the worktree you were given
 
-Your spawn prompt names your worktree (`.agent-wt/<owner>`). It is your **project root**; never
-leave it. Cut one branch per ticket (`feat/APP-NNN-short-slug`) before you write anything. If you
-were given no worktree, say so in your first line and treat Rule 5 as live.
+Your spawn prompt names your worktree (`.agent-wt/<owner>-<n>`). It is your **project root**; never
+leave it. Before you write anything, cut the ticket's branch from the integration branch the prompt
+names: `git checkout -b feat/APP-NNN-short-slug <integration branch>`. Given no worktree? Say so in
+your first line, branch in the repo root, and treat Rule 5 as live.
 
 Shared-tree files are the exception, and only these: your review verdict
 (`docs/53-reviews/APP-NNN-cycle-N.md`, unique per ticket and cycle) and the append-only logs written
@@ -80,6 +82,6 @@ recoverable.
 
 ## Output contract
 
-Report `Worktree: .agent-wt/<owner>`, `Branch:`, `Staged (explicit paths):` and `Mutation
+Report `Worktree: .agent-wt/<owner>-<n>`, `Branch:`, `Staged (explicit paths):` and `Mutation
 confirmed:` inside your role's output contract (`spawn-prompt.mjs` inlines it; `team-protocol` is
 the reference).

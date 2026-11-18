@@ -1,6 +1,6 @@
 ---
 name: intent-trace
-description: Use when deriving one artifact from another (PRD from the founder brief, criteria, tickets, tests, analytics) and checking the chain. Used by product-validator; /app-init and /app-run run its script, trace.mjs.
+description: On an app-dev-team project, use when deriving one artifact from another (PRD from docs/00-founder-intent/, criteria, tickets, tests, analytics) and checking the chain. Used by product-validator; /app-init and /app-run run its script, trace.mjs.
 ---
 
 # Intent trace
@@ -26,7 +26,7 @@ docs/00-founder-intent/
   example-<name>.<ext> a screenshot, a competitor link, a spreadsheet they sent
   constraints.md       budget, deadline, platform, legal, "never do X"
   decisions.md         append-only founder decisions (see §5)
-  MANIFEST.sha256      the tamper record — written by scripts/founder-intent.mjs
+  MANIFEST.sha256      the tamper record — written by ${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs
 ```
 
 **Rules:**
@@ -154,5 +154,5 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --only trace|conflicts|gates
 ```
 
 Exit `0` clean · `1` findings · `2` cannot evaluate. `2` is never rounded up to a pass, and the
-board is read through `scripts/lib/board.mjs` — one parser, because a second reading of the board is
+board is read through `${CLAUDE_PLUGIN_ROOT}/scripts/lib/board.mjs` — one parser, because a second reading of the board is
 how the last four fail-open gates got written.

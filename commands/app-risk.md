@@ -6,9 +6,12 @@ allowed-tools: Read, Bash
 
 # /app-risk — route by blast radius
 
+Arguments: $ARGUMENTS — they fill the `<...>` placeholders below; a path argument replaces the
+default path shown.
+
 ```sh
 node "${CLAUDE_PLUGIN_ROOT}/scripts/risk-router.mjs" \
-  --policy "$RISK_POLICY" --file <changed-file> --change <short-description>
+  --policy docs/team/risk-policy.json --file <changed-file> --change <short-description>
 ```
 
 The highest matching risk wins. The result names model tier, approvers, and required evidence;

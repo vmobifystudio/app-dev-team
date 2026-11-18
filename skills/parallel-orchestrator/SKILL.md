@@ -1,6 +1,6 @@
 ---
 name: parallel-orchestrator
-description: Use to launch the round's IC agents in parallel via the subagent tool (Task/Agent) once the board has ready tickets. Run by the /app-build orchestrator (the main session) as its step 2; holds the rules for safe concurrent agent execution.
+description: On an app-dev-team project, use to launch the round's IC agents in parallel via the subagent tool (Task/Agent) once the board has ready tickets. Run by the /app-build orchestrator (the main session) as its step 2; holds the rules for safe concurrent agent execution.
 ---
 
 # Parallel orchestrator
@@ -8,19 +8,23 @@ description: Use to launch the round's IC agents in parallel via the subagent to
 The one copy of the launch procedure, run from `/app-build` step 2 by the main session once
 `orchestrator.mjs round` (step 0) is clear and the board has ready `todo` tickets. `/app-build` owns
 everything before and after the launch — the round preconditions, verifying each `DONE`, the merge
-gate, the wave pass and the journal. Its rare branches live in `references/build-loop-branches.md`.
-For the isolation rules you enforce here, read `agent-isolation` and
-`skills/agent-isolation/references/orchestrator.md`.
+gate, the wave pass and the journal — and holds the one copy of the verify-done outcomes, the model
+ladder and the token form. Rare branches: `references/build-loop-branches.md`. The commands below
+already enforce `agent-isolation`'s orchestrator half; read
+`skills/agent-isolation/references/orchestrator.md` only for a project that cannot use worktrees.
 
 ## Procedure
 
 1. **Pick the ready tickets** from `node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json`:
-   `todo`, every `dependsOn` merged (`qa` or `done`). A ticket behind a `blocked` dependency is never
-   ready and never reported by this rule — that is the doctor's `stranded` check at step 0.
+   `todo`, every `dependsOn` merged (`qa` or `done`) **and its wave landed** — a dependency whose
+   wave is still `AWAITING INTEGRATION` is not on the integration branch the IC branches from. A ticket behind a `blocked` dependency is never
+   ready and never reported by this rule — that is the doctor's `stranded` check at step 0. Spawn a
+   designer, researcher or QA owner only when its ticket is ready — never "to get ahead".
 
-1a. **Preflight, then claim, then spawn.** Run `dispatch-preflight` for the ticket first; claim only
-   on CLEAR. Preflight checks the scheduler's `ready` set, which only holds `todo` tickets, so a
-   ticket claimed first is `in_progress` and is refused. Then one append per ticket:
+1a. **Preflight, then claim, then spawn** — every ticket, `QA-` tickets included. Run
+   `dispatch-preflight` (`/app-build` top) first; claim only on CLEAR. Preflight checks the
+   scheduler's `ready` set, which only holds `todo` tickets, so a ticket claimed first is
+   `in_progress` and is refused. Then one append per ticket:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 claimed --by ios-developer
@@ -30,29 +34,25 @@ For the isolation rules you enforce here, read `agent-isolation` and
    in the standup. Claiming first also closes the window in which two orchestrators hand out the
    same ticket.
 
-2. **Group by owner.** One agent invocation per owner, batched: each owner gets all its ready tickets
-   in one prompt.
+2. **One spawn per ticket, one slot per spawn.** Never batch an owner's tickets into one prompt —
+   `compose` takes exactly one `--ticket`, and two agents never share a slot. Slots are keyed
+   `<owner>-<n>`, up to the scheduler's cap, so one platform can run several ICs at once. An owner
+   with more ready tickets than free slots: the rest wait for a slot to free, in a later round.
 
-2a. **Lease one slot per writing agent:**
+2a. **Lease the slot for each ticket:**
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001,APP-004
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner android-developer --tickets APP-002
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-004
    ```
 
-   The owner works its tickets **one after another in that slot**, one `feat/APP-NNN-slug` branch per
-   ticket. `lease` refuses when the pool is full — that is the scheduler's cap (`scheduler.mjs cap`);
-   raising it is a decision about how much of the machine the studio may use, not a workaround.
+   Use the slot path each `lease` prints (`.agent-wt/ios-developer-1`, `-2`). `lease` refuses when
+   the pool is full — that is the scheduler's cap (`scheduler.mjs cap`); raising it is a decision
+   about how much of the machine the studio may use, not a workaround.
 
-2a-i. **Tell every agent, in its prompt, that destructive commands are banned** repo-wide:
-
-   ```
-   git reset (--hard or otherwise)   git stash   git checkout -- .
-   git clean                          git add -A / git add . / git commit -a
-   ```
-
-   Stage by explicit path; need a clean tree → copy the repo to a temp dir; HEAD moved → stop and
-   report (`agent-isolation` Rules 2 and 5).
+2a-i. **Every agent's prompt carries the destructive-command ban** — `git reset`, `git stash`,
+   `git checkout -- .`, `git clean`, `git add -A` / `.` / `commit -a` (`compose` inlines it;
+   `agent-isolation` Rules 2 and 5 have why).
 
 2b. **Check for file overlap, not just feature independence.** List the files each ticket is likely
    to touch (impl spec, the ticket's `--file` set). Any pair sharing a file is **serialized**.
@@ -61,28 +61,35 @@ For the isolation rules you enforce here, read `agent-isolation` and
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-prompt.mjs" compose \
-     --root . --ticket APP-NNN --role <owner> --slot .agent-wt/<owner>
+     --root . --ticket APP-NNN --role <owner> --slot <the path lease printed>
    ```
 
-   Use its stdout as the spawn message **verbatim**: ticket, board entry, spec pointers, the slot path
-   as the project root, and **the output contract inlined as literal text**. A prompt that *points
-   at* the contract instead of containing it gets back reports missing every field — measured, same
-   model and role. `spawn-prompt.mjs verify --role <owner> --prompt <file>` confirms the labels are
-   there. The PreToolUse hook `require-spawn-contract.sh` runs that verify (plus spawn-gate and the
-   contention check) on every spawn naming a board ticket — a prompt it refuses was not composed.
-   One spawn per ticket; one owner's tickets run one after another in its slot.
+   Use its stdout as the spawn message **verbatim**: ticket, board entry, spec excerpts, the slot
+   path as the project root, the integration branch the IC cuts its branch from
+   (`git checkout -b feat/APP-NNN-slug <integration branch>` — never from the slot's last HEAD), the
+   minted `Token:` line, and **the output contract inlined as literal text**. A prompt that *points
+   at* the contract gets back reports missing every field — measured, same model and role. The
+   PreToolUse hook `require-spawn-contract.sh` re-verifies every spawn naming a board ticket; a
+   prompt it refuses was not composed.
+
+   Gate roles are composed the same way, one ticket each: `--role code-reviewer` (`--mode design-qa`
+   for the design-QA pass, also for `ux-architect`), `tech-lead` (second approval),
+   `security-reviewer` (per-ticket review; required on `critical`), `verification-engineer`,
+   `release-auditor`. A `QA-` ticket's compose lists every ticket of the wave with its acceptance
+   criteria and mints one `qa-engineer` token per listed ticket (`Token for APP-NNN: …`).
 
 3a. **Run the isolation gate, last, and obey it.**
 
    ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" ios-developer android-developer
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" ios-developer-1 ios-developer-2 android-developer-1
    ```
 
-   It takes **OWNERS**, because that is what has a tree each, and its exit code decides the launch:
+   It takes the **slot names** you leased, because that is what has a tree each, and its exit code
+   decides the launch:
 
-   - `0 GO` → spawn. With one owner it prints `SERIALIZED` — the legal one-writer path, valid only
+   - `0 GO` → spawn. With one slot it prints `SERIALIZED` — the legal one-writer path, valid only
      while the writer stays alone. Say so in the standup.
-   - `1 REFUSED` → **spawn nobody.** It names the owners missing a worktree and prints the
+   - `1 REFUSED` → **spawn nobody.** It names the slots missing a worktree and prints the
      `git worktree add` line for each. Create them and re-run, or serialize the round.
    - `2 CANNOT EVALUATE` → not a git repo. Serialize; never treat a 2 as a go-ahead.
 
@@ -92,35 +99,18 @@ For the isolation rules you enforce here, read `agent-isolation` and
    sets it with `echo "reason" > .studio-stop` and clears it with `rm .studio-stop`.
 
 4. **Launch in a single message.** Multiple subagent (`Task`/`Agent`) invocations in the same
-   assistant message, one per owner, each given its slot path and its full ticket list. Sequential
-   launches give up the parallelism.
+   assistant message, one per ticket, each given its own slot path. Sequential launches give up the
+   parallelism.
 
 5. **Stream the reviews — do not wait for the batch.** Each `DONE` goes through `/app-build` step 3
-   as it lands: `report-check`, `done_reported`, then `verify-done.sh` against the base from
-   `integration-branch.sh` (resolved once per round, never a hardcoded `main`; exit 2 stops the
-   round). It has **three** outcomes:
+   as it lands, against the base `integration-branch.sh` resolves. verify-done has three outcomes — `VERIFIED`, `REJECTED` (re-spawn the developer),
+   `CANNOT EVALUATE` (record `verified_static`, **do not re-spawn**) — and the per-ticket default is
+   `--static`, which is always the third. Spawn a `code-reviewer` for each passing branch in the next
+   message; reviewers run in parallel with each other **and** with still-running developers.
 
-   | Line 1 | Exit | Do |
-   |---|---|---|
-   | `VERIFIED` | 0 | `board.mjs move APP-NNN verified --by tech-manager --evidence <record verify-done printed>`, then `review_requested` |
-   | `REJECTED` | 1 | The row stays. Re-spawn that developer with the blocking lines verbatim |
-   | `CANNOT EVALUATE` | 2 | `board.mjs move APP-NNN verified_static --by tech-manager --detail "<what could not run>"`, then `review_requested`. **Do not re-spawn the developer — there is no failure to fix** |
-
-   `verified_static` keeps review alive for a ticket blocked only by its environment: it unlocks
-   `review_requested`, `approved` and `merged`, refuses `closed`, and `ship-gate.sh` blocks on it.
-   Spawn a `code-reviewer` for each passing branch in the next message; reviewers run in parallel
-   with each other **and** with still-running developers.
-
-6. **Escalate the model on a retry.** First attempt: the role's default tier (its agent file's
-   `model:`). A re-spawn after `REQUEST CHANGES` runs **one tier up**, capped at the top:
-
-   ```
-   haiku → sonnet → opus → opus
-   ```
-
-   Pass it explicitly (the subagent tool's `model` parameter, or say so in the prompt) and note it in
-   the standup. A `rejected` verify-done retry is *not* an escalation: nothing was reviewed, so
-   nothing said the work was hard.
+6. **Escalate the model on a retry** after `REQUEST CHANGES`: `haiku → sonnet → opus`, capped at
+   opus, passed as the subagent tool's `model` parameter (`/app-build` step 4). A `rejected`
+   verify-done retry is *not* an escalation: nothing was reviewed, so nothing said the work was hard.
 
 ## Warm managers (optional — the portable default is respawn)
 
@@ -134,6 +124,7 @@ portable baseline every other step assumes.
 ## Anti-patterns
 
 - Sequential launches when parallel is safe; parallel launches when two tickets share a file.
+- One prompt carrying several tickets, or a second ticket in a slot still holding the first.
 - Editing `docs/31-board.md` to record a result — it is generated from the log.
 - Retrying past a refusal — exit 1 from `board.mjs` is a rule catching something; fix what it names.
 - Believing a `DONE` you did not verify, or spawning against a board you did not check.
@@ -144,11 +135,13 @@ portable baseline every other step assumes.
 
 ```
 APP-001 todo ios-developer       APP-003 todo backend-developer
-APP-002 todo android-developer   APP-004 todo ios-developer (depends on APP-001)
+APP-002 todo android-developer   APP-004 todo ios-developer
+APP-005 todo ios-developer (depends on APP-001)
 
-[same message]  Agent(ios-developer, APP-001) · Agent(android-developer, APP-002) · Agent(backend-developer, APP-003)
+[same message]  Agent(ios-developer, APP-001, ios-developer-1) · Agent(ios-developer, APP-004, ios-developer-2)
+                · Agent(android-developer, APP-002, android-developer-1) · Agent(backend-developer, APP-003, …-1)
 [as each DONE verifies]  Agent(code-reviewer, feat/APP-00N-...)
 ```
 
-APP-004 is not launched until APP-001 merges; then it goes to ios-developer in parallel with
-whatever else is ready.
+APP-005 is not launched until APP-001 merges; then it gets a fresh slot, branched from the
+integration branch, in parallel with whatever else is ready.

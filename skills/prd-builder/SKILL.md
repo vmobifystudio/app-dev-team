@@ -1,6 +1,6 @@
 ---
 name: prd-builder
-description: Use to write the Product Requirements Document from the vision file — "write the PRD", "spec out the product". Used by cpo, and by ceo's founder pass on utility tier, during /app-init.
+description: On an app-dev-team project, use to write docs/10-prd.md from docs/00-vision.md during /app-init. Used by cpo, and by ceo's founder pass on utility tier.
 ---
 
 # PRD builder

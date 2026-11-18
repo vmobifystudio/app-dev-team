@@ -6,6 +6,9 @@ allowed-tools: Read, Bash
 
 # /app-eval — run deterministic agent evaluations
 
+Arguments: $ARGUMENTS — they fill the `<...>` placeholders below; a path argument replaces the
+default path shown.
+
 Evaluation manifests define reproducible cases with an executable command, expected exit code, and
 required evidence text:
 

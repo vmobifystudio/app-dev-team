@@ -1,6 +1,6 @@
 ---
 name: team-protocol
-description: Use whenever one role needs something from another — a blocker, a spec question, a handoff, an escalation — and as the reference for the team ledger, who may message whom, and the output contract. Used by every role.
+description: On an app-dev-team project, use whenever one role needs something from another — a blocker, a spec question, a handoff, an escalation — and as the reference for the team ledger (docs/team/messages.jsonl), who may message whom, and the output contract. Used by every role.
 ---
 
 # Team protocol
@@ -49,10 +49,12 @@ Direct messages follow the org chart; anything else goes through `tech-manager`.
 | `tech-lead` | any IC · `tech-manager` · `cto` |
 | `tech-manager` | anyone |
 | `cpo` ↔ `cto` | each other · `ceo` |
+| anyone | `tech-manager`, always |
 
-An IC never messages `ceo`, `cpo` or `cto` — it stops every IC independently re-opening settled scope.
+An IC never messages `ceo`, `cpo` or `cto`. Product ambiguity goes to `tech-manager`, who decides
+whether it needs `cpo` — that stops every IC independently re-opening settled scope.
 
-## ICs: declare, don't dispatch
+## ICs (developers, reviewers, QA): declare, don't dispatch
 
 An agent that can proceed will proceed; it cannot wait for an answer inside its own run. So your
 primary obligation is the `Assumptions & open questions` field of your output contract: every place
@@ -78,7 +80,7 @@ Never just "unclear" — name **who** must answer **what**.
 
 ## Limits
 
-Hard caps live in `scripts/lib/messages.mjs` (per role per round, same-pair cooldown, chain depth,
+Hard caps live in `${CLAUDE_PLUGIN_ROOT}/scripts/lib/messages.mjs` (per role per round, same-pair cooldown, chain depth,
 per-ticket budget, duplicate question, re-opening a decided thread needs `--evidence`); a refusal
 writes nothing and states its code and remedy. **Escalation after one unresolved round** is
 mandatory: a second question while your first is unanswered is refused — escalate the first. On breaching any of them: stop messaging, write one
@@ -102,13 +104,14 @@ return every one, in order. A field you omit is a gate that silently passes. Fie
 | The team channel (source of truth) · its generated view | `docs/team/messages.jsonl` · `docs/team/messages.md` |
 | A review verdict | `docs/53-reviews/APP-NNN-cycle-N.md` |
 | ship-gate · journey-gate · runtime-gate recorded verdicts | `docs/team/ship-gate-verdict.json` · `docs/team/journey-result.json` · `docs/team/runtime-result.json` |
+| Evidence, three dirs by writer: runtime screenshots · human evidence bundles · script-written gate records | `docs/evidence/` · `docs/54-evidence/` · `docs/team/evidence/` |
 | memory-curator's ledger | `docs/team/memory.jsonl` |
 | Journey contract · one declared P0 journey | `docs/team/journeys/README.md` · `docs/team/journeys/<journey-id>.json` |
 | Platform, toolchain, test scopes · artifact-to-commit binding | `docs/team/project-profile.json` · `docs/team/release-candidates.jsonl` |
 | Run ledger (gitignored, main checkout only) · schema registry | `docs/team/runs.jsonl` · `docs/team/schema-registry.json` |
 | Dispatch manifests | `docs/team/capabilities.json` · `docs/team/risk-policy.json` · `docs/team/schedule.json` · `docs/team/context-manifest.json` |
 | HMAC actor keys — `deny_all`, never writable by any role | `docs/team/actors.json` |
-| Per-spawn actor tokens · gate evidence records — script-written only | `docs/team/actor-tokens.jsonl` · `docs/team/evidence/` |
+| Per-spawn actor tokens — script-written only | `docs/team/actor-tokens.jsonl` |
 | Saved IC report (SubagentStop hook) | `docs/team/reports/<ticket>-<UTC>.md` |
 
 ## Evidence bundle fields

@@ -1,6 +1,6 @@
 ---
 name: board-doctor
-description: Use to validate the board before spawning any agent and to verify a developer's DONE before review. Run at the top of every /app-build and /app-run round, by /app-status, and whenever the board looks inconsistent.
+description: On an app-dev-team project, use to validate the board (docs/31-board.md) before spawning any agent. Run at the top of every /app-build and /app-run round, by /app-status, and whenever the board looks inconsistent.
 ---
 
 # Board doctor
@@ -24,7 +24,7 @@ an ID that doesn't exist. The work is on the board, scheduled to nobody, reporte
 ## Two kinds of board, and what this skill is for on each
 
 **Generated board** (`docs/31-board-events.jsonl` exists). `docs/31-board.md` is a rendering of the
-event log, and `scripts/board.mjs` refuses the illegal transition *before* it is written — a
+event log, and `${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs` refuses the illegal transition *before* it is written — a
 self-approval, a merge with no non-owner approval, a review requested on an unverified DONE, a claim
 on an unmerged dependency. Those states are unrepresentable, not merely detectable, so on this board
 the doctor is mostly a **drift detector**.
@@ -91,43 +91,30 @@ invalid owner makes "who acts next" unanswerable.
 | `self_review` | Reviewer role == owner role, or the owner approved in the ledger | Assign a different reviewer; void the approval |
 | `done_without_review` | `qa`/`done` with no approval in the ledger | Move back to review, or append the missing line |
 | `cycles_invalid` | Cycles isn't an integer | Set an integer |
-| `cycle_cap_breached` | `Cycles >= 2` but status isn't `blocked` | Stop the ticket, set blocked, surface to the user |
+| `cycle_cap_breached` | `Cycles` above the cap (2, plus one per founder `reopened`) while the ticket is still active (`todo`/`in_progress`/`review`) | Stop the ticket, set blocked, surface to the user. `Cycles = 2` is a ticket that used its budget legitimately |
+| `shared_file_collision` | Two `in_progress` tickets name the same `Primary file:` | Serialize them or split the file scope before spawning both writers |
 | `ledger_action_unknown` | A ledger row uses a word outside `requested/started/changes/approved/merged` | Append a corrected line — the verdict is otherwise invisible to every check |
 
 Warnings (non-blocking): `not_ready` (a `todo` ticket whose acceptance criteria state no observable
 outcome, or which has no spec anchor — the developer will decide alone and the decision ships),
-`question_unanswered`, `message_pair_exceeded`, `message_chain_too_deep`,
+`question_unanswered`, `answer_not_delivered`, `follow_up_unresolved`, `waiver_expired`,
+`assumption_unvalidated`, `approval_inferred_only`, `message_pair_exceeded`, `message_chain_too_deep`,
 `ledger_cycle_mismatch`, `review_never_started`, `orphan_ledger_entry`,
 `ledger_action_unknown_superseded` (a bad ledger word that a later valid line already corrected —
 kept visible because the ledger is append-only, but not blocking).
 
 ## Verifying a DONE claim
 
-A developer agent's `DONE: APP-NNN / Branch / Files / Tests: N added, all green` is a self-report.
-Before moving the row to `review`, prove it:
+`/app-build` step 3 is the one copy of this procedure — run it from there. In short, against the
+integration branch from `integration-branch.sh` (never `main`):
 
-```bash
-BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") || { echo "$BASE"; exit 1; }
-sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" feat/APP-001-login "$BASE" "<project test command>"
-```
+| Line 1 | Exit | Do |
+|---|---|---|
+| `VERIFIED` | 0 | `board.mjs move <ID> verified --by tech-manager --evidence <record verify-done printed> --token <minted>`, then `review_requested` |
+| `REJECTED` | 1 | `rejected` — the row stays `in_progress` and the retry is not a review cycle. Re-spawn the developer with the blocking lines verbatim |
+| `CANNOT EVALUATE` | 2 | The default `--static` lane always lands here (the suite has not run), as does a toolchain that cannot run it. `verified_static`, then review as normal. **Do not re-spawn the developer** — there is no failure to fix |
 
-`main` is not the base — the integration branch is whatever `docs/23-git-strategy.md` declares, and
-`integration-branch.sh` is the single resolver. Verifying against the wrong base compares a branch
-to a tree it never forked from.
-
-Checks that the branch exists, that it carries commits not already on the base, that those commits
-change files, and — if a test command is given — whether it ran and what it said. Pure `git` +
-POSIX `sh`. **Three outcomes, and the headline word on line 1 always matches the exit code:**
-
-| Line 1 | Exit | Means | Do |
-|---|---|---|---|
-| `VERIFIED` | 0 | Claim holds and the tests are settled — ran green, or `--docs-only` exempted them | `board.mjs move <ID> verified --evidence <record verify-done printed>`, then `review_requested`; spawn `code-reviewer` |
-| `REJECTED` | 1 | The claim is false, **or** a suite ran and reported failures | **Do not move the row.** Re-spawn the developer with the blocking lines verbatim |
-| `CANNOT EVALUATE` | 2 | The branch half checks out, but the suite **could not be executed** — missing toolchain, missing SDK, no gradle wrapper, or no test command given | `board.mjs move <ID> verified_static`, then review as normal. **Do not re-spawn the developer** — there is no failure to fix |
-
-The project's test command comes from `docs/20-architecture.md` or the House KB. If you genuinely
-don't have one, run without it — you will get `CANNOT EVALUATE`, which is the correct answer. Never
-restate the agent's "all green" as if it were confirmed.
+Never restate the agent's "all green" as if it were confirmed.
 
 ## Inspectable but not runnable
 
@@ -136,7 +123,8 @@ checks need only `git diff` and `grep`. `verified_static` is that state:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 verified_static \
-  --by tech-manager --detail "the executable test suite (no Xcode on this host)"
+  --by tech-manager --detail "the executable test suite (no Xcode on this host)" \
+  --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket APP-001)"
 ```
 
 - It unlocks `review_requested`, `approved` and `merged` — real progress keeps happening.
@@ -144,12 +132,12 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 verified_static \
   it do that. A sprint closes as *"merged, verification deferred"*, which is the truth.
 - The fact rides on the row for the rest of its life: the board renders `qa (static only)` and
   `board.mjs show` prints `NOT RUN: <what>`.
-- To clear it, run the suite and append the real verdict: `move APP-001 verified --evidence <record>`. Then `closed` is
+- To clear it, run the suite and append the real verdict: `move APP-001 verified --evidence <record> --token <minted>`. Then `closed` is
   accepted.
 
 **A static-only ticket must never be reported as complete, and that is now a check, not a request.**
-`scripts/ship-gate.sh` **BLOCKS** on any ticket carrying the flag and names it, with the two routes
-out printed: run the suite and append `move <ID> verified --evidence <record>`, or waive it deliberately with
+`${CLAUDE_PLUGIN_ROOT}/scripts/ship-gate.sh` **BLOCKS** on any ticket carrying the flag and names it, with the two routes
+out printed: run the suite and append `move <ID> verified --evidence <record> --token <minted>`, or waive it deliberately with
 `WAIVED: <ID> — <who> — <why>` in `docs/60-releases.md`.
 
 Still name it in the standup and the ship-readiness report — the gate stops the release, it does not

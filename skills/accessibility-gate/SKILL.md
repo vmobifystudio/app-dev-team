@@ -9,8 +9,10 @@ The studio's position, from the plan: accessibility does not need a specialist r
 **gate that can fail**. This is that gate. It runs on the diff, not on the finished app, because a
 retrofit is an order of magnitude more expensive than doing it in the ticket.
 
-Where a platform auditor exists, spawn it first and fold its findings in — `axiom:accessibility-auditor`
-on iOS, `ui-design:accessibility-audit` elsewhere. **Both are external and optional** (separate
+A platform auditor, where one exists, is run by the reviewer or the orchestrator (a role whose tools
+include `Task`/`Agent`) — an IC never spawns one; it walks the list below and folds in any auditor
+findings it was handed. `axiom:accessibility-auditor` on iOS, `ui-design:accessibility-audit`
+elsewhere. **Both are external and optional** (separate
 plugins, not this one's `skills/`). Missing → record `N/A: <tool> — not installed`, walk the list by
 hand, never file the absence as a defect.
 

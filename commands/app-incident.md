@@ -6,6 +6,9 @@ allowed-tools: Read, Bash, Task, Agent
 
 # /app-incident — record operational incidents
 
+Arguments: $ARGUMENTS — they fill the `<...>` placeholders below; a path argument replaces the
+default path shown.
+
 Use the incident ledger for production or release-health events, not a normal ticket completion:
 
 ```sh

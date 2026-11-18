@@ -1,19 +1,25 @@
 ---
 description: Run the sprint — launch developer agents in parallel, review each PR, gate to QA, surface bugs back into the loop
 argument-hint: [ticket IDs, optional — defaults to all ready tickets]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 ---
 
 # /app-build — Execute the sprint
 
 Tickets (optional, default = all ready): $ARGUMENTS
 
-Rare branches (legacy boards, the verify-done exit-2 causes, the cycle cap, utility tier, runtime and
-journey gate edge cases, the QA ticket, journal fields) are in
+**Resuming after a context compaction, or unsure where you are?** Nothing you remember is state.
+Re-read this file, then run `orchestrator.mjs round` (step 0) and
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json`; the event log, the ledger and
+`docs/team/reports/` say what happened. Never re-derive a verdict, a token or a base from memory.
+
+Rare branches (legacy boards, the verify-done exit-2 causes, the cycle cap, high/critical risk, the
+utility tier, runtime and journey gate edge cases, the QA ticket, journal fields) are in
 `${CLAUDE_PLUGIN_ROOT}/skills/parallel-orchestrator/references/build-loop-branches.md`. Each step
 below names the section when you need it; read nothing from it otherwise.
 
-Before claiming any ticket (the claim comes after a CLEAR preflight), run the unified dispatch gate:
+Before claiming any ticket — a `QA-` ticket included (the claim comes after a CLEAR preflight) —
+run the unified dispatch gate:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-preflight.mjs" \
@@ -46,9 +52,21 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move <ID> <event> --by <role> [--
 | 3 | reviewer begins | `started` |
 | 4 | `REVIEW VERDICT: APPROVE` / `REVIEW VERDICT: REQUEST CHANGES` | `approved` / `changes` |
 | 4 | merge gate clears (you run it inline) | `merged` |
-| 5 | QA verdict | `qa_passed` / `qa_failed`, then `closed` (a `QA-` ticket: `merged` → `closed`) |
+| 5 | QA verdict (QA writes it) | `qa_passed` / `qa_failed`, then `closed` (a `QA-` ticket: `merged` → `closed`) |
 | any | stopped, for any reason | `blocked`, later `unblocked` |
-| cap | founder grants one more review cycle | `reopened` (`--by founder`) |
+| cap | founder grants one more review cycle | `reopened` (`--by founder`, run by the human) |
+
+**Tokens.** Under `requireActorTokens` every gate event — `verified`, `verified_static`, `rejected`,
+`approved`, `changes`, `merged`, `qa_passed`, `qa_failed`, `closed`, `reopened` — needs `--token`.
+Agents get theirs from `compose`. Yours you mint **inline, in the same command** (shell variables do
+not survive between Bash calls), as every orchestrator gate command below does:
+
+```bash
+--token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket APP-NNN)"
+```
+
+Never mint for a role an agent should prove, never paste a token into another agent's prompt, never
+mint a `founder` token. Below, `<TOKEN>` stands for that line.
 
 **Exit `1` is a refusal, and a refusal is a finding.** The CLI prints why and what is legal from
 here. Do not retry it, do not work around it, do not touch the Markdown: surface it verbatim in the
@@ -76,9 +94,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    - Exit `2` → **CANNOT EVALUATE. Also not a pass.** Usually no board yet (`/app-plan` first), or
      no `docs/team/project-profile.json`. Supply what it names.
 
-   The context manifest taken at `/app-plan` stays FRESH across merges: `context-manifest verify`
-   refuses only when a declared planning document changed. Preflight says `STALE: source changed` →
-   a spec moved under the plan: confirm the change with its owner, then run
+   The context manifest taken at `/app-plan` stays FRESH across merges. Preflight says
+   `STALE: source changed` → a spec moved under the plan: confirm the change with its owner, then run
    `node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs" --root . --context-only` and recompose
    the affected prompts.
 
@@ -89,9 +106,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
 1. **Read state.**
    - `node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json`. Ready = `status` is `todo` and
-     every `dependsOn` ID is **merged** (`qa` **or** `done`) — a dependency is satisfied when its code
-     is on the integration branch, not when QA is finished. A mis-read costs only a refusal:
-     `claimed` is refused on a ticket whose dependency has no `merged` event.
+     every `dependsOn` ID is **merged** (`qa` **or** `done`).
    - **The register — every bug and audit finding, with a status that is never blank.**
 
      ```bash
@@ -136,19 +151,22 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --was "$BEFORE"
    ```
 
+   (`$BEFORE` does not survive between Bash calls: note the count it printed and pass it literally.)
    Exit `1` → **the batch answered nothing** (prose, not ledger rows): re-spawn `tech-lead` requiring
    one `answer` row per question it can settle and ONE `escalation` for the rest, and do not proceed
    to step 2. Contract: `skills/team-protocol/references/mid-sprint-qa.md`.
 
 2. **Spawn developers in parallel — run the `parallel-orchestrator` skill.** It is the one copy of
-   the launch procedure: claim each ticket, lease one slot per OWNER, check file overlap, compose
-   each prompt with `spawn-prompt.mjs compose`, run `spawn-gate.sh <owners>` (also the `.studio-stop`
-   kill switch — you never clear it yourself), then launch in a **single assistant message** one spawn
-   per ticket — `compose` takes exactly one `--ticket`, and a PreToolUse hook re-checks each prompt.
-   An owner with several ready tickets works them one after another in its slot. A refusal at any of those steps means **spawn nobody** for what it names.
+   the launch procedure: preflight and claim each ticket, lease one slot **per ticket**
+   (`<owner>-<n>`, up to the scheduler's cap), check file overlap, compose each prompt with
+   `spawn-prompt.mjs compose`, run `spawn-gate.sh <slots>` (also the `.studio-stop` kill switch — you
+   never clear it yourself), then launch in a **single assistant message** one spawn per ticket —
+   `compose` takes exactly one `--ticket`, and a PreToolUse hook re-checks each prompt. Each IC
+   branches from the integration branch `compose` prints, never from its slot's last HEAD. A
+   refusal at any of those steps means **spawn nobody** for what it names.
 
    **Spawn by the ticket's `Owner` column — never from a hardcoded list.** The authority is
-   `board-doctor` and the `BUILD_SPAWNABLE_OWNERS` set in `scripts/lib/board.mjs`; `team-doctor.mjs`
+   `board-doctor` and the `BUILD_SPAWNABLE_OWNERS` set in `${CLAUDE_PLUGIN_ROOT}/scripts/lib/board.mjs`; `team-doctor.mjs`
    fails the build if this list and that set disagree: `ios-developer`, `android-developer`,
    `backend-developer`, `monetization-engineer`, `ux-architect`, `product-designer`,
    `product-manager`, `product-researcher`, `qa-engineer`, `data-analyst`, `devops-engineer`,
@@ -166,26 +184,26 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 3. **Streaming review.** As each developer agent returns `DONE: APP-NNN`:
    - **Check the report satisfies its contract BEFORE you believe any of it.** The SubagentStop
      hook has already saved it to `docs/team/reports/<ticket>-<UTC>.md` and sent an incomplete one
-     back once. Run report-check on the newest:
+     back once. Run report-check on the newest (`[0-9]` after the ID, so `APP-001` never picks up
+     `APP-001-analytics`):
 
      ```bash
      node "${CLAUDE_PLUGIN_ROOT}/scripts/report-check.mjs" --role <owner-role> \
-       --report "$(ls docs/team/reports/APP-NNN-*.md | tail -1)" --root .
+       --report "$(find docs/team/reports -name 'APP-NNN-[0-9]*.md' | sort | tail -1)" --root .
      ```
 
-     Exit `1` → **the DONE is not actionable.** Re-spawn the agent asking for the missing fields.
-     **Do not fill them in yourself.** **`--root` is not optional**: it checks claims against git
+     Exit `1` → **the DONE is not actionable.** Re-spawn the agent for the missing fields; **never
+     fill them in yourself.** **`--root` is not optional**: it checks claims against git
      (`git show <branch>:<path>`), not just their presence; `FALSE CLAIM` names, e.g., a daily
-     fragment that was never committed — re-spawn the agent to stage and commit it. Reading the
-     report does not catch this: a reader supplies missing structure from imagination.
+     fragment that was never committed — re-spawn the agent to stage and commit it.
    - **Record the claim as a claim**, before checking anything — `review_requested` is refused
      without a `verified` after the last `done_reported`:
 
      ```bash
      node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN done_reported --by <owner-role>
      ```
-   - **Verify the claim** (`board-doctor` skill). The base is the integration branch, resolved once
-     per round from the project's git strategy — never a hardcoded `main`:
+   - **Verify the claim.** The base is the integration branch, resolved from the project's git
+     strategy — never a hardcoded `main`:
 
      ```bash
      BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") \
@@ -195,7 +213,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
      **If `integration-branch.sh` exits 2, STOP the round** and surface its message (`$BASE` holds
      it) — do not run `verify-done.sh`, do not merge. Every base you might substitute is a guess, and
-     merging into the wrong branch is not recoverable. Use that same `$BASE` for step 4.
+     merging into the wrong branch is not recoverable. Resolve it the same way in every later Bash
+     call (the variable does not survive between calls).
 
      **`--static` is the default per-ticket lane.** It verifies what a branch can answer — exists,
      has commits, changed files, the diff is this ticket's — and exits **2**, because the suite has
@@ -213,20 +232,19 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
      Branch, commits and changed files are still verified; only the test requirement is lifted.
 
-     `REJECTED` → `board.mjs move APP-NNN rejected --by tech-manager --detail "<the blocking line>"`,
-     then re-spawn the developer with the blocking lines verbatim. This is a **developer** retry, not
-     a review cycle. `VERIFIED` → `board.mjs move APP-NNN verified --by tech-manager --evidence <the path on
-     verify-done's "Evidence:" line> [--token "$T"]`; `verified` without the record verify-done
-     wrote is refused. If it reports `tests=unverified`, say so in a `--detail`. Exit `2` →
-     **CANNOT EVALUATE**, never a pass; record `verified_static` with the reason verbatim, and **do
-     not re-spawn the developer** — `build-loop-branches.md` §Step 3 for its two causes.
-   - **Read `Shared surfaces touched`.** If two returning agents name the same file, or both report
-     *creating* a cross-cutting abstraction for one concern, route it to `tech-manager` **now** —
-     before the merge gate — to pick one shape and re-spawn the loser with the winner named.
+     The three outcomes — the one copy of this table:
+
+     | Line 1 | Exit | Do |
+     |---|---|---|
+     | `VERIFIED` | 0 | `board.mjs move APP-NNN verified --by tech-manager --evidence <verify-done's "Evidence:" path> <TOKEN>` — refused without the record. `tests=unverified` → say so in `--detail` |
+     | `REJECTED` | 1 | `board.mjs move APP-NNN rejected --by tech-manager --detail "<the blocking line>" <TOKEN>`, re-spawn the developer with the blocking lines verbatim. The row stays `in_progress`; a **developer** retry, not a review cycle — it does not count toward the cap |
+     | `CANNOT EVALUATE` | 2 | `board.mjs move APP-NNN verified_static --by tech-manager --detail "<the reason, verbatim>" <TOKEN>`. **Do not re-spawn the developer** — `build-loop-branches.md` §Step 3 for its two causes |
+   - **Read `Shared surfaces touched`.** Two returning agents naming the same file, or both
+     *creating* an abstraction for one concern → `tech-manager` **now**, before the merge gate, picks
+     one shape; re-spawn the loser with the winner named.
    - **Verify `Assumptions & open questions` against the ledger.** Every question the agent says it
      raised must have its record on `docs/team/messages.jsonl`. A missing record is a report defect:
-     file the question yourself, note in the standup that the agent claimed it and had not, and
-     treat its other unverifiable claims with the same suspicion. `ASSUMED, NOT RAISED` just needs
+     file the question yourself and note in the standup that the agent claimed it and had not. `ASSUMED, NOT RAISED` just needs
      routing (step 1a).
    - **Check the daily fragment exists** at `docs/daily/<today>-<role>-<ticket>.md` on the branch —
      that exact spelling (`team-protocol`'s canonical paths). Missing → ask that agent for it before
@@ -243,14 +261,16 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    - **The reviewer must not be the owner.** For a ticket owned by `code-reviewer` (or review of
      review work), route to `tech-lead`. The CLI refuses `approved` from the ticket's owner.
    - Spawn a `code-reviewer` for that branch immediately — do not wait for the other devs. Its
-     prompt is `spawn-prompt.mjs compose --root . --ticket APP-NNN --role code-reviewer`, verbatim:
-     it carries the saved DONE report, the branch tip, the verdict contract and (under
-     `requireActorTokens`) that agent's minted `Token:` line; the hook refuses a reviewer prompt
-     without them. The same holds for every `tech-lead`, `qa-engineer` and `verification-engineer`
-     spawn: compose it, never mint for yourself what an agent should prove, never paste a token into
-     another agent's prompt. Reviewers
-     run in parallel with each other and with still-running developers. It appends
-     `board.mjs move APP-NNN started --by code-reviewer` when it picks the ticket up.
+     prompt is `spawn-prompt.mjs compose --root . --ticket APP-NNN --role code-reviewer --slot <its
+     leased slot>` (lease one as for any agent), verbatim:
+     it carries the saved DONE report, the branch tip, the base, the verdict contract, the `--bind`
+     evidence/context paths and that agent's minted `Token:` line; the hook refuses a reviewer
+     prompt without them. On a floor/light track pass `model: sonnet` (the Agent tool's `model`
+     parameter). The same compose rule holds for every gate role — `tech-lead`,
+     `security-reviewer`, `verification-engineer`, `qa-engineer`, `release-auditor`, and
+     `--mode design-qa`. Reviewers run in parallel with each other and with still-running
+     developers. It appends `board.mjs move APP-NNN started --by code-reviewer` when it picks the
+     ticket up.
 
 4. **Process reviewer verdicts.**
    - **Read the two routing fields on every verdict, `APPROVED` or not:**
@@ -261,13 +281,14 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      ```
 
      If either names anything, **spawn `verification-engineer` for that ticket before the merge
-     gate**, passing the branch, `$BASE`, and the named constants and rules verbatim. Its
-     `VERIFICATION: PASS` / `VERIFICATION: FAIL` gates the merge **alongside** the review verdict:
-     `FAIL` blocks exactly as a `REQUEST CHANGES` does — write `docs/53-reviews/APP-NNN-cycle-N.md` as
-     a FAIL file (below) with the `VERIFICATION: FAIL` findings, record
-     `board.mjs move APP-NNN changes --by tech-manager --verdict <that file>`, and re-spawn the
-     developer. A verdict missing either field goes back to the reviewer — a missing field is never
-     "none". It fires only when the reviewer flags one; never spawn it per ticket "to be safe".
+     gate** (`compose --role verification-engineer`), with the named constants and rules verbatim.
+     Its `VERIFICATION: PASS` / `VERIFICATION: FAIL` gates the merge **alongside** the review
+     verdict: `FAIL` blocks exactly as a `REQUEST CHANGES` does — write
+     `docs/53-reviews/APP-NNN-cycle-N.md` as a FAIL file (below) with the `VERIFICATION: FAIL`
+     findings, record `board.mjs move APP-NNN changes --by tech-manager --verdict <that file>
+     <TOKEN>`, and re-spawn the developer. A verdict missing either field goes back to the reviewer
+     — a missing field is never "none". It fires only when the reviewer flags one; never spawn it
+     per ticket "to be safe".
 
      **A FAIL file** — verification or design QA — has a fixed shape, because `--verdict` parses it:
 
@@ -294,42 +315,44 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
         clipping or overlap.
      5. **Accessibility implementation** — `accessibility-gate`, run against the build.
 
-     **Who runs it: `ux-architect`, or `code-reviewer` when `ux-architect` is off.**
+     **Who runs it: `ux-architect`, or `code-reviewer` when `ux-architect` is off** — composed with
+     `compose --ticket APP-NNN --role <that role> --mode design-qa`; its first line is `DESIGN QA:`.
+     On the utility tier the reviewer runs it inside its review — no separate spawn.
      **Never `product-designer` on its own design** — the designer must not be the only agent
-     approving its fidelity (separation of duties, as `release-auditor` versus `release-manager`).
+     approving its fidelity.
      Verdict `DESIGN QA: PASS` or `DESIGN QA: FAIL — <n> item(s)`; a `FAIL` is persisted as a FAIL file,
-     recorded with `board.mjs move APP-NNN changes --by tech-manager --verdict <that file>`, and the
-     owner is re-spawned.
+     recorded with `board.mjs move APP-NNN changes --by tech-manager --verdict <that file> <TOKEN>`,
+     and the owner is re-spawned.
    - `REVIEW VERDICT: APPROVE` (and `VERIFICATION: PASS` if one was required) → the reviewer appends
      `board.mjs move APP-NNN approved --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md`
-     — plus `--bind --evidence <path> --context <path>` when `.studio-policy.json` sets
-     `requireApprovalBinding` (the `/app-init` default). The append is refused if the verdict file is
-     missing, lacks `REVIEW VERDICT:`, contradicts the event, or lacks `Scope:` or `## Not checked` —
-     that means the review is not recorded yet; have the reviewer finish the document.
-     **Then run the merge gate yourself, inline — do not spawn `tech-manager` for it:**
+     with its own token — plus `--bind --evidence <path> --context <path>` when `.studio-policy.json`
+     sets `requireApprovalBinding` (the `/app-init` default). The append is refused if the verdict
+     file is missing, lacks `REVIEW VERDICT:`, contradicts the event, or lacks `Scope:` or
+     `## Not checked` — have the reviewer finish the document; it commits the verdict file by
+     explicit path. **Then run the merge gate yourself,
+     inline — do not spawn `tech-manager` for it:**
 
      ```bash
      node "${CLAUDE_PLUGIN_ROOT}/scripts/approval-check.mjs" --ticket APP-NNN --head "$(git rev-parse <branch>)"
-     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN merged --by tech-manager [--token "$T"]
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN merged --by tech-manager \
+       --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket APP-NNN)"
      ```
-
-     Under `requireActorTokens` your own gate events (`verified`, `merged`, `closed`) carry a token
-     you mint first: `T=$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role
-     tech-manager --ticket APP-NNN)`.
 
      `approval-check` exit `1` → the approval does not cover the branch as it stands (a later commit,
      or never bound): request a fresh review, do not merge. `merged` refuses without a non-owner
      `approved` that satisfies the risk policy; on exit 0 the row is `qa`. Refused with
-     `missing: tech-lead` → `build-loop-branches.md` §Step 4 (high-risk). **The gate does not run
-     `git merge`** — the merges happen ONCE per wave, in step 5.
+     `missing: tech-lead` or `missing: security-reviewer` → `build-loop-branches.md` §Step 4
+     (high/critical). **The gate does not run `git merge`** — the merges happen ONCE per wave, in
+     step 5.
    - `REQUEST CHANGES` → `board.mjs move APP-NNN changes --by code-reviewer --verdict
-     docs/53-reviews/APP-NNN-cycle-N.md`, then re-spawn the original developer **pointed at that
-     file**, not at notes in your context. Cycles are the count of `changes` events; nobody edits a
-     column.
+     docs/53-reviews/APP-NNN-cycle-N.md` (the reviewer's own token), then re-spawn the original
+     developer **pointed at that file**, not at notes in your context. Cycles are the count of
+     `changes` events; nobody edits a column.
 
-     **Re-spawn one model tier up**: `haiku → sonnet → opus`, capped at opus, starting from the agent
-     file's `model:`. Pass it explicitly (the subagent tool's `model` parameter, or state it in the
-     prompt) and name the tier in the standup. A `rejected` verify-done retry does **not** escalate.
+     **Re-spawn one model tier up** — the one copy of the ladder: `haiku → sonnet → opus`, capped
+     at opus, starting from the agent file's `model:`. Pass it as the subagent tool's `model`
+     parameter and name the tier in the standup. A `rejected` verify-done retry does **not**
+     escalate.
    - **Cap: 2 review cycles, enforced at write time** — the 3rd `changes` is refused and becomes
      `blocked`. Stop that ticket and surface it to the user; only the founder's `reopened` grants
      another cycle (`build-loop-branches.md` §Step 4). The dependents the CLI names are now stranded;
@@ -337,18 +360,20 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
    **Utility tier** → `build-loop-branches.md` §Step 4 — utility tier.
 
-4a. **Release the slot and reap the pool** when an owner has no tickets left in flight — on **every
-   terminal outcome**, not only a merge (`rejected`, a cap-converted `blocked`, a `BLOCKED:` return,
-   a crashed round):
+4a. **Release the slot and reap the pool** when a ticket's agent has finished — on **every terminal
+   outcome**, not only a merge (`rejected`, a cap-converted `blocked`, a `BLOCKED:` return, a crashed
+   round):
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer-1
    node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
    ```
 
 5. **The wave integration pass — merge once, test once, push once.** Every ticket whose merge gate
    cleared sits at `qa` with its branch unmerged. This is where the git merges happen and the only
-   place the executable suite runs (`scripts/wave-integrate.mjs` header has the full account).
+   place the executable suite runs (`${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs` header has
+   the full account). A wave holding a `high`/`critical` ticket lands only when the runtime gate
+   passes on the wave candidate — `wave-integrate` refuses otherwise and names it.
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE"
@@ -356,7 +381,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
    | Exit | Meaning | Do |
    |---|---|---|
-   | `0` GREEN | merged tree passes | run the `board.mjs move ... verified --evidence <record>` lines it printed, then push (below) |
+   | `0` GREEN | merged tree passes | run the `board.mjs move ... verified --evidence <record> --token ...` lines it printed, as printed, then push (below) |
    | `1` FAIL/CONFLICT | wave does not advance | re-spawn only the owners its candidate list names; a textual conflict is **yours** to resolve here (`git-pr-strategy` §6); a behaviour/contract one goes to that contract's owner as a ticket |
    | `2` CANNOT EVALUATE | no `full` scope, or the suite could not run | not a pass; every ticket keeps `verified_static`, `closed` stays refused |
 
@@ -366,14 +391,13 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE" --push
    ```
 
-   One push, one CI run — never trigger, re-run or cancel a workflow yourself. No `origin` → skipped,
+   One push, one CI run; never trigger a workflow yourself. No `origin` → skipped,
    exit `0`; say `NOT PUSHED: no origin`. Exit `1` here is a push failure, not a code failure —
    re-spawn nobody, report it verbatim. Exit `2` means the branch was never recorded green or moved
    since: re-run the wave. A non-green wave is a normal outcome — `merge-reconcile` reports it as
    `AWAITING INTEGRATION`.
 
-   **Then the runtime gate**, on the integration branch, once per wave, before spawning `qa-engineer`
-   (the merged tree is the only place "three approved tickets and no composition root" is visible):
+   **Then the runtime gate**, on the integration branch, once per wave, before spawning `qa-engineer`:
 
    ```bash
    sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
@@ -384,8 +408,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      `docs/51-bugs.md` (step 1 turns it into `BUG-NNN-fix`) and re-spawn the owning developer with the
      gate's compiler output **verbatim**.
    - Exit `2` → **CANNOT EVALUATE, not a pass.** Print it under `RUNTIME GATE: CANNOT EVALUATE`. QA
-     still runs, but nothing may record this build as launched. Product type outside the script's
-     detection → `build-loop-branches.md` §Step 5.
+     still runs, but nothing may record this build as launched, and `/app-ship` re-runs the gate on
+     the candidate (`build-loop-branches.md` §Step 5).
 
    **Then the journey gate** — the runtime gate proves the app is ALIVE, not that it WORKS:
 
@@ -406,40 +430,53 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
        build as having had its journeys exercised**; the standup carries the line verbatim and
        `/app-ship` requires an explicit waiver.
 
-   Then run the QA pass **as a ticket**, not as an errand:
+   Then run the QA pass **as a ticket**, not as an errand — skip this on the utility tier
+   (`build-loop-branches.md` §Step 4 — utility tier) and for a wave made only of `QA-` tickets:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add QA-<sprint>-w<n> --title "QA pass — wave <n>" --owner qa-engineer
+   # dispatch-preflight for QA-<sprint>-w<n> (top of this file), then:
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move QA-<sprint>-w<n> claimed --by qa-engineer
    ```
 
-   Spawn `qa-engineer` once with that ticket ID to exercise the acceptance criteria (driving the P0
-   journey per `runtime-gate` where the Axiom toolchain is present). QA writes defects to
-   `docs/51-bugs.md`; S1/S2 return via step 1. **Its return goes through step 3 exactly like a
-   developer's** — a DOC-profile ticket: `done_reported`, `verify-done.sh <branch> "$BASE"
-   --docs-only`, the fragment check, review, the merge gate — then straight to
-   `board.mjs move QA-<sprint>-w<n> closed --by tech-manager` (nobody QAs the QA pass). A QA return
-   with no branch is **REJECTED** (`build-loop-branches.md` §Step 5 — the QA ticket).
-
-   Record QA's verdict per ticket, then close what passed:
+   Spawn `qa-engineer` once, composed with `compose --ticket QA-<sprint>-w<n> --role qa-engineer`:
+   the prompt lists every ticket of the wave with its acceptance criteria and carries one token per
+   listed ticket (`Token for APP-NNN: …`). QA exercises the criteria (driving the P0 journey per
+   `runtime-gate` where the toolchain is present), writes defects to `docs/51-bugs.md` (S1/S2 return
+   via step 1), and **records its own verdict per ticket**:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_passed --by qa-engineer \
-     --token <its token> --evidence docs/team/journey-result.json
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN closed   --by tech-manager [--token "$T"]
+     --token <its token for APP-NNN> --evidence docs/team/journey-result.json
    # or, for a ticket QA rejected — it stays in qa and is named in the summary
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_failed --by qa-engineer --detail "BUG-NNN"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_failed --by qa-engineer \
+     --token <its token for APP-NNN> --detail "BUG-NNN"
    ```
 
-   QA's `--evidence` is the journey-gate PASS record, or the record from `verify-done.sh
-   <integration branch> <base> full` run after the merge. `closed` is refused without a `qa_passed`. After a `RUNTIME GATE: FAIL` no row in the wave gets a
-   `qa_passed` at all.
-
-6. **Daily report + board view.** Spawn `tech-manager` to concatenate the per-agent fragments at
-   `docs/daily/<today>-<role>-<ticket>.md` into the standup at `docs/daily/<today>.md`. Render the
-   board (its Mermaid graph outlines stranded and blocked tickets in red) and print the terminal view:
+   You only **check** them (`board.mjs show`), then close what passed:
 
    ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN closed --by tech-manager \
+     --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket APP-NNN)"
+   ```
+
+   QA's legal `--evidence` is the journey-gate PASS record or a full-suite test-evidence record on
+   the integration branch (`build-loop-branches.md` §Step 5 — the QA ticket). `closed` is refused
+   without a `qa_passed`. After a `RUNTIME GATE: FAIL` no row in the wave gets a `qa_passed` at all.
+
+   **The `QA-` ticket itself is docs-only** (its branch holds the test plan and bug rows): its return
+   gets report-check, `done_reported`, `verify-done.sh <branch> "$BASE" --docs-only` and the fragment
+   check like any DOC ticket — a return with no `Branch:` is **REJECTED**. You review it inline (no
+   `code-reviewer` spawn), then `merged` and `closed` with `<TOKEN>` for the `QA-` ID; it closes from
+   `merged` without waiting for integration, and nobody QAs the QA pass.
+
+6. **Daily report + board view.** Concatenate the per-agent fragments into the standup with a
+   command — no `tech-manager` spawn for it — then render the board (its Mermaid graph outlines
+   stranded and blocked tickets in red) and print the terminal view:
+
+   ```bash
+   D=$(date +%F); { echo "## In flight and blocked"; node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show
+     for f in docs/daily/"$D"-*.md; do [ -f "$f" ] && { echo "## $f"; cat "$f"; echo; }; done; } > docs/daily/"$D".md
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board-render.mjs" docs/31-board.md --out docs/32-board-view.md
    ```
 
@@ -479,17 +516,17 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 ## Safety
 
 - **Never spawn a writing agent without its own worktree** (or, failing that, serialized), and never
-  without `spawn-gate.sh` having said so — the rule alone, known and written, did not stop it.
+  without `spawn-gate.sh` having said so.
 - **No repo-wide `git reset` / `stash` / `checkout -- .` / `clean` / `add -A` / `add .`** by any
-  agent sharing a tree — tell every agent so in its prompt. Need a clean tree? Copy to a temp dir
-  (`agent-isolation` Rule 2).
+  agent sharing a tree — the one copy of the list; `compose` puts it in every prompt. Need a clean
+  tree? Copy to a temp dir (`agent-isolation` Rule 2).
 - **Never spawn while the board doctor reports an anomaly.**
 - **Never move a row to `review` on an unverified `DONE`.**
 - **Never advance a wave across a `RUNTIME GATE: FAIL`, and never record a `CANNOT EVALUATE` as a
   launched build.**
 - **Never merge a branch containing another ticket's files** — a shared tree was used; stop the round
   and check both branches.
-- Never spawn more than one agent for the same ticket simultaneously.
+- Never spawn more than one agent for the same ticket simultaneously, or two agents into one slot.
 - Never auto-merge across a `REQUEST CHANGES`.
 - Never re-spawn a developer past the 2-cycle cap without user input.
 - **Spawn budget:** at most 6 developer retries per ticket across the sprint (review cycles plus

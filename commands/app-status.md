@@ -1,6 +1,6 @@
 ---
 description: Show the current state of the project — vision, sprint goal, board, blockers, daily report
-allowed-tools: Read, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Glob, Grep, Bash, Task, Agent, Skill
 ---
 
 # /app-status — Where are we?

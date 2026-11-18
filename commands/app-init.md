@@ -1,7 +1,7 @@
 ---
 description: Start a new mobile app project — runs requirements intake, then CEO vision, then PRD + architecture in parallel
 argument-hint: [one-line idea, optional] [--yolo to skip the scope-lock gate] [--utility | --flagship to set the tier]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 disable-model-invocation: true
 ---
 
@@ -56,11 +56,12 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    addendum — or writes `no conflicts` there. `ceo.md` has always said it arbitrates after both
    report back; no step ever brought it back, so conflicts reached Gate 1 unarbitrated.
 
-4. **Spawn the `active` roles among `ux-architect`, `product-designer`, `tech-lead`, and `devops-engineer` in parallel**
-   in a single message — **except on `utility` tier, where `tech-lead` runs first and
+4. **Spawn the `active` roles among `ux-architect`, `tech-lead`, and `devops-engineer` in parallel**
+   in a single message, then **`product-designer` once `ux-architect` has returned** — it composes
+   the screen inventory `docs/12-flows.md` defines, so launching both together has the designer
+   composing screens that do not exist yet. **On `utility` tier `tech-lead` runs first and
    `devops-engineer` is spawned after it returns**: there `tech-lead` writes the architecture
-   `devops-engineer` reads, so launching both in one batch has devops reading a file that does not
-   exist yet.
+   `devops-engineer` reads.
    - `ux-architect` reads PRD, writes docs/12-flows.md — flows and the screen-and-state inventory.
    - `product-designer` composes that inventory into docs/13-design-tokens.md and docs/14-components.md.
    - `tech-lead` reads architecture + PRD, writes per-platform impl specs — and on `utility` tier
@@ -104,7 +105,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      are in scope per the architecture;
    - **the team channel `docs/team/messages.jsonl`, if it does not already exist** — an empty
      append-only event log (`team-protocol` defines the schema). `docs/team/messages.md` is
-     GENERATED from it by `scripts/messages.mjs` on the first send and must never be hand-written:
+     GENERATED from it by `${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs` on the first send and must never be hand-written:
 
      ```bash
      mkdir -p docs/team && [ -f docs/team/messages.jsonl ] || : > docs/team/messages.jsonl
@@ -156,17 +157,21 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      `audit-anchor.mjs create`; `requireEvaluation` once the project has its own `eval/manifest.json`;
      `requirePromptRegistry` is a studio-repo concept and does not apply to a shipped project at all.
 
-5a. **Commit the planning docs**, staging by explicit path — never a blanket add:
+5a. **Commit the planning docs and everything `devops-engineer` wrote**, staging by explicit path —
+   never a blanket add:
 
    ```bash
    for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent/ docs/team/messages.jsonl \
-            docs/0*.md docs/1*.md docs/2*.md; do [ -e "$f" ] && git add -- "$f"; done
+            docs/*.md .github fastlane; do
+     [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
+   done
    git diff --cached --name-only    # confirm only those landed
    git commit -m "docs: project plan from /app-init"
+   git status --short               # anything left is a file nobody committed: commit it or say why
    ```
 
    Uncommitted docs are invisible to every worktree `/app-build` leases, so an IC would build
-   against no spec at all.
+   against no spec at all — and a dirty base makes the first wave push fail to fast-forward.
 
 6. **Print a summary**: list every doc produced, with one-line description each, and the suggested
    next command (`/app-run` for the mostly-autonomous flow, or `/app-plan` → `/app-build` for manual control).
@@ -175,10 +180,14 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    `product-validator` (active per the roster). It reads `docs/00-founder-intent/` and the derived
    documents, writes `docs/04-intent-validation.md`, and returns one line:
    `INTENT: ALIGNED | DRIFTED | CANNOT EVALUATE`. This is the one `product-validator` spawn for
-   the run — `/app-run` reuses this result rather than spawning it again. Then run the graph:
+   the run — `/app-run` reuses this result rather than spawning it again. Commit
+   `docs/04-intent-validation.md` (`git add -- docs/04-intent-validation.md && git commit -m "docs:
+   intent validation"`). Then run the intent half of the graph — there is no board yet, so the
+   ticket half is CANNOT EVALUATE by construction and runs after `/app-plan` (`--only trace`):
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root .
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root . --only conflicts
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root . --only gates
    ```
 
    **Both results go into the Gate 1 brief verbatim.** `DRIFTED` and `CANNOT EVALUATE` do not stop

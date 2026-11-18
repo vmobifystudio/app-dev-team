@@ -1,7 +1,7 @@
 ---
 description: Ship a release — runs security review, then release-manager, gating on QA sign-off and clean bug board
 argument-hint: [version override, e.g. 1.2.0, optional]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 disable-model-invocation: true
 ---
 
@@ -61,8 +61,9 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    Confirm the gate results still describe this candidate rather than last Tuesday's:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/evidence-check.mjs" \
-     --result docs/team/journey-result.json --head "$(git rev-parse HEAD)"
+   for r in docs/team/runtime-result.json docs/team/journey-result.json; do
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/evidence-check.mjs" --result "$r" --head "$(git rev-parse HEAD)"
+   done
    ```
 
    Every gate answers at a moment and then stops thinking. `journey-gate` says PASS, three commits
@@ -126,7 +127,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
       The copy has to be verbatim: `trace.mjs` clears a waiver only when the decision line contains
       the text that follows `WAIVED:` (its first 80 characters). A paraphrase — `<artifact>,
       <reason>` — names the same waiver to a human and to the gate names nothing, so it stays red.
-      `scripts/trace.mjs --only gates` detects every `WAIVED:` line and stays red until that record
+      `${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs --only gates` detects every `WAIVED:` line and stays red until that record
       exists — which is the point: the release record says a gate was skipped, and only the founder
       record says a human chose it.
 
@@ -160,7 +161,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      This is a wider question than the bug count above, and deliberately so: an audit FINDING with no
      ticket was invisible to every other check here, because it is not a bug row and not a board row.
      Shipping with three `DEFERRED` S3 bugs is a fine release; shipping without knowing is the
-     failure. Give each one a decision and a reason — `node scripts/register.mjs status <ID>
+     failure. Give each one a decision and a reason — `node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" status <ID>
      DEFERRED --by <role> --reason "..."` — rather than a fix.
    - `docs/50-test-plan.md` — check the **exit criteria** QA wrote, and whether each row is marked
      executed or only reasoned. A test plan whose rows all say "not performed" is not a QA pass.
@@ -180,8 +181,9 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
    ```
 
-   - Exit `0` → the app builds and launches. Quote the evidence paths from
-     `docs/evidence/runtime-<date>-<platform>.png` in the release summary. For a `web-app` the
+   - Exit `0` → the app builds and launches. Quote the recorded verdict
+     (`docs/team/runtime-result.json`) and the screenshot it names
+     (`docs/evidence/runtime-<date>-<platform>.png`) in the release summary. For a `web-app` the
      gate's `web` line is the evidence: `npm run build`, the `test` script, then the e2e suite
      (`test:e2e`/`e2e` script or Playwright) or, without one, the build served and `GET /` answering
      200 with a body. Quote that line.
@@ -203,8 +205,8 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    # was CANNOT EVALUATE for a reason nobody could see. A detector nobody calls is FC-002 with extra
    # steps; this is the call.
    #
-   #   android  scripts/drivers/android.sh   drives adb + uiautomator; needs a device or emulator
-   #   ios      scripts/drivers/ios.sh       launches and screenshots; step execution needs XCUITest
+   #   android  ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh   drives adb + uiautomator; needs a device or emulator
+   #   ios      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/ios.sh       launches and screenshots; step execution needs XCUITest
    #
    # With no device attached either driver returns CANNOT EVALUATE naming the missing thing, which
    # is the correct answer and NOT a pass.
@@ -273,7 +275,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      is not a note.
    - `red-team-agent` produces `docs/74-red-team.md` — it attacks the product **and** the studio's
      own assumptions, including which gate should have caught the last defect in
-     `knowledge/failure-corpus.md`. `RED TEAM: FAIL` → stop.
+     `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md`. `RED TEAM: FAIL` → stop.
    - `aso-specialist` runs the store-readiness gate (`docs/15-aso.md`, screenshots, compliance).
      It returns `ASO READY` or `ASO BLOCKED` with the missing items — **or `ASO: CANNOT EVALUATE —
      docs/15-aso.md` when the doc does not exist**, which follows step 1a's produce-or-waive rule,
@@ -312,9 +314,12 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    step 1, except that nothing is "expected" any more: the artifact exists and every gate has run.
 
 3a. **Spawn `release-auditor`** — *you* spawn it, **never `release-manager`**, and only after step 3
-   has assembled the candidate. It reads the artifacts, not the summaries: `docs/60-releases.md`,
-   `docs/50-test-plan.md`, `docs/54-evidence/`, `docs/51-bugs.md`, and every gate verdict above. It
-   writes `docs/76-release-audit.md` and returns `RELEASE AUDIT: PASS | PASS WITH NOTES | FAIL`.
+   has assembled the candidate, composed with `spawn-prompt.mjs compose --role release-auditor`. It
+   reads the artifacts, not the summaries: `docs/60-releases.md`, `docs/50-test-plan.md`, the evidence
+   bundles in `docs/54-evidence/`, the recorded gate verdicts (`docs/team/runtime-result.json`,
+   `docs/team/journey-result.json`, `docs/team/evidence/`), `docs/51-bugs.md`, and every gate verdict above. It writes
+   `docs/76-release-audit.md` and returns `RELEASE AUDIT: PASS | PASS WITH NOTES | FAIL`.
+   **`PASS WITH NOTES` is a pass** — every note goes into the release summary verbatim.
 
    **`release-manager` cannot satisfy this gate.** The actor performing an irreversible action must
    not be its sole evaluator, so:
