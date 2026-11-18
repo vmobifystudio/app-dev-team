@@ -10532,7 +10532,14 @@ F2R="$F2/ready"; mkdir -p "$F2R/build"
 F2H=$(git -C "$F2R" rev-parse HEAD)
 printf 'ran\n' > "$F2/gl.txt"
 f2gate() {  # <gate> <out> [dirty] — no dirty argument records null ("could not tell")
-  ( cd "$F2R" && node "$HERE/lib/evidence.mjs" gate --gate "$1" --result PASS --log "$F2/gl.txt" --out "$2" --head "$F2H" ${3:+--dirty "$3"} ) >/dev/null 2>&1; }
+  # Builds the result in-process (the public CLI no longer accepts --result: G2-2), exactly the shape
+  # lib/evidence.mjs runGate writes, so readiness re-derives it like a real run.
+  node -e 'import(process.argv[2]).then((m) => { const [, , , root, gate, out, head, dirty] = process.argv;
+    const text = `ran\nRESULT: PASS\nGATE-SUBJECT: ${head}\n`;
+    const ev = m.writeEvidenceLog(root, `${gate}-fixture-${Date.now()}`, text);
+    require("fs").writeFileSync(require("path").join(root, out), JSON.stringify({ schema: "gate-result/v1", gate,
+      subject: { head, dirty: dirty === "" ? null : dirty === "true" }, evaluated_at: new Date().toISOString(), result: "PASS", ...ev }, null, 2)); })' \
+    fixture "$HERE/lib/evidence.mjs" "$F2R" "$1" "$2" "$F2H" "${3:-}" >/dev/null 2>&1; }
 f2gate journey-gate docs/team/journey-result.json false
 f2gate runtime-gate docs/team/runtime-result.json false
 ( cd "$F2R" && node "$HERE/release-candidate.mjs" record --artifact build/app.ipa --platform ios --root . ) >/dev/null 2>&1
