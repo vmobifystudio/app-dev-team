@@ -6,9 +6,13 @@
 # project-profile.json, journeys/, capabilities.json, prompt-registry.json, ...) are real changes.
 docs/31-board-events.jsonl
 docs/31-board.md
+# C5W-4: the loop's own renderings and the register it writes every round (step 1 / step 6).
+docs/32-board-view.md
 docs/33-rounds.jsonl
 docs/53-reviews
 docs/54-evidence
+docs/90-register.jsonl
+docs/90-register.md
 docs/daily
 docs/team/actor-tokens.jsonl
 docs/team/actors.json

@@ -234,7 +234,8 @@ state, not an error — and the temptation is to let that quietly succeed so the
 That would manufacture confidence exactly where there is none.
 
 Proceeding past a `2` requires a recorded waiver naming a human and a reason, which `ship-gate.sh`
-parses and validates. **A skipped gate and a waived gate are indistinguishable in a log unless the
+parses and validates (`scripts/lib/waiver.sh`); `readiness` reads a journey or runtime gate that ran
+on this candidate and could not evaluate as `WAIVED` — non-blocking, printed — through the same parser. **A skipped gate and a waived gate are indistinguishable in a log unless the
 waiver is written down.**
 
 ### 2.4 Execute constants, never certify by reading

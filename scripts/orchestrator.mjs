@@ -403,8 +403,9 @@ function cmdRound() {
     const out = (r.stdout || '').split('\n').map((l) => l.trim()).filter(Boolean);
     const detail = out.find((l) => /^RESULT: (BLOCKED|CANNOT EVALUATE)/.test(l))
       || out.slice(headline ? out.indexOf(headline.trim()) + 1 : 0).find((l) => !/^(PASS|CLEAR)\b/.test(l));
-    const reason = (r.stderr || '').split('\n').map((l) => l.trim()).find(Boolean) || detail || '';
-    const why = reason ? ` [${reason.slice(0, 200)}]` : '';
+    // C5W-11: the WHOLE stderr reason, not its first line — "could not be resolved:" alone cut off the remedy.
+    const reason = (r.stderr || '').split('\n').map((l) => l.trim()).filter(Boolean).join(' ') || detail || '';
+    const why = reason ? ` [${reason.slice(0, 600)}]` : '';
     const carried = code === 0 && headline && !/: PASS\b/.test(headline) ? ` — ${headline.trim()} (advisory: this project has not armed it)${why}` : '';
     lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}${why}` : code === 2 ? ` — ${s.unknown}${why}` : carried}`);
   }
@@ -656,6 +657,10 @@ function cmdShip() {
         .filter((l) => /BLOCKED|STALE|CANNOT|UNKNOWN|FAIL|MISSING|REFUSED|DIRTY/.test(l) && !/^\s*(VERDICT|RESULT):/.test(l))
         .slice(0, 12);
       for (const l of why) lines.push(`      | ${l.trim()}`);
+    }
+    // C5W-1: a waived gate must never look like a passed one — its WAIVED line is relayed even on CLEAR.
+    for (const l of `${r.stdout || ''}`.split('\n').filter((x) => /WAIVED/.test(x) && (code === 0 || !/BLOCKED|STALE|CANNOT|UNKNOWN|FAIL|MISSING|REFUSED|DIRTY/.test(x))).slice(0, 6)) {
+      lines.push(`      | ${l.trim()}`);
     }
   }
 

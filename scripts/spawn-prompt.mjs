@@ -62,6 +62,7 @@ import { parseArgs } from './lib/args.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { contractFor, contractBlock, BLOCKED_BLOCK, GATE_HEADERS } from './lib/contract.mjs';
 import { matchesTicket } from './lib/integration.mjs';
+import { verifyQaEvidence } from './lib/evidence.mjs';
 import { ROLE_GATES } from './lib/capabilities.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -84,7 +85,10 @@ const VERIFY_FIELDS = ['VERIFICATION:', 'Ticket:', '## Not checked'];
 const AUDIT_FIELDS = ['RELEASE AUDIT:', 'docs/76-release-audit.md'];
 // C4W-13: a QA- prompt carries every ticket of the wave and one token each, so its floor is over the
 // IC line by design (role ~1650 + skills ~3220 + ~100 per ticket) — it gets its own line.
-const BUDGET = { ic: 4000, qa: 6000, reviewer: 8000 };
+// C5W-12: verification-engineer is a GATE role (it certifies, like the reviewers) whose two rulebooks —
+// defect-hunting and mutation-testing — are its instruments; role + those + isolation + conventions is
+// ~4430 words before the prompt, so it gets its own line rather than a warning on every spawn.
+const BUDGET = { ic: 4000, qa: 6000, verifier: 5000, reviewer: 8000 };
 const EXCERPT_WORDS = 1500;
 const PLATFORM_SPEC = {
   'ios-developer': 'docs/22-impl-spec-ios.md', 'android-developer': 'docs/22-impl-spec-android.md',
@@ -99,12 +103,14 @@ const GATE_WRITERS = new Set(Object.values(ROLE_GATES).flat());
  * minus anything "routed by what the ticket needs"), closed over SKILL_DEPS. A static map: when a
  * role file's mandatory list changes, change it here. ponytail: hand-kept, no parser of role prose.
  */
-const SKILL_DEPS = { 'ic-workflow': ['agent-isolation', 'defect-hunting'] };
+// C5W-12: ic-workflow inlines defect-hunting §1 and says "do not load that skill for it", so it is not
+// in the IC closure; VE reads runtime-result.json by the command its role file gives, not the skill.
+const SKILL_DEPS = { 'ic-workflow': ['agent-isolation'] };
 const MANDATORY_SKILLS = {
   code: ['ic-workflow', 'house-conventions'],
   artifact: ['agent-isolation', 'house-conventions'],
   'qa-engineer': ['agent-isolation', 'house-conventions', 'runtime-gate', 'defect-hunting'],
-  'verification-engineer': ['agent-isolation', 'house-conventions', 'defect-hunting', 'mutation-testing', 'runtime-gate'],
+  'verification-engineer': ['agent-isolation', 'house-conventions', 'defect-hunting', 'mutation-testing'],
   'code-reviewer': ['defect-hunting', 'house-conventions'],
   'tech-lead': ['house-conventions', 'process-tiering'],
   'security-reviewer': ['house-conventions', 'team-protocol'],
@@ -154,7 +160,8 @@ function reportBudget(role, ticket, text, skillKey) {
   const skillWords = [...skills].reduce((n, s) => n + fileWords(resolve(HERE, '..', 'skills', s, 'SKILL.md')), 0);
   const total = words(text) + roleWords + skillWords;
   const budget = REVIEW_ROLES.has(role) || role === 'release-auditor' || skillKey === 'design-qa' ? BUDGET.reviewer
-    : role === 'qa-engineer' && /^QA-/i.test(String(ticket)) ? BUDGET.qa : BUDGET.ic;
+    : role === 'qa-engineer' && /^QA-/i.test(String(ticket)) ? BUDGET.qa
+    : role === 'verification-engineer' ? BUDGET.verifier : BUDGET.ic;
   process.stderr.write(`spawn-prompt: ${role} ${ticket}: prompt ${words(text)} + role file ${roleWords} + mandatory skills ${skillWords} (${[...skills].join(', ') || 'none'}) = ${total} words (budget ${budget}; references and skills loaded on demand not counted)\n`);
   if (total > budget) process.stderr.write(`spawn-prompt: WARNING — OVER BUDGET by ${total - budget} words. Not a refusal; trim the role file, its mandatory skills, or the specs this ticket pulls in.\n`);
 }
@@ -195,6 +202,29 @@ function ticketEvents(root, id) {
 }
 /** The evidence record the latest `verified`/`verified_static` cited, or ''. */
 const latestEvidence = (root, id) => ticketEvents(root, id).filter((e) => (e.event === 'verified' || e.event === 'verified_static') && e.detail?.evidence).pop()?.detail.evidence || '';
+
+/**
+ * C5W-2: the evidence a QA `qa_passed` should cite — the NEWEST `verified` record on the board (any
+ * ticket's: a later wave's run contains this ticket's merge too) that the board's own check accepts
+ * for THIS ticket. After a `qa_failed`, the record QA just failed is older than the failure and is
+ * never offered; '' when no run since then exists yet.
+ */
+function qaEvidence(root, id) {
+  let text = '';
+  try { text = readFileSync(join(root, 'docs', '31-board-events.jsonl'), 'utf8'); } catch { return ''; }
+  const all = text.split('\n').flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
+  const mine = all.filter((e) => String(e.ticket).toUpperCase() === id.toUpperCase());
+  const last = (name) => mine.filter((e) => e.event === name).pop();
+  const merged = last('merged');
+  const opts = { ticket: id, mergedTs: merged?.ts || '', mergedHead: merged?.detail?.merged_head || '', failedTs: last('qa_failed')?.ts || '', cwd: root };
+  const seen = new Set();
+  for (const e of all.filter((x) => x.event === 'verified' && x.detail?.evidence).reverse()) {
+    if (seen.has(e.detail.evidence)) continue;
+    seen.add(e.detail.evidence);
+    if (verifyQaEvidence(root, e.detail.evidence, opts).ok) return e.detail.evidence;
+  }
+  return '';
+}
 
 /** The ticket's one branch, by the shared matcher. `{branch, ambiguous}`. */
 function ticketBranch(root, id, allIds) {
@@ -376,11 +406,11 @@ function qaWave(ROOT, rows, self) {
     // `<ID>` template invited one token on every ticket, which the board refuses.
     ...wave.flatMap((r) => {
       const T = tokens.has(r.id) ? ` --token ${tokens.get(r.id)}` : '';
-      const ev = latestEvidence(ROOT, r.id);
+      const ev = qaEvidence(ROOT, r.id);
       return [
         `### ${r.id} — ${r.title || '—'}`,
         `Owner: ${r.owner || '—'} · Acceptance: ${r.acceptance || '—'}`,
-        `Evidence on record: ${ev || 'none — use docs/team/journey-result.json, or the post-merge verify-done record'}`,
+        `Evidence on record: ${ev || 'none newer than the merge and any qa_failed — a journey-gate PASS (docs/team/journey-result.json) or the next wave\'s run on the integration branch'}`,
         tokens.has(r.id) ? `Token for ${r.id}: ${tokens.get(r.id)}` : null,
         'Record its verdict with ONE of:',
         ...fence([
@@ -494,6 +524,8 @@ function composeReview({ ROOT, row, allIds, base, role }) {
       'REVIEW VERDICT: APPROVE | REQUEST CHANGES',
       `Ticket: ${row.id}`,
       'Scope: <base>..<the commit you bind>',
+      // C5W-5: `approved --bind` refuses a verdict that names none of the bound diff's files.
+      'Files reviewed: <every path in the Range above (`git diff --name-only`), and what you found in each>',
       'Track: <floor | light | standard | full> — <why, if raised>',
       `Recorded: \`board.mjs move ${row.id} approved|changes --by ${role}\` (exit 0)`,
       'Acceptance (black-box): <criterion → pass/fail, one line each>',

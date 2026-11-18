@@ -22,6 +22,8 @@ const { counted, superseded, issues } = checkApprovals(events, {
   ticket: flags.ticket ? String(flags.ticket) : '',
   head: flags.head ? String(flags.head) : '',
 });
+// C5W-10: at the merge gate (--ticket) "no approval at all" is not a pass — it read as one.
+if (!counted.length && flags.ticket) { console.log(`APPROVAL CHECK: BLOCKED — ${flags.ticket} has no approval on record; nothing to merge on`); process.exit(1); }
 if (!counted.length) { console.log('APPROVAL CHECK: CLEAR — no approvals require binding'); process.exit(0); }
 if (issues.length) { issues.forEach((issue) => console.error(`approval-check: ${issue}`)); process.exit(1); }
 console.log(`APPROVAL CHECK: CLEAR — ${counted.length} approval(s) are evidence-bound${superseded ? ` (${superseded} superseded by a later approval from the same role, ignored)` : ''}`);

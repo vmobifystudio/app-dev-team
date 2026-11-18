@@ -341,7 +341,7 @@ ML18@@scripts/spawn-prompt.mjs@@const branchName = qa ? `qa/${row.id}`@@const br
 ML19@@scripts/spawn-prompt.mjs@@if (role === 'qa-engineer' && !qa && row.owner !== 'qa-engineer') {@@if (false) {@@K2: qa-engineer composed on an app ticket@@Sprint 4 track K2
 ML20@@scripts/worktree-slot.mjs@@'release-auditor', 'red-team-agent'].includes(owner)) {@@'release-auditor', 'red-team-agent'].includes('')) {@@K2: worktree-slot refuses a gate role a slot@@Sprint 4 track K2
 ML21@@scripts/orchestrator.mjs@@actor mint --role tech-manager --ticket ${state.id}@@actor mint --role <role> --ticket ${state.id}@@K2: orchestrator explain mints for the orchestrator's own role only@@Sprint 4 track K2
-ML22@@scripts/orchestrator.mjs@@const why = reason ? ` [${reason.slice(0, 200)}]` : '';@@const why = '';@@K2: orchestrator round carries the failing step's own reason@@Sprint 4 track K2
+ML22@@scripts/orchestrator.mjs@@const why = reason ? ` [${reason.slice(0, 600)}]` : '';@@const why = '';@@K2: orchestrator round carries the failing step's own reason@@Sprint 4 track K2
 ML23@@scripts/project-profile.mjs@@missingBuild = why || 'package.json has no "build" script';@@missingBuild = 'package.json has no "build" script';@@K2: project-profile names the missing package.json@@Sprint 4 track K2
 ML24@@scripts/ship-gate.sh@@if [ "$1" = tech-manager ]; then@@if true; then@@F2: ship-gate's printed qa_passed command carries the agent's prompt token@@Sprint 3 track F2
 ML25@@scripts/drivers/web.sh@@drives a RUNNING app. Start it ${SERVE}@@drives a RUNNING app.@@K2: the web driver with no URL says how to start the app@@Sprint 4 track K2
@@ -385,7 +385,20 @@ MP15@@scripts/lib/args.mjs@@? `${prev}${listFlags[name]}${value}` : value;@@? va
 MP16@@scripts/verify-done.sh@@  [Qq][Aa]-*)@@  [Qq][Aa]-NEVER)@@P1: verify-done prints the QA inline-merge line for a docs-only QA- ticket@@Sprint 5 track P1
 MP17@@scripts/board.mjs@@(r.record.role === 'tech-manager'@@(false@@P1: a tech-manager self-mint says to use it inline@@Sprint 5 track P1
 MP18@@scripts/orchestrator.mjs@@const part = (code, label) => (byState[code].length ? `${label}: ${byState[code].join(', ')}` : '');@@const part = () => '';@@P1: orchestrator ship's RESULT names the BLOCKED and CANNOT EVALUATE steps (C4W-13)@@Sprint 5 track P1
-MP19@@scripts/spawn-prompt.mjs@@: role === 'qa-engineer' && /^QA-/i.test(String(ticket)) ? BUDGET.qa : BUDGET.ic;@@: BUDGET.ic;@@P1: a qa-engineer prompt on a QA- ticket is measured against the QA budget@@Sprint 5 track P1
+MP19@@scripts/spawn-prompt.mjs@@: role === 'qa-engineer' && /^QA-/i.test(String(ticket)) ? BUDGET.qa@@: false ? BUDGET.qa@@P1: a qa-engineer prompt on a QA- ticket is measured against the QA budget@@Sprint 5 track P1
+MR01@@scripts/lib/readiness.mjs@@const waived = state === 'CANNOT_EVALUATE' ? waiverFor(root, name) : null;@@const waived = null;@@Q1: readiness — a valid versioned journey waiver is WAIVED, not blocking (C5W-1)@@Sprint 6 track Q1
+MR02@@scripts/lib/waiver.sh@@if (ver != canon) next@@if (0) next@@Q1: an unversioned / stale-version / unsigned journey waiver still blocks: 'WAIVED: journey gate — founder (Q) — no browser on this machine — v0.0.9' (C5W-1)@@Sprint 6 track Q1
+MR03@@scripts/orchestrator.mjs@@filter((x) => /WAIVED/.test(x) &&@@filter((x) => false &&@@Q1: orchestrator ship — readiness CLEAR on a waived journey gate@@Sprint 6 track Q1
+MR04@@scripts/lib/evidence.mjs@@const afterFail = failedTs && Date.parse(failedTs) > Date.parse(mergedTs || 0);@@const afterFail = false;@@Q1: qa_passed citing the record QA already failed is refused after qa_failed (C5W-2)@@Sprint 6 track Q1
+MR05@@scripts/spawn-prompt.mjs@@const ev = qaEvidence(ROOT, r.id);@@const ev = latestEvidence(ROOT, r.id);@@Q1: ...and compose no longer offers the failed build's record (C5W-2)@@Sprint 6 track Q1
+MR06@@scripts/dispatch-preflight.mjs@@listFlags: { file: ',', path: ',' } });@@listFlags: {} });@@Q1: dispatch-preflight routes every repeated --file, in either order (C5W-3)@@Sprint 6 track Q1
+MR07@@scripts/lib/operational-paths.txt@@docs/32-board-view.md@@docs/32-board-view.mdx@@Q1: board view, register and rendered channel are operational — not DIRTY (C5W-4)@@Sprint 6 track Q1
+MR08@@scripts/spawn-gate.sh@@if [ -n "$missing" ] && { [ -e "$DIR/$1" ] ||@@if false && { [ -e "$DIR/$1" ] ||@@Q1: spawn-gate refuses a leased slot whose worktree does not exist (C5W-6)@@Sprint 6 track Q1
+MR09@@scripts/register.mjs@@if (!b.closed || !OPEN_STATUSES.has(existing.status)) continue;@@continue;@@Q1: import-bugs moves an OPEN register item to FIXED when its row's Resolution says so (C5W-8)@@Sprint 6 track Q1
+MR10@@scripts/approval-check.mjs@@if (!counted.length && flags.ticket) {@@if (false) {@@Q1: approval-check --ticket with zero approvals exits 1, never 'CLEAR' (C5W-10)@@Sprint 6 track Q1
+MR11@@scripts/orchestrator.mjs@@.filter(Boolean).join(' ') || detail || '';@@.find(Boolean) || detail || '';@@Q1: the round's ci row shows the unresolved-branch reason through to its remedy (C5W-11)@@Sprint 6 track Q1
+MR12@@scripts/spawn-prompt.mjs@@const SKILL_DEPS = { 'ic-workflow': ['agent-isolation'] };@@const SKILL_DEPS = { 'ic-workflow': ['agent-isolation', 'defect-hunting'] };@@Q1: developer and verification-engineer composes are within their word budgets (C5W-12)@@Sprint 6 track Q1
+MR13@@commands/app-ship.md@@--project-root . --write`.@@--project-root .`.@@Q1: app-ship 1a re-records the waiver's founder decision, and the record reads INTACT (C5W-7)@@Sprint 6 track Q1
 MQ01@@hooks/contract-hooks.mjs@@else if (fed !== undefined) queue.push(...shellCommands(fed));@@else if (false) queue.push(...shellCommands(fed));@@MQ: guard exit 2 — heredoc into sh minting@@Sprint 5 track P2
 MQ02@@hooks/contract-hooks.mjs@@else if (fed === null) refuse(@@else if (false) refuse(@@MQ: guard exit 2 — unknown text piped into sh@@Sprint 5 track P2
 MQ03@@hooks/contract-hooks.mjs@@for (const w of raw) for@@for (const w of []) for@@MQ: guard exit 2 — command substitution minting@@Sprint 5 track P2

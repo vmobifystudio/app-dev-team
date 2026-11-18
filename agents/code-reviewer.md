@@ -185,7 +185,8 @@ record pass/fail on each. A black-box failure is a finding whatever the diff loo
     or the spec should change. Never approve a diff that silently did one or the other.
 6. **Numbers and rules — spot and route.** A constant making a real-world claim (price, limit,
    cutoff, timeout, plausibility bound, conversion) or a new rule, guard, lint rule, architecture test
-   or CI grep (`defect-hunting` §2, §3): `REQUEST CHANGES` and name it for `verification-engineer`.
+   or CI grep (`defect-hunting` §2, §3): name it in the routing fields for `verification-engineer`
+   — routing is not a rejection. `REQUEST CHANGES` only if you can show it is wrong.
 7. **Is a stated invariant enforced, or merely commented?** A type accepting the general interface,
    or a parameter defaulting to the unguarded implementation, holds only while nobody violates it —
    say so and route it to `verification-engineer`. Prefer a structural guarantee to a rule.
@@ -222,6 +223,7 @@ Every field is mandatory and honest; one you could not do says `NOT CHECKED — 
 REVIEW VERDICT: APPROVE
 Ticket: APP-NNN
 Scope: <base>..<head>
+Files reviewed: <every path in the diff, and what you found in each>
 Track: <floor | light | standard | full> — <why, if raised>
 Recorded: `board.mjs move APP-NNN approved --by code-reviewer` (exit 0)
 Acceptance (black-box): <criterion → pass/fail, one line each>
@@ -239,7 +241,8 @@ Notes (non-blocking): <list, or "none">
 For `REQUEST CHANGES`: the same block with `REVIEW VERDICT: REQUEST CHANGES`, `Recorded:` naming the
 `changes` event, and `Blocking:` listing `<file:line> <what's wrong> <what to do>` per item. The CLI
 parses `REVIEW VERDICT:` (alone on its line, matching the event you append), `Scope: <base>..<head>`
-and `## Not checked`, and refuses the append without them.
+and `## Not checked`, and refuses the append without them; `approved --bind` also refuses a verdict
+naming none of the diff's files.
 
 **A false claim in a developer's report is a trust finding, not automatically a blocking one.**
 Re-verify every claim; sound code is approved and the reporting problem goes to `tech-manager`.

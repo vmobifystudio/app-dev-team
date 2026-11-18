@@ -11849,6 +11849,180 @@ assert_exit 1 "MT: a QA- ticket whose branch gained code AFTER merged, fast-forw
 assert_has "$TMP/err" "never reviewed" "MT: ...saying the commits after merged were never reviewed (C5G-1)"
 rm -rf "$MT" "$MTR" "$MTQ"
 
+# --- Sprint 6 track Q1: a waived journey gate ships, re-QA binds the newest record, the loop stays clean ---
+echo
+q1g() { git -c user.name=t -c user.email=t@localhost "$@"; }
+# ·· C5W-1: a browserless web-app with a valid versioned journey waiver reaches readiness PASS.
+Q1W="$TMP/q1-web"; rm -rf "$Q1W"; mkdir -p "$Q1W/docs/team/journeys"
+cat > "$Q1W/package.json" <<'Q1EOF'
+{"name":"q1-web","private":true,"scripts":{
+ "build":"node -e \"require('fs').mkdirSync('dist',{recursive:true});require('fs').writeFileSync('dist/index.html','<h1>hi</h1>')\"",
+ "test":"node -e \"process.exit(0)\""}}
+Q1EOF
+printf '{"schema":"journey/v1","id":"home","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"hi"}]}\n' > "$Q1W/docs/team/journeys/home.json"
+printf '# Releases\n\nWAIVED: journey gate — founder (Q) — no browser on this machine — v0.1.0\n\n## v0.1.0 — 2026-11-19\n' > "$Q1W/docs/60-releases.md"
+printf 'dist/\n' > "$Q1W/.gitignore"
+( cd "$Q1W" && git init -q -b main && git add .gitignore package.json docs/60-releases.md docs/team/journeys/home.json && q1g commit -qm init ) >/dev/null 2>&1
+sh "$HERE/runtime-gate.sh" --project-root "$Q1W" --record >/dev/null 2>&1
+( cd "$Q1W" && STUDIO_WEB_URL= node "$HERE/journey-gate.mjs" --root . --driver "$HERE/drivers/web.sh" ) >"$TMP/q1j.txt" 2>&1
+grep -q '"result": "CANNOT_EVALUATE"' "$Q1W/docs/team/journey-result.json" 2>/dev/null \
+  && ok "Q1: fixture — the web driver cannot evaluate without Playwright (C5W-1)" \
+  || bad "Q1: fixture — the web driver cannot evaluate without Playwright (C5W-1)" "$(tail -3 "$TMP/q1j.txt")"
+node "$HERE/release-candidate.mjs" record --artifact dist --platform web --by release-manager --root "$Q1W" >/dev/null 2>&1
+assert_exit 0 "Q1: readiness — a valid versioned journey waiver is WAIVED, not blocking (C5W-1)" \
+  node "$HERE/readiness.mjs" --root "$Q1W"
+grep -q 'WAIVED  *journey  — WAIVED: journey gate: founder (Q)' "$TMP/out" \
+  && ok "Q1: ...and readiness prints the gate WAIVED with who and why (C5W-1)" \
+  || bad "Q1: ...and readiness prints the gate WAIVED with who and why (C5W-1)" "$(cat "$TMP/out")"
+( cd "$Q1W" && node "$HERE/board.mjs" add APP-001 --title t --owner web-developer ) >/dev/null 2>&1
+( cd "$Q1W" && node "$HERE/orchestrator.mjs" ship ) >"$TMP/q1ship.txt" 2>&1
+grep -q '^  CLEAR  *readiness' "$TMP/q1ship.txt" && grep -q '| WAIVED  *journey  — WAIVED: journey gate: founder' "$TMP/q1ship.txt" \
+  && grep -q 'WAIVED: journey gate by founder (Q)' "$TMP/q1ship.txt" \
+  && ok "Q1: orchestrator ship — readiness CLEAR on a waived journey gate, and both readiness and ship-gate echo the waiver (C5W-1)" \
+  || bad "Q1: orchestrator ship — readiness CLEAR on a waived journey gate, and both readiness and ship-gate echo the waiver (C5W-1)" "$(cat "$TMP/q1ship.txt")"
+q1_journey_state() { node "$HERE/readiness.mjs" --root "$Q1W" --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).gates.find(g=>g.gate==="journey").state))'; }
+for Q1BAD in 'WAIVED: journey gate — founder (Q) — no browser on this machine' \
+             'WAIVED: journey gate — founder (Q) — no browser on this machine — v0.0.9' \
+             'WAIVED: journey gate — — no browser — v0.1.0'; do
+  printf '# Releases\n\n%s\n\n## v0.1.0 — 2026-11-19\n' "$Q1BAD" > "$Q1W/docs/60-releases.md"
+  [ "$(q1_journey_state)" = CANNOT_EVALUATE ] \
+    && ok "Q1: an unversioned / stale-version / unsigned journey waiver still blocks: '$Q1BAD' (C5W-1)" \
+    || bad "Q1: an unversioned / stale-version / unsigned journey waiver still blocks: '$Q1BAD' (C5W-1)" "got $(q1_journey_state)"
+done
+( cd "$Q1W" && git checkout -q docs/60-releases.md )
+# ·· C5W-4 / C5W-14: the loop's own bookkeeping never makes the tree DIRTY; the commit loops exit 0.
+printf 'x\n' > "$Q1W/docs/32-board-view.md"; printf '{}\n' > "$Q1W/docs/90-register.jsonl"; printf '# r\n' > "$Q1W/docs/90-register.md"
+printf '# m\n' > "$Q1W/docs/team/messages.md"
+[ "$(node --input-type=module -e "import { treeDirty } from '$HERE/lib/readiness.mjs'; process.stdout.write(String(treeDirty('$Q1W')))")" = false ] \
+  && ok "Q1: board view, register and rendered channel are operational — not DIRTY (C5W-4)" \
+  || bad "Q1: board view, register and rendered channel are operational — not DIRTY (C5W-4)" "$(cd "$Q1W" && git status --short)"
+Q1L=$(sed -n "/^   sh -c 'for f in \.gitignore CLAUDE\.md/,/done; true'/p" "$HERE/../commands/app-init.md" | sed -e 's/^   //' -e 's/   #.*$//')
+( cd "$Q1W" && sh -c "$(printf '%s' "$Q1L" | sed -e "s/^sh -c '//" -e "s/'\$//")" ) >/dev/null 2>&1 \
+  && grep -q "done; true'" "$HERE/../commands/app-plan.md" \
+  && ok "Q1: the app-init / app-plan commit loops exit 0 when the last listed path is absent (C5W-14)" \
+  || bad "Q1: the app-init / app-plan commit loops exit 0 when the last listed path is absent (C5W-14)" "$Q1L"
+# ·· C5W-2: re-QA after qa_failed cannot pass on the record QA just failed; compose offers the newest one.
+# Self-contained (so mutate.sh can score this section on its own): TC-1 on feat/TC-1-x, profile test.fast.
+q1m() { ( cd "$1" && shift && node "$HERE/board.mjs" "$@" ); }
+q1_vd() { ( cd "$1" && sh "$HERE/verify-done.sh" "$2" main fast 2>/dev/null | sed -n 's/^  Evidence: //p' ); }
+q1_tc_proj() {
+  _p="$TMP/q1-reqa"; rm -rf "$_p"; mkdir -p "$_p/docs/team" "$_p/src"
+  printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$_p/docs/team/project-profile.json"
+  ( cd "$_p" && git init -q -b main && q1g commit -q --allow-empty -m base \
+    && node "$HERE/board.mjs" add TC-1 --title "t" --owner ios-developer \
+    && git checkout -q -b feat/TC-1-x && echo 'let a = 1' > src/A.swift && git add src/A.swift \
+    && q1g commit -q -m work && git checkout -q main \
+    && node "$HERE/board.mjs" move TC-1 claimed --by ios-developer \
+    && node "$HERE/board.mjs" move TC-1 done_reported --by ios-developer ) >/dev/null 2>&1
+  printf '%s' "$_p"
+}
+Q1Q=$(q1_tc_proj)
+q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$(q1_vd "$Q1Q" feat/TC-1-x)" >/dev/null 2>&1
+q1m "$Q1Q" move TC-1 review_requested --by ios-developer >/dev/null 2>&1
+mkdir -p "$Q1Q/docs/53-reviews"; printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\nsrc/A.swift read.\n\n## Not checked\nNothing.\n' > "$Q1Q/docs/53-reviews/v.md"
+q1m "$Q1Q" move TC-1 approved --by code-reviewer --verdict docs/53-reviews/v.md >/dev/null 2>&1
+q1m "$Q1Q" move TC-1 merged --by tech-manager >/dev/null 2>&1
+( cd "$Q1Q" && node "$HERE/board.mjs" add QA-1-w1 --title qa --owner qa-engineer ) >/dev/null 2>&1
+q1qa() { ( cd "$Q1Q" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-1-w1 --role qa-engineer --tickets TC-1 ) 2>/dev/null | sed -n 's/^Evidence on record: //p'; }
+Q1E1=$(q1_vd "$Q1Q" feat/TC-1-x)
+q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E1" >/dev/null 2>&1
+[ -n "$Q1E1" ] && [ "$(q1qa)" = "$Q1E1" ] && ok "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" \
+  || bad "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" "got '$(q1qa)' want '$Q1E1'"
+q1m "$Q1Q" move TC-1 qa_failed --by qa-engineer --detail BUG-001 >/dev/null 2>&1
+assert_exit 1 "Q1: qa_passed citing the record QA already failed is refused after qa_failed (C5W-2)" \
+  q1m "$Q1Q" move TC-1 qa_passed --by qa-engineer --evidence "$Q1E1"
+assert_has "$TMP/err" "last qa_failed" "Q1: ...naming the qa_failed it predates (C5W-2)"
+case "$(q1qa)" in "none newer than the merge and any qa_failed"*) ok "Q1: ...and compose no longer offers the failed build's record (C5W-2)" ;;
+  *) bad "Q1: ...and compose no longer offers the failed build's record (C5W-2)" "$(q1qa)" ;; esac
+Q1E2=$(q1_vd "$Q1Q" feat/TC-1-x)
+q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E2" >/dev/null 2>&1
+[ -n "$Q1E2" ] && [ "$(q1qa)" = "$Q1E2" ] && ok "Q1: after the fix's run, compose offers that newer record (C5W-2)" \
+  || bad "Q1: after the fix's run, compose offers that newer record (C5W-2)" "got '$(q1qa)'"
+assert_exit 0 "Q1: ...and qa_passed on it is accepted (C5W-2)" q1m "$Q1Q" move TC-1 qa_passed --by qa-engineer --evidence "$Q1E2"
+# ·· C5W-3: repeated --file to dispatch-preflight accumulates — routing does not depend on flag order.
+Q1D="$TMP/q1-dpf"; rm -rf "$Q1D"; mkdir -p "$Q1D/docs"; echo "# PRD" > "$Q1D/docs/10-prd.md"
+( cd "$Q1D" && git init -q -b main . && echo x > a.txt && git add a.txt docs && q1g commit -qm base \
+  && node "$HERE/board.mjs" add APP-001 --title t --owner web-developer --by tech-manager --file src/auth/session.js --file src/convert.js \
+  && node "$HERE/team-bootstrap.mjs" --root "$Q1D" && printf '{}\n' > .studio-policy.json ) >/dev/null 2>&1
+q1dp() { ( cd "$Q1D" && node "$HERE/dispatch-preflight.mjs" --root "$Q1D" --ticket APP-001 --context docs/team/context-manifest.json \
+  --schedule docs/team/schedule.json --capability docs/team/capabilities.json --risk docs/team/risk-policy.json \
+  --role web-developer --operation write --file "$1" --file "$2" --change feature ) 2>&1 | grep -c '"risk": "high"'; }
+[ "$(q1dp src/auth/session.js src/convert.js)" -ge 1 ] && [ "$(q1dp src/convert.js src/auth/session.js)" -ge 1 ] \
+  && ok "Q1: dispatch-preflight routes every repeated --file, in either order (C5W-3)" \
+  || bad "Q1: dispatch-preflight routes every repeated --file, in either order (C5W-3)" "$(q1dp src/auth/session.js src/convert.js) / $(q1dp src/convert.js src/auth/session.js)"
+# ·· C5W-6: a lone writer named by a LEASED slot (or a $DIR/<slot> path) with no worktree is refused, not SERIALIZED.
+Q1S="$TMP/q1-sg"; rm -rf "$Q1S"; mkdir -p "$Q1S/docs/team"
+( cd "$Q1S" && git init -q -b main . && q1g commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf '{"schema":"worktree-slots/v1","pool":3,"slots":{"web-developer-1":{"tickets":["APP-001"]}}}\n' > "$Q1S/docs/team/worktree-slots.json"
+assert_exit 1 "Q1: spawn-gate refuses a leased slot whose worktree does not exist (C5W-6)" sh -c 'cd "$1" && sh "$2/spawn-gate.sh" web-developer-1' sh "$Q1S" "$HERE"
+assert_has "$TMP/out" "leased slot" "Q1: ...saying the slot is leased but has no worktree (C5W-6)"
+mkdir -p "$Q1S/.agent-wt/web-developer-2"
+assert_exit 1 "Q1: ...and a .agent-wt/<slot> directory that is not a worktree (C5W-6)" sh -c 'cd "$1" && sh "$2/spawn-gate.sh" web-developer-2' sh "$Q1S" "$HERE"
+assert_exit 0 "Q1: ...while an unleased lone writer still serializes (C5W-6)" sh -c 'cd "$1" && sh "$2/spawn-gate.sh" web-developer-3' sh "$Q1S" "$HERE"
+# ·· C5W-7: app-ship 1a's waiver decision is re-recorded with --write; an edit to a recorded line still reads TAMPERED.
+Q1F="$TMP/q1-fi"; rm -rf "$Q1F"; mkdir -p "$Q1F/docs/00-founder-intent"; echo 'brief' > "$Q1F/docs/00-founder-intent/brief.md"
+node "$HERE/founder-intent.mjs" --project-root "$Q1F" --write >/dev/null 2>&1
+echo '2026-11-19 FOUNDER DECISION: waiver — journey gate — founder — no browser — v0.1.0 — Approved by founder.' > "$Q1F/docs/00-founder-intent/decisions.md"
+grep -q 'founder-intent.mjs" --project-root . --write`' "$HERE/../commands/app-ship.md" \
+  && node "$HERE/founder-intent.mjs" --project-root "$Q1F" --write >/dev/null 2>&1 \
+  && node "$HERE/founder-intent.mjs" --project-root "$Q1F" >/dev/null 2>&1 \
+  && ok "Q1: app-ship 1a re-records the waiver's founder decision, and the record reads INTACT (C5W-7)" \
+  || bad "Q1: app-ship 1a re-records the waiver's founder decision, and the record reads INTACT (C5W-7)"
+sed -i.bak 's/no browser/a browser/' "$Q1F/docs/00-founder-intent/decisions.md"; rm -f "$Q1F/docs/00-founder-intent/decisions.md.bak"
+assert_exit 1 "Q1: ...while editing that recorded decision line is still TAMPERED (C5W-7)" node "$HERE/founder-intent.mjs" --project-root "$Q1F"
+# ·· C5W-8: a re-import moves an OPEN item whose row's Resolution became FIXED (ticket from its link).
+Q1R="$TMP/q1-reg"; rm -rf "$Q1R"; mkdir -p "$Q1R/docs"; printf '{}\n' > "$Q1R/.studio-policy.json"
+printf '| BUG-001 |  | **S2** | web | Enter spaces and convert | Enter a number | NaN | 0.1 |  |\n' > "$Q1R/docs/51-bugs.md"
+q1reg() { ( cd "$Q1R" && node "$HERE/register.mjs" --root . "$@" ); }
+q1reg import-bugs --by tech-manager >/dev/null 2>&1; q1reg link BUG-001 --ticket BUG-001-fix --by tech-manager >/dev/null 2>&1
+printf '| BUG-001 |  | **S2** | web | Enter spaces and convert | Enter a number | NaN | 0.1 | FIXED |\n' > "$Q1R/docs/51-bugs.md"
+q1reg import-bugs --by tech-manager >"$TMP/q1reg.txt" 2>&1
+q1reg show --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const i=JSON.parse(s).items.find(x=>x.id==="BUG-001");process.exit(i&&i.status==="FIXED"&&i.ticket==="BUG-001-fix"?0:1)})' \
+  && ok "Q1: import-bugs moves an OPEN register item to FIXED when its row's Resolution says so (C5W-8)" \
+  || bad "Q1: import-bugs moves an OPEN register item to FIXED when its row's Resolution says so (C5W-8)" "$(cat "$TMP/q1reg.txt")"
+printf '| BUG-002 |  | **S2** | web | x y z | a | b | 0.1 |  |\n' > "$Q1R/docs/51-bugs.md"; q1reg import-bugs --by tech-manager >/dev/null 2>&1
+printf '| BUG-002 |  | **S2** | web | x y z | a | b | 0.1 | FIXED |\n' > "$Q1R/docs/51-bugs.md"; q1reg import-bugs --by tech-manager >/dev/null 2>&1
+q1reg show --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.exit(JSON.parse(s).items.find(x=>x.id==="BUG-002").status==="OPEN"?0:1))' \
+  && ok "Q1: ...but not without a ticket — FIXED is still held to the register's rule (C5W-8)" \
+  || bad "Q1: ...but not without a ticket — FIXED is still held to the register's rule (C5W-8)"
+# ·· C5W-9: the QA landing releases QA's slot; QA never writes the register inside its slot.
+grep -q 'moved — then release QA.s slot (step 4a)' "$HERE/../commands/app-build.md" \
+  && ! grep -q 'register.mjs" --root . import-bugs' "$HERE/../agents/qa-engineer.md" \
+  && grep -q 'do not run `register.mjs` in your slot' "$HERE/../agents/qa-engineer.md" \
+  && ok "Q1: the QA ticket's landing releases its slot, and QA does not import the register in its slot (C5W-9)" \
+  || bad "Q1: the QA ticket's landing releases its slot, and QA does not import the register in its slot (C5W-9)"
+# ·· C5W-10: approval-check --ticket on a ticket with no approval is BLOCKED, not CLEAR.
+Q1A="$TMP/q1-ac"; rm -rf "$Q1A"; mkdir -p "$Q1A/docs"; printf '{"requireApprovalBinding":true}\n' > "$Q1A/.studio-policy.json"
+( cd "$Q1A" && git init -q -b main . && q1g commit -q --allow-empty -m init && node "$HERE/board.mjs" add APP-001 --title t --owner web-developer ) >/dev/null 2>&1
+assert_exit 1 "Q1: approval-check --ticket with zero approvals exits 1, never 'CLEAR' (C5W-10)" sh -c 'cd "$1" && node "$2/approval-check.mjs" --ticket APP-001 --head main' sh "$Q1A" "$HERE"
+assert_has "$TMP/out" "has no approval on record" "Q1: ...saying there is no approval (C5W-10)"
+# ·· C5W-11: orchestrator round's ci row carries ci-status's whole reason, remedy included.
+Q1C="$TMP/q1-ci"; rm -rf "$Q1C"; mkdir -p "$Q1C/docs"; echo "Integration branch: develop" > "$Q1C/docs/23-git-strategy.md"
+( cd "$Q1C" && git init -q -b trunk . && q1g commit -q --allow-empty -m init && node "$HERE/board.mjs" add APP-001 --title t --owner web-developer ) >/dev/null 2>&1
+( cd "$Q1C" && node "$HERE/orchestrator.mjs" round ) >"$TMP/q1ci.txt" 2>&1
+grep ' ci — ' "$TMP/q1ci.txt" | grep -q 'could not be resolved: .*Create the branch, or fix the doc' \
+  && ok "Q1: the round's ci row shows the unresolved-branch reason through to its remedy (C5W-11)" \
+  || bad "Q1: the round's ci row shows the unresolved-branch reason through to its remedy (C5W-11)" "$(grep ' ci' "$TMP/q1ci.txt")"
+# ·· C5W-12: developer and verification-engineer composes fit their budgets — no OVER BUDGET on every spawn.
+( cd "$Q1A" && node "$HERE/board.mjs" add APP-009 --title t --owner web-developer --acceptance converts ) >/dev/null 2>&1
+Q1BO=""
+for _r in web-developer ios-developer android-developer backend-developer verification-engineer; do
+  ( cd "$Q1A" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-009 --role "$_r" ) >/dev/null 2>"$TMP/q1bud.err"
+  grep -q 'OVER BUDGET' "$TMP/q1bud.err" && Q1BO="$Q1BO $(grep -o '= [0-9]* words (budget [0-9]*' "$TMP/q1bud.err") [$_r]"
+  grep -q ' words (budget ' "$TMP/q1bud.err" || Q1BO="$Q1BO no-budget-line[$_r]"
+done
+[ -z "$Q1BO" ] && ok "Q1: developer and verification-engineer composes are within their word budgets (C5W-12)" \
+  || bad "Q1: developer and verification-engineer composes are within their word budgets (C5W-12)" "$Q1BO"
+# ·· C5W-5 / C5W-13: the reviewer's template names the files (approved --bind needs one); routing a constant is not a rejection.
+Q1CR="$HERE/../agents/code-reviewer.md"
+grep -q '^Files reviewed: <every path in the diff' "$Q1CR" && grep -q "'Files reviewed: <every path in the Range above" "$HERE/spawn-prompt.mjs" \
+  && ok "Q1: the code-reviewer verdict template and the composed contract carry Files reviewed: (C5W-5)" \
+  || bad "Q1: the code-reviewer verdict template and the composed contract carry Files reviewed: (C5W-5)"
+grep -q 'routing is not a rejection. `REQUEST CHANGES` only if you can show it is wrong' "$Q1CR" \
+  && ! grep -q '`REQUEST CHANGES` and name it for `verification-engineer`' "$Q1CR" \
+  && ok "Q1: code-reviewer routes a real-world constant without REQUEST CHANGES, as app-build step 4 expects (C5W-13)" \
+  || bad "Q1: code-reviewer routes a real-world constant without REQUEST CHANGES, as app-build step 4 expects (C5W-13)"
+
 # --- Sprint 5 track P2: the guard reads what RUNS, guards what is written, and passes honest commands ---
 # C4G-H1 (text fed to a bare shell), H2 (protected files vs dir writes / git / patch / tar / find),
 # H3 ("$@" verbs), H4 (recursive search above ~/.claude), M1 (case on macOS), M2 (realpath), L1 ($'…'),

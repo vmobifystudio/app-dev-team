@@ -60,13 +60,13 @@
     },
     {
       "id": "code-reviewer",
-      "version": "1.0.13",
+      "version": "1.0.14",
       "owner": "code-reviewer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.12",
-      "content_hash": "ba6680a7ba6d3405e913b7b124f424915a557c1ca08439ad20388693f7eefa41"
+      "rollback_version": "1.0.13",
+      "content_hash": "2b2c2ba0981b9192fcc1e17210f51d910d729f04b0cec3386d03f6e2b33ab8ad"
     },
     {
       "id": "cpo",
@@ -180,13 +180,13 @@
     },
     {
       "id": "qa-engineer",
-      "version": "1.0.11",
+      "version": "1.0.12",
       "owner": "qa-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.10",
-      "content_hash": "baed80ee770cd63abb291e79402b4902f75e0f386ba7ad0e349550bdbfdf8d6f"
+      "rollback_version": "1.0.11",
+      "content_hash": "352eeb6205bf9e76a659e3963937ef6e25b2e084d97afb1e1b98622602b341a3"
     },
     {
       "id": "red-team-agent",
@@ -280,13 +280,13 @@
     },
     {
       "id": "verification-engineer",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "owner": "verification-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.2",
-      "content_hash": "e5c72bc93a91324f6178d6b933348520c0db2f911083ea108877e54359382ae4"
+      "rollback_version": "1.0.3",
+      "content_hash": "03800199cadb75814ffe1b2fe98a1007fe55f17306a1dd72ac60da052f97ac2d"
     },
     {
       "id": "web-developer",

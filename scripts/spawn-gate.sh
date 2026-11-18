@@ -130,6 +130,15 @@ for id in "$@"; do
 done
 
 if [ "$COUNT" -eq 1 ]; then
+  # C5W-6: "serialize" is for a writer that was never given a slot. A LEASED slot (or a $DIR/<slot>
+  # path) with no worktree behind it means the IC would land in the shared checkout believing it is
+  # isolated — the prompt names a tree that does not exist.
+  SLOTS="${MAIN_COMMON:+$(dirname "$MAIN_COMMON")}"; SLOTS="${SLOTS:-$HERE}/docs/team/worktree-slots.json"
+  if [ -n "$missing" ] && { [ -e "$DIR/$1" ] || grep -q "\"$1\"[[:space:]]*:" "$SLOTS" 2>/dev/null; }; then
+    echo "REFUSED: $1 is a leased slot (or $DIR/$1 exists) but has no worktree"
+    echo "Re-lease it (worktree-slot.mjs lease) or release it and compose without a slot, then re-run this gate."
+    refuse
+  fi
   if [ -z "$missing" ]; then
     echo "GO: 1 writing agent, isolated in $DIR/$1"
   else
