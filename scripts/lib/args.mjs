@@ -22,10 +22,18 @@
  * @param {Set<string>} [spec.knownFlags] every legal flag; an unknown one is a usage error.
  *                                        Omit to accept anything (board.mjs's historical behaviour).
  * @param {(code:number, message:string)=>never} spec.die  how this caller reports and exits
+ * @param {Record<string,string>} [spec.listFlags] C4W-7: list-valued flags and their separator. A
+ *                                        repeated one ACCUMULATES (`--file a --file b` is `a,b`) —
+ *                                        last-wins silently dropped every file but the last.
  * @returns {{flags: Record<string, string|true>, positional: string[]}}
  */
-export function parseArgs(argv, { valueFlags, knownFlags = null, die }) {
+export function parseArgs(argv, { valueFlags, knownFlags = null, die, listFlags = {} }) {
   const flags = {};
+  const set = (name, value) => {
+    const prev = flags[name];
+    flags[name] = Object.hasOwn(listFlags, name) && typeof prev === 'string' && typeof value === 'string'
+      ? `${prev}${listFlags[name]}${value}` : value;
+  };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -36,15 +44,15 @@ export function parseArgs(argv, { valueFlags, knownFlags = null, die }) {
     const [name, inline] = arg.slice(2).split(/=(.*)/s);
     if (knownFlags && !knownFlags.has(name)) die(1, `unknown flag --${name}`);
     if (inline !== undefined) {
-      flags[name] = inline;
+      set(name, inline);
     } else if (valueFlags.has(name)) {
       // Not `argv[i+1] && !argv[i+1].startsWith('--')`. A value-taking flag whose value is missing
       // is a usage error, never a silent `true` and never a silent fallback to the default — both
       // of those are how "the operator asked for X" becomes "the tool did Y and said nothing".
       if (i + 1 >= argv.length) die(2, `--${name} needs a value`);
-      flags[name] = argv[(i += 1)];
+      set(name, argv[(i += 1)]);
     } else if (argv[i + 1] && !argv[i + 1].startsWith('--')) {
-      flags[name] = argv[(i += 1)];
+      set(name, argv[(i += 1)]);
     } else {
       flags[name] = true;
     }

@@ -145,8 +145,24 @@ function cmdCheck() {
   process.stdout.write(`\n  test.fast  ${test.fast || 'UNSTATED — every ticket will pay for the full suite'}\n`);
   process.stdout.write(`  test.full  ${test.full || 'UNSTATED — nothing states what must pass before merge'}\n`);
 
+  // C4G-G7: verify-done runs the suite in a FRESH detached worktree of the tip (design E), which has
+  // no node_modules — `npm test` there is cannot-run on every ticket. A JS test command must install
+  // its own dependencies from the lockfile first: `npm ci && …`, `pnpm install --frozen-lockfile && …`,
+  // `yarn install --frozen-lockfile && …` (or --immutable), `bun install --frozen-lockfile && …`.
+  // ponytail: chosen over symlinking node_modules into the run tree — a link would test the
+  // developer's installed deps, not the lockfile the commit names.
+  const coldDeps = [];
+  for (const scope of ['fast', 'full']) {
+    const cmd = typeof test[scope] === 'string' ? test[scope].trim() : '';
+    if (!cmd || !/(^|[\s;&|(])(npm|npx|pnpm|yarn|bun|bunx)\s/.test(`${cmd} `)) continue;
+    if (/^(npm ci|pnpm (i|install) --frozen-lockfile|yarn (install )?(--frozen-lockfile|--immutable)|bun install --frozen-lockfile)\b[^;|]*&&/.test(cmd)) continue;
+    coldDeps.push(scope);
+    process.stdout.write(`  BLOCKED          test.${scope} "${cmd}" — runs in a fresh worktree with no node_modules; prefix the lockfile install: "npm ci && ${cmd}" (or pnpm install --frozen-lockfile && …)\n`);
+  }
+  blocked += coldDeps.length;
+
   if (blocked) {
-    process.stdout.write(`\nRESULT: BLOCKED — ${blocked} tool(s) are the wrong version. This project will not build correctly here.\n`);
+    process.stdout.write(`\nRESULT: BLOCKED — ${blocked - coldDeps.length ? `${blocked - coldDeps.length} tool(s) are the wrong version` : ''}${blocked - coldDeps.length && coldDeps.length ? '; ' : ''}${coldDeps.length ? `test.${coldDeps.join('/test.')} cannot install its dependencies in verify-done's fresh worktree` : ''}. This project will not build correctly here.\n`);
     process.exit(1);
   }
   if (unevaluable || missingBuild) {

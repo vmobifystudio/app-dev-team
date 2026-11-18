@@ -11560,6 +11560,174 @@ if command -v python3 >/dev/null 2>&1; then
 fi
 rm -rf "$K1H" "$K1F" "$K1C" "$K1E" "$K1U" "$K1Q" "$K1Q2" "$K1M" "$K1I" "$K1A" "$K1S" "$K1V" "$K1T" "$K1B" "$K1G" "$K1N" "$K1J" "$K1P"
 
+# --- Sprint 5 track P1: QA docs fast path, gate bindings, scheduler/stall/args, loop messages ---
+echo
+BD="$HERE/board.mjs"
+p1m() { ( cd "$1" && shift && node "$BD" "$@" ); }
+p1g() { git -c user.name=t -c user.email=t@localhost "$@"; }
+# p1_proj <name> -> a git project whose profile (test.fast) is COMMITTED on main, and QA-5-w1 claimed +
+# done_reported, its branch qa/QA-5-w1 cut from main (no commits yet).
+p1_proj() {
+  _p="$TMP/p1-$1"; rm -rf "$_p"; mkdir -p "$_p/docs/team"
+  printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$_p/docs/team/project-profile.json"
+  ( cd "$_p" && git init -q -b main && git add docs/team/project-profile.json && p1g commit -q -m base \
+    && node "$BD" add QA-5-w1 --title qa --owner qa-engineer && git checkout -q -b qa/QA-5-w1 && git checkout -q main \
+    && node "$BD" move QA-5-w1 claimed --by qa-engineer && node "$BD" move QA-5-w1 done_reported --by qa-engineer ) >/dev/null 2>&1
+  printf '%s' "$_p"
+}
+# p1_commit <proj> <path> <content> — commit one file on qa/QA-5-w1
+p1_commit() { ( cd "$1" && git checkout -q qa/QA-5-w1 && mkdir -p "$(dirname "$2")" && printf '%s\n' "$3" > "$2" && git add "$2" && p1g commit -qm "$2" && git checkout -q main ) >/dev/null 2>&1; }
+p1_docs_ev() { ( cd "$1" && sh "$HERE/verify-done.sh" --docs-only qa/QA-5-w1 main 2>/dev/null | sed -n 's/^  Evidence: //p' ); }
+
+# ·· C4G-G1: on the QA- fast path only docs/ prose (and QA's journeys) are documents
+for P1F in docs/team/risk-policy.json docs/team/project-profile.json docs/team/capabilities.json CMakeLists.txt requirements-dev.txt package.json app/page.mdx docs/package.json README.md; do
+  P1G=$(p1_proj g1)
+  p1_commit "$P1G" docs/50-test-plan.md '# plan'
+  p1_commit "$P1G" "$P1F" '{"rules":[]}'
+  assert_exit 1 "P1: a QA- --docs-only record whose branch changes $P1F is refused (C4G-G1)" \
+    p1m "$P1G" move QA-5-w1 verified --by tech-manager --evidence "$(p1_docs_ev "$P1G")"
+  assert_has "$TMP/err" "$P1F" "P1: ...naming $P1F"
+done
+P1H=$(p1_proj honest)
+p1_commit "$P1H" docs/50-test-plan.md '# plan'
+p1_commit "$P1H" docs/51-bugs.md '| BUG-001 | crash |'
+p1_commit "$P1H" docs/team/journeys/onboarding.json '{"schema":"journey/v1"}'
+( cd "$P1H" && sh "$HERE/verify-done.sh" --docs-only qa/QA-5-w1 main ) >"$TMP/p1vd.txt" 2>&1
+grep -q 'reviewed inline, no code-reviewer' "$TMP/p1vd.txt" && grep -q 'move QA-5-w1 merged --by tech-manager' "$TMP/p1vd.txt" && ! grep -q 'spawn the code-reviewer' "$TMP/p1vd.txt" \
+  && ok "P1: verify-done prints the QA inline-merge line for a docs-only QA- ticket, not 'spawn the code-reviewer' (C4W-9)" \
+  || bad "P1: verify-done prints the QA inline-merge line for a docs-only QA- ticket, not 'spawn the code-reviewer' (C4W-9)" "$(tail -4 "$TMP/p1vd.txt")"
+assert_exit 0 "P1: the honest QA deliverable (test plan, bugs, docs/team/journeys/*.json) verifies docs-only (C4G-G1)" \
+  p1m "$P1H" move QA-5-w1 verified --by tech-manager --evidence "$(sed -n 's/^  Evidence: //p' "$TMP/p1vd.txt")"
+assert_exit 0 "P1: ...and merges inline" p1m "$P1H" move QA-5-w1 merged --by tech-manager
+tail -n 1 "$P1H/docs/31-board-events.jsonl" | grep -q "\"merge_base\":\"$( cd "$P1H" && git rev-parse main )\"" \
+  && ok "P1: merged records the merge-base its docs-only proof was taken against (C4G-G2)" \
+  || bad "P1: merged records the merge-base its docs-only proof was taken against (C4G-G2)" "$(tail -n 1 "$P1H/docs/31-board-events.jsonl")"
+assert_exit 0 "P1: corrected is legal while a ticket sits in qa (C4G-G3)" \
+  p1m "$P1H" move QA-5-w1 corrected --by tech-manager --detail '{"notes":"qa note"}'
+# ·· C4G-G2 / C4W-2: closed, then the printed fast-forward lands the files on main
+assert_exit 0 "P1: the QA- ticket closes from merged" p1m "$P1H" move QA-5-w1 closed --by tech-manager
+assert_has "$TMP/out" "git checkout main && git merge --ff-only qa/QA-5-w1" "P1: ...and closed prints the exact ff-only command that lands its files (C4W-2)"
+( cd "$P1H" && git checkout -q main && git merge -q --ff-only qa/QA-5-w1 ) >/dev/null 2>&1
+[ -f "$P1H/docs/50-test-plan.md" ] && ok "P1: ...which fast-forwards main onto the QA branch" || bad "P1: ...which fast-forwards main onto the QA branch"
+# ·· C4W-1: board-doctor does not call the inline-reviewed QA ticket done_without_review
+( cd "$P1H" && node "$HERE/board-doctor.mjs" docs/31-board.md ) >"$TMP/p1bd.txt" 2>&1
+[ $? = 0 ] && ! grep -q done_without_review "$TMP/p1bd.txt" \
+  && ok "P1: board-doctor exempts a docs-only QA- ticket that closed through the gate from done_without_review (C4W-1)" \
+  || bad "P1: board-doctor exempts a docs-only QA- ticket that closed through the gate from done_without_review (C4W-1)" "$(head -5 "$TMP/p1bd.txt")"
+# ff BEFORE closed works too: closed diffs the merge-base recorded at merged
+P1B=$(p1_proj fffirst)
+p1_commit "$P1B" docs/50-test-plan.md '# plan'
+p1m "$P1B" move QA-5-w1 verified --by tech-manager --evidence "$(p1_docs_ev "$P1B")" >/dev/null 2>&1
+p1m "$P1B" move QA-5-w1 merged --by tech-manager >/dev/null 2>&1
+( cd "$P1B" && git merge -q --ff-only qa/QA-5-w1 ) >/dev/null 2>&1
+assert_exit 0 "P1: a QA- ticket fast-forwarded into main BEFORE closed still closes (C4G-G2)" p1m "$P1B" move QA-5-w1 closed --by tech-manager
+# ...and a code commit after merged still ends the fast path at closed? The recorded merged_head is what closes.
+# A non-QA ticket's docs-only record is unaffected by the QA-only allowances: journeys are not documents for it.
+node --input-type=module -e "
+import { docFile } from '$HERE/lib/evidence.mjs';
+const qa = docFile(false, { qa: true }), app = docFile(false);
+const ok = qa('docs/team/journeys/j.json') && !app('docs/team/journeys/j.json') && app('README.md') && !qa('README.md')
+  && !app('docs/team/risk-policy.json') && !app('CMakeLists.txt') && !app('x/page.mdx') && app('docs/12-flows.md')
+  && !app('docs/31-board-events.jsonl') && !docFile(true)('docs/robots.json') && docFile(true)('docs/guide.md');
+process.exit(ok ? 0 : 1);" \
+  && ok "P1: the document classifier: QA journeys only on QA-, control files / manifests / .mdx never, served docs/ prose only (C4G-G1)" \
+  || bad "P1: the document classifier: QA journeys only on QA-, control files / manifests / .mdx never, served docs/ prose only (C4G-G1)"
+
+# ·· C4G-G4: an uncommitted profile edit is never frozen — the integration branch's committed profile is
+P1F4=$(p1_proj freeze)
+printf '{"schema":"project-profile/v1","test":{"fast":"echo Executed 9 tests"}}\n' > "$P1F4/docs/team/project-profile.json"
+p1_commit "$P1F4" docs/50-test-plan.md '# plan'
+p1m "$P1F4" move QA-5-w1 verified --by tech-manager --evidence "$(p1_docs_ev "$P1F4")" >/dev/null 2>&1
+grep '"test_profile"' "$P1F4/docs/31-board-events.jsonl" | grep -q 'Executed 3 tests' && ! grep -q 'Executed 9 tests' "$P1F4/docs/31-board-events.jsonl" \
+  && ok "P1: the board freezes main's committed profile, not an uncommitted working-tree edit (C4G-G4)" \
+  || bad "P1: the board freezes main's committed profile, not an uncommitted working-tree edit (C4G-G4)" "$(grep test_profile "$P1F4/docs/31-board-events.jsonl" | head -1)"
+
+# ·· C4G-G5: an approval whose recorded base starts after the branch's merge-base does not cover it
+P1A="$TMP/p1-appr"; rm -rf "$P1A"; mkdir -p "$P1A"
+( cd "$P1A" && git init -q -b main && p1g commit -q --allow-empty -m base && git checkout -q -b feat/APP-9-x \
+  && echo a > a.swift && git add a.swift && p1g commit -qm a && echo b > b.swift && git add b.swift && p1g commit -qm b ) >/dev/null 2>&1
+node --input-type=module -e "
+import { checkApprovals } from '$HERE/lib/approval.mjs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+const g = (...a) => execFileSync('git', a, { cwd: '$P1A', encoding: 'utf8' }).trim();
+const tip = g('rev-parse', 'HEAD'), one = g('rev-parse', 'HEAD~1'), mb = g('merge-base', 'main', 'HEAD');
+const ev = (base) => [{ ticket: 'APP-9', event: 'approved', by: 'code-reviewer', detail: { commit: tip, base, context_snapshot: 'x', evidence_hash: 'x',
+  diff_hash: createHash('sha256').update(execFileSync('git', ['diff', base, tip, '--binary'], { cwd: '$P1A', encoding: 'utf8' }).trim()).digest('hex') } }];
+const narrow = checkApprovals(ev(one), { ticket: 'APP-9', head: tip, cwd: '$P1A' }).issues;
+const whole = checkApprovals(ev(mb), { ticket: 'APP-9', head: tip, cwd: '$P1A' }).issues;
+process.exit(narrow.some((i) => /never in the reviewed range/.test(i)) && !whole.some((i) => /never in the reviewed range/.test(i)) ? 0 : 1);" \
+  && ok "P1: merged refuses an approval bound to tip~1..tip — the approved range must start at or before merge-base(integration, tip) (C4G-G5)" \
+  || bad "P1: merged refuses an approval bound to tip~1..tip — the approved range must start at or before merge-base(integration, tip) (C4G-G5)"
+
+# ·· C4G-G7: a JS test command must install its deps in verify-done's fresh worktree
+P1P="$TMP/p1-prof"; rm -rf "$P1P"; mkdir -p "$P1P/docs/team"; printf '{"scripts":{"build":"true","test":"true"}}\n' > "$P1P/package.json"
+printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"npm test"}}\n' > "$P1P/docs/team/project-profile.json"
+assert_exit 1 "P1: project-profile check BLOCKS a bare 'npm test' — the fresh worktree has no node_modules (C4G-G7)" \
+  node "$HERE/project-profile.mjs" check --root "$P1P"
+assert_has "$TMP/out" 'npm ci && npm test' "P1: ...printing the lockfile-install form"
+printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"npm ci && npm test"}}\n' > "$P1P/docs/team/project-profile.json"
+assert_exit 0 "P1: ...and clears 'npm ci && npm test'" node "$HERE/project-profile.mjs" check --root "$P1P"
+
+# ·· C4W-3 / C4W-4: qa_failed -> BUG-NNN-fix is dispatchable (ids case-insensitive, deps satisfied at qa)
+P1S=$(p1_proj sched)
+printf '{"schema":"scheduler-plan/v1","tasks":[]}\n' > "$P1S/docs/team/schedule.json"
+( cd "$P1S" && node "$BD" add APP-001-analytics --title "Feature" --owner ios-developer && git checkout -q -b feat/APP-001-analytics-events \
+  && mkdir -p src && echo 'let a = 1' > src/A.swift && git add src && p1g commit -qm a && git checkout -q main \
+  && node "$BD" move APP-001-analytics claimed --by ios-developer && node "$BD" move APP-001-analytics done_reported --by ios-developer ) >/dev/null 2>&1
+bm "$P1S" add APP-002 --title "Planned dependent" --owner ios-developer --depends APP-001-analytics >/dev/null 2>&1
+bm "$P1S" add APP-099 --title "Elsewhere" --owner ios-developer >/dev/null 2>&1
+for _i in 1 2 3 4 5 6 7 8 9 10 11; do bm "$P1S" move APP-099 corrected --by tech-manager --detail '{"notes":"n"}' >/dev/null 2>&1; done
+P1SE=$( cd "$P1S" && sh "$HERE/verify-done.sh" feat/APP-001-analytics-events main fast 2>/dev/null | sed -n 's/^  Evidence: //p' )
+bm "$P1S" move APP-001-analytics verified --by tech-manager --evidence "$P1SE" >/dev/null 2>&1
+bm "$P1S" move APP-001-analytics review_requested --by ios-developer >/dev/null 2>&1
+bm "$P1S" move APP-001-analytics approved --by code-reviewer >/dev/null 2>&1
+bm "$P1S" move APP-001-analytics merged --by tech-manager >/dev/null 2>&1
+bm "$P1S" move APP-001-analytics qa_failed --by qa-engineer >/dev/null 2>&1
+bm "$P1S" add BUG-001-fix --title "Fix" --owner ios-developer --depends APP-001-analytics >/dev/null 2>&1
+node "$HERE/scheduler.mjs" --plan "$P1S/docs/team/schedule.json" >"$TMP/p1s.txt" 2>&1
+[ $? = 0 ] && grep -q '"BUG-001-fix"' "$TMP/p1s.txt" \
+  && ok "P1: qa_failed -> BUG-001-fix is in the scheduler's ready set — the original at qa satisfies it, ids match case-insensitively (C4W-3, C4W-4)" \
+  || bad "P1: qa_failed -> BUG-001-fix is in the scheduler's ready set — the original at qa satisfies it, ids match case-insensitively (C4W-3, C4W-4)" "$(cat "$TMP/p1s.txt")"
+assert_exit 0 "P1: ...and the board agrees: BUG-001-fix is claimable" bm "$P1S" move BUG-001-fix claimed --by ios-developer
+# C4W-5: APP-002 was planned (created) before its dependency's ten-odd events; the round its
+# dependency reaches qa it is claimable, not STALLED.
+( cd "$P1S" && node "$HERE/orchestrator.mjs" round ) >"$TMP/p1round.txt" 2>&1
+grep -q 'STALLED QA-5-w1' "$TMP/p1round.txt" && ! grep -q 'STALLED APP-002' "$TMP/p1round.txt" \
+  && ok "P1: the stall detector measures a dependent from its dependency's last move, not its own creation (C4W-5)" \
+  || bad "P1: the stall detector measures a dependent from its dependency's last move, not its own creation (C4W-5)" "$(grep STALLED "$TMP/p1round.txt")"
+
+# ·· C4W-7: a repeated list flag accumulates
+node --input-type=module -e "
+import { parseArgs } from '$HERE/lib/args.mjs';
+const { flags } = parseArgs(['--file', 'a.swift', '--file', 'b.swift', '--invariant', 'I1', '--invariant=I2', '--title', 'x', '--title', 'y'],
+  { valueFlags: new Set(['file', 'invariant', 'title']), listFlags: { file: ',', invariant: ';' }, die: () => process.exit(3) });
+process.exit(flags.file === 'a.swift,b.swift' && flags.invariant === 'I1;I2' && flags.title === 'y' ? 0 : 1);" \
+  && ok "P1: --file / --invariant repeated accumulate; scalar flags stay last-wins (C4W-7)" \
+  || bad "P1: --file / --invariant repeated accumulate; scalar flags stay last-wins (C4W-7)"
+P1R=$(newboard p1-args)
+bm "$P1R" add APP-002 --title t --owner ios-developer --file src/A.swift --file src/B.swift >/dev/null 2>&1
+grep -q '"files":\["src/A.swift","src/B.swift"\]' "$P1R/docs/31-board-events.jsonl" \
+  && ok "P1: board add --file a --file b records both files" \
+  || bad "P1: board add --file a --file b records both files" "$(head -c 400 "$P1R/docs/31-board-events.jsonl")"
+
+# ·· C4W-13: the orchestrator's own inline mint is not told to go find an agent
+P1T="$TMP/p1-mint"; rm -rf "$P1T"; mkdir -p "$P1T/docs"
+( cd "$P1T" && node "$BD" add APP-003 --title t --owner ios-developer && node "$BD" actor mint --role tech-manager --ticket APP-003 ) >/dev/null 2>"$TMP/p1mint.txt"
+! grep -q "THAT agent" "$TMP/p1mint.txt" && grep -q "this one board command" "$TMP/p1mint.txt" \
+  && ok "P1: a tech-manager self-mint says to use it inline, not to put it in an agent's spawn prompt (C4W-13)" \
+  || bad "P1: a tech-manager self-mint says to use it inline, not to put it in an agent's spawn prompt (C4W-13)" "$(cat "$TMP/p1mint.txt")"
+( cd "$P1S" && node "$HERE/orchestrator.mjs" ship ) >"$TMP/p1ship.txt" 2>&1
+grep -Eq 'RESULT: (BLOCKED \(|CANNOT EVALUATE \(worst wins — )(BLOCKED|CANNOT EVALUATE): [a-z]' "$TMP/p1ship.txt" \
+  && ok "P1: orchestrator ship's RESULT names the BLOCKED and CANNOT EVALUATE steps (C4W-13)" \
+  || bad "P1: orchestrator ship's RESULT names the BLOCKED and CANNOT EVALUATE steps (C4W-13)"
+( cd "$P1S" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-5-w1 --role qa-engineer --tickets APP-001-analytics ) >/dev/null 2>"$TMP/p1qab.txt"
+grep -q '(budget 6000' "$TMP/p1qab.txt" \
+  && ok "P1: a qa-engineer prompt on a QA- ticket is measured against the QA budget, not the IC one (C4W-13)" \
+  || bad "P1: a qa-engineer prompt on a QA- ticket is measured against the QA budget, not the IC one (C4W-13)" "$(cat "$TMP/p1qab.txt")"
+rm -rf "$P1G" "$P1H" "$P1B" "$P1F4" "$P1A" "$P1P" "$P1S" "$P1R" "$P1T"
+
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

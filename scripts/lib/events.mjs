@@ -130,9 +130,11 @@ function legalEvents(state) {
       // `verified` is legal here so a ticket merged on a STATIC verification can be upgraded once
       // the executable suite finally runs. Without that there is no path from `qa (static only)` to
       // `done` except lying, and a sprint would have to close by hand — which is what happened.
-      return state.qaPassed || isQaTicket(state)
+      // C4G-G3: `corrected` too — the comment above says EVERY state, and the test-profile refusal
+      // prints `corrected --test-profile` to a ticket that may well be sitting here.
+      return withCorrection(state.qaPassed || isQaTicket(state)
         ? ['closed', 'verified', 'qa_failed', 'blocked']
-        : ['qa_passed', 'verified', 'qa_failed', 'blocked'];
+        : ['qa_passed', 'verified', 'qa_failed', 'blocked']);
     case 'done':
       return withCorrection([]);
     case 'blocked':

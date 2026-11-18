@@ -376,5 +376,16 @@ echo "VERIFIED: $BRANCH"
 echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=$TESTS_STATUS head=$HEAD_SHA"
 echo "  Evidence: $EVIDENCE"
 echo "Next: record it — node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID verified --by tech-manager --evidence $EVIDENCE$TOKFLAG"
-echo "  then move the board row to review and spawn the code-reviewer."
+# C4W-9: a docs-only QA- ticket is reviewed INLINE by the orchestrator (design decision 1) — telling
+# it to spawn the code-reviewer sent the QA pass down a path the board does not offer it.
+case "$TICKET_ID" in
+  [Qq][Aa]-*)
+    if [ "$DOCS_ONLY" -eq 1 ]; then
+      echo "  then read the QA diff yourself (docs-only QA ticket: reviewed inline, no code-reviewer) and merge it:"
+      echo "    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID merged --by tech-manager$TOKFLAG"
+    else
+      echo "  This QA- ticket changed code, so it takes the normal path: move it to review and spawn the code-reviewer."
+    fi ;;
+  *) echo "  then move the board row to review and spawn the code-reviewer." ;;
+esac
 exit 0

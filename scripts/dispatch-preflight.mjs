@@ -98,7 +98,7 @@ try {
 // the caller's own belief that its ticket is ready.
 const scheduleResult = JSON.parse(schedule);
 const ticket = String(flags.ticket);
-if (!scheduleResult.ready.includes(ticket)) {
+if (!scheduleResult.ready.some((id) => String(id).toUpperCase() === ticket.toUpperCase())) { // C4W-3: as the board's key()
   die(
     1,
     `ticket ${ticket} is not in the scheduler's ready set — ready: [${scheduleResult.ready.join(', ') || 'none'}], ` +
