@@ -11730,6 +11730,48 @@ grep -q '(budget 6000' "$TMP/p1qab.txt" \
 rm -rf "$P1G" "$P1H" "$P1B" "$P1F4" "$P1A" "$P1P" "$P1S" "$P1R" "$P1T"
 
 
+# --- Sprint 6 track Q1: a waived journey gate ships, re-QA binds the newest record, the loop stays clean ---
+echo
+q1g() { git -c user.name=t -c user.email=t@localhost "$@"; }
+# ·· C5W-1: a browserless web-app with a valid versioned journey waiver reaches readiness PASS.
+Q1W="$TMP/q1-web"; rm -rf "$Q1W"; mkdir -p "$Q1W/docs/team/journeys"
+cat > "$Q1W/package.json" <<'Q1EOF'
+{"name":"q1-web","private":true,"scripts":{
+ "build":"node -e \"require('fs').mkdirSync('dist',{recursive:true});require('fs').writeFileSync('dist/index.html','<h1>hi</h1>')\"",
+ "test":"node -e \"process.exit(0)\""}}
+Q1EOF
+printf '{"schema":"journey/v1","id":"home","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"hi"}]}\n' > "$Q1W/docs/team/journeys/home.json"
+printf '# Releases\n\nWAIVED: journey gate — founder (Q) — no browser on this machine — v0.1.0\n\n## v0.1.0 — 2026-11-19\n' > "$Q1W/docs/60-releases.md"
+printf 'dist/\n' > "$Q1W/.gitignore"
+( cd "$Q1W" && git init -q -b main && git add .gitignore package.json docs/60-releases.md docs/team/journeys/home.json && q1g commit -qm init ) >/dev/null 2>&1
+sh "$HERE/runtime-gate.sh" --project-root "$Q1W" --record >/dev/null 2>&1
+( cd "$Q1W" && STUDIO_WEB_URL= node "$HERE/journey-gate.mjs" --root . --driver "$HERE/drivers/web.sh" ) >"$TMP/q1j.txt" 2>&1
+grep -q '"result": "CANNOT_EVALUATE"' "$Q1W/docs/team/journey-result.json" 2>/dev/null \
+  && ok "Q1: fixture — the web driver cannot evaluate without Playwright (C5W-1)" \
+  || bad "Q1: fixture — the web driver cannot evaluate without Playwright (C5W-1)" "$(tail -3 "$TMP/q1j.txt")"
+node "$HERE/release-candidate.mjs" record --artifact dist --platform web --by release-manager --root "$Q1W" >/dev/null 2>&1
+assert_exit 0 "Q1: readiness — a valid versioned journey waiver is WAIVED, not blocking (C5W-1)" \
+  node "$HERE/readiness.mjs" --root "$Q1W"
+grep -q 'WAIVED  *journey  — WAIVED: journey gate: founder (Q)' "$TMP/out" \
+  && ok "Q1: ...and readiness prints the gate WAIVED with who and why (C5W-1)" \
+  || bad "Q1: ...and readiness prints the gate WAIVED with who and why (C5W-1)" "$(cat "$TMP/out")"
+( cd "$Q1W" && node "$HERE/board.mjs" add APP-001 --title t --owner web-developer ) >/dev/null 2>&1
+( cd "$Q1W" && node "$HERE/orchestrator.mjs" ship ) >"$TMP/q1ship.txt" 2>&1
+grep -q '^  CLEAR  *readiness' "$TMP/q1ship.txt" && grep -q '| .*WAIVED: journey gate' "$TMP/q1ship.txt" \
+  && grep -q 'WAIVED: journey gate by founder (Q)' "$TMP/q1ship.txt" \
+  && ok "Q1: orchestrator ship — readiness CLEAR on a waived journey gate, and both readiness and ship-gate echo the waiver (C5W-1)" \
+  || bad "Q1: orchestrator ship — readiness CLEAR on a waived journey gate, and both readiness and ship-gate echo the waiver (C5W-1)" "$(cat "$TMP/q1ship.txt")"
+q1_journey_state() { node "$HERE/readiness.mjs" --root "$Q1W" --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).gates.find(g=>g.gate==="journey").state))'; }
+for Q1BAD in 'WAIVED: journey gate — founder (Q) — no browser on this machine' \
+             'WAIVED: journey gate — founder (Q) — no browser on this machine — v0.0.9' \
+             'WAIVED: journey gate — — no browser — v0.1.0'; do
+  printf '# Releases\n\n%s\n\n## v0.1.0 — 2026-11-19\n' "$Q1BAD" > "$Q1W/docs/60-releases.md"
+  [ "$(q1_journey_state)" = CANNOT_EVALUATE ] \
+    && ok "Q1: an unversioned / stale-version / unsigned journey waiver still blocks: '$Q1BAD' (C5W-1)" \
+    || bad "Q1: an unversioned / stale-version / unsigned journey waiver still blocks: '$Q1BAD' (C5W-1)" "got $(q1_journey_state)"
+done
+( cd "$Q1W" && git checkout -q docs/60-releases.md )
+
 # --- Sprint 5 track P2: the guard reads what RUNS, guards what is written, and passes honest commands ---
 # C4G-H1 (text fed to a bare shell), H2 (protected files vs dir writes / git / patch / tar / find),
 # H3 ("$@" verbs), H4 (recursive search above ~/.claude), M1 (case on macOS), M2 (realpath), L1 ($'…'),

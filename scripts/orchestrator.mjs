@@ -657,6 +657,10 @@ function cmdShip() {
         .slice(0, 12);
       for (const l of why) lines.push(`      | ${l.trim()}`);
     }
+    // C5W-1: a waived gate must never look like a passed one — its WAIVED line is relayed even on CLEAR.
+    for (const l of `${r.stdout || ''}`.split('\n').filter((x) => /WAIVED/.test(x) && (code === 0 || !/BLOCKED|STALE|CANNOT|UNKNOWN|FAIL|MISSING|REFUSED|DIRTY/.test(x))).slice(0, 6)) {
+      lines.push(`      | ${l.trim()}`);
+    }
   }
 
   process.stdout.write('SHIP PRECONDITIONS\n\n' + lines.join('\n') + '\n\n');

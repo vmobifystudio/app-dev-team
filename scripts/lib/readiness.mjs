@@ -15,6 +15,8 @@
  *   CANNOT_EVALUATE  the gate could not run (no driver, no toolchain, no declaration)
  *   NOT_APPLICABLE   the gate has nothing to say about this project
  *   STALE            the gate ran, but against a different candidate or different evidence
+ *   WAIVED           the gate ran on THIS candidate, could not evaluate, and a valid versioned
+ *                    `WAIVED:` line in docs/60-releases.md records a human proceeding anyway (C5W-1)
  *
  * STALE is not PASS (the claim is no longer supported) and not BLOCKED (nothing was shown broken).
  * Collapsing it into PASS is how a release goes out on last Tuesday's evidence; collapsing it into
@@ -27,6 +29,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { artifactEntry } from './dossier.mjs';
 import { checkGateLog } from './evidence.mjs';
@@ -76,6 +79,22 @@ export function treeDirty(root) {
   } catch { return true; }
 }
 
+/**
+ * C5W-1: the waiver for a CANNOT_EVALUATE gate, read by lib/waiver.sh — the SAME parser ship-gate.sh
+ * uses (artifact, who, reason, and the canonical version once one exists), never a second one.
+ * Returns "<who> — <reason>" or null. Only `journey gate` / `runtime gate` (optionally `(<platform>)`).
+ */
+const WAIVABLE = { journey: ['journey gate'], runtime: ['runtime gate', 'runtime gate (ios)', 'runtime gate (android)', 'runtime gate (web)'] };
+function waiverFor(root, name) {
+  for (const artifact of WAIVABLE[name] || []) {
+    try {
+      return `${artifact}: ${execFileSync('sh', [fileURLToPath(new URL('./waiver.sh', import.meta.url)), resolve(root, 'docs/60-releases.md'), artifact],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()}`;
+    } catch { /* exit 1: no valid waiver for this spelling */ }
+  }
+  return null;
+}
+
 function readJson(path) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
 }
@@ -121,6 +140,10 @@ function gateEntry(root, name, relPath, cand, gateName) {
     return { gate: name, state: 'CANNOT_EVALUATE', detail: `${relPath} does not re-derive: ${derived.reason}`, subject: recorded };
   }
   const state = v.result === 'PASS' ? 'PASS' : v.result === 'FAIL' ? 'BLOCKED' : 'CANNOT_EVALUATE';
+  // C5W-1: a waiver covers only "this candidate's gate ran and could not evaluate" — never a FAIL
+  // (app-ship: no waiver for a product that does not work), a STALE result, or a gate that never ran.
+  const waived = state === 'CANNOT_EVALUATE' ? waiverFor(root, name) : null;
+  if (waived) return { gate: name, state: 'WAIVED', detail: `WAIVED: ${waived} (docs/60-releases.md; trace.mjs --only gates checks the founder record)`, subject: recorded };
   return { gate: name, state, detail: v.detail || '', subject: recorded };
 }
 
@@ -146,7 +169,8 @@ function reduceReadiness(root) {
 
   // Precedence is explicit and ordered, so every surface reaches the same verdict from the same
   // inputs. BLOCKED outranks STALE outranks CANNOT_EVALUATE: the worst honest answer wins, and
-  // "not ready" is never softened by an adjacent green.
+  // "not ready" is never softened by an adjacent green. WAIVED does not block (C5W-1) — it is
+  // printed on its own line by every surface, so a waived gate never reads as a passed one.
   const has = (s) => gates.some((g) => g.state === s);
   let verdict = has('BLOCKED') ? 'BLOCKED'
     : has('STALE') ? 'STALE'

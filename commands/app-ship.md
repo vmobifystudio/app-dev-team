@@ -239,8 +239,11 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      - **No driver can run here** (no device or emulator; on web, no Playwright, Chromium or served
        app) → follow step 1a's produce-or-waive rule: make it evaluable — the driver's CANNOT
        EVALUATE line names the fix — or record `WAIVED: journey gate — <who waived it> — <reason>`
-       in `docs/60-releases.md` and repeat it in the release summary and step 4's confirmation. A
-       waiver is the exception: android, ios and web drivers all ship.
+       in `docs/60-releases.md` (with the `— vX.Y.Z` field once a version exists) and repeat it in
+       the release summary and step 4's confirmation. `readiness` then reports the gate `WAIVED`
+       (not blocking) and `orchestrator ship` relays the `WAIVED:` line — a malformed or
+       wrong-version waiver leaves it `CANNOT_EVALUATE`. A waiver is the exception: android, ios
+       and web drivers all ship.
 
    **Product types the script cannot see are N/A, not waived — and not unchecked.** `runtime-gate.sh`
    detects iOS, Android and `web-app` (a `web-app` is gated like the others — never N/A, never a

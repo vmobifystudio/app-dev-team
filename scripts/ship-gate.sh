@@ -71,60 +71,9 @@ unknown() { UNKNOWNS="${UNKNOWNS}  UNKNOWN  $1
 # converts a non-pass into a ship was pure improvisation — precisely what this file was written to
 # replace everywhere else in the command. It is read here, and held to its own stated shape.
 #
-# canonical_version — the LAST `## vX.Y.Z` heading in docs/60-releases.md (mirrors
-# version-consistency-check.mjs's own "last heading wins" rule), or nothing if this project has
-# never declared one. Used below to scope a waiver to the release it was actually written for.
-canonical_version() {
-  [ -f "$RELEASES" ] || return 1
-  awk '
-    /^##[ \t]+v[0-9]+\.[0-9]+\.[0-9]+/ {
-      line = $0
-      sub(/^##[ \t]+v/, "", line)
-      split(line, a, /[ \t]/)
-      v = a[1]
-    }
-    END { if (v != "") print v; else exit 1 }
-  ' "$RELEASES"
-}
-
-# waiver_for <artifact> — prints "<who> — <reason>" and returns 0 when a well-formed waiver names
-# exactly this artifact; returns 1 otherwise. The separator is the em dash /app-ship writes, with
-# `--` accepted as its ASCII spelling. All three fields must be present and non-empty: "WAIVED:
-# docs/51-bugs.md" on its own is a record that someone skipped a gate, not a decision anyone can be
-# held to, and a waiver nobody signed is indistinguishable from a check that was never there.
-#
-# SHIP-P0-005 (external audit, 2026-08-01): waivers used to be scanned with no version binding
-# whatsoever — an old waiver written for v0.1.0 satisfied a check run against v9.0.0. Reproduced.
-# Once a project has declared a canonical version (`## vX.Y.Z` in docs/60-releases.md), a waiver
-# must name it as a fourth field to count: `WAIVED: <artifact> — <who> — <reason> — vX.Y.Z`. A
-# project that has never declared a version (nothing to bind to yet) keeps the three-field form —
-# this is additive, not a breaking change to every waiver ever written.
-waiver_for() {
-  [ -f "$RELEASES" ] || return 1
-  CANON=$(canonical_version 2>/dev/null || true)
-  awk -v want="$1" -v canon="$CANON" '
-    function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
-    /WAIVED:/ {
-      line = $0
-      sub(/^.*WAIVED:/, "", line)
-      gsub(/--/, "—", line)
-      n = split(line, f, "—")
-      if (n < 3) next
-      if (trim(f[1]) != want) next
-      who = trim(f[2]); why = trim(f[3])
-      if (who == "" || why == "") next
-      if (canon != "") {
-        if (n < 4) next
-        ver = trim(f[4]); sub(/^v/, "", ver)
-        if (ver != canon) next
-      }
-      print who " — " why
-      found = 1
-      exit
-    }
-    END { exit (found ? 0 : 1) }
-  ' "$RELEASES"
-}
+# canonical_version and waiver_for live in lib/waiver.sh — ONE parser, shared with readiness.mjs
+# (C5W-1), which runs the same file standalone to read a journey/runtime gate waiver.
+. "$HERE/lib/waiver.sh"
 
 # unknown_unless_waived <artifact> <unknown-message> — the missing input still gets named either
 # way. A waived gate must never look like a skipped one, so a waiver is REPORTED, not silent.
@@ -597,6 +546,13 @@ $(printf '%s' "$INSTALLS" | sed 's/^/             /')
            Check it against docs/21-engineering-principles.md — the project's rules beat the House KB
            defaults. An undeclared tool is a question for the ledger, not an install (DR4-024)."
   fi
+done
+
+# --- 6. journey/runtime gate waivers are echoed, never silent (C5W-1) -------------------------------
+# readiness.mjs applies these (same lib/waiver.sh parser) only when that gate ran on this candidate
+# and could not evaluate; this gate repeats any valid one so the release summary cannot omit it.
+for _g in "journey gate" "runtime gate" "runtime gate (ios)" "runtime gate (android)" "runtime gate (web)"; do
+  W=$(waiver_for "$_g") && note "WAIVED: $_g by $W — readiness applies it only to a CANNOT EVALUATE result on this candidate"
 done
 
 # --- verdict ---------------------------------------------------------------------------------------
