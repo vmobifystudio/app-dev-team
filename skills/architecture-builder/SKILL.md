@@ -1,6 +1,6 @@
 ---
 name: architecture-builder
-description: Use to produce the technical architecture doc and engineering principles for a mobile app. Used primarily by the CTO agent. Triggers on "design the architecture", "pick the stack", or as part of /app-plan.
+description: Use to produce the architecture doc and engineering principles for an app-dev-team project — "design the architecture", "pick the stack". Used by cto during /app-init.
 ---
 
 # Architecture builder
@@ -12,11 +12,11 @@ Produce `docs/20-architecture.md` and `docs/21-engineering-principles.md` from `
 1. **Platform decision** — iOS / Android / both, with order if sequential.
 2. **iOS stack** —
    - Swift version (latest stable)
-   - Minimum iOS target — resolve `knowledge/stack-defaults.md`'s relative rule (flagship =
+   - Minimum iOS target — resolve `${CLAUDE_PLUGIN_ROOT}/knowledge/stack-defaults.md`'s relative rule (flagship =
      latest major minus one) to a **concrete number** here, and record how you resolved it
    - UI: SwiftUI by default; UIKit only if PRD demands something SwiftUI struggles with
    - State: `@Observable` + `@MainActor` on ViewModels only (Combine / `@Published` /
-     `ObservableObject` are forbidden — `knowledge/ios-conventions.md`)
+     `ObservableObject` are forbidden — `${CLAUDE_PLUGIN_ROOT}/knowledge/ios-conventions.md`)
    - Networking: URLSession + async/await, or a named lib
    - Persistence: SwiftData (content apps) or GRDB+SQLite/FTS5 (camera/media) — pick by PRD complexity
    - DI: lightweight — protocol + initializer injection
@@ -24,7 +24,7 @@ Produce `docs/20-architecture.md` and `docs/21-engineering-principles.md` from `
      automation stays XCUITest** — it is XCTest-based, has no Swift Testing equivalent, and
      `runtime-gate` runs it, so a blanket "never XCTest" would ban the suite the release gate
      expects. Name the snapshot lib. State the coverage floor for the pure-Swift domain engine
-     package (`knowledge/stack-defaults.md`)
+     package (`${CLAUDE_PLUGIN_ROOT}/knowledge/stack-defaults.md`)
 3. **Android stack** —
    - Kotlin version
    - minSdk / targetSdk (set based on PRD users)

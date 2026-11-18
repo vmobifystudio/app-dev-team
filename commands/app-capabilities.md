@@ -1,3 +1,9 @@
+---
+description: Check whether a role may perform an operation on a path, against the capability manifest (the allowlist)
+argument-hint: <role> <operation> <path>
+allowed-tools: Read, Bash
+---
+
 # /app-capabilities — enforce role boundaries
 
 Check a role before granting an operation on a path:

@@ -2,6 +2,7 @@
 description: Ship a release — runs security review, then release-manager, gating on QA sign-off and clean bug board
 argument-hint: [version override, e.g. 1.2.0, optional]
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+disable-model-invocation: true
 ---
 
 # /app-ship — Cut a release

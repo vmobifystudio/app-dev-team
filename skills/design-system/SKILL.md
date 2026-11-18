@@ -1,6 +1,6 @@
 ---
 name: design-system
-description: Use when defining or extending design tokens and the shared component library — by product-designer when writing docs/13-design-tokens.md and docs/14-components.md, and by any IC about to add a component. Triggers the moment a value would be hardcoded instead of named, or a one-off component would be created instead of composed.
+description: Use when defining or extending design tokens and the shared component library, or the moment a value would be hardcoded or a one-off component created. Used by product-designer, tech-lead and any IC adding a component.
 ---
 
 # Design system

@@ -1,3 +1,9 @@
+---
+description: Inspect a manager's durable lease before respawning or replacing it — HOLD, FAILOVER or BLOCK
+argument-hint: <run id> [--manager tech-manager] [--backup tech-lead]
+allowed-tools: Read, Bash
+---
+
 # /app-manager-failover — recover manager ownership
 
 Before respawning or replacing a manager, inspect its durable lease:

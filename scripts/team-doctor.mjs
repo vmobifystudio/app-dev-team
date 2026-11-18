@@ -747,6 +747,7 @@ const CANONICAL_PATHS = [
   'docs/team/risk-policy.json',              // the blast-radius router dispatch-preflight consults
   'docs/team/schedule.json',                 // scheduler overrides; the ready set derives from the board
   'docs/team/context-manifest.json',         // the hashed context an agent was actually given
+  'docs/team/runs.jsonl',                    // the run ledger: leases and attempts (run-ledger, run-doctor, board.mjs)
 ];
 // Structural references that name no artifact: the directories themselves, the glob the standup
 // reads a day's fragments with, and the archive consumed fragments are moved to.

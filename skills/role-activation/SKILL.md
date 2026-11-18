@@ -1,6 +1,6 @@
 ---
 name: role-activation
-description: Use at project start — /app-init, /app-onboard, or /app-run's first step — to decide which of the roles this product actually needs, and to write the durable roster the rest of the flow reads. Triggers whenever a command is about to fan out to a team, or a gate is about to run for a role that may not be on this project.
+description: Use at project start (/app-init, /app-onboard, /app-run) to decide which roles this product needs and write docs/02-team-roster.md, and whenever a command is about to spawn or gate on a role that may be off.
 ---
 
 # Role activation
@@ -72,7 +72,7 @@ cutting a ~40-role plan to today's 29; the table below re-applies it to the rost
 | `product-manager` | `capability` | day-to-day ticket-clarification capability below CPO's strategic layer, so CPO is not the bottleneck for every clarification |
 | `product-researcher` | `context` | evidence-gathering that must not inherit the CPO's framing, or it would confirm its own hypothesis rather than test it |
 | `tech-lead` | `authority` | technical-design authority distinct from CTO's strategic layer |
-| `tech-manager` | `authority` | execution/scheduling authority — the only role that merges |
+| `tech-manager` | `authority` | execution/scheduling authority — planning, standups, escalations; the `merged` event is recorded in its name by the orchestrator's inline merge gate |
 | `ux-architect` | `capability` | information-architecture/flow capability distinct from screen composition |
 | `product-designer` | `capability` | visual/screen-composition capability, deliberately not self-approving its own fidelity |
 | `ios-developer` | `capability` | Swift/SwiftUI platform capability |

@@ -1,6 +1,6 @@
 ---
 name: database-migration
-description: Use before changing any persisted schema — by backend-developer on a server store, by web-developer on a client or server store, and by reliability-engineer when reviewing a change that migrates data. Triggers on the first column, field, index or model change, not on the deploy.
+description: On an app-dev-team project, use before changing any persisted schema — the first column, field, index or model change, not the deploy. Used by backend-developer, web-developer and reliability-engineer.
 ---
 
 # Database migration
@@ -9,7 +9,7 @@ A migration is the one change that **cannot be rolled back by reverting the comm
 data that has already moved does not. Treat every migration as one-way until you have proven
 otherwise.
 
-Where a platform skill exists, use it — `axiom-database-migration`, `axiom-swiftdata-migration`, or
+Where a platform skill exists, use it — `axiom:axiom-database-migration`, `axiom:axiom-swiftdata-migration`, or
 the auditor for your store. **External and optional**; missing → follow this file.
 
 ## Before you write it

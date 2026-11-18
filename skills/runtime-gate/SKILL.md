@@ -1,6 +1,6 @@
 ---
 name: runtime-gate
-description: Use before advancing a ticket past QA and before any release — builds the app and launches it, then drives the P0 journey where UI automation exists. Triggers from /app-build's QA wave, /app-ship, qa-engineer and verification-engineer, and any moment someone is about to certify that an app works without having run it.
+description: Use before advancing a wave past QA and before any release — builds and launches the app, then drives the P0 journey where UI automation exists. Run by /app-build and /app-ship; used by qa-engineer and verification-engineer.
 ---
 
 # Runtime gate
@@ -16,8 +16,15 @@ This is `defect-hunting` §2 — *never certify by reading, execute it* — poin
 ## Run it
 
 ```bash
-sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" [--platform ios|android|auto] [--project-root .]
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record \
+  [--platform ios|android|auto] [--scheme <name>]
 ```
+
+**Always pass `--record`.** It writes the verdict to `docs/team/runtime-result.json`, the file the
+readiness reducer (`orchestrator ship`) reads; a run without it leaves readiness CANNOT EVALUATE no
+matter what the gate found. It is opt-in in the script only so the plugin's own fixture runs do not
+grow a `docs/team/`. `--scheme` names the shipping Xcode scheme when the project has more than one
+shared scheme — without it an ambiguous project is CANNOT EVALUATE, never a guess.
 
 | Exit | Meaning | What to do |
 |---|---|---|

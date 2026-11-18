@@ -1,6 +1,6 @@
 ---
 name: intent-trace
-description: Use whenever an artifact derives from another one — writing the PRD from the founder brief, criteria from a requirement, tickets from criteria, tests from criteria, analytics from a feature, or a release from all of it. Defines the founder-intent record, the traceability IDs every node carries, the precedence order that resolves a conflict, and the three-state vocabulary that stops an artifact being silently "fine". Triggered before scope-lock, at every hand-off, and by anything that runs scripts/trace.mjs.
+description: Use when deriving one artifact from another (PRD from the founder brief, criteria, tickets, tests, analytics) and checking the chain. Used by product-validator; /app-init and /app-run run its script, trace.mjs.
 ---
 
 # Intent trace

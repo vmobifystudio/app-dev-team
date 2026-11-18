@@ -2,6 +2,7 @@
 description: Recover an interrupted run — reconcile the ledger, the board, the worktrees and the wave, then restart from a known state
 argument-hint: [run id, optional — defaults to the newest non-terminal attempt]
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
+disable-model-invocation: true
 ---
 
 # /app-recover — recover an interrupted run

@@ -1,9 +1,12 @@
 ---
 name: business-model
-description: Use when deciding or revisiting how the product makes money — pricing, tiers, trial shape, ad load, unit economics — by ceo when setting the model, by cpo when a scope decision turns on revenue, and by product-researcher when investigating willingness to pay. A pricing analysis is a document, not a standing role.
+description: On an app-dev-team project, use when deciding or revisiting how the product makes money — pricing, tiers, trial, ad load, unit economics. Used by ceo, cpo, data-analyst and product-researcher.
 ---
 
 # Business model
+
+A pricing analysis is a document, not a standing role: this skill is loaded by whichever role owns
+the decision at the time.
 
 The output of this skill is **a decision with its arithmetic written down**, not a strategy essay.
 The arithmetic is what makes it possible to be wrong on purpose and notice later.
@@ -18,7 +21,7 @@ The arithmetic is what makes it possible to be wrong on purpose and notice later
 | Ads | reach is large and session length is real | ad load destroys the experience that earned the reach |
 | Ads + removal IAP | both of the above | the paid tier competes with your own ad revenue |
 
-The studio's defaults and hard rules live in `knowledge/monetization.md` (`house-conventions`) —
+The studio's defaults and hard rules live in `${CLAUDE_PLUGIN_ROOT}/knowledge/monetization.md` (`house-conventions`) —
 NO-AD zones, consent, frequency caps. Those are not negotiable by a pricing decision.
 
 ## The arithmetic, written out

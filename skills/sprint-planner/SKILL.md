@@ -1,6 +1,6 @@
 ---
 name: sprint-planner
-description: Use to convert the backlog into a runnable sprint with parallel ticket assignment and dependency tracking. Used primarily by the tech-manager. Triggers on "plan the sprint", "what does the pod do next", or as part of /app-build.
+description: Use to convert the backlog into a runnable sprint with parallel ticket assignment and dependency tracking. Loaded by tech-manager when /app-plan spawns it; triggers on "plan the sprint" or "what does the pod do next".
 ---
 
 # Sprint planner
@@ -34,8 +34,15 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
      --title "Core todo store" --feature F-001 --owner android-developer \
      --depends APP-000 --estimate M --spec "prd#F-001 + arch§3" \
      --acceptance "Given the list, When I submit non-empty text, Then it appears at the top" \
-     --notes "touches: data/TodoRepository.kt"
+     --file android/app/src/main/java/com/sandbox/todo/data/TodoRepository.kt \
+     --invariant "a submitted item is never lost on process death" \
+     --by tech-manager
    ```
+
+   `--file <path>[,<path>...]` declares what the ticket touches: it is what `contention-check.mjs`
+   sees and what the risk router classifies, so a ticket without it is the one that collides.
+   A ticket the router rates `high`/`critical` needs at least one `--invariant` (several separated
+   by `;`), or `review_requested` is refused later. `--by tech-manager` names the planner.
 
    Each `add` appends a `created` event and re-renders the Markdown board with the same columns as
    before — `ID | Feature | Title | Owner | Reviewer | Status | Cycles | Depends on | Estimate |
@@ -71,7 +78,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
    **Events:** `created · claimed · assigned · done_reported · verified · verified_static ·
    rejected · review_requested · started · approved · changes · merged · qa_passed · qa_failed ·
-   blocked · unblocked · closed`
+   blocked · unblocked · reopened · closed`
 
    `verified_static` is the lane for work that is inspectable but not runnable (verify-done exit 2).
    Omitting it from this list is how DR4-002 stayed the documented rule: it unlocks review on a
@@ -101,11 +108,12 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    ```bash
    board.mjs move APP-001 claimed --by android-developer
    board.mjs move APP-001 done_reported --by android-developer
-   board.mjs move APP-001 verified --by verification-engineer --detail "verify-done.sh green"
+   board.mjs move APP-001 verified --by tech-manager --detail "verify-done.sh green"
    board.mjs move APP-001 review_requested --by android-developer --detail "-> code-reviewer"
-   board.mjs move APP-001 changes --by code-reviewer --detail "docs/53-reviews/APP-NNN-cycle-N.md"
-   board.mjs move APP-001 approved --by code-reviewer
-   board.mjs move APP-001 merged --by tech-manager
+   board.mjs move APP-001 changes --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md
+   board.mjs move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md
+   board.mjs move APP-001 merged --by tech-manager      # the orchestrator's inline merge gate
+   board.mjs move APP-001 reopened --by founder         # only the founder, only past the review cap
    board.mjs show [APP-001] [--json]      # derived state + self-metrics
    board.mjs render                       # regenerate docs/31-board.md
    board.mjs migrate [board.md] --out docs/31-board-events.jsonl

@@ -1,6 +1,6 @@
 ---
 name: defect-hunting
-description: Use when reviewing code, auditing an app, writing a guard rule or test, or certifying any threshold/constant/formula. Finds the defects a diff review structurally cannot see — the second write path, the mis-calibrated constant, the rule that cannot fail. Triggers from code-reviewer, /app-audit, qa-engineer, verification-engineer, and any task that adds a lint rule, architecture test, or CI grep.
+description: On an app-dev-team project, use when reviewing code, auditing an app, writing a guard rule or test, or certifying a threshold/constant. Used by code-reviewer, qa-engineer, verification-engineer, red-team-agent and /app-audit.
 ---
 
 # Defect hunting
@@ -318,10 +318,10 @@ nobody has any reason to trust, and a number you did not measure is a number the
 
 ---
 
-## 5. Use the prior — `knowledge/failure-corpus.md` beats this skill's own generality
+## 5. Use the prior — `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md` beats this skill's own generality
 
 The four rules above are general. They are true of most codebases and were paid for in a different
-one. **`knowledge/failure-corpus.md` is specific: it is what *this* codebase has actually produced,
+one. **`${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md` is specific: it is what *this* codebase has actually produced,
 one entry per defect class, each with dated instances and the rule that now claims to catch it.**
 
 A generic checklist enumerates what could go wrong, weighted by nothing. A corpus enumerates what
@@ -346,7 +346,7 @@ nobody has named yet, and that is how new classes get written.
 
 Attach to any `code-reviewer` or audit verdict:
 
-- [ ] Ran **every Tell in `knowledge/failure-corpus.md`** against this diff, and cited the class ID
+- [ ] Ran **every Tell in `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md`** against this diff, and cited the class ID
       for each finding it produced
 
 - [ ] Named the data this change touches, and enumerated **every** writer and reader of it

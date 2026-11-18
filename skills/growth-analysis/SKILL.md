@@ -1,6 +1,6 @@
 ---
 name: growth-analysis
-description: Use post-launch when analysing acquisition, activation, retention, referral or revenue movement — by data-analyst for the KPI report, and by product-researcher when the question is about an existing product's funnel. Same data, same tools as the analytics schema; this is the reading of it.
+description: On an app-dev-team project, use post-launch to analyse acquisition, activation, retention, referral or revenue movement from the instrumented funnel. Used by data-analyst and product-researcher.
 ---
 
 # Growth analysis

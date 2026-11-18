@@ -26,7 +26,7 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 
 **Management**
 - tech-lead — per-platform impl specs, patterns, hands-on senior
-- tech-manager — sprint plan, board, daily report, merge gate, standups, pod coordination
+- tech-manager — sprint plan, board, daily report, standups, escalations, pod coordination (the merge gate and wave integration are run inline by the `/app-build` orchestrator)
 
 **Build**
 - ios-developer — Swift/SwiftUI implementation, routes through Axiom skills (multiple in parallel)

@@ -2,6 +2,7 @@
 description: Mostly-autonomous end-to-end run — idea → scope-lock → sprint loop → ship-readiness, surfacing only blockers and the two human gates (scope-lock, ship)
 argument-hint: [one-line idea, optional] [--yolo to skip scope-lock] [--utility for a utility-tier app]
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+disable-model-invocation: true
 ---
 
 # /app-run — Drive the whole build, mostly on its own
@@ -46,8 +47,10 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      backlog). If an idea/goal was given, treat it as the upgrade goal and add it as feature tickets
      alongside the `AUDIT-NNN` remediation tickets.
 
-1a. **Intent validation — before Gate 1, outside the chain that wrote the docs.** Spawn
-   `product-validator` (active per the roster). It compares `docs/00-founder-intent/` — the founder's
+1a. **Intent validation — before Gate 1, outside the chain that wrote the docs.** On the greenfield
+   path `/app-init` step 6a has already spawned `product-validator`: **reuse that result** —
+   `docs/16-intent-validation.md` and its `INTENT:` line — and do not spawn it a second time. Spawn
+   it here only on the brownfield path, or when `/app-init` did not run it. It compares `docs/00-founder-intent/` — the founder's
    recorded words — against `docs/10-prd.md` and the vision, writes `docs/16-intent-validation.md`,
    and returns `INTENT: ALIGNED | DRIFTED | CANNOT EVALUATE`. Then:
 
@@ -90,7 +93,7 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      worktree pool) → parallel ICs **spawned by each ticket's `Owner`, per `/app-build` step 2**
      (never a list named here — an out-of-date copy is how `AUDIT-NNN` tickets stopped being picked
      up) → **static** `DONE` verification → streaming `code-reviewer` (Axiom audit gate on iOS) →
-     `tech-manager` merge **gate** → **wave integration** → `qa-engineer` → bug loop.
+     merge **gate** (run inline by this session, no `tech-manager` spawn) → **wave integration** → `qa-engineer` → bug loop.
    - **The merge gate no longer merges, and that is the shape of the loop now.** It grants
      permission per ticket; `wave-integrate.mjs` merges the whole wave once, runs the full suite
      once on the merged tree, and pushes once — so there is one CI run per wave and
@@ -112,7 +115,7 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      context, scheduling, capabilities, and risk routing all clear.
    - Where named-agent persistence is available, run the warm/cold manager scenario and retain its
      digest; otherwise use the portable respawn model backed by the same files.
-   - **The budget ceiling stops this loop and says why** (`/app-build` step 0a). An unattended run
+   - **The budget ceiling stops this loop and says why** (`/app-build` step 0). An unattended run
      has no other economic brake: `round-journal.mjs check` runs at the top of every round, exit 1
      ends the run with the ceiling named and every unfinished ticket listed. Do not raise a ceiling
      to keep going — that is a decision to hand back to the user, and it is Gate-shaped.
@@ -139,7 +142,8 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      not a pass: create the record before the next round rather than running rounds blind to the
      gates it exists to fire.
    - **Escalate to the user only** for: a blocker the team can't resolve, the 2-cycle review cap
-     being hit, the budget ceiling, a fired founder gate, or a scope/architecture conflict. Surface
+     being hit (the founder may answer with one more cycle: `board.mjs move <ID> reopened --by founder`),
+     the budget ceiling, a fired founder gate, or a scope/architecture conflict. Surface
      verbatim with a proposed answer.
 
 5. **Ship-readiness.** When the board is drained and there are zero open S1/S2 bugs, spawn in

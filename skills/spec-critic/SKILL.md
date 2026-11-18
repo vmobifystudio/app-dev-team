@@ -1,6 +1,6 @@
 ---
 name: spec-critic
-description: Use after the impl specs and the board exist but before any developer is spawned, to find every question a developer would otherwise be forced to guess at — error types, empty/failure states, cancel paths, source of truth, units, offline, atomicity. Produces `question` rows in the team ledger for tech-lead to answer in one batch. Triggers from /app-plan and from tech-lead whenever a sprint is about to start.
+description: Use after the impl specs and board exist and before any developer is spawned, to file every question a developer would otherwise guess at as a ledger row. Run by tech-lead from /app-plan; used by product-manager.
 ---
 
 # Spec critic

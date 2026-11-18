@@ -1,6 +1,6 @@
 ---
 name: house-conventions
-description: Use before writing any code, spec, or store asset on a Mobify Studio app — loads the relevant House Knowledge Base pack(s) so output matches the studio's established conventions instead of generic defaults. Every IC invokes this first; execs invoke it when their document names a platform, version, library, or store surface.
+description: Use before writing any code, spec or store asset on a Mobify Studio app, to load the House Knowledge Base packs that apply. Every IC loads it first; execs load it when a document names a platform, version, library or store.
 ---
 
 # House conventions
@@ -40,7 +40,7 @@ and prevents a whole class of "this doesn't match how we build" rework.
 
    **Tier:** default to the **Flagship** rules in each pack. If the project declares itself a
    *utility* app (in its `docs/` or `CLAUDE.md`), apply the **Utility** branch where a pack defines
-   one (e.g. ad-first monetization, leaner stack) — see `knowledge/README.md` §Tiers.
+   one (e.g. ad-first monetization, leaner stack) — see `${CLAUDE_PLUGIN_ROOT}/knowledge/README.md` §Tiers.
 
 2a. **Load only what the project has.** Read `docs/02-team-roster.md` (tier, product type,
    platforms) before the pack. Do not produce a section for a platform, role or capability the

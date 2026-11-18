@@ -1,6 +1,6 @@
 ---
 name: agent-isolation
-description: Use before spawning any agent that writes files, and by every developer/fixer agent as its first and last action. Gives each agent its own git worktree, forbids blanket staging, and requires confirming a mutation actually landed. Triggers from /app-build, /app-audit, parallel-orchestrator, and any parallel agent launch. Prevents parallel agents corrupting each other's work.
+description: Use before spawning any agent that writes files, and as every developer/fixer agent's first and last action — one git worktree per writer, explicit-path staging, confirm the mutation landed. Used by the /app-build orchestrator and every IC.
 ---
 
 # Agent isolation
@@ -108,12 +108,13 @@ and why.
 **The orchestrator does not get to claim it remembered.** Before the launch message:
 
 ```bash
-sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" APP-001 APP-002
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" ios-developer android-developer
 ```
 
-Exit 1 = REFUSED, spawn nobody; it names which tickets lack a worktree and prints the command to
-create each. Exit 0 with one ticket = the serialized path, stated in the output so it reaches the
-standup. See `parallel-orchestrator` step 2a.
+It takes the **owners** you are about to spawn, because the slot is keyed by the writer. Exit 1 =
+REFUSED, spawn nobody; it names which owners lack a worktree and prints the command to create each.
+Exit 0 with one owner = the serialized path, stated in the output so it reaches the standup. See
+`parallel-orchestrator` step 3a.
 
 ## Rule 2 — never stage blindly, and never run a repo-wide destructive command
 
@@ -195,8 +196,8 @@ discarded working tree is not recoverable.
 
 Before a parallel launch:
 
-- [ ] `spawn-gate.sh <the ticket IDs>` exits 0 — not "I believe each has a worktree", the gate said so
-- [ ] Each writing agent has its own worktree, created before spawn
+- [ ] `spawn-gate.sh <the owners>` exits 0 — not "I believe each has a worktree", the gate said so
+- [ ] Each writing agent has its own worktree (`.agent-wt/<owner>`), leased before spawn
 - [ ] Each agent's prompt names **its worktree path** as the project root, not the repo root
 - [ ] No two agents are assigned the same file (if unavoidable, serialize those tickets)
 - [ ] Agents are told: explicit-path staging only, and confirm the mutation landed
@@ -205,19 +206,10 @@ After each agent returns:
 
 - [ ] `verify-done.sh` before believing `DONE`
 - [ ] `git diff --cached --numstat` on the branch shows only that ticket's paths
-- [ ] Worktree removed after merge
+- [ ] Slot released and the pool reaped on every terminal outcome, not only after a merge
 
 ## Output contract
 
-Developer/fixer agents report their isolation state so the orchestrator can check it:
-
-```
-DONE: APP-NNN
-Worktree: .agent-wt/APP-NNN
-Branch: feat/APP-NNN-short-slug
-Staged (explicit paths): <list>
-Mutation confirmed: git diff --numstat -> <N files, +A/-B>
-Files: <list>
-Tests: <count> added, <command run>, exit 0
-Next: code-reviewer
-```
+Developer/fixer agents report their isolation state — `Worktree: .agent-wt/<owner>`, `Branch:`,
+`Staged (explicit paths):`, `Mutation confirmed:` — inside the role's output contract.
+`spawn-prompt.mjs` inlines the contract into every spawn prompt; `team-protocol` is the reference.

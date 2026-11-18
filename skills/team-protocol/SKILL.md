@@ -1,6 +1,6 @@
 ---
 name: team-protocol
-description: Use whenever one role needs something from another role — a blocker, a spec question, a cross-platform divergence, a handoff, or an escalation. Defines the durable team message ledger, who may talk to whom, the anti-ping-pong guard, and when to escalate to the user instead. Triggers from every agent that would otherwise say "I need X from Y" and stop.
+description: Use whenever one role needs something from another — a blocker, a spec question, a handoff, an escalation — and as the reference for the team ledger, who may message whom, and the output contract. Used by every role.
 ---
 
 # Team protocol
@@ -245,8 +245,12 @@ There are two profiles. Every spawnable ticket owner uses one of them — includ
 ticket produces documents rather than code, because a doc ticket is still work on a branch that
 still has to be verified and merged.
 
-**CODE profile** — `ios-developer`, `android-developer`, `backend-developer`,
-`monetization-engineer`, `devops-engineer`:
+The role lists below are `CODE_ROLES` and `ARTIFACT_ROLES` in `scripts/lib/contract.mjs`, which is
+canonical; `spawn-prompt.mjs` inlines that contract into every spawn prompt, and this section is the
+reference for what each field means.
+
+**CODE profile** — `ios-developer`, `android-developer`, `backend-developer`, `web-developer`,
+`monetization-engineer`, `devops-engineer`, `test-automation-engineer`:
 
 ```
 DONE: APP-NNN
@@ -270,7 +274,7 @@ Next: code-reviewer
 ```
 
 **DOC profile** — `ux-architect`, `product-designer`, `product-manager`, `product-researcher`,
-`qa-engineer`, `aso-specialist`, `data-analyst`, `verification-engineer` when it owns a ticket:
+`qa-engineer`, `data-analyst`, `aso-specialist`:
 
 ```
 DONE: APP-NNN
@@ -292,8 +296,9 @@ branch cannot be verified, cannot be merged, and cannot be told apart from a tic
 
 Roles that **gate** rather than work tickets — `code-reviewer`, `security-reviewer`,
 `verification-engineer` in its certifying role, `release-manager`, `tech-lead`, `tech-manager` —
-return their own verdict block instead (`APPROVED:` / `REQUEST CHANGES:` / `SECURITY:` /
-`VERIFICATION:` / `SHIP CANDIDATE:`). A role that can do both says which it is doing in its first
+return their own verdict block instead (`REVIEW VERDICT: APPROVE` / `REVIEW VERDICT: REQUEST
+CHANGES` / `SECURITY:` / `VERIFICATION:` / `SHIP CANDIDATE:`). `verification-engineer` is in
+neither profile list even when it owns a ticket: it returns its `VERIFICATION:` block. A role that can do both says which it is doing in its first
 line.
 
 Canonical paths, used verbatim by the loop — no other spelling is recognised:
@@ -314,6 +319,7 @@ Canonical paths, used verbatim by the loop — no other spelling is recognised:
 | runtime-gate's recorded verdict, read by the readiness reducer | `docs/team/runtime-result.json` |
 | The project's platform, pinned toolchain and test scopes (F6) | `docs/team/project-profile.json` |
 | The artifact bound to its commit (F17) | `docs/team/release-candidates.jsonl` |
+| The run ledger — leases and attempts (gitignored, main checkout only) | `docs/team/runs.jsonl` |
 | Every `name/vN` this studio writes, and who reads it (F7) | `docs/team/schema-registry.json` |
 
 **The four dispatch manifests** — `dispatch-preflight` refuses to spawn any owner without all four,

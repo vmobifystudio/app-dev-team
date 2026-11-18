@@ -1,3 +1,9 @@
+---
+description: Create or verify the hashed context manifest an agent is given — git revision, source hashes, omissions
+argument-hint: [create | verify] [--ticket APP-NNN] [--role <role>]
+allowed-tools: Read, Bash
+---
+
 # /app-context — compile and verify execution context
 
 Create a deterministic provenance manifest before an agent starts work:

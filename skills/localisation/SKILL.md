@@ -1,6 +1,6 @@
 ---
 name: localisation
-description: Use when the product ships in more than one locale, or when a string, date, number, currency or layout could differ by region — by ux-architect when the locale set changes navigation, by privacy-reviewer when region determines obligation, and by any IC writing a user-visible string. Triggers on the first string, not on the first translation.
+description: On an app-dev-team project, use from the first user-visible string, or when a date, number, currency or layout could differ by region. Used by ux-architect, privacy-reviewer, qa-engineer and any IC writing strings.
 ---
 
 # Localisation
@@ -8,7 +8,7 @@ description: Use when the product ships in more than one locale, or when a strin
 Localisation is an architecture decision taken at the first string, and a translation task only at
 the end. Teams that reverse the order pay for it twice.
 
-Where a platform skill exists, use it: `axiom-localization` on Apple platforms. **External and
+Where a platform skill exists, use it: `axiom:axiom-localization` on Apple platforms. **External and
 optional** — missing → follow this file, never file its absence as a defect.
 
 ## Do this from the first ticket, in every locale count including one

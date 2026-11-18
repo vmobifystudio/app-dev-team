@@ -1,6 +1,6 @@
 ---
 name: brownfield-onboarding
-description: Use when pointing the team at an EXISTING, already-built app instead of a blank project — detects the stack, reverse-engineers the as-built architecture, and classifies remediation work as safe-to-auto-fix vs risky-needs-approval. Triggered by /app-onboard, /app-audit, and by /app-run when it detects a non-empty app directory.
+description: Use when pointing the team at an EXISTING app instead of a blank project — detect the stack, reverse-engineer the as-built architecture, classify fixes as Safe or Risky. Used by /app-onboard, /app-audit and /app-run.
 ---
 
 # Brownfield onboarding
@@ -71,7 +71,9 @@ risky change during an audit.
 ## Step 4 — Hand off
 
 Onboarding hands to `/app-audit`. Audit writes `docs/80-audit.md` and a remediation backlog of
-`AUDIT-NNN` tickets (each carrying its severity, the violated House KB rule, and Safe/Risky tag),
+`AUDIT-NNN` tickets (each carrying its severity, the violated House KB rule, and Safe/Risky tag —
+a Risky ticket is added `--status blocked --reason "needs-approval: ..."` and stays blocked until
+the founder approves it at the audit gate),
 then the normal build loop closes them.
 
 ## Anti-patterns

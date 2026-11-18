@@ -1,6 +1,6 @@
 ---
 name: context-preflight
-description: Run before changing a repository to verify branch, worktree, ticket, dependencies, source-of-truth documents, and unresolved obligations are understood.
+description: Use before changing a repository, as a ticket's first step, to confirm branch, worktree, ticket row, dependencies, source-of-truth docs and open obligations. Used by ICs, code-reviewer, devops-engineer, tech-manager and /app-preflight.
 ---
 
 # Context preflight

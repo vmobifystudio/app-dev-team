@@ -1,6 +1,6 @@
 ---
 name: accessibility-gate
-description: Use as a pass/fail gate on any diff with a user-facing surface — by code-reviewer during review, by qa-engineer during the test pass, and by any IC before claiming a UI ticket done. This is the gate the plan called for instead of an accessibility specialist role. Triggers whenever a screen, component or state changes.
+description: On an app-dev-team project, use as the pass/fail accessibility gate on any diff with a user-facing surface. Used by code-reviewer in review, qa-engineer in the test pass, and any IC before claiming a UI ticket done.
 ---
 
 # Accessibility gate

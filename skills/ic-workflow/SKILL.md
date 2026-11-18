@@ -1,6 +1,6 @@
 ---
 name: ic-workflow
-description: Use when working an implementation ticket as any IC role — app, backend, web, CLI, library, or a specialist like monetization. Holds the ticket lifecycle every one of them runs: branch-before-you-write isolation, the choke-point rule, the read order, the commit and daily-fragment discipline, and the CODE output contract. Triggers the moment an IC agent is handed a ticket ID. Product-agnostic: the language, framework and hazards live in the agent file that invokes this.
+description: Use when an IC is handed an implementation ticket ID, whatever the product — branch-before-write, the choke-point rule, read order, commit and daily-fragment discipline, the CODE output contract. Used by every developer role.
 ---
 
 # IC workflow
@@ -94,25 +94,9 @@ nothing else on the ticket can proceed, naming who must answer what.
 
 ## Output — the CODE profile
 
-Return the **CODE profile** defined in `team-protocol` — that section defines every field and what
-makes each one honest, and the sprint loop parses it. A field you omit is a gate that silently
-passes.
-
-```
-DONE: APP-NNN
-Worktree: <the path you were given, or "none — shared tree">
-Branch: feat/APP-NNN-short-slug        (created BEFORE any file was written)
-Staged (explicit paths): <list>
-Mutation confirmed: git diff --numstat -> <N files, +A/-B>
-Files: <list>
-Tests: <count> added, <exact command run>, exit 0     ("all green" is not a result)
-Second-path check: <the writers/readers you grepped, or "none applicable">
-Daily fragment: docs/daily/<today>-<role>-<ticket>.md
-Assumptions & open questions: <ledger row each, or "ASSUMED, NOT RAISED">
-Shared surfaces touched: <shared types, DI graph, design-system components, and any cross-cutting
-  abstraction you had to CREATE — or "none">
-Next: code-reviewer
-```
+Return the **CODE profile**. `spawn-prompt.mjs` inlines the contract into your spawn prompt;
+`team-protocol` is the reference that defines every field and what makes each one honest. The
+sprint loop parses it, and a field you omit is a gate that silently passes.
 
 Roles that produce more than code append their own lines to this block — `backend-developer` its
 endpoints, migrations and contract update; `monetization-engineer` its products, paywall and ad
@@ -155,7 +139,8 @@ to trust a file.
 
 - You never edit the architecture or impl spec. If the spec is wrong, you write a blocker note and
   stop.
-- You never merge your own work. `code-reviewer` reviews; `tech-manager` merges. **This is not only a
+- You never merge your own work. `code-reviewer` reviews; the `/app-build` orchestrator runs the
+  merge gate and integrates the wave. **This is not only a
   rule you are told — `hooks/block-shared-tree-destructive-git.sh` refuses a raw `git merge` (other
   than `--ff-only`) while your tree has the integration branch checked out.** Measured live, H6
   (2026-08-07): a `qa-engineer` agent had this exact sentence in its own role file and ran the merge
