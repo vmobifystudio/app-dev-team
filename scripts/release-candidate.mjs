@@ -7,7 +7,7 @@
  * starts mattering.
  *
  * Usage:
- *   release-candidate.mjs record --artifact <path> [--platform ios|android] [--variant release]
+ *   release-candidate.mjs record --artifact <path> [--platform ios|android|web] [--variant release]
  *                                [--by <role>] [--root <dir>]
  *   release-candidate.mjs show [--json]
  *   release-candidate.mjs verify
@@ -16,6 +16,10 @@
  *   0  recorded / the binding holds
  *   1  refused, or the binding is broken
  *   2  cannot evaluate — no record, no artifact to hash, unreadable ledger
+ *
+ * WEB (W11): a web release has no single binary — the artifact is the build OUTPUT DIRECTORY
+ * (`--artifact dist --platform web`), hashed over every file inside it (lib/artifact-hash.mjs), so
+ * one edited asset after binding breaks `verify` exactly as a re-signed .ipa would.
  *
  * THIS COMMAND NEVER BUILDS AND NEVER UPLOADS. It records what a build produced. I-12 (no
  * executable path can submit or publish to a store) is unchanged by it.
@@ -29,7 +33,8 @@ import { parseArgs } from './lib/args.mjs';
 import { treeDirty } from './lib/readiness.mjs';
 import { withFileLock } from './lib/atomic.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
-import { DOSSIER_PATH, hashFile, readDossier } from './lib/dossier.mjs';
+import { DOSSIER_PATH, readDossier } from './lib/dossier.mjs';
+import { artifactSize, hashArtifact } from './lib/artifact-hash.mjs';
 
 const die = (code, message) => { process.stderr.write(`release-candidate: ${message}\n`); process.exit(code); };
 
@@ -74,12 +79,13 @@ function toolchain(platform) {
   };
   if (platform === 'ios') return probe('xcodebuild', ['-version']);
   if (platform === 'android') return probe('./gradlew', ['--version']) || probe('gradle', ['--version']);
+  if (platform === 'web') { const n = probe('node', ['--version']); const m = probe('npm', ['--version']); return n && m ? `node ${n} / npm ${m}` : null; }
   return null;
 }
 
 function cmdRecord() {
   if (typeof flags.artifact !== 'string' || !flags.artifact) {
-    die(1, 'record needs --artifact <path to the built .ipa/.apk/.aab>\n' +
+    die(1, 'record needs --artifact <path to the built .ipa/.apk/.aab, or a web build output dir>\n' +
            '  The path is the point: a release candidate with no artifact is a claim about source,\n' +
            '  which is what readiness already tells you.');
   }
@@ -87,12 +93,17 @@ function cmdRecord() {
   // CANNOT EVALUATE, not refused: the caller pointed at something that is not there, and the fix is
   // to build it or fix the path — a different action from "this candidate is not acceptable".
   if (!existsSync(artifactPath)) die(2, `no artifact at ${flags.artifact} — nothing to hash, so nothing can be bound`);
-  if (!statSync(artifactPath).isFile()) die(2, `${flags.artifact} is not a file`);
+  const platform = typeof flags.platform === 'string' ? flags.platform : null;
+  // A directory is an artifact only for web, where the build output dir IS what ships. A directory
+  // passed for ios/android is a wrong path (the .app folder, not the .ipa), so it stays refused.
+  const isDir = statSync(artifactPath).isDirectory();
+  if (isDir && platform !== 'web') die(2, `${flags.artifact} is a directory — only --platform web ships a build output dir; ios/android bind the .ipa/.aab/.apk file`);
+  if (!isDir && !statSync(artifactPath).isFile()) die(2, `${flags.artifact} is not a file`);
+  if (isDir && artifactSize(artifactPath) === 0) die(2, `${flags.artifact} is empty — a web build that produced no files is nothing to bind`);
 
   const head = git(['rev-parse', 'HEAD']);
   if (!head) die(2, 'cannot resolve HEAD — a candidate that names no commit binds nothing');
 
-  const platform = typeof flags.platform === 'string' ? flags.platform : null;
   const record = {
     schema: 'release-candidate/v1',
     ts: new Date().toISOString(),
@@ -103,8 +114,9 @@ function cmdRecord() {
     dirty: treeDirty(ROOT), // studio operational files are not dirt (lib/operational-paths.txt)
     // Stored relative to the project root so the record survives being read from another checkout.
     artifact: relative(ROOT, artifactPath) || flags.artifact,
-    sha256: hashFile(artifactPath),
-    size: statSync(artifactPath).size,
+    sha256: hashArtifact(artifactPath),
+    size: artifactSize(artifactPath),
+    kind: isDir ? 'directory' : 'file',
     platform,
     variant: typeof flags.variant === 'string' ? flags.variant : null,
     toolchain: toolchain(platform),
@@ -168,7 +180,7 @@ function cmdVerify() {
   if (!rc.artifact || !existsSync(artifactPath)) {
     die(2, `the recorded artifact is not at ${rc.artifact || '(no path)'} — the binding cannot be checked, which is not the same as holding`);
   }
-  const now = hashFile(artifactPath);
+  const now = hashArtifact(artifactPath);
   if (now !== rc.sha256) {
     die(1, `${rc.artifact} CHANGED after it was bound\n` +
            `  recorded ${rc.sha256}\n` +
@@ -187,7 +199,7 @@ switch (command) {
   case 'verify': cmdVerify(); break;
   default:
     die(1, `unknown command "${command ?? ''}"\n` +
-           '  record --artifact <path> [--platform ios|android] [--variant release] [--by <role>]\n' +
+           '  record --artifact <path> [--platform ios|android|web] [--variant release] [--by <role>]\n' +
            '  show [--json]\n' +
            '  verify');
 }

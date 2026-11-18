@@ -10108,6 +10108,128 @@ grep '"event":"blocked"' "$NB/docs/31-board-events.jsonl" | grep -q 'needs-appro
   && ok "TC: add --status blocked records --reason on the blocked event, not --notes" \
   || bad "TC: add --status blocked records --reason on the blocked event, not --notes"
 
+# --- Sprint 2 track D: web runtime gate, web release candidate, the one parallelism cap ----------
+# W11: runtime-gate and release-candidate had no web mode, so every web-app release needed a
+# waiver. C9: three parallelism caps disagreed and review/qa tickets held a developer slot.
+TDW="$TMP/td-web"; rm -rf "$TDW"; mkdir -p "$TDW"
+cat > "$TDW/package.json" <<'TDEOF'
+{"name":"td-web","private":true,"scripts":{
+ "build":"node -e \"require('fs').mkdirSync('dist',{recursive:true});require('fs').writeFileSync('dist/index.html','<h1>hi</h1>')\"",
+ "test":"node -e \"process.exit(0)\""}}
+TDEOF
+( cd "$TDW" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf 'dist/\ndocs/\n' > .gitignore && git add package.json .gitignore && git commit -qm init ) >/dev/null 2>&1
+assert_exit 0 "runtime-gate web: a package.json app builds, tests, serves and answers GET / (W11)" \
+  sh "$HERE/runtime-gate.sh" --project-root "$TDW" --record
+assert_has "$TMP/out" "served and smoked" "...and says it served the build and fetched the root"
+grep -q '"result": "PASS"' "$TDW/docs/team/runtime-result.json" && grep -q '"head": "[0-9a-f]\{40\}"' "$TDW/docs/team/runtime-result.json" \
+  && grep -q '"dirty": false' "$TDW/docs/team/runtime-result.json" \
+  && ok "runtime-gate web --record writes gate-result/v1 bound to HEAD, clean tree" \
+  || bad "runtime-gate web --record writes gate-result/v1 bound to HEAD, clean tree" "$(cat "$TDW/docs/team/runtime-result.json" 2>&1)"
+
+# Missing tool -> CANNOT EVALUATE, never green: an npm that cannot run.
+TDSTUB="$TMP/td-nonpm"; mkdir -p "$TDSTUB"; printf '#!/bin/sh\nexit 127\n' > "$TDSTUB/npm"; chmod +x "$TDSTUB/npm"
+assert_exit 2 "runtime-gate web: an unusable npm is CANNOT EVALUATE, not a pass" \
+  env PATH="$TDSTUB:$PATH" sh "$HERE/runtime-gate.sh" --project-root "$TDW"
+assert_has "$TMP/out" "node/npm is unusable" "...naming the missing tool"
+# A build tool the script names but nobody installed (exit 127) is the same: environment, not product.
+TDM="$TMP/td-web-nodeps"; rm -rf "$TDM"; mkdir -p "$TDM"
+printf '{"scripts":{"build":"td-no-such-bundler build"}}\n' > "$TDM/package.json"
+assert_exit 2 "runtime-gate web: a build command that is not installed is CANNOT EVALUATE" \
+  sh "$HERE/runtime-gate.sh" --project-root "$TDM"
+printf '{"scripts":{"test":"node -e 0"}}\n' > "$TDM/package.json"
+assert_exit 2 "runtime-gate web: no build script is CANNOT EVALUATE" \
+  sh "$HERE/runtime-gate.sh" --project-root "$TDM"
+printf '{"scripts":{"build":"node -e \\"process.exit(3)\\""}}\n' > "$TDM/package.json"
+assert_exit 1 "runtime-gate web: a failing build is FAIL" \
+  sh "$HERE/runtime-gate.sh" --project-root "$TDM"
+printf '{"scripts":{"build":"node -e 0","test":"node -e \\"process.exit(1)\\""}}\n' > "$TDM/package.json"
+assert_exit 1 "runtime-gate web: a failing test script is FAIL" \
+  sh "$HERE/runtime-gate.sh" --project-root "$TDM"
+printf '{"scripts":{"build":"node -e 0","e2e":"node -e 0"}}\n' > "$TDM/package.json"
+assert_exit 0 "runtime-gate web: a passing e2e script stands in for the smoke" \
+  sh "$HERE/runtime-gate.sh" --project-root "$TDM"
+printf '{"scripts":{"build":"node -e 0"}}\n' > "$TDM/package.json"
+assert_exit 2 "runtime-gate web: built but nothing to serve and no e2e is CANNOT EVALUATE" \
+  sh "$HERE/runtime-gate.sh" --project-root "$TDM"
+# serve-and-smoke via a start script: a real server passes, an empty page fails.
+cat > "$TDM/package.json" <<'TDEOF'
+{"scripts":{"build":"node -e 0","start":"node -e \"require('http').createServer((q,s)=>s.end('ok')).listen(process.env.PORT,'127.0.0.1')\""}}
+TDEOF
+assert_exit 0 "runtime-gate web: npm start is served and GET / answers 200 with a body" \
+  sh "$HERE/runtime-gate.sh" --project-root "$TDM"
+cat > "$TDM/package.json" <<'TDEOF'
+{"scripts":{"build":"node -e 0","start":"node -e \"require('http').createServer((q,s)=>s.end()).listen(process.env.PORT,'127.0.0.1')\""}}
+TDEOF
+assert_exit 1 "runtime-gate web: a server answering an EMPTY body is FAIL" \
+  sh "$HERE/runtime-gate.sh" --project-root "$TDM"
+assert_has "$TMP/out" "EMPTY body" "...and says why"
+# A mobile tree with a package.json (React Native) is not web unless the project says so.
+TDRN="$TMP/td-rn"; rm -rf "$TDRN"; mkdir -p "$TDRN"; : > "$TDRN/build.gradle"; printf '{"scripts":{"build":"node -e 0"}}\n' > "$TDRN/package.json"
+sh "$HERE/runtime-gate.sh" --project-root "$TDRN" >"$TMP/td-rn.txt" 2>&1
+grep -q '^  web ' "$TMP/td-rn.txt" && bad "runtime-gate: a package.json beside a mobile project is not inferred as web" "$(cat "$TMP/td-rn.txt")" \
+  || ok "runtime-gate: a package.json beside a mobile project is not inferred as web"
+
+# release-candidate: the web artifact is the build output DIRECTORY, hashed over its contents.
+assert_exit 0 "release-candidate web: the build output dir is recorded as the artifact" \
+  node "$HERE/release-candidate.mjs" record --artifact dist --platform web --by release-manager --root "$TDW"
+grep -q '"kind":"directory"' "$TDW/docs/team/release-candidates.jsonl" && grep -q '"toolchain":"node v' "$TDW/docs/team/release-candidates.jsonl" \
+  && ok "...as kind directory, with the node/npm toolchain stated" \
+  || bad "...as kind directory, with the node/npm toolchain stated" "$(cat "$TDW/docs/team/release-candidates.jsonl")"
+assert_exit 0 "release-candidate web: verify holds on the untouched build dir" \
+  node "$HERE/release-candidate.mjs" verify --root "$TDW"
+echo '<h1>edited</h1>' > "$TDW/dist/index.html"
+assert_exit 1 "release-candidate web: one edited file in the build dir breaks the binding" \
+  node "$HERE/release-candidate.mjs" verify --root "$TDW"
+assert_exit 2 "release-candidate: a directory is refused for ios (that is the .app folder, not the .ipa)" \
+  node "$HERE/release-candidate.mjs" record --artifact dist --platform ios --root "$TDW"
+
+# C9: one cap, printed by the scheduler; review/qa tickets do not hold a developer slot.
+[ "$(node "$HERE/scheduler.mjs" cap --plan "$TMP/td-no-plan.json")" = 3 ] \
+  && [ "$(node -e "import('$HERE/scheduler.mjs').then(m=>process.stdout.write(String(m.MAX_PARALLEL)))")" = 3 ] \
+  && ok "scheduler.mjs cap prints the one parallelism cap, the same constant scripts import (C9)" \
+  || bad "scheduler.mjs cap prints the one parallelism cap, the same constant scripts import (C9)"
+TDS="$TMP/td-sched"; rm -rf "$TDS"; mkdir -p "$TDS/docs/team"
+printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[]}\n' > "$TDS/docs/team/schedule.json"
+[ "$(node "$HERE/scheduler.mjs" cap --plan "$TDS/docs/team/schedule.json")" = 2 ] \
+  && ok "scheduler.mjs cap honours a project's stated max_parallel" \
+  || bad "scheduler.mjs cap honours a project's stated max_parallel"
+td_ev() { printf '{"ts":"2026-11-18T09:00:0%sZ","ticket":"%s","event":"%s","by":"%s","detail":%s,"provenance":"cli"}\n' "$1" "$2" "$3" "$4" "$5" >> "$TDS/docs/31-board-events.jsonl"; }
+for t in T-1 T-2 T-3 T-4 T-5; do td_ev 0 "$t" created tech-manager '{"title":"t","owner":"web-developer","dependsOn":[]}'; done
+td_ev 1 T-1 claimed web-developer '""'
+for t in T-2 T-3; do td_ev 1 "$t" claimed web-developer '""'; td_ev 2 "$t" done_reported web-developer '""'
+  td_ev 3 "$t" verified tech-manager '""'; td_ev 4 "$t" review_requested web-developer '"-> code-reviewer"'; done
+td_ev 5 T-3 approved code-reviewer '""'; td_ev 6 T-3 merged tech-manager '""'
+TDS_OUT=$(node "$HERE/scheduler.mjs" --plan "$TDS/docs/team/schedule.json" --log "$TDS/docs/31-board-events.jsonl" 2>&1)
+printf '%s' "$TDS_OUT" | grep -q '"running": 1' && printf '%s' "$TDS_OUT" | grep -A2 '"ready"' | grep -q 'T-4' \
+  && ok "scheduler: only in_progress holds a slot — review and qa tickets do not starve the next wave (C9)" \
+  || bad "scheduler: only in_progress holds a slot — review and qa tickets do not starve the next wave (C9)" "$TDS_OUT"
+printf '%s' "$TDS_OUT" | grep -A3 '"ready"' | grep -q 'T-2\|T-3' \
+  && bad "...and a ticket in review/qa is never re-offered as ready" "$TDS_OUT" \
+  || ok "...and a ticket in review/qa is never re-offered as ready"
+
+# G-F13: a green ship-gate states that it only replays known defects.
+grep -q 'KNOWN defect' "$HERE/ship-gate.sh" && grep -q 'red-team' "$HERE/ship-gate.sh" \
+  && grep -q 'replays KNOWN defects' "$HERE/../commands/app-ship.md" \
+  && ok "ship-gate and /app-ship state the scanners only replay known defects (G-F13)" \
+  || bad "ship-gate and /app-ship state the scanners only replay known defects (G-F13)"
+# W19: app-audit reads the event-sourced board and gives --yolo a mechanism.
+! grep -q 'docs/31-board\.md' "$HERE/../commands/app-audit.md" && grep -q 'needs-approval:' "$HERE/../commands/app-audit.md" \
+  && grep -q '31-board-events.jsonl' "$HERE/../commands/app-audit.md" \
+  && ok "app-audit uses the board event log and defines the --yolo defer (needs-approval:) (W19)" \
+  || bad "app-audit uses the board event log and defines the --yolo defer (needs-approval:) (W19)"
+# ...and the documented deferred-set listing works on a real board: Risky born blocked is listed,
+# Safe is not. The snippet is lifted from app-audit.md itself, so the doc cannot drift from it.
+TDA="$TMP/td-audit"; rm -rf "$TDA"; mkdir -p "$TDA"; ( cd "$TDA" && git init -q . )
+( cd "$TDA" && node "$HERE/board.mjs" add AUDIT-001 --title risky --owner ios-developer --notes "rule: r · Risky · plan: p" \
+    --status blocked --reason "needs-approval: Risky change" --by tech-manager \
+  && node "$HERE/board.mjs" add AUDIT-002 --title safe --owner ios-developer --notes "rule: r · Safe" --by tech-manager ) >/dev/null 2>&1
+TDA_JS=$(awk '/board.mjs" show --json [|] node -e/{f=1;next} f&&/```/{exit} f' "$HERE/../commands/app-audit.md" | sed "s/'$//")
+TDA_OUT=$( cd "$TDA" && node "$HERE/board.mjs" show --json | node -e "$TDA_JS" 2>&1)
+[ "$TDA_OUT" = "DEFERRED (needs-approval): AUDIT-001 risky" ] \
+  && ok "app-audit --yolo: the deferred set is listed from the board log — Risky in, Safe out (W19)" \
+  || bad "app-audit --yolo: the deferred set is listed from the board log — Risky in, Safe out (W19)" "$TDA_OUT"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -1,12 +1,38 @@
 #!/usr/bin/env node
 /** Deterministic dependency scheduler: ready queue, fairness, and backpressure. */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
+import { fileURLToPath } from 'node:url';
 import { parseEventLog, reduce } from './lib/events.mjs';
+
+/**
+ * THE PARALLELISM CAP — the one number (C9). It used to be stated three times and disagree:
+ * team-bootstrap wrote `max_parallel: 2`, worktree-slot defaulted its pool to 3, the skills passed
+ * `--pool 3`, and this file fell back to 1. Everything else asks here: `scheduler.mjs cap` prints
+ * the effective cap (a project's schedule.json `max_parallel` if it states one, else this), and
+ * `import { MAX_PARALLEL, effectiveCap }` for scripts. Prose says "the scheduler's cap", no number.
+ */
+export const MAX_PARALLEL = 3;
+export function effectiveCap(plan) {
+  return plan && plan.max_parallel !== undefined ? Number(plan.max_parallel) : MAX_PARALLEL;
+}
+
 const die = (code, message) => { process.stderr.write(`scheduler: ${message}\n`); process.exit(code); };
-const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['plan', 'log']), die });
+// Run as a CLI only; importing for MAX_PARALLEL must not read a plan or exit.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) main();
+
+function main() {
+const { flags, positional } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['plan', 'log']), die });
 const path = resolve(String(flags.plan || 'docs/team/schedule.json'));
+if (positional[0] === 'cap') {
+  let p = null;
+  if (existsSync(path)) { try { p = JSON.parse(readFileSync(path, 'utf8')); } catch (e) { die(2, `cannot read ${path}: ${e.message}`); } }
+  const cap = effectiveCap(p);
+  if (!Number.isInteger(cap) || cap < 1) die(2, 'max_parallel must be a positive integer');
+  console.log(cap);
+  return;
+}
 if (!existsSync(path)) die(2, `no schedule plan at ${path}`);
 let plan; try { plan = JSON.parse(readFileSync(path, 'utf8')); } catch (e) { die(2, e.message); }
 if (plan.schema !== 'scheduler-plan/v1' || !Array.isArray(plan.tasks)) die(2, 'plan must use schema scheduler-plan/v1 with tasks');
@@ -57,10 +83,14 @@ if (existsSync(logPath())) {
       .map((t) => ({
         id: t.id,
         owner: t.owner || '(unassigned)',
+        // Only IC-ACTIVE work holds a slot (C9). A ticket in review/qa has no developer on it —
+        // counting it as `running` starved the next wave behind tickets waiting on a reviewer.
+        // `in_review` is neither running (no slot) nor pending (never re-dispatched).
         status: t.status === 'done' ? 'complete'
           : t.status === 'blocked' ? 'blocked'
-            : ['in_progress', 'review', 'qa'].includes(t.status) ? 'running'
-              : 'pending',
+            : t.status === 'in_progress' ? 'running'
+              : ['review', 'qa'].includes(t.status) ? 'in_review'
+                : 'pending',
         // `depends`, NOT `depends_on`. Every consumer in this file reads `depends`; emitting the
         // other spelling silently dropped ALL board-derived dependency ordering, and
         // dispatch-preflight gates every spawn on the resulting ready set — so an agent could be
@@ -102,16 +132,17 @@ function logPath() {
 }
 const ids = new Set(plan.tasks.map((task) => task.id)); const errors = [];
 for (const task of plan.tasks) {
-  if (!task.id || !task.owner || !['pending', 'running', 'complete', 'blocked'].includes(task.status)) errors.push(`${task.id || '(unknown)'}: invalid identity or status`);
+  if (!task.id || !task.owner || !['pending', 'running', 'in_review', 'complete', 'blocked'].includes(task.status)) errors.push(`${task.id || '(unknown)'}: invalid identity or status`);
   for (const dep of task.depends || []) if (!ids.has(dep)) errors.push(`${task.id}: missing dependency ${dep}`);
 }
 if (errors.length) { errors.forEach((error) => console.error(`scheduler: ${error}`)); process.exit(1); }
 const byId = new Map(plan.tasks.map((task) => [task.id, task]));
 function completed(id, seen = new Set()) { if (seen.has(id)) die(1, `dependency cycle includes ${id}`); seen.add(id); const task = byId.get(id); return task?.status === 'complete' && (task.depends || []).every((dep) => completed(dep, seen)); }
 const running = plan.tasks.filter((task) => task.status === 'running').length;
-const capacity = Number(plan.max_parallel || 1); if (!Number.isInteger(capacity) || capacity < 1) die(2, 'max_parallel must be a positive integer');
+const capacity = effectiveCap(plan); if (!Number.isInteger(capacity) || capacity < 1) die(2, 'max_parallel must be a positive integer');
 const ready = plan.tasks.filter((task) => task.status === 'pending' && (task.depends || []).every((dep) => completed(dep)))
   .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0) || Number(b.wait_cycles || 0) - Number(a.wait_cycles || 0) || String(a.id).localeCompare(String(b.id)));
 const dispatch = ready.slice(0, Math.max(0, capacity - running));
 const result = { schema: 'schedule-result/v1', max_parallel: capacity, running, backpressure: running >= capacity, ready: dispatch.map((task) => task.id), deferred: ready.slice(dispatch.length).map((task) => task.id) };
 console.log(JSON.stringify(result, null, 2));
+}

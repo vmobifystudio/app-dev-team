@@ -245,6 +245,16 @@ M117@@scripts/board.mjs@@: to !== bound.detail.commit@@: false@@TC: a bound appr
 M118@@scripts/lib/actor.mjs@@if (hash !== linkHash(prev, body)) return@@if (false) return@@TC: an edited token registry is CANNOT EVALUATE, never a silent change@@Sprint 2 track C
 M119@@scripts/lib/evidence.mjs@@if (!real.startsWith(dir)) return@@if (false) return@@TC: a record outside docs/team/evidence/ is refused@@Sprint 2 track C
 M120@@scripts/board.mjs@@? verifyTestEvidence(root, flags.evidence, { ticket })@@? { ok: true, detail: {} }@@TC: verified with no --evidence is refused@@Sprint 2 track C
+MD01@@scripts/runtime-gate.sh@@[ "$HAS_WEB" -eq 1 ] && web_gate@@true@@runtime-gate web: a package.json app builds, tests, serves and answers GET / (W11)@@Sprint 2 track D
+MD02@@scripts/runtime-gate.sh@@  if [ "$RC" -eq 127 ]; then@@  if false; then@@runtime-gate web: a build command that is not installed is CANNOT EVALUATE@@Sprint 2 track D
+MD03@@scripts/runtime-gate.sh@@  if ! node --version >/dev/null 2>&1 || ! npm --version >/dev/null 2>&1; then@@  if false; then@@...naming the missing tool@@Sprint 2 track D
+MD04@@scripts/web-smoke.mjs@@if (!r.body.trim()) out(1@@if (false) out(1@@runtime-gate web: a server answering an EMPTY body is FAIL@@Sprint 2 track D
+MD05@@scripts/release-candidate.mjs@@  const now = hashArtifact(artifactPath);@@  const now = rc.sha256;@@release-candidate web: one edited file in the build dir breaks the binding@@Sprint 2 track D
+MD06@@scripts/lib/artifact-hash.mjs@@return sha(lines.sort().join('\n'));@@return sha(String(lines.length));@@release-candidate web: one edited file in the build dir breaks the binding@@Sprint 2 track D
+MD07@@scripts/release-candidate.mjs@@if (isDir && platform !== 'web') die(2@@if (false) die(2@@release-candidate: a directory is refused for ios (that is the .app folder, not the .ipa)@@Sprint 2 track D
+MD08@@scripts/scheduler.mjs@@: t.status === 'in_progress' ? 'running'@@: ['in_progress', 'review', 'qa'].includes(t.status) ? 'running'@@scheduler: only in_progress holds a slot — review and qa tickets do not starve the next wave (C9)@@Sprint 2 track D
+MD09@@scripts/scheduler.mjs@@export const MAX_PARALLEL = 3;@@export const MAX_PARALLEL = 2;@@scheduler.mjs cap prints the one parallelism cap, the same constant scripts import (C9)@@Sprint 2 track D
+MD10@@scripts/ship-gate.sh@@echo "        LIMIT: the scanners only replay KNOWN defect classes; unknown defects are covered by"@@:@@ship-gate and /app-ship state the scanners only replay known defects (G-F13)@@Sprint 2 track D
 CATALOGUE
 }
 
