@@ -18,8 +18,7 @@ utility tier, runtime and journey gate edge cases, the QA ticket, journal fields
 `${CLAUDE_PLUGIN_ROOT}/skills/parallel-orchestrator/references/build-loop-branches.md`. Each step
 below names the section when you need it; read nothing from it otherwise.
 
-Before claiming any ticket — a `QA-` ticket included (the claim comes after a CLEAR preflight) —
-run the unified dispatch gate:
+Before claiming any ticket, `QA-` included, run the unified dispatch gate:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-preflight.mjs" \
@@ -472,7 +471,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    `merged` and `closed` with `<TOKEN>` for the `QA-` ID — nobody QAs the QA pass. **Then** land its
    files (`wave-integrate` skips `QA-` tickets) with the fast-forward `closed` prints:
    `git checkout <integration> && git merge --ff-only qa/<QA-ID>` — `git rebase <integration>
-   qa/<QA-ID>` first when it says the integration branch moved.
+   qa/<QA-ID>` first when it says the integration branch moved — then release QA's slot (step 4a).
 
 6. **Daily report + board view.** Concatenate the per-agent fragments into the standup with a
    command — no `tech-manager` spawn for it — then render the board and print the terminal view:

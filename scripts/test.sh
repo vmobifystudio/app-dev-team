@@ -11852,6 +11852,12 @@ printf '| BUG-002 |  | **S2** | web | x y z | a | b | 0.1 | FIXED |\n' > "$Q1R/d
 q1reg show --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.exit(JSON.parse(s).items.find(x=>x.id==="BUG-002").status==="OPEN"?0:1))' \
   && ok "Q1: ...but not without a ticket — FIXED is still held to the register's rule (C5W-8)" \
   || bad "Q1: ...but not without a ticket — FIXED is still held to the register's rule (C5W-8)"
+# ·· C5W-9: the QA landing releases QA's slot; QA never writes the register inside its slot.
+grep -q 'moved — then release QA.s slot (step 4a)' "$HERE/../commands/app-build.md" \
+  && ! grep -q 'register.mjs" --root . import-bugs' "$HERE/../agents/qa-engineer.md" \
+  && grep -q 'do not run `register.mjs` in your slot' "$HERE/../agents/qa-engineer.md" \
+  && ok "Q1: the QA ticket's landing releases its slot, and QA does not import the register in its slot (C5W-9)" \
+  || bad "Q1: the QA ticket's landing releases its slot, and QA does not import the register in its slot (C5W-9)"
 # ·· C5W-5 / C5W-13: the reviewer's template names the files (approved --bind needs one); routing a constant is not a rejection.
 Q1CR="$HERE/../agents/code-reviewer.md"
 grep -q '^Files reviewed: <every path in the diff' "$Q1CR" && grep -q "'Files reviewed: <every path in the Range above" "$HERE/spawn-prompt.mjs" \

@@ -114,12 +114,9 @@ When you find a defect, write to `docs/51-bugs.md` as a row:
 BUG-NNN | Ticket | Severity (S1..S4) | Platform | Steps to reproduce | Expected | Actual | Build | Resolution
 ```
 
-Then fold them into the register at `docs/90-register.jsonl`, which is what makes them impossible to
-lose:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . import-bugs --by qa-engineer
-```
+The orchestrator folds them into the register (`docs/90-register.jsonl`, `/app-build` step 1) from
+the main checkout once your branch lands — **do not run `register.mjs` in your slot**: it writes the
+register there, uncommitted, and the slot can then never be reaped.
 
 Your Markdown stays the place you write — it is human-readable, it reviews on a branch, and every
 agent file already points at it. What changes is that it is now a **source** that gets imported
