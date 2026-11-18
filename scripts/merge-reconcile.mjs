@@ -44,11 +44,11 @@
  *   N/A (exit 0) no git, no board, or no integration branch: nothing for this class to be true of
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 import { parseArgs } from './lib/args.mjs';
 import { parseEventLog, reduce } from './lib/events.mjs';
+import { gitAt, integrationBase, ticketBranches, isAncestor } from './lib/integration.mjs';
 
 const die = (code, message) => { process.stderr.write(`merge-reconcile: ${message}\n`); process.exit(code); };
 const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root', 'base', 'log']), die });
@@ -56,10 +56,7 @@ const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root'
 const ROOT = resolve(String(flags.root || '.'));
 const LOG = typeof flags.log === 'string' ? resolve(flags.log) : resolve(ROOT, 'docs/31-board-events.jsonl');
 
-const git = (args) => {
-  try { return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
-  catch { return null; }
-};
+const git = gitAt(ROOT);
 
 // N/A, NOT CANNOT-EVALUATE — and I got this wrong here for the second time in one day, having
 // made the identical mistake in silent-fallback-scan.mjs hours earlier.
@@ -85,12 +82,7 @@ if (!existsSync(LOG)) {
 // The integration branch, resolved the same way everything else here resolves it rather than
 // assuming `main` — the flagship model integrates on `develop`, and a check that silently compared
 // against the wrong branch would report every ticket as unmerged.
-let base = typeof flags.base === 'string' ? flags.base : '';
-if (!base) {
-  for (const candidate of ['develop', 'main', 'master']) {
-    if (git(['rev-parse', '--verify', candidate]) !== null) { base = candidate; break; }
-  }
-}
+const base = integrationBase(git, typeof flags.base === 'string' ? flags.base : '');
 if (!base) {
   // A repository with no develop/main/master is usually a fresh fixture with a single unnamed
   // branch. Stated, and not treated as a failure to look at something that exists.
@@ -102,7 +94,6 @@ let tickets;
 try { tickets = reduce(parseEventLog(readFileSync(LOG, 'utf8')).events).tickets; }
 catch (e) { die(2, `cannot read the event log: ${e.message}`); }
 
-const branches = (git(['branch', '--format=%(refname:short)']) || '').split('\n').filter(Boolean);
 const CLAIMS_INTEGRATED = new Set(['qa', 'done']);
 
 /**
@@ -144,10 +135,10 @@ let ok = 0;
 
 for (const t of tickets.values()) {
   if (!CLAIMS_INTEGRATED.has(t.status)) continue;
-  const mine = branches.filter((b) => b.toLowerCase().includes(String(t.id).toLowerCase()));
+  const mine = ticketBranches(git, t.id);
   if (!mine.length) { unknown.push(t.id); continue; }
   // Any matching branch being merged is enough: a ticket may legitimately have had more than one.
-  const merged = mine.some((b) => git(['merge-base', '--is-ancestor', b, base]) !== null);
+  const merged = mine.some((b) => isAncestor(git, b, base));
   if (merged) ok += 1;
   else if (awaitingWave(t)) pending.push({ id: t.id, branches: mine });
   else lying.push({ id: t.id, status: t.status, branches: mine });

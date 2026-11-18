@@ -29,12 +29,12 @@
  * is worse: the gate would pass while checking nothing. So each default is the SAFE end of its own
  * contract, and every one of them is meant to be edited:
  *
- *   capabilities  no roles listed and `deny_all` on the actor secrets. A role not listed is not
- *                 allowed to write, so the manifest starts closed and a project opens it
- *                 deliberately.
- *   risk-policy   default risk `medium` requiring a tech-manager approval, plus the billing and
- *                 release patterns at `critical`. Copied from this plugin's own policy because it
- *                 is the one that has actually been reasoned about.
+ *   capabilities  the spawnable roles, each limited to its own surface: developers to source and
+ *                 the root build manifests, document roles to their documents (QA also to
+ *                 docs/team/journeys), `deny_all` on the actor secrets. A role not listed may not
+ *                 write at all.
+ *   risk-policy   default risk `medium` requiring a code-reviewer approval, plus the auth/migration
+ *                 patterns at `high` (adds tech-lead) and billing/release at `critical`.
  *   schedule      `max_parallel: 2` and no tasks. The scheduler derives its ready set from the
  *                 board when a log exists, so an empty task list is correct, not a stub.
  *   context       delegated to `context-manifest.mjs create`, which hashes real files. Writing a
@@ -70,6 +70,20 @@ const ROOT = resolve(String(flags.root || '.'));
 if (!existsSync(ROOT)) die(2, `no such project root: ${ROOT}`);
 const TEAM = join(ROOT, 'docs/team');
 
+/**
+ * Root build manifests, spelled out because capability-check matches path PREFIXES, not globs.
+ * ponytail: an enumerated list misses an unusual config name (say `rspack.config.ts`); teach
+ * capability-check globs if that starts costing dispatches.
+ */
+const BUILD_MANIFESTS = [
+  'package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lockb', 'bun.lock',
+  'tsconfig.json', 'tsconfig.base.json', 'tsconfig.app.json', 'tsconfig.node.json', 'tsconfig.build.json', 'tsconfig.spec.json',
+  ...['vite', 'vitest', 'jest', 'next', 'babel', 'metro', 'eslint', 'postcss', 'tailwind', 'playwright', 'webpack', 'rollup', 'svelte', 'astro', 'nuxt']
+    .flatMap((tool) => ['js', 'ts', 'mjs'].map((ext) => `${tool}.config.${ext}`)),
+  'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', 'gradle.properties', 'gradle',
+  'Podfile', 'Podfile.lock', 'Package.swift', 'Package.resolved',
+];
+
 const MANIFESTS = {
   'capabilities.json': {
     schema: 'capability-manifest/v1',
@@ -92,36 +106,45 @@ const MANIFESTS = {
     ].map((role) => ({
       role,
       operations: ['read', 'write'],
-      allowed_paths: ['src', 'app', 'lib', 'test', 'tests', 'ios', 'android', 'web', 'docs/daily'],
+      // ROOT BUILD MANIFESTS TOO (W9): a web developer adding a dependency writes package.json and
+      // its lockfile; an Android one writes build.gradle. Source-only refused the first real ticket.
+      allowed_paths: ['src', 'app', 'lib', 'test', 'tests', 'ios', 'android', 'web', 'docs/daily', ...BUILD_MANIFESTS],
     })).concat(
       ['ux-architect', 'product-designer', 'product-manager', 'product-researcher',
        'qa-engineer', 'data-analyst', 'aso-specialist', 'verification-engineer'].map((role) => ({
         role,
         operations: ['read', 'write'],
         // Document roles write documents. Not source, and not docs/team — a designer editing the
-        // capability manifest is the shape this file exists to prevent.
+        // capability manifest is the shape this file exists to prevent. The one exception is QA's
+        // journey files (docs/team/journeys/), which journey-gate reads and only QA writes.
         allowed_paths: ['docs/daily', 'docs/10-prd.md', 'docs/12-flows.md', 'docs/14-components.md',
-          'docs/15-aso.md', 'docs/50-test-plan.md', 'docs/51-bugs.md', 'docs/52-analytics.md'],
+          'docs/15-aso.md', 'docs/50-test-plan.md', 'docs/51-bugs.md', 'docs/52-analytics.md',
+          ...(role === 'qa-engineer' ? ['docs/team/journeys'] : [])],
       }))
     ),
     deny_all: ['docs/team/actors.json'],
   },
   'risk-policy.json': {
     schema: 'risk-policy/v1',
-    default: { risk: 'medium', model: 'strong', approvals: ['tech-manager'], required_evidence: ['review'] },
+    // W4: every role named in `approvals` must be one that can write `approved` (lib/capabilities.mjs)
+    // AND is told to by its role file. The default asked for tech-manager — which nothing told to
+    // approve, and which may no longer approve at all — so every medium ticket's merge was refused.
+    // release-manager is not here either: it can never write `approved` (it must not author the
+    // evidence that its build is shippable), so requiring it stranded every billing ticket.
+    default: { risk: 'medium', model: 'strong', approvals: ['code-reviewer'], required_evidence: ['review'] },
     rules: [
       {
         pattern: 'billing|subscription|payment|app.?store|play.?store|storefront|release|rollout',
         risk: 'critical',
         model: 'frontier',
-        approvals: ['tech-manager', 'release-manager'],
+        approvals: ['code-reviewer'],
         required_evidence: ['security-review', 'runtime-gate'],
       },
       {
         pattern: 'migration|schema|database|keychain|credential|auth',
         risk: 'high',
         model: 'frontier',
-        approvals: ['tech-manager', 'tech-lead'],
+        approvals: ['code-reviewer', 'tech-lead'],
         required_evidence: ['review', 'runtime-gate'],
       },
     ],
@@ -210,7 +233,10 @@ process.stdout.write(
   '\n  These are the four inputs `dispatch-preflight` requires before any owner may be spawned.\n' +
   '  Without them a planned project cannot dispatch AT ALL — which is why 11 of 19 tickets in the\n' +
   '  recorded runs never left `created`.\n' +
-  '\n  EVERY ONE IS MEANT TO BE EDITED. capabilities.json starts CLOSED (no role may write until\n' +
-  '  listed) and risk-policy.json defaults to medium risk needing a tech-manager approval. They are\n' +
-  '  the safe end of their own contracts, not settings anyone chose for this project.\n'
+  '\n  EVERY ONE IS MEANT TO BE EDITED. capabilities.json lets developer roles write source and the\n' +
+  '  root build manifests (package.json, lockfiles, tsconfig, *.config, gradle, Podfile, Package.swift),\n' +
+  '  document roles write their own docs (qa-engineer also docs/team/journeys/), no role may write\n' +
+  '  docs/team/actors.json; any role not listed may write nothing. risk-policy.json defaults to\n' +
+  '  medium risk needing a code-reviewer approval (high adds tech-lead). They are a starting point,\n' +
+  '  not settings anyone chose for this project.\n'
 );

@@ -55,8 +55,20 @@ const EVENTS = new Set([
   'qa_failed',
   'blocked',
   'unblocked',
+  // `reopened` — the founder hands a ticket back to its developer from `blocked` (typically the
+  // review-cycle cap) or `review`, with ONE more review cycle on top of the cap. Without it the
+  // cap's only exit was `approved`: blocked -> unblocked -> review, where another REQUEST CHANGES
+  // is refused again (G-F8). Founder-only: lib/capabilities.mjs HUMAN_GATES.
+  'reopened',
   'closed',
 ]);
+
+/**
+ * QA tickets (`QA-…`) ARE the QA. Routing them through the `qa` stage asked qa-engineer to
+ * `qa_passed` its own ticket, which NOT_ON_OWN_TICKET refuses and nobody else was told to do, so
+ * the ticket never closed (W8). After `merged` they close directly.
+ */
+const isQaTicket = (state) => /^QA-/i.test(String(state?.id ?? ''));
 
 /**
  * `assigned` is the one event beyond the vocabulary the plan decided, and it is here because the
@@ -101,18 +113,18 @@ function legalEvents(state) {
       // guard nothing reaches breaks no assertion.
       return withCorrection(['review_requested', 'done_reported', 'blocked', 'assigned']);
     case 'review':
-      return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned']);
+      return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned', 'reopened']);
     case 'qa':
       // `verified` is legal here so a ticket merged on a STATIC verification can be upgraded once
       // the executable suite finally runs. Without that there is no path from `qa (static only)` to
       // `done` except lying, and a sprint would have to close by hand — which is what happened.
-      return state.qaPassed
+      return state.qaPassed || isQaTicket(state)
         ? ['closed', 'verified', 'qa_failed', 'blocked']
         : ['qa_passed', 'verified', 'qa_failed', 'blocked'];
     case 'done':
       return withCorrection([]);
     case 'blocked':
-      return withCorrection(['unblocked']);
+      return withCorrection(['unblocked', 'reopened']);
     default:
       return withCorrection([]);
   }
@@ -255,6 +267,8 @@ function blankTicket(id) {
     owner: '',
     reviewer: '',
     cycles: 0,
+    // Review cycles the founder granted beyond MAX_REVIEW_CYCLES, one per `reopened`.
+    extraCycles: 0,
     approvals: [],
     dependsOn: [],
     verified: false,
@@ -427,6 +441,13 @@ function reduce(events) {
         break;
       case 'unblocked':
         state.status = state.prevStatus || 'todo';
+        break;
+      case 'reopened':
+        // Back to the developer, as `changes` does: the old verification was of the old DONE.
+        state.status = 'in_progress';
+        state.extraCycles += 1;
+        state.verified = false;
+        state.verifyPending = false;
         break;
       default:
         break;
@@ -636,17 +657,17 @@ function validateTransition(tickets, candidate) {
       return { ok: true };
     }
     case 'changes':
-      if (state.cycles + 1 > MAX_REVIEW_CYCLES) {
+      if (state.cycles + 1 > MAX_REVIEW_CYCLES + state.extraCycles) {
         return {
           ok: false,
-          reason: `${id} has spent its ${MAX_REVIEW_CYCLES} review cycles — a 3rd rejection is an escalation, not another loop`,
+          reason: `${id} has spent its ${MAX_REVIEW_CYCLES + state.extraCycles} review cycles — another rejection is an escalation, not another loop (only the founder can grant more: "reopened --by founder")`,
           legal: ['approved', 'blocked'],
           force: { event: 'blocked', detail: `review cycle cap (${MAX_REVIEW_CYCLES}) reached` },
         };
       }
       return { ok: true };
     case 'closed':
-      if (!state.qaPassed) {
+      if (!state.qaPassed && !isQaTicket(state)) {
         return {
           ok: false,
           reason: `${id} has no "qa_passed" — QA has not exercised the acceptance criteria`,
