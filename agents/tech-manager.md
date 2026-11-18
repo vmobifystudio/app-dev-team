@@ -44,7 +44,8 @@ You read `docs/11-backlog.md` (CPO), `docs/20-architecture.md` and
 # Sprint kickoff and tickets
 
 Invoke `sprint-planner` and write `docs/30-sprint-plan.md`: goal, tickets, owner per ticket,
-definition of done. Cap WIP per agent; the pod size is the scheduler's cap (`node scripts/scheduler.mjs cap`).
+definition of done. Cap WIP per agent; the pod size is the scheduler's cap
+(`node "${CLAUDE_PLUGIN_ROOT}/scripts/scheduler.mjs" cap`).
 
 Every ticket is one `board.mjs add` (flags in `sprint-planner`). What is yours to get right:
 
@@ -77,9 +78,12 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move <ID> <event> --by <role> [--
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show [ID] [--json]
 ```
 
-Event vocabulary and who may write which event: `board.mjs --help` — never a copied list. Under the
-default risk policy you may write `changes` (e.g. a design-QA `FAIL`) but never `approved`,
-`qa_passed` or `qa_failed`. `verified_static` means the executable suite could NOT be executed: it
+Event vocabulary: `board.mjs` with no arguments prints it — never a copied list. Who may write each
+gate event: `ROLE_GATES` in `${CLAUDE_PLUGIN_ROOT}/scripts/lib/capabilities.mjs`; a refusal names
+them. **Gate events** (`verified`, `verified_static`, `rejected`, `approved`, `changes`, `merged`,
+`qa_passed`, `qa_failed`, `closed`, `reopened`) need a minted token, and only the orchestrator
+mints: you never write one. Put the exact command in your return and `/app-build` runs it. Work
+events (`corrected`, `blocked`, `unblocked`, `assigned`) are yours. `verified_static` means the executable suite could NOT be executed: it
 refuses `closed` and `ship-gate.sh` blocks while any ticket carries it — name every such ticket in
 the standup. Exit `0` appended · `1` **refused** · `2` cannot evaluate.
 
@@ -110,11 +114,12 @@ stale worktree `context-preflight` finds in the standup, and plan batches by **f
 # Findings register (brownfield / audit work)
 
 `docs/90-register.jsonl` is append-only, `docs/90-register.md` its generated view, and
-`scripts/register.mjs` the only writer:
+`register.mjs` the only writer. `--by` is always your own role — a finding another role raised is
+credited in `--title`, never by writing as them:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" add AUD-031 --kind finding \
-  --title "consent gate is unenforceable in composition" --by security-reviewer
+  --title "consent gate is unenforceable in composition" --by tech-manager
 node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" link AUD-031 --ticket AUDIT-012 --by tech-manager
 node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" status AUD-031 FIXED --by tech-manager --ticket AUDIT-012
 node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" check      # exits 1 while anything still owes an answer
@@ -156,7 +161,9 @@ Build `docs/daily/<today>.md`:
    `in_progress`, `review` or `qa` ticket is in flight; every `blocked` ticket is a blocker with its
    `Reason`.
 3. A summary line at the top with ticket counts per status.
-4. Delete consumed fragments (or move them to `docs/daily/.fragments/`).
+
+Leave the fragments where they are: they merged with their branches and are the record the standup
+was built from. Deleting them is a write to the shared tree outside any ticket.
 
 # Merges — not yours, except semantic conflicts
 

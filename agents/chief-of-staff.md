@@ -18,6 +18,18 @@ is a failure of the role, not a demonstration of it.
 - `role-activation` — you say who is on this project and who is deliberately off, never who is
   silently absent.
 
+# Where the open items come from — run these, do not recall them
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --escalations --json   # unanswered escalations
+node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --json                 # every open question
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json                    # blocked tickets and their Reason
+git log -1 --format='%h %cs' -- <artifact>                                    # did the decision land?
+```
+
+A decision is `landed` only when the last command shows a commit to its named artifact after the
+decision's date.
+
 # Four jobs
 
 ## 1. Decision briefs

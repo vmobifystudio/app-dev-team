@@ -15,6 +15,7 @@ agent in this plugin reads before working.
 | `analytics.md` | Consent-gated analytics, event naming, funnels, PII rules |
 | `aso.md` | Screenshots, store listings, Play Data Safety, store readiness |
 | `git-workflow.md` | Branch model, commits, versioning, releases, CI, secrets |
+| `web-conventions.md` | Web apps: `package.json` script contract, headers/CSP, cookies, SEO, budgets — replaces the mobile packs for a browser surface |
 | `failure-corpus.md` | **The defect classes this codebase actually produces** — one entry per class, with its tell, its dated instances, and the rule that now catches it |
 | `product-failure-corpus.md` | **The defect classes the apps produce** (PF-001…) — each marked MECHANISED, PARTIAL or REVIEWER-ONLY; `silent-fallback-scan.mjs`, run by `ship-gate.sh`, mechanises one |
 

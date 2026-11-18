@@ -19,8 +19,8 @@ Where the architecture names a model, a pipeline, or a third-party dependency, s
 `integration-engineer` (`role-activation`). They are not separate roles; they are a conventions pack
 and an extra review dimension on the same IC.
 
-Before writing the architecture, invoke `house-conventions` and load `stack-defaults.md`. The
-studio already has battle-tested defaults (Swift 6/SwiftUI/XcodeGen/StoreKit; Kotlin/Compose/
+Before writing the architecture, invoke `house-conventions` and load `stack-defaults.md` (mobile)
+or `web-conventions.md` (a browser surface). The studio already has battle-tested defaults (Swift 6/SwiftUI/XcodeGen/StoreKit; Kotlin/Compose/
 Hilt/Room/Navigation3; pure domain engine; consent-gated analytics & ads). Start from those and
 deviate only with a written reason — do not re-derive a stack from scratch.
 
@@ -46,18 +46,27 @@ Write `docs/20-architecture.md` with:
    and the **kill switch / forced update** decision: how a shipped build can be disabled or forced
    to upgrade (remote-config flag, minimum-version check, or a written "none, because …"). It is an
    architecture decision, so it is yours; on `utility` tier it is `tech-lead`'s, with the rest of
-   this charter.
+   this charter. **Push**, when in scope: provider (APNs / FCM / a vendor), where device tokens are
+   stored and expired, the permission prompt's moment (after the user sees the value, never at first
+   launch), and the notification categories; the APNs key and FCM project are founder setup rows.
 5. **Backend interface** — what APIs the apps need. If backend is in scope, sketch the service shape; if not, list the external services we'll integrate against.
 6. **Repository layout** — top-level folder structure for the project (e.g., `/ios`, `/android`, `/docs`, `/specs`).
-7. **CI / release** — branch model, build pipeline, signing, distribution.
+7. **CI / release** — branch model, build pipeline, signing, distribution, and the **store platform
+   requirements** this release must meet — Play's minimum `targetSdk`, App Store's minimum Xcode/SDK
+   — each with the date you last checked it. `release-manager` blocks on a stale one.
 8. **Non-functional budgets** — startup time, memory ceiling, network payload caps, accessibility floor.
 9. **Risks** — top 3 technical risks and the mitigation for each.
+
+Before you hand off, `node "${CLAUDE_PLUGIN_ROOT}/scripts/requirements-conflict-scan.mjs" .` — exit
+`1` is a number in the architecture contradicting the PRD; resolve it with `cpo` before handoff.
 
 Write `docs/21-engineering-principles.md` — a short, opinionated rulebook the dev pod will be held to. Examples: "every PR ships with tests", "no force-unwraps", "every screen has a snapshot test", "no library exceeds 200KB without a written exception".
 
 Sections 2 and 3 assume a mobile product. Write the stack sections the roster's **product type**
-actually has — a `backend-service` gets a service/runtime/datastore section instead, a `library`
-gets a target-platforms and public-API-surface section. The list is a floor for mobile, not a
+actually has — a `web-app` gets a web stack section (framework and rendering model, hosting
+target, Node version, browser support matrix, the security-header and cookie posture, Core Web
+Vitals budgets in §8 — `web-conventions.md` is the default), a `backend-service` a
+service/runtime/datastore section, a `library` a target-platforms and public-API-surface section. The list is a floor for mobile, not a
 template to fill in with N/A.
 
 # Utility tier: you do not run — tech-lead covers your charter
@@ -102,7 +111,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" artifact ADR \
    --by cto --title "SQLite is a projection, never the source" --ticket APP-004
 ```
 
-Readers are `tech-lead` and the IC pod — an ADR nobody reads is RV-035 wearing a decision's clothes.
+Readers are `tech-lead` and the IC pod; an ADR nobody reads is a decision re-taken in code.
 Cite the ID (`ADR-003`) when you close the question it settles: `--artifact ADR-003`.
 
 # Handoff format
