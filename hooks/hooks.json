@@ -47,7 +47,7 @@
         ]
       },
       {
-        "matcher": "^(Bash|Write|Edit|MultiEdit)$",
+        "matcher": "^(Bash|Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob)$",
         "hooks": [
           {
             "type": "command",
@@ -67,7 +67,7 @@
         ]
       },
       {
-        "matcher": "(^|:)(ios-developer|android-developer|backend-developer|web-developer|monetization-engineer|devops-engineer|test-automation-engineer|ux-architect|product-designer|product-manager|product-researcher|qa-engineer|data-analyst|aso-specialist)$",
+        "matcher": "(^|:)(ios-developer|android-developer|backend-developer|web-developer|monetization-engineer|devops-engineer|test-automation-engineer|ux-architect|product-designer|product-manager|product-researcher|qa-engineer|data-analyst|aso-specialist|verification-engineer)$",
         "hooks": [
           {
             "type": "command",

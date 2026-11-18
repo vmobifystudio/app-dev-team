@@ -13,6 +13,8 @@
  * branch and worktree discipline; a role that produces a uniquely-named document does not, but still
  * owes the orchestrator the fields its gates read.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 export const CODE_CONTRACT = [
   'Worktree:',
@@ -31,7 +33,11 @@ export const CODE_CONTRACT = [
 // seventh hand-typed field this file exists to prevent.
 export const CODE_CONTRACT_CHECKED = CODE_CONTRACT.filter((f) => f !== 'Branch:');
 
-export const ARTIFACT_CONTRACT = ['Worktree:', 'Daily fragment:', 'Assumptions & open questions:'];
+// An artifact ticket is still a branch (verify-done --docs-only checks branch, commits and files),
+// so the DOC profile owes `Branch:` and `Mutation confirmed:` too — a QA return without `Branch:`
+// was REJECTED downstream by a contract that never asked for it (C2-8, R2-7). Every artifact role
+// file already declares all six; team-doctor holds them to it.
+export const ARTIFACT_CONTRACT = ['Worktree:', 'Branch:', 'Mutation confirmed:', 'Daily fragment:', 'Assumptions & open questions:', 'Shared surfaces touched:'];
 
 /** Anything writing source or repo config (CI, signing, build flavors) is a code role. */
 export const CODE_ROLES = [
@@ -52,7 +58,51 @@ export const ARTIFACT_ROLES = [
   'qa-engineer',
   'data-analyst',
   'aso-specialist',
+  // Owns tickets (BUILD_SPAWNABLE_OWNERS). Certifying someone else's work it returns a
+  // `VERIFICATION:` line instead — GATE_HEADERS below, which the hooks read by mode.
+  'verification-engineer',
 ];
+
+/**
+ * Gate MODES, keyed by role: the first line a role returns when it judges someone else's work
+ * rather than owning a ticket. The hooks decide by this mode, not by role alone — a ux-architect
+ * returning `DESIGN QA: PASS` owes no DONE block, and its verdict is not a developer's report
+ * (C2-3, R2-8). A prompt that DEMANDS one of these (and is not `Work ticket X.`) is a gate spawn.
+ */
+export const GATE_HEADERS = {
+  'code-reviewer': ['REVIEW VERDICT:', 'DESIGN QA:'],
+  'tech-lead': ['REVIEW VERDICT:'],
+  'security-reviewer': ['REVIEW VERDICT:', 'SECURITY:', 'PRIVACY:'],
+  'ux-architect': ['DESIGN QA:'],
+  'data-analyst': ['ANALYTICS:'],
+  'aso-specialist': ['ASO READY', 'ASO BLOCKED'],
+  'verification-engineer': ['VERIFICATION:'],
+  'release-auditor': ['RELEASE AUDIT:'],
+};
+
+/** The gate header `text` STARTS with (first non-blank line) for this role, or ''. */
+export function gateHeaderOf(role, text) {
+  const first = (String(text).split('\n').find((l) => l.trim()) || '').trim();
+  return (GATE_HEADERS[role] || []).find((h) => first.startsWith(h)) || '';
+}
+
+// TEMP until F1 merges: track F1 owns `matchesTicket(name, id, allIds)` and `ticketIdsFromBoard(root)`
+// in lib/integration.mjs. Same signatures; swap the imports and delete this block when it lands.
+// A name belongs to the LONGEST board id that matches it at the start or after `/`, followed by the
+// end or a `-` (so `APP-001-analytics-x` is APP-001-analytics's, and `APP-0010` is never APP-001's).
+const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export function matchesTicket(name, id, allIds = []) {
+  const hit = (t) => new RegExp(`(?:^|/)${escRe(t)}(?=$|-)`, 'i').test(String(name));
+  if (!hit(id)) return false;
+  const lid = String(id).toLowerCase();
+  return !allIds.some((o) => String(o).toLowerCase().startsWith(`${lid}-`) && hit(o));
+}
+export function ticketIdsFromBoard(root) {
+  try {
+    const log = readFileSync(join(root, 'docs', '31-board-events.jsonl'), 'utf8');
+    return [...new Set([...log.matchAll(/"ticket":"([^"]+)"/g)].map((m) => m[1]))];
+  } catch { return []; }
+}
 
 const CODE_ROLE_SET = new Set(CODE_ROLES);
 const ARTIFACT_ROLE_SET = new Set(ARTIFACT_ROLES);
@@ -92,9 +142,12 @@ export function contractBlock(role, { ticket = 'APP-NNN' } = {}) {
   return [
     `DONE: ${ticket}`,
     'Worktree: <the path you were given, or "none — shared tree">',
+    'Branch: feat/' + ticket + '-short-slug        (created BEFORE any file was written)',
+    'Mutation confirmed: git diff --numstat -> <N files, +A/-B>',
     'Files: <list>',
     `Daily fragment: docs/daily/<today>-${role}-${ticket}.md`,
     'Assumptions & open questions: <ledger row each, or "ASSUMED, NOT RAISED">',
+    'Shared surfaces touched: <shared docs or contracts other tickets read — or "none">',
     'Next: <the role/gate that consumes this artifact>',
   ].join('\n');
 }
