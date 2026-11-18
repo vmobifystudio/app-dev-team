@@ -1,3 +1,9 @@
+---
+description: Inspect durable execution state — run-ledger leases and orphaned or duplicate attempts
+argument-hint: [run ledger path]
+allowed-tools: Read, Bash
+---
+
 # /app-run-status — inspect durable execution state
 
 Use the append-only run ledger and fail-closed orphan detector:

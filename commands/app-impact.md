@@ -1,3 +1,9 @@
+---
+description: Map changed files to their declared downstream consumers before merge; unmapped surfaces are findings
+argument-hint: <changed files, comma-separated>
+allowed-tools: Read, Bash
+---
+
 # /app-impact — propagate changed-surface review
 
 Before merge, map every changed file to declared downstream consumers:

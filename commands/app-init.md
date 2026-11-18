@@ -2,6 +2,7 @@
 description: Start a new mobile app project — runs requirements intake, then CEO vision, then PRD + architecture in parallel
 argument-hint: [one-line idea, optional] [--yolo to skip the scope-lock gate] [--utility | --flagship to set the tier]
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+disable-model-invocation: true
 ---
 
 # /app-init — Kick off a new app project
@@ -81,7 +82,8 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    git rev-parse --is-inside-work-tree >/dev/null 2>&1 || git init -b main
    touch .gitignore
    for p in .agent-wt/ .studio-stop docs/31-board-events.jsonl docs/31-board.md \
-            docs/team/runs.jsonl 'docs/team/*-result.json' docs/team/actors.json; do
+            docs/team/runs.jsonl docs/team/runtime-result.json docs/team/journey-result.json \
+            docs/team/actors.json; do
      grep -qxF "$p" .gitignore || printf '%s\n' "$p" >> .gitignore
    done
    ```
@@ -90,7 +92,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    `devops-engineer` wrote (plus `docs/team/actors.json`, which holds plaintext actor keys). The
    board log and its rendering live in the main checkout only — a
    `git checkout` must not roll the board back, and ICs get their ticket through the spawn prompt,
-   not from the board file. `docs/team/messages.jsonl` and the `docs/team/*.json` manifests stay
+   not from the board file. `docs/team/messages.jsonl` and the dispatch manifests stay
    **tracked**: they are project decisions and history a reviewer should be able to read.
 
    Then generate, seeded from the House Knowledge Base (`${CLAUDE_PLUGIN_ROOT}/knowledge/`) and the
@@ -153,7 +155,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 5a. **Commit the planning docs**, staging by explicit path — never a blanket add:
 
    ```bash
-   for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent docs/team/messages.jsonl \
+   for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent/ docs/team/messages.jsonl \
             docs/0*.md docs/1*.md docs/2*.md; do [ -e "$f" ] && git add -- "$f"; done
    git diff --cached --name-only    # confirm only those landed
    git commit -m "docs: project plan from /app-init"

@@ -1,6 +1,6 @@
 ---
 name: policy-checker
-description: Validate project privacy, security, licensing, accessibility, release, and waiver policies with explicit evidence.
+description: Use when a change touches privacy, security, licensing, accessibility, release or waiver policy, to check the project policy with explicit evidence. Used by code-reviewer before approving such a diff.
 ---
 
 # Policy checker

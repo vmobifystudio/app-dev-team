@@ -1,3 +1,9 @@
+---
+description: Propose a durable memory, or review one for promotion — only a named reviewer can promote
+argument-hint: [propose | review | list | retrieve | verify] [--id MEM-...]
+allowed-tools: Read, Bash
+---
+
 # /app-memory — govern durable memory
 
 Agents may propose memory, but only a named reviewer can promote it:

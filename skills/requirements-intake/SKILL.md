@@ -1,6 +1,6 @@
 ---
 name: requirements-intake
-description: Use at the very start of a new app project to convert a one-line idea or rough brief into a structured requirements document the CEO/CPO/CTO agents can act on. Triggers when the user says "build an app", "I have an idea for an app", or kicks off /app-init with a fuzzy prompt.
+description: Use at the very start of a new app project to turn a one-line idea or rough brief into docs/01-intake.md — "build an app", "I have an idea for an app". Run by /app-init (and /app-run through it).
 ---
 
 # Requirements intake

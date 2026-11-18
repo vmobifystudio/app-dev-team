@@ -1,3 +1,9 @@
+---
+description: Route a change by blast radius — the risk tier, model tier, approvers and evidence it requires
+argument-hint: <changed file> [short change description]
+allowed-tools: Read, Bash
+---
+
 # /app-risk — route by blast radius
 
 ```sh

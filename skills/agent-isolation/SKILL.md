@@ -1,6 +1,6 @@
 ---
 name: agent-isolation
-description: Use before spawning any agent that writes files, and by every developer/fixer agent as its first and last action. Gives each agent its own git worktree, forbids blanket staging, and requires confirming a mutation actually landed. Triggers from /app-build, /app-audit, parallel-orchestrator, and any parallel agent launch. Prevents parallel agents corrupting each other's work.
+description: Use before spawning any agent that writes files, and as every developer/fixer agent's first and last action — one git worktree per writer, explicit-path staging, confirm the mutation landed. Used by the /app-build orchestrator and every IC.
 ---
 
 # Agent isolation

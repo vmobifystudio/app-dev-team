@@ -1,3 +1,9 @@
+---
+description: Validate the task plan and compute the ready dispatch queue within max_parallel capacity
+argument-hint: [schedule plan path]
+allowed-tools: Read, Bash
+---
+
 # /app-schedule — deterministic dispatch
 
 Validate the current task plan and compute a ready queue:

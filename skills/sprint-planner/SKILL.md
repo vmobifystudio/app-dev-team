@@ -110,8 +110,8 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    board.mjs move APP-001 done_reported --by android-developer
    board.mjs move APP-001 verified --by tech-manager --detail "verify-done.sh green"
    board.mjs move APP-001 review_requested --by android-developer --detail "-> code-reviewer"
-   board.mjs move APP-001 changes --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-1.md
-   board.mjs move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-2.md
+   board.mjs move APP-001 changes --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md
+   board.mjs move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md
    board.mjs move APP-001 merged --by tech-manager      # the orchestrator's inline merge gate
    board.mjs move APP-001 reopened --by founder         # only the founder, only past the review cap
    board.mjs show [APP-001] [--json]      # derived state + self-metrics

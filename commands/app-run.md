@@ -2,6 +2,7 @@
 description: Mostly-autonomous end-to-end run — idea → scope-lock → sprint loop → ship-readiness, surfacing only blockers and the two human gates (scope-lock, ship)
 argument-hint: [one-line idea, optional] [--yolo to skip scope-lock] [--utility for a utility-tier app]
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+disable-model-invocation: true
 ---
 
 # /app-run — Drive the whole build, mostly on its own

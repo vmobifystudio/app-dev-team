@@ -1,6 +1,6 @@
 ---
 name: ic-workflow
-description: Use when working an implementation ticket as any IC role — app, backend, web, CLI, library, or a specialist like monetization. Holds the ticket lifecycle every one of them runs: branch-before-you-write isolation, the choke-point rule, the read order, the commit and daily-fragment discipline, and the CODE output contract. Triggers the moment an IC agent is handed a ticket ID. Product-agnostic: the language, framework and hazards live in the agent file that invokes this.
+description: Use when an IC is handed an implementation ticket ID, whatever the product — branch-before-write, the choke-point rule, read order, commit and daily-fragment discipline, the CODE output contract. Used by every developer role.
 ---
 
 # IC workflow

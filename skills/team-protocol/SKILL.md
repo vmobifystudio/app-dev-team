@@ -1,6 +1,6 @@
 ---
 name: team-protocol
-description: Use whenever one role needs something from another role — a blocker, a spec question, a cross-platform divergence, a handoff, or an escalation. Defines the durable team message ledger, who may talk to whom, the anti-ping-pong guard, and when to escalate to the user instead. Triggers from every agent that would otherwise say "I need X from Y" and stop.
+description: Use whenever one role needs something from another — a blocker, a spec question, a handoff, an escalation — and as the reference for the team ledger, who may message whom, and the output contract. Used by every role.
 ---
 
 # Team protocol
@@ -319,6 +319,7 @@ Canonical paths, used verbatim by the loop — no other spelling is recognised:
 | runtime-gate's recorded verdict, read by the readiness reducer | `docs/team/runtime-result.json` |
 | The project's platform, pinned toolchain and test scopes (F6) | `docs/team/project-profile.json` |
 | The artifact bound to its commit (F17) | `docs/team/release-candidates.jsonl` |
+| The run ledger — leases and attempts (gitignored, main checkout only) | `docs/team/runs.jsonl` |
 | Every `name/vN` this studio writes, and who reads it (F7) | `docs/team/schema-registry.json` |
 
 **The four dispatch manifests** — `dispatch-preflight` refuses to spawn any owner without all four,

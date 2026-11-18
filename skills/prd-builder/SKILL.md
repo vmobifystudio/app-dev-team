@@ -1,6 +1,6 @@
 ---
 name: prd-builder
-description: Use to construct a complete Product Requirements Document for a mobile app from a vision file. Used primarily by the CPO agent. Triggers on requests to "write the PRD", "spec out the product", or as part of /app-plan.
+description: Use to write the Product Requirements Document from the vision file — "write the PRD", "spec out the product". Used by cpo, and by ceo's founder pass on utility tier, during /app-init.
 ---
 
 # PRD builder

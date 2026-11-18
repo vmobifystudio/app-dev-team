@@ -1,6 +1,6 @@
 ---
 name: content-design
-description: Use when writing or reviewing any string a user reads — labels, buttons, empty states, errors, permission prompts, onboarding, notifications. Invoked by ux-architect and product-designer while specifying screens, and by product-manager when a clarification turns out to be a copy decision. Triggers the moment a placeholder string would ship.
+description: On an app-dev-team project, use when writing or reviewing any string a user reads — labels, empty states, errors, permission prompts, notifications. Used by ux-architect, product-designer and product-manager.
 ---
 
 # Content design

@@ -1,6 +1,6 @@
 ---
 name: board-doctor
-description: Use to validate docs/31-board.md before spawning any agent, and to verify a developer's "DONE" claim before moving a row to review. Triggers as step 0 of /app-build and /app-run, from /app-status, and any time the board looks inconsistent. Catches tickets the sprint loop cannot see.
+description: Use to validate the board before spawning any agent and to verify a developer's DONE before review. Run at the top of every /app-build and /app-run round, by /app-status, and whenever the board looks inconsistent.
 ---
 
 # Board doctor
