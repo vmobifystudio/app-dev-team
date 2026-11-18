@@ -17,7 +17,7 @@
  */
 import { createHash } from 'node:crypto';
 
-import { gitAt, isAncestor, ticketTip } from './integration.mjs';
+import { gitAt, integrationBase, isAncestor, ticketTip } from './integration.mjs';
 
 const sameTicket = (a, b) => String(a ?? '').toUpperCase() === String(b ?? '').toUpperCase();
 
@@ -66,6 +66,17 @@ export function checkApprovals(events, { ticket = '', head = '', cwd = process.c
     const base = detail.base || null;
     if (!base) {
       issues.push(`${id}: approval names no base — it binds the single commit ${detail.commit}, so any earlier commit on the branch is unapproved. Re-bind with --bind (or --base <sha>).`);
+    }
+    // C4G-G5: THE APPROVED RANGE MUST COVER THE WHOLE BRANCH. `approved --bind --base <tip~1>` bound
+    // a one-commit range, and merged accepted it — every earlier commit on the branch rode in
+    // unreviewed. With a ticket and a head, the recorded base must be merge-base(integration, head)
+    // or an ancestor of it.
+    if (ticket && headSha && base) {
+      const integration = integrationBase(git);
+      const mb = integration ? git(['merge-base', integration, headSha]) : null;
+      if (mb && base !== mb && !isAncestor(git, base, mb)) {
+        issues.push(`${id}: the approval's range starts at ${String(base).slice(0, 12)}, after where the branch leaves ${integration} (${mb.slice(0, 12)}) — commits ${mb.slice(0, 12)}..${String(base).slice(0, 12)} were never in the reviewed range. Re-bind with --bind (its default base is that merge-base).`);
+      }
     }
     const diff = git(['diff', base || `${detail.commit}^`, detail.commit, '--binary']);
     if (diff !== null) {

@@ -127,11 +127,14 @@ function readLog(root, rec) {
 }
 
 /** Declared test commands by scope (project-profile test.fast / test.full). {} when none. */
-function profileTests(root) {
+function testsOf(text) {
   try {
-    const t = JSON.parse(readFileSync(resolve(root, 'docs/team/project-profile.json'), 'utf8')).test || {};
+    const t = JSON.parse(text).test || {};
     return Object.fromEntries(['fast', 'full'].filter((k) => typeof t[k] === 'string' && t[k].trim()).map((k) => [k, t[k]]));
   } catch { return {}; }
+}
+function profileTests(root) {
+  try { return testsOf(readFileSync(resolve(root, 'docs/team/project-profile.json'), 'utf8')); } catch { return {}; }
 }
 
 /**
@@ -145,10 +148,22 @@ function profileTests(root) {
  * what gets frozen — it is in the tree, reviewable, and every later edit needs the orchestrator.
  */
 export const BOARD_LOG = 'docs/31-board-events.jsonl';
+/**
+ * C4G-G4: what gets FROZEN is the profile COMMITTED on the integration branch
+ * (`git show <integration>:docs/team/project-profile.json`), never a working-tree edit of it — an
+ * uncommitted edit is nobody's decision.
+ * BOUND: no git repository, no integration branch, or a profile never committed there → the
+ * working-tree file (there is no committed decision to prefer; /app-init commits the profile, so a
+ * real project leaves this bound after its first commit).
+ */
 export function currentTestProfile(root) {
+  const git = gitAt(root);
+  const integration = git(['rev-parse', '--git-dir']) === null ? '' : integrationBase(git);
+  const text = integration ? git(['show', `${integration}:docs/team/project-profile.json`]) : null;
+  if (text !== null) return { commands: testsOf(text), sha: sha256(`${text}\n`), source: integration };
   let sha = null;
   try { sha = sha256(readFileSync(resolve(root, 'docs/team/project-profile.json'))); } catch { /* no profile */ }
-  return { commands: profileTests(root), sha };
+  return { commands: profileTests(root), sha, source: 'working tree' };
 }
 export function frozenTestProfile(logPath) {
   let frozen = null;
@@ -164,7 +179,7 @@ export const sameCommands = (a, b) => JSON.stringify(Object.entries(a || {}).sor
 /** The commands a record must have run: the board's frozen set, else (nothing frozen yet) the profile's. */
 function declaredCommands(root) {
   const frozen = frozenTestProfile(resolve(root, BOARD_LOG)).commands;
-  return Object.values(frozen || profileTests(root));
+  return Object.values(frozen || currentTestProfile(root).commands); // C4G-G4: committed, not the working tree
 }
 /**
  * FB4: the COMMAND decides, not who typed it — an explicit command string identical to a declared
@@ -182,12 +197,32 @@ export function commandAccepted(root, rec) {
   return { ok: true };
 }
 
-// ponytail: "a document" is a path under docs/ or a prose extension. A docs ticket shipping a .json
-// schema needs a real test run; widen this list only with a reason.
-// G2-25: a docs/ that is a SERVED SITE (GitHub Pages: docs/index.html, _config.yml or CNAME at the
-// head) is product, not documentation — there only prose extensions count as documents.
-const PROSE_FILE = /\.(md|mdx|txt|rst)$/i;
-const docFile = (served) => (f) => PROSE_FILE.test(f) || (!served && /^docs\//.test(f));
+// C4G-G1: WHAT COUNTS AS "A DOCUMENT". It used to be "any .md/.mdx/.txt anywhere, and all of
+// docs/" — so a QA- branch changing docs/team/risk-policy.json ({"rules":[]}), project-profile.json,
+// CMakeLists.txt, requirements.txt or app/page.mdx was verified AND merged with no review, and the
+// relaxed risk policy governed every later merge. Now:
+//   - docs/team/** is the studio's CONTROL and DATA plane (risk policy, profile, capabilities,
+//     tokens, evidence, schedule…): never a document. The one exception is a QA- ticket's own
+//     deliverable, docs/team/journeys/<id>.json (qa-engineer writes them with the test plan).
+//   - build/dependency manifests are never documents, wherever they sit (a .txt or .json name
+//     does not make requirements.txt or package.json prose).
+//   - under docs/ (not docs/team/): any file, except the board log and — when docs/ is a SERVED
+//     SITE (G2-25: index.html, _config.yml or CNAME at its head) — anything but .md / .rst / .txt.
+//   - outside docs/: .md / .rst only, and never for a QA- ticket (the fast path skips review, so it
+//     gets docs/ prose only: CLAUDE.md or .claude/agents/*.md are instructions, not documents).
+//   - .mdx is never a document: it is a JSX module.
+// ponytail: an allow-shape, not a full map of every control file; widen it only with a reason.
+const MANIFEST = /(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|pnpm-(lock|workspace)\.yaml|yarn\.lock|bun\.lockb?|CMakeLists\.txt|[^/]*\.cmake|Makefile|GNUmakefile|requirements[^/]*\.txt|constraints[^/]*\.txt|Pipfile(\.lock)?|pyproject\.toml|setup\.(py|cfg)|poetry\.lock|Gemfile(\.lock)?|Podfile(\.lock)?|[^/]*\.podspec|Cartfile(\.resolved)?|Package\.(swift|resolved)|[^/]*\.gradle(\.kts)?|gradle\.properties|gradle-wrapper\.properties|Cargo\.(toml|lock)|go\.(mod|sum)|Dockerfile|[^/]*\.csproj|Directory\.Build\.props)$/;
+const PROSE_ANYWHERE = /\.(md|rst)$/i;
+const PROSE_IN_DOCS = /\.(md|rst|txt)$/i;
+const QA_JOURNEY = /^docs\/team\/journeys\/[^/]+\.json$/;
+export const docFile = (served, { qa = false } = {}) => (f) => {
+  if (MANIFEST.test(f) || /\.mdx$/i.test(f)) return false;
+  if (f.startsWith('docs/team/')) return qa && QA_JOURNEY.test(f);
+  if (f === BOARD_LOG) return false;
+  if (f.startsWith('docs/')) return served ? PROSE_IN_DOCS.test(f) : true;
+  return !qa && PROSE_ANYWHERE.test(f);
+};
 function docsIsServedSite(git, head) {
   const listed = git(['ls-tree', '--name-only', `${head}:docs`]);
   return Boolean(listed && listed.split('\n').some((f) => ['index.html', '_config.yml', 'CNAME'].includes(f)));
@@ -196,19 +231,25 @@ function docsIsServedSite(git, head) {
 /**
  * C3G-4 / design B: does `head` change documents only? The file list is derived from
  * merge-base(INTEGRATION BRANCH, head) — never from a record's or caller's base, which could be
- * `head~1` and hide every code commit before it. `{ok, files}` or `{ok:false, code, reason}`.
+ * `head~1` and hide every code commit before it. `{ok, files, base}` or `{ok:false, code, reason}`.
+ *   qa    the QA- fast path's stricter set (docFile above).
+ *   base  C4G-G2: the merge-base the BOARD recorded at `merged` (never a caller's). Once the QA
+ *         branch is fast-forwarded into the integration branch, merge-base(integration, tip) IS the
+ *         tip and the branch "changes no files" — `closed` diffs the recorded base instead. It must
+ *         still be an ancestor of `head`.
  */
-export function docsOnlyDiff(git, head) {
+export function docsOnlyDiff(git, head, { qa = false, base = '' } = {}) {
   const integration = integrationBase(git);
   if (!integration) return { ok: false, code: 2, reason: 'no integration branch (develop/main/master) exists, so what the branch changes — and whether it is documents only — is unknown' };
-  const mb = git(['merge-base', integration, head]);
+  if (base && !(base === head || isAncestor(git, base, head))) return { ok: false, code: 1, reason: `the merge-base recorded at merged (${String(base).slice(0, 12)}) is not an ancestor of ${String(head).slice(0, 12)}` };
+  const mb = base || git(['merge-base', integration, head]);
   if (!mb) return { ok: false, code: 2, reason: `${String(head).slice(0, 12)} shares no history with ${integration}` };
   const files = (git(['diff', '--name-only', mb, head]) || '').split('\n').filter(Boolean);
-  if (!files.length) return { ok: false, code: 1, reason: `the branch changes no files against ${integration} (re-derived from git), so a --docs-only record verifies nothing` };
-  const isDoc = docFile(docsIsServedSite(git, head));
+  if (!files.length) return { ok: false, code: 1, reason: `the branch changes no files against ${base ? `the merge-base recorded at merged (${mb.slice(0, 12)})` : integration} (re-derived from git), so a --docs-only record verifies nothing` };
+  const isDoc = docFile(docsIsServedSite(git, head), { qa });
   const code = files.filter((f) => !isDoc(f));
-  if (code.length) return { ok: false, code: 1, reason: `the branch changes non-document files against ${integration} (re-derived from git): ${code.slice(0, 5).join(', ')}${code.length > 5 ? ', …' : ''}` };
-  return { ok: true, files };
+  if (code.length) return { ok: false, code: 1, reason: `the branch changes non-document files against ${integration} (re-derived from git): ${code.slice(0, 5).join(', ')}${code.length > 5 ? ', …' : ''}${qa ? ' — on a QA- ticket only docs/ prose (outside docs/team/) and docs/team/journeys/*.json are documents' : ''}` };
+  return { ok: true, files, base: mb };
 }
 
 /**
@@ -277,7 +318,7 @@ export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = pr
     }
   } else if (rec.mode === 'docs-only') {
     if (afterTs) return fail('is a --docs-only record; QA needs a run of the suite or a journey-gate result');
-    const d = docsOnlyDiff(git, rec.head);
+    const d = docsOnlyDiff(git, rec.head, { qa: /^QA-/i.test(String(ticket)) });
     if (!d.ok) return fail(`is --docs-only, but ${d.reason} — run the tests`, d.code);
   } else if (!((allowStatic || staticOnly) && rec.mode === 'static')) {
     return fail(`has mode ${JSON.stringify(rec.mode)}; only "tests" and "docs-only" earn verified (a "static" record is what verified_static cites)`);

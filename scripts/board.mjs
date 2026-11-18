@@ -167,7 +167,7 @@ const VALUE_FLAGS = new Set([
   'token', 'role', 'ticket', 'ttl-minutes', 'token-id',
 ]);
 
-const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
+const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die, listFlags: { file: ',', depends: ',', invariant: ';' } });
 
 /**
  * Every free-text field an agent supplies, filtered through the credential patterns before it is
@@ -995,9 +995,12 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     const g = gitAt(process.cwd());
     const subj = g(['rev-parse', '--git-dir']) === null ? { error: 'no repository' } : mergeSubject(g, ticket, flags);
     if (!subj.error) {
+      // C4G-G2: a docs-only QA- merge also records the base its docs-only proof was taken against.
+      const qaBase = isQaDocs(tickets.get(key(ticket))) ? docsOnlyDiff(g, subj.sha, { qa: true }).base : '';
+      const rec = { merged_head: subj.sha, ...(qaBase ? { merge_base: qaBase } : {}) };
       event.detail = typeof event.detail === 'object' && event.detail
-        ? { ...event.detail, merged_head: subj.sha }
-        : { note: event.detail || undefined, merged_head: subj.sha };
+        ? { ...event.detail, ...rec }
+        : { note: event.detail || undefined, ...rec };
     }
   }
 
@@ -1028,6 +1031,30 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     );
   }
   if (name === 'blocked') reportCascade(next.tickets, ticket);
+  if (name === 'closed' && isQaDocs(state)) printQaLanding(ticket, events);
+}
+
+/**
+ * C4W-2: a docs-only QA- ticket never rides a wave (wave-integrate skips QA-), so its files reach
+ * the integration branch by ONE documented command — the fast-forward the destructive-git hook
+ * allows. Printed after `closed`; running it before `closed` works too (closed diffs the merge-base
+ * recorded at merged).
+ */
+function printQaLanding(ticket, events) {
+  const g = gitAt(process.cwd());
+  const base = integrationBase(g);
+  const head = recordedMergeHead(events, ticket);
+  if (!base || !head) return;
+  if (isAncestor(g, head, base)) { process.stdout.write(`  ${ticket}'s files are already on ${base}.\n`); return; }
+  const tip = ticketTip(g, ticket, boardIds());
+  const branch = tip.sha === head ? tip.branch : head;
+  process.stdout.write(
+    `  Land ${ticket}'s documents on ${base} (docs-only, reviewed inline — a fast-forward, no merge commit):\n` +
+    `    git checkout ${base} && git merge --ff-only ${branch}\n` +
+    (isAncestor(g, g(['rev-parse', base]) || '', head) ? ''
+      : `  ${base} has moved since the QA branch was cut, so that is not a fast-forward yet. Rebase it first (documents only, nothing to re-review):\n` +
+        `    git rebase ${base} ${branch} && git checkout ${base} && git merge --ff-only ${branch}\n`)
+  );
 }
 
 /**
@@ -1049,7 +1076,7 @@ function freezeTestProfile(name, ticket, flags, event, paths) {
     if (studioPolicy().policy.requireActorTokens === true && event.actor?.mode !== 'token') {
       return `re-freezing the test commands needs the orchestrator's token:${inlineTokenFlag(root, 'tech-manager', ticket)}`;
     }
-    if (!Object.keys(cur.commands).length) return 'the project profile declares no test command to freeze';
+    if (!Object.keys(cur.commands).length) return `the project profile (read from ${cur.source}) declares no test command to freeze`;
     event.test_profile = { commands: cur.commands, sha: cur.sha, at: event.ts };
     return '';
   }
@@ -1060,7 +1087,7 @@ function freezeTestProfile(name, ticket, flags, event, paths) {
   }
   if (sameCommands(frozen.commands, cur.commands)) return '';
   const show = (c) => JSON.stringify(c || {});
-  return `docs/team/project-profile.json declares test commands ${show(cur.commands)}, but this board froze ${show(frozen.commands)}.\n` +
+  return `docs/team/project-profile.json (${cur.source === 'working tree' ? 'working tree' : `as committed on ${cur.source}`}) declares test commands ${show(cur.commands)}, but this board froze ${show(frozen.commands)}.\n` +
     '  A test command is what a green means, and the profile is a file anyone with Write can edit, so the board\n' +
     '  keeps the frozen set until the orchestrator records the change. Restore the profile, or (orchestrator) run:\n' +
     `    node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move ${ticket} corrected --by tech-manager --test-profile${inlineTokenFlag(root, 'tech-manager', ticket)}`;
@@ -1090,10 +1117,13 @@ function gitRefusal(name, ticket, flags, events, state) {
   // Design decision 1 + design B: a docs-only QA- ticket closes from merged without integration —
   // but only while GIT still proves its branch changes documents only, re-derived at merged and
   // closed against the integration branch (a code commit added after `verified` ends the fast path).
+  // C4G-G2 / C4W-2: `closed` diffs against the merge-base RECORDED at `merged`, so the documented
+  // `git merge --ff-only qa/<ID>` works before or after `closed` (after the fast-forward,
+  // merge-base(integration, tip) is the tip itself and the branch "changed no files").
   if (state && isQaDocs(state)) {
     const subj = recorded ? { sha: recorded } : mergeSubject(git, ticket, flags);
     if (subj.error) return `${subj.error} — the QA- docs-only fast path must know which commit it is about.`;
-    const d = docsOnlyDiff(git, subj.sha);
+    const d = docsOnlyDiff(git, subj.sha, { qa: true, base: name === 'closed' ? recordedMergeBase(events, ticket) : '' });
     return d.ok ? '' : `${ticket} is on the QA- docs-only fast path, but ${d.reason}. A QA ticket that changes code takes the normal path (review_requested -> approved -> merged).`;
   }
   const binding = studioPolicy().policy.requireApprovalBinding === true;
@@ -1130,6 +1160,12 @@ function gitRefusal(name, ticket, flags, events, state) {
   if (subj.error) return `requireApprovalBinding is on and ${ticket}'s branch tip is unknown: ${subj.error}`;
   const { issues } = checkApprovals(events, { ticket, head: subj.sha, cwd: process.cwd() });
   return issues.length ? `the approval is not bound to ${subj.sha}:\n  ${issues.join('\n  ')}` : '';
+}
+
+/** C4G-G2: the merge-base the last `merged` of a docs-only QA- ticket recorded ('' when none). */
+function recordedMergeBase(events, ticket) {
+  const m = events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'merged');
+  return (m && typeof m.detail === 'object' && m.detail && m.detail.merge_base) || '';
 }
 
 /** C3G-8: the commit the last `merged` on this ticket recorded ('' when none was recorded). */
@@ -1389,7 +1425,11 @@ function cmdActor(sub, flags) {
     const r = withFileLock(regPath, () => mintActorToken({ root, role: String(flags.role || ''), ticket: typeof flags.ticket === 'string' ? flags.ticket : '', ttlMinutes: flags['ttl-minutes'] || 240 }), { die });
     if (!r.ok) die(1, `actor mint: ${r.reason}`);
     process.stderr.write(`board: minted token ${r.record.token_id} for ${r.record.role} on ${r.record.ticket}, expires ${r.record.expires_at}.\n` +
-      "  Put it in THAT agent's spawn prompt only. It is not stored anywhere; mint again if lost.\n");
+      // C4W-13: the orchestrator's own inline `--token "$(… mint --role tech-manager …)"` is not a
+      // spawn — telling it to put the token in an agent's prompt sent it looking for an agent.
+      (r.record.role === 'tech-manager'
+        ? '  Orchestrator token: use it on this one board command (the inline --token "$(…)" form). It is not stored anywhere; mint again if lost.\n'
+        : "  Put it in THAT agent's spawn prompt only. It is not stored anywhere; mint again if lost.\n"));
     process.stdout.write(`${r.token}\n`);
     return;
   }

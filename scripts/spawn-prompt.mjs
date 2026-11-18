@@ -82,7 +82,9 @@ const DESIGN_QA_ROLES = new Set(['ux-architect', 'code-reviewer']);
 const DESIGN_QA_FIELDS = ['DESIGN QA:', 'Ticket:', 'Scope:', '## Not checked'];
 const VERIFY_FIELDS = ['VERIFICATION:', 'Ticket:', '## Not checked'];
 const AUDIT_FIELDS = ['RELEASE AUDIT:', 'docs/76-release-audit.md'];
-const BUDGET = { ic: 4000, reviewer: 8000 };
+// C4W-13: a QA- prompt carries every ticket of the wave and one token each, so its floor is over the
+// IC line by design (role ~1650 + skills ~3220 + ~100 per ticket) — it gets its own line.
+const BUDGET = { ic: 4000, qa: 6000, reviewer: 8000 };
 const EXCERPT_WORDS = 1500;
 const PLATFORM_SPEC = {
   'ios-developer': 'docs/22-impl-spec-ios.md', 'android-developer': 'docs/22-impl-spec-android.md',
@@ -151,7 +153,8 @@ function reportBudget(role, ticket, text, skillKey) {
   (MANDATORY_SKILLS[skillKey] || MANDATORY_SKILLS[role] || []).forEach(add);
   const skillWords = [...skills].reduce((n, s) => n + fileWords(resolve(HERE, '..', 'skills', s, 'SKILL.md')), 0);
   const total = words(text) + roleWords + skillWords;
-  const budget = REVIEW_ROLES.has(role) || role === 'release-auditor' || skillKey === 'design-qa' ? BUDGET.reviewer : BUDGET.ic;
+  const budget = REVIEW_ROLES.has(role) || role === 'release-auditor' || skillKey === 'design-qa' ? BUDGET.reviewer
+    : role === 'qa-engineer' && /^QA-/i.test(String(ticket)) ? BUDGET.qa : BUDGET.ic;
   process.stderr.write(`spawn-prompt: ${role} ${ticket}: prompt ${words(text)} + role file ${roleWords} + mandatory skills ${skillWords} (${[...skills].join(', ') || 'none'}) = ${total} words (budget ${budget}; references and skills loaded on demand not counted)\n`);
   if (total > budget) process.stderr.write(`spawn-prompt: WARNING — OVER BUDGET by ${total - budget} words. Not a refusal; trim the role file, its mandatory skills, or the specs this ticket pulls in.\n`);
 }

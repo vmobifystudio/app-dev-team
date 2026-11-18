@@ -54,7 +54,7 @@ import {
   MAX_CHAIN,
   MAX_PER_TICKET,
 } from './lib/messages.mjs';
-import { parseEventLog, reduce as reduceEvents } from './lib/events.mjs';
+import { parseEventLog, reduce as reduceEvents, isQaDocs } from './lib/events.mjs';
 // --------------------------------------------------------------------------------------------
 // the cascade
 // --------------------------------------------------------------------------------------------
@@ -469,7 +469,7 @@ function diagnose(board, ledger, capabilities, messages = []) {
       });
     }
 
-    if (POST_REVIEW_STATUS.has(row.status) && approvals.length === 0) {
+    if (POST_REVIEW_STATUS.has(row.status) && approvals.length === 0 && !capabilities.qaDocs?.has(String(normalizeId(row.id)).toUpperCase())) {
       pushReview({
         code: 'done_without_review',
         ticketId: row.id,
@@ -712,14 +712,22 @@ function main() {
   const diverged = reportViewDivergence(boardPath, board);
 
   // Review cycles the founder granted with `reopened` raise this ticket's cap; only the log knows them.
+  // C4W-1: a docs-only QA- ticket is reviewed INLINE (design decision 1) — `merged` re-proved from git
+  // that it changes documents only, so it has no ledger approval by design, and done_without_review
+  // on it blocked every round after the first QA ticket with a fix the board refuses.
   const extraCycles = new Map();
+  const qaDocs = new Set();
   try {
     const logPath = join(dirname(boardPath), '31-board-events.jsonl');
     if (existsSync(logPath)) {
-      for (const [id, t] of reduceEvents(parseEventLog(readFileSync(logPath, 'utf8')).events).tickets) if (t.extraCycles) extraCycles.set(id, t.extraCycles);
+      for (const [id, t] of reduceEvents(parseEventLog(readFileSync(logPath, 'utf8')).events).tickets) {
+        if (t.extraCycles) extraCycles.set(id, t.extraCycles);
+        if (isQaDocs(t)) qaDocs.add(id);
+      }
     }
   } catch { /* an unreadable log is loadLog's problem */ }
   capabilities.extraCycles = extraCycles;
+  capabilities.qaDocs = qaDocs;
   const result = diagnose(board, ledger, capabilities, channel.messages);
   if (!options.quiet || result.anomalies.length > 0) report(result, board, capabilities, options);
   if (diverged && !result.anomalies.length) {

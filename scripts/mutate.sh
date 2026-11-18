@@ -297,7 +297,7 @@ MF03@@scripts/lib/evidence.mjs@@if (forged in f) bye(2,@@if (false) bye(2,@@F1: 
 MF04@@scripts/lib/evidence.mjs@@if (!declared.length) {@@if (false) {@@F1: a profile that declares no test command cannot verify a code ticket (G2-3)@@Sprint 3 track F1
 MF05@@scripts/lib/evidence.mjs@@const exact = rec.produced_by === 'verify-done.sh' && !afterTs;@@const exact = false;@@F1: verified evidence from a DESCENDANT of the ticket tip is refused (G2-4)@@Sprint 3 track F1
 MF06@@scripts/lib/evidence.mjs@@if (rec.assertion_census?.assert_nothing) {@@if (false) {@@F1: ...and the board refuses verified on that record@@Sprint 3 track F1
-MF07@@scripts/lib/evidence.mjs@@const isDoc = docFile(docsIsServedSite(git, head));@@const isDoc = docFile(false);@@F1: a --docs-only record over a served docs/ site (docs/index.html) is refused (G2-25)@@Sprint 3 track F1
+MF07@@scripts/lib/evidence.mjs@@const isDoc = docFile(docsIsServedSite(git, head), { qa });@@const isDoc = docFile(false, { qa });@@F1: a --docs-only record over a served docs/ site (docs/index.html) is refused (G2-25)@@Sprint 3 track F1
 MF08@@scripts/lib/verdict.mjs@@if (event === 'approved' && NOTHING_REVIEWED.test(body)) {@@if (false) {@@F1: an APPROVE whose ## Not checked says Everything is refused (G2-26)@@Sprint 3 track F1
 MF09@@scripts/lib/verdict.mjs@@const scope = sides.length === 2 && sides[0] && sides[1] ? [scopeLine[0], sides[0], sides[1]] : null;@@const scope = scopeLine ? [scopeLine[0], sides[0], sides.slice(1).join('..')] : null;@@F1: a three-sided Scope is refused by the verdict contract itself, with or without --bind (G2-5)@@Sprint 3 track F1
 MF10@@scripts/board.mjs@@if (!manifest || manifest.schema !== 'context-manifest/v2' || !Array.isArray(manifest.sources)) {@@if (false) {@@F1: --bind --context must be a context-manifest/v2 (G2-6)@@Sprint 3 track F1
@@ -348,14 +348,14 @@ ML25@@scripts/drivers/web.sh@@drives a RUNNING app. Start it ${SERVE}@@drives a 
 MK01@@scripts/board.mjs@@if (sameCommands(frozen.commands, cur.commands)) return '';@@return '';@@K1: a gate event under a profile whose test commands changed is refused (C3G-3)@@Sprint 4 track K1
 MK02@@scripts/board.mjs@@if (event.by !== 'tech-manager') return 'only the orchestrator@@if (false) return 'only the orchestrator@@K1: only tech-manager re-freezes the test commands@@Sprint 4 track K1
 MK03@@scripts/verify-done.sh@@_cc=$(node "$EV" check-command --record "$EVIDENCE" 2>&1)@@_cc=$(true)@@K1: a green of an undeclared command prints CANNOT EVALUATE, not VERIFIED (FB3)@@Sprint 4 track K1
-MK04@@scripts/lib/evidence.mjs@@const mb = git(['merge-base', integration, head]);@@const mb = git(['rev-parse', `${head}~1`]);@@K1: a --docs-only record whose own base hides a code commit is refused — the diff is from merge-base(integration, tip) (C3G-4)@@Sprint 4 track K1
+MK04@@scripts/lib/evidence.mjs@@const mb = base || git(['merge-base', integration, head]);@@const mb = base || git(['rev-parse', `${head}~1`]);@@K1: a --docs-only record whose own base hides a code commit is refused — the diff is from merge-base(integration, tip) (C3G-4)@@Sprint 4 track K1
 MK05@@scripts/board.mjs@@return d.ok ? '' : `${ticket} is on the QA- docs-only fast path@@return true ? '' : `${ticket} is on the QA- docs-only fast path@@K1: ...but a code commit added after verified ends the fast path at merged (C3G-5)@@Sprint 4 track K1
 MK06@@scripts/journey-gate.mjs@@if (dirname(real) !== realpathSync(DRIVERS_DIR) || !statSync(real).isFile()) {@@if (false) {@@K1: journey-gate refuses a driver that is not one of the plugin's scripts/drivers/* (C3G-6)@@Sprint 4 track K1
 MK07@@scripts/lib/evidence.mjs@@if (drv) return fail(drv);@@if (false) return fail(drv);@@K1: qa_passed refuses a journey result that names no plugin driver (design F)@@Sprint 4 track K1
 MK08@@scripts/lib/evidence.mjs@@run = spawnSync('sh', ['-c', cmd], { cwd: at,@@run = spawnSync('sh', ['-c', cmd], { cwd,@@K1: a skip-worktree'd edit in the developer's tree does not change the result — the committed suite fails (C3G-7)@@Sprint 4 track K1
 MK09@@scripts/lib/readiness.mjs@@.split('\n').some((l) => /^(S|[a-z]) /.test(l));@@.split('\n').some(() => false);@@K1: ...and a skip-worktree entry makes the tree dirty for the gates (ls-files -v)@@Sprint 4 track K1
 MK10@@scripts/board.mjs@@if (landed.length) return@@if (false) return@@K1: closed refuses when the ticket's branch gained commits after merged that are on the integration branch (C3G-8)@@Sprint 4 track K1
-MK11@@scripts/board.mjs@@: { note: event.detail || undefined, merged_head: subj.sha };@@: { note: event.detail || undefined };@@K1: merged records the commit it is about (C3G-8)@@Sprint 4 track K1
+MK11@@scripts/board.mjs@@{ merged_head: subj.sha, ...(qaBase@@{ ...(qaBase@@K1: merged records the commit it is about (C3G-8)@@Sprint 4 track K1
 MK12@@scripts/lib/evidence.mjs@@if (!recordedBranch || !matchesTicket(@@if (false && !matchesTicket(@@K1: a ticket with no branch named for it cannot cite another branch's green (C3G-9)@@Sprint 4 track K1
 MK13@@scripts/lib/evidence.mjs@@.replace(/^refs\/(heads|remotes\/[^/]+)\//, ''), id, ids))[0];@@.replace(/^refs\/(heads|remotes\/[^/]+)\//, ''), id, []))[0];@@K1: verify-done's ticket is the LONGEST board id the branch is named for (C3G-9 / FB5)@@Sprint 4 track K1
 MK14@@scripts/lib/evidence.mjs@@if (tip.ambiguous.length) return { ok: false, code: 1, reason:@@if (tip.ambiguous.length) return { ok: false, code: 2, reason:@@K1: evidence for a ticket with two branches named for it is refused with exit 1 (C3W-9)@@Sprint 4 track K1
@@ -367,6 +367,25 @@ MK19@@scripts/board.mjs@@if (existsSync(out) || out === paths.log) {@@if (false)
 MK20@@scripts/lib/evidence.mjs@@if (rel !== posix.normalize(rel) || rel.startsWith('./') || !rel.startsWith(`${EVIDENCE_DIR}/`)) return@@if (false) return@@K1: a record whose log is spelled docs//team/… is refused (C3G-17)@@Sprint 4 track K1
 MK21@@scripts/lib/actor.mjs@@if (e.code !== 'EAGAIN' || waited >= maxWaitMs) throw e;@@throw e;@@K1: the founder confirmation retries EAGAIN instead of failing (C3G-10)@@Sprint 4 track K1
 MK22@@scripts/lib/events.mjs@@state.staticUnrun = 'the executable test suite';@@state.staticUnrun = String(detail?.note || detail || '').trim() || 'the executable test suite';@@K1: the STATIC ONLY banner never echoes free-text --detail (C3W-13)@@Sprint 4 track K1
+MP01@@scripts/lib/evidence.mjs@@if (f.startsWith('docs/team/')) return qa && QA_JOURNEY.test(f);@@if (false) return false;@@P1: a QA- --docs-only record whose branch changes docs/team/risk-policy.json is refused (C4G-G1)@@Sprint 5 track P1
+MP02@@scripts/lib/evidence.mjs@@if (MANIFEST.test(f) || /\.mdx$/i.test(f)) return false;@@if (false) return false;@@P1: a QA- --docs-only record whose branch changes CMakeLists.txt is refused (C4G-G1)@@Sprint 5 track P1
+MP03@@scripts/lib/evidence.mjs@@return !qa && PROSE_ANYWHERE.test(f);@@return PROSE_ANYWHERE.test(f);@@P1: a QA- --docs-only record whose branch changes README.md is refused (C4G-G1)@@Sprint 5 track P1
+MP04@@scripts/board.mjs@@base: name === 'closed' ? recordedMergeBase(events, ticket) : ''@@base: ''@@P1: a QA- ticket fast-forwarded into main BEFORE closed still closes (C4G-G2)@@Sprint 5 track P1
+MP05@@scripts/board.mjs@@const qaBase = isQaDocs(tickets.get(key(ticket))) ? docsOnlyDiff(g, subj.sha, { qa: true }).base : '';@@const qaBase = '';@@P1: merged records the merge-base its docs-only proof was taken against (C4G-G2)@@Sprint 5 track P1
+MP06@@scripts/board.mjs@@if (name === 'closed' && isQaDocs(state)) printQaLanding(ticket, events);@@if (false) printQaLanding(ticket, events);@@P1: ...and closed prints the exact ff-only command that lands its files (C4W-2)@@Sprint 5 track P1
+MP07@@scripts/lib/events.mjs@@return withCorrection(state.qaPassed || isQaTicket(state)@@return ((x) => x)(state.qaPassed || isQaTicket(state)@@P1: corrected is legal while a ticket sits in qa (C4G-G3)@@Sprint 5 track P1
+MP08@@scripts/lib/evidence.mjs@@if (text !== null) return { commands: testsOf(text)@@if (false) return { commands: testsOf(text)@@P1: the board freezes main's committed profile, not an uncommitted working-tree edit (C4G-G4)@@Sprint 5 track P1
+MP09@@scripts/lib/approval.mjs@@if (mb && base !== mb && !isAncestor(git, base, mb)) {@@if (false) {@@P1: merged refuses an approval bound to tip~1..tip@@Sprint 5 track P1
+MP10@@scripts/project-profile.mjs@@blocked += coldDeps.length;@@blocked += 0;@@P1: project-profile check BLOCKS a bare 'npm test'@@Sprint 5 track P1
+MP11@@scripts/board-doctor.mjs@@ && !capabilities.qaDocs?.has(String(normalizeId(row.id)).toUpperCase())) {@@) {@@P1: board-doctor exempts a docs-only QA- ticket that closed through the gate from done_without_review (C4W-1)@@Sprint 5 track P1
+MP12@@scripts/scheduler.mjs@@(task?.status === 'complete' || task?.merged === true)@@(task?.status === 'complete')@@P1: qa_failed -> BUG-001-fix is in the scheduler's ready set@@Sprint 5 track P1
+MP13@@scripts/scheduler.mjs@@const ids = new Set(plan.tasks.map((task) => up(task.id)));@@const ids = new Set(plan.tasks.map((task) => task.id));@@P1: qa_failed -> BUG-001-fix is in the scheduler's ready set@@Sprint 5 track P1
+MP14@@scripts/orchestrator.mjs@@const mine = new Set([key(t.id), ...(t.dependsOn || []).map(key)]);@@const mine = new Set([key(t.id)]);@@P1: the stall detector measures a dependent from its dependency's last move@@Sprint 5 track P1
+MP15@@scripts/lib/args.mjs@@? `${prev}${listFlags[name]}${value}` : value;@@? value : value;@@P1: --file / --invariant repeated accumulate@@Sprint 5 track P1
+MP16@@scripts/verify-done.sh@@  [Qq][Aa]-*)@@  [Qq][Aa]-NEVER)@@P1: verify-done prints the QA inline-merge line for a docs-only QA- ticket@@Sprint 5 track P1
+MP17@@scripts/board.mjs@@(r.record.role === 'tech-manager'@@(false@@P1: a tech-manager self-mint says to use it inline@@Sprint 5 track P1
+MP18@@scripts/orchestrator.mjs@@const part = (code, label) => (byState[code].length ? `${label}: ${byState[code].join(', ')}` : '');@@const part = () => '';@@P1: orchestrator ship's RESULT names the BLOCKED and CANNOT EVALUATE steps (C4W-13)@@Sprint 5 track P1
+MP19@@scripts/spawn-prompt.mjs@@: role === 'qa-engineer' && /^QA-/i.test(String(ticket)) ? BUDGET.qa : BUDGET.ic;@@: BUDGET.ic;@@P1: a qa-engineer prompt on a QA- ticket is measured against the QA budget@@Sprint 5 track P1
 CATALOGUE
 }
 

@@ -332,7 +332,11 @@ function movement(tickets, events) {
     // that looks identical to a careful one, round after round, with a friendly note about it.
     //
     // Round one is unaffected: nothing has ten events behind it yet.
-    const lastIndex = events.map((e, i) => (key(e.ticket) === key(t.id) ? i : -1)).filter((i) => i >= 0).pop();
+    // C4W-5: the clock starts at the LATER of the ticket's own last event and its dependencies' last
+    // event — a dependent becomes ready the moment its last dependency reaches qa/done, and counting
+    // from its own `created` reported it STALLED in the very round it became claimable.
+    const mine = new Set([key(t.id), ...(t.dependsOn || []).map(key)]);
+    const lastIndex = events.map((e, i) => (mine.has(key(e.ticket)) ? i : -1)).filter((i) => i >= 0).pop();
     const since = lastIndex === undefined ? events.length : events.length - 1 - lastIndex;
     if (since >= STALL_EVENTS && !deps.length) {
       stalled.push({ id: t.id, status: isUnclaimed ? 'never claimed' : t.status, since });
@@ -610,6 +614,12 @@ function cmdRound() {
  *   the human submission      I-12. No executable path submits or publishes, and this is a
  *                             read-only reporter, not an exception to that.
  */
+/** C4W-13: the RESULT line names every non-clear step by state, so "CANNOT EVALUATE" (worst wins) never hides a BLOCKED one. */
+function stepTally(byState) {
+  const part = (code, label) => (byState[code].length ? `${label}: ${byState[code].join(', ')}` : '');
+  return [part(1, 'BLOCKED'), part(2, 'CANNOT EVALUATE')].filter(Boolean).join('; ');
+}
+
 function cmdShip() {
   const steps = [
     { name: 'board', argv: [resolve(HERE_SCRIPTS, 'board-doctor.mjs'), resolve(ROOT, 'docs/31-board.md')],
@@ -625,6 +635,7 @@ function cmdShip() {
 
   let worst = 0;
   const lines = [];
+  const byState = { 0: [], 1: [], 2: [] };
   for (const s of steps) {
     const isShell = s.argv[0].endsWith('.sh');
     const r = isShell
@@ -636,6 +647,7 @@ function cmdShip() {
     const code = r.status === 0 ? 0 : r.status === 1 ? 1 : 2;
     worst = Math.max(worst, code);
     const state = code === 0 ? 'CLEAR' : code === 1 ? 'BLOCKED' : 'CANNOT EVALUATE';
+    byState[code].push(s.name);
     lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}` : code === 2 ? ` — ${s.unknown}` : ''}`);
     // W2-20: relay the sub-gate's OWN reason lines — "read its lines verbatim" is useless when
     // nobody printed them. Only the lines that state a non-pass, capped so one gate cannot bury the rest.
@@ -653,8 +665,8 @@ function cmdShip() {
       ? '  All CLEAR. Still to do by hand: the runtime gate, and the human submission decision.\n' +
         '  Nothing here submits or publishes anything — that boundary is constitutional (I-12).\n'
       : worst === 1
-        ? '  RESULT: BLOCKED — do not release. Fix what is named above.\n'
-        : '  RESULT: CANNOT EVALUATE — a precondition could not be checked. This is NOT a pass.\n'
+        ? `  RESULT: BLOCKED (${stepTally(byState)}) — do not release. Fix what is named above.\n`
+        : `  RESULT: CANNOT EVALUATE (worst wins — ${stepTally(byState)}) — a precondition could not be checked. This is NOT a pass;${byState[1].length ? ' fix the BLOCKED step(s) too, they fail whatever the unknown one says.' : ''}\n`
   );
   process.exit(worst);
 }

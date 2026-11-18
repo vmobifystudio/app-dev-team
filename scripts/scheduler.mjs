@@ -97,6 +97,10 @@ if (existsSync(logPath())) {
         // sent at a ticket whose dependency was unmet. The hand-written plan used `depends` and the
         // ordering held; this was a REGRESSION introduced by deriving the set, found by review.
         depends: t.dependsOn || [],
+        // C4W-4: a dependency is SATISFIED where the board's claim gate says so (lib/events.mjs):
+        // merged and not merge-gated on a static verification — qa or done, not only done. A
+        // qa_failed original stays in qa, so done-only deadlocked every BUG-NNN-fix that depends on it.
+        merged: t.events.some((e) => e.event === 'merged') && t.verifiedStatic !== true,
       }));
   } catch (e) {
     die(2, `the event log at ${logPath()} is unreadable, so the ready set cannot be derived: ${e.message}`);
@@ -130,14 +134,17 @@ if (existsSync(logPath())) {
 function logPath() {
   return resolve(String(flags.log || resolve(path, '../../31-board-events.jsonl')));
 }
-const ids = new Set(plan.tasks.map((task) => task.id)); const errors = [];
+// C4W-3: IDs compare case-insensitively, as the board's key() does (it stores `depends` uppercased
+// and ids as typed, so APP-001-analytics read as a missing dependency APP-001-ANALYTICS).
+const up = (id) => String(id ?? '').toUpperCase();
+const ids = new Set(plan.tasks.map((task) => up(task.id))); const errors = [];
 for (const task of plan.tasks) {
   if (!task.id || !task.owner || !['pending', 'running', 'in_review', 'complete', 'blocked'].includes(task.status)) errors.push(`${task.id || '(unknown)'}: invalid identity or status`);
-  for (const dep of task.depends || []) if (!ids.has(dep)) errors.push(`${task.id}: missing dependency ${dep}`);
+  for (const dep of task.depends || []) if (!ids.has(up(dep))) errors.push(`${task.id}: missing dependency ${dep}`);
 }
 if (errors.length) { errors.forEach((error) => console.error(`scheduler: ${error}`)); process.exit(1); }
-const byId = new Map(plan.tasks.map((task) => [task.id, task]));
-function completed(id, seen = new Set()) { if (seen.has(id)) die(1, `dependency cycle includes ${id}`); seen.add(id); const task = byId.get(id); return task?.status === 'complete' && (task.depends || []).every((dep) => completed(dep, seen)); }
+const byId = new Map(plan.tasks.map((task) => [up(task.id), task]));
+function completed(id, seen = new Set()) { if (seen.has(up(id))) die(1, `dependency cycle includes ${id}`); seen.add(up(id)); const task = byId.get(up(id)); return (task?.status === 'complete' || task?.merged === true) && (task.depends || []).every((dep) => completed(dep, new Set(seen))); }
 const running = plan.tasks.filter((task) => task.status === 'running').length;
 const capacity = effectiveCap(plan); if (!Number.isInteger(capacity) || capacity < 1) die(2, 'max_parallel must be a positive integer');
 const ready = plan.tasks.filter((task) => task.status === 'pending' && (task.depends || []).every((dep) => completed(dep)))
