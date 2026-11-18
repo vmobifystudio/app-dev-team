@@ -21,6 +21,10 @@
  */
 
 import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+
+import { gitAt } from './integration.mjs';
 
 import { MAX_REVIEW_CYCLES } from './board.mjs';
 import { checkCapability } from './capabilities.mjs';
@@ -71,6 +75,14 @@ const EVENTS = new Set([
 const isQaTicket = (state) => /^QA-/i.test(String(state?.id ?? ''));
 
 /**
+ * Design decision 1: a QA- ticket whose verification was a --docs-only record IS reviewed inline by
+ * the orchestrator — it goes verified -> merged with no review_requested/approved, and closes from
+ * merged without being on the integration branch. Scoped strictly: a QA- ticket that changed code
+ * (its evidence is a test run, or static) takes the normal path.
+ */
+const isQaDocs = (state) => isQaTicket(state) && state.verified && state.verifiedMode === 'docs-only';
+
+/**
  * `assigned` is the one event beyond the vocabulary the plan decided, and it is here because the
  * plan's own CLI surface requires an `assign` subcommand that the decided table cannot express.
  * Ownership at planning time is not `claimed`: `claimed` starts work, moves the row to in_progress
@@ -111,7 +123,7 @@ function legalEvents(state) {
       // legal list were dead code. Two checks for one rule, one of which could never run.
       // mutate.sh found it: M09 was the single surviving mutation of sixteen, because breaking a
       // guard nothing reaches breaks no assertion.
-      return withCorrection(['review_requested', 'done_reported', 'blocked', 'assigned']);
+      return withCorrection(['review_requested', 'done_reported', 'blocked', 'assigned', ...(isQaDocs(state) ? ['merged'] : [])]);
     case 'review':
       return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned', 'reopened']);
     case 'qa':
@@ -258,6 +270,60 @@ function verifyChain(text) {
   return { ok: true, chained, unchained, tip: previous === null ? sha(text) : previous };
 }
 
+/**
+ * G2-10: TAMPER EVIDENCE THAT HOLDS AGAINST A RECOMPUTED CHAIN, BY DEFAULT.
+ *
+ * The chain alone proves nothing against an editor who recomputes every hash after the line they
+ * changed — it has no secret. So every append also writes the chain's head (line count + tip hash)
+ * to an ANCHOR OUTSIDE THE WORKING TREE: `<git common dir>/studio/board-anchor-<log id>.json`,
+ * shared by every worktree of the repository. A read or append whose chain does not end exactly at
+ * the anchored head — rewritten, truncated, deleted, or lines appended without the CLI — is CANNOT
+ * EVALUATE. Events written while anchoring carry `anchored: true`, so deleting the anchor of an
+ * anchored log is refused too.
+ *
+ * WHY THIS AND NOT AN HMAC. A key "the orchestrator mints into the main session" lives in the
+ * session's environment, which every subagent inherits; the key would be exactly as reachable as
+ * the log. The anchor's real property is LOCATION: Write/Edit on project files never touch .git,
+ * and the subagent guard hook refuses writes into .git/. THE BOUND: the same OS user can rewrite
+ * the log AND the anchor with Bash outside the guard; a project with no git repository has no
+ * anchor (the chain alone, as before). A legacy log is anchored on first use (trust on first use).
+ */
+function anchorPath(logPath) {
+  const dir = dirname(logPath);
+  if (!existsSync(dir)) return '';
+  const common = gitAt(dir)(['rev-parse', '--path-format=absolute', '--git-common-dir']);
+  if (!common) return '';
+  let real;
+  try { real = join(realpathSync(dir), basename(logPath)); } catch { real = resolve(logPath); }
+  return join(common, 'studio', `board-anchor-${createHash('sha256').update(real).digest('hex').slice(0, 16)}.json`);
+}
+function checkAnchor(logPath, text, chain) {
+  const at = anchorPath(logPath);
+  if (!at) return { ok: true };
+  const recover = '  The anchor lives outside the tree (G2-10). Restore the log from a backup that matches it;\n' +
+    '  if the log is genuinely the record and the anchor is wrong, that is a human decision — the\n' +
+    `  founder deletes ${at} by hand, knowing it re-trusts whatever the log now says.`;
+  if (!existsSync(at)) {
+    if (/"anchored":true/.test(text)) return { ok: false, reason: `${logPath} was written under an anchor, and the anchor (${at}) is gone — the log cannot be shown to be the one that was written.\n${recover}` };
+    return { ok: true };
+  }
+  let a;
+  try { a = JSON.parse(readFileSync(at, 'utf8')); } catch (e) { return { ok: false, reason: `the board anchor ${at} is unreadable (${e.message})\n${recover}` }; }
+  if (a.chained === chain.chained && a.tip === chain.tip) return { ok: true };
+  const what = chain.chained < a.chained ? `has ${chain.chained} chained line(s), the anchor recorded ${a.chained} — lines were deleted or the log was replaced`
+    : chain.chained > a.chained ? `has ${chain.chained} chained line(s), the anchor recorded ${a.chained} — lines were appended without the CLI`
+      : 'ends at a different hash than the anchor recorded — the history was rewritten and re-hashed';
+  return { ok: false, reason: `the board log ${logPath} ${what}.\n${recover}` };
+}
+function writeAnchor(logPath, chained, tip) {
+  const at = anchorPath(logPath);
+  if (!at) return;
+  mkdirSync(dirname(at), { recursive: true });
+  const tmp = `${at}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify({ schema: 'board-anchor/v1', log: logPath, chained, tip, at: new Date().toISOString() })}\n`);
+  renameSync(tmp, at);
+}
+
 const REVIEWER_IN_DETAIL = /(?:->|→)\s*([\w-]+)/;
 
 function blankTicket(id) {
@@ -387,12 +453,14 @@ function reduce(events) {
       case 'verified':
         state.verifyPending = false;
         state.verified = true;
+        state.verifiedMode = (detail && typeof detail === 'object' && detail.evidence_mode) || '';
         state.verifiedStatic = false;
         state.staticUnrun = '';
         break;
       case 'verified_static':
         state.verifyPending = false;
         state.verified = true;
+        state.verifiedMode = 'static';
         state.verifiedStatic = true;
         state.staticUnrun = String(detail || '').trim() || 'the executable test suite';
         break;
@@ -487,7 +555,28 @@ function validate(tickets, candidate) {
   // Capability runs LAST, so every older refusal keeps its own words. The self-approval message
   // ("a role does not gate its own work") is the one a reviewer needs to read, and it must not be
   // replaced by a generic capability refusal just because this check is newer.
-  return checkCapability(tickets.get(key(candidate.ticket)), candidate, legalEvents(tickets.get(key(candidate.ticket)) || { status: 'todo' }));
+  const state = tickets.get(key(candidate.ticket));
+  const capable = checkCapability(state, candidate, legalEvents(state || { status: 'todo' }));
+  if (!capable.ok || !state) return capable;
+  // G2-13 runs after capability, so a role that may not write the event at all hears THAT.
+  const sod = separation(state, candidate);
+  return sod ? { ...sod, legal: legalEvents(state).filter((e) => e !== candidate.event) } : capable;
+}
+
+/**
+ * G2-13: separation of duties across gates. With tech-lead in `verified`, `approved`, `merged` and
+ * `closed`, one role could clear the whole gate alone. So: the role that VERIFIED a ticket may not
+ * approve it, and the role that APPROVED it may not merge or close it. The orchestrator's honest
+ * path is untouched — tech-manager verifies, merges and closes, and never approves.
+ */
+function separation(state, { event: name, by }) {
+  if (name === 'approved' && wroteOn(state, by, ['verified', 'verified_static'])) {
+    return { ok: false, reason: `${by} verified ${state.id} — the role that certified the run may not also approve the change. Have another reviewer approve it.` };
+  }
+  if ((name === 'merged' || name === 'closed') && wroteOn(state, by, ['approved'])) {
+    return { ok: false, reason: `${by} approved ${state.id} — the role that approved a change may not also write "${name}" on it. The orchestrator (tech-manager) merges and closes.` };
+  }
+  return null;
 }
 
 const TOKEN_SEPARATED = new Set(['approved', 'qa_passed']);
@@ -526,6 +615,12 @@ function workedOn(state) {
     if (WORK.has(e.event) && e.by) who.add(e.by);
   }
   return who;
+}
+
+/** Did `by` write any of `names` on this ticket? */
+function wroteOn(state, by, names) {
+  const who = String(by || '').trim();
+  return Boolean(who) && (state.events || []).some((e) => names.includes(e.event) && String(e.by || '').trim() === who);
 }
 
 function validateTransition(tickets, candidate) {
@@ -636,6 +731,7 @@ function validateTransition(tickets, candidate) {
       return { ok: true };
     }
     case 'merged': {
+      if (isQaDocs(state) && state.status === 'in_progress') return { ok: true };
       const workers = workedOn(state);
       const external = state.approvals.filter((a) => a.by && !workers.has(a.by));
       if (!external.length) {
@@ -683,7 +779,7 @@ function validateTransition(tickets, candidate) {
         };
       }
       return { ok: true };
-    case 'closed':
+    case 'closed': {
       if (!state.qaPassed && !isQaTicket(state)) {
         return {
           ok: false,
@@ -705,6 +801,7 @@ function validateTransition(tickets, candidate) {
         };
       }
       return { ok: true };
+    }
     default:
       return { ok: true };
   }
@@ -889,6 +986,10 @@ function deriveMetrics(events) {
 }
 
 export {
+  anchorPath,
+  checkAnchor,
+  writeAnchor,
+  isQaDocs,
   EVENTS,
   STATUS_PRESERVING,
   key,

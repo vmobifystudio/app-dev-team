@@ -89,7 +89,14 @@ function evidenceFor(cwd, ticket) {
     branch = `evfixture-${Date.now()}`;
     git(['update-ref', `refs/heads/${branch}`, commit]);
   }
-  const vd = run('sh', [join(ROOT, 'scripts/verify-done.sh'), branch, base, 'echo "Executed 1 tests, with 0 failures"'], cwd);
+  // `verified` needs a run of a command the project profile DECLARES (lib/evidence.mjs, G2-3), so a
+  // fixture with no profile gets one declaring test.fast, as a team's bootstrap would.
+  const profile = join(cwd, 'docs/team/project-profile.json');
+  if (!existsSync(profile)) {
+    mkdirSync(join(cwd, 'docs/team'), { recursive: true });
+    writeFileSync(profile, `${JSON.stringify({ schema: 'project-profile/v1', test: { fast: 'echo "Executed 1 tests, with 0 failures"' } })}\n`);
+  }
+  const vd = run('sh', [join(ROOT, 'scripts/verify-done.sh'), branch, base, 'fast'], cwd);
   return (vd.out.match(/^ {2}Evidence: (\S+)/m) || [])[1] || '';
 }
 const board = (args, cwd) => {
@@ -268,21 +275,22 @@ invariant('I-05', 'Complete work identity', true, () => sandbox((dir) => {
   writeFileSync(join(dir, 'a.txt'), 'base\n');
   run('git', ['add', '-A'], dir); run('git', ['commit', '-qm', 'base'], dir);
   run('git', ['branch', '-M', 'main'], dir);
-  run('git', ['checkout', '-q', '-b', 'feat/x'], dir);
+  run('git', ['checkout', '-q', '-b', 'feat/A-001-x'], dir);
   writeFileSync(join(dir, 'f1.txt'), 'one\n');
   run('git', ['add', '-A'], dir); run('git', ['commit', '-qm', 'c1'], dir);
   writeFileSync(join(dir, 'f2.txt'), 'two\n');
   run('git', ['add', '-A'], dir); run('git', ['commit', '-qm', 'c2'], dir);
-  writeFileSync(join(dir, 'ev.txt'), 'evidence\n');
-  writeFileSync(join(dir, 'ctx.txt'), 'context\n');
 
   board(['add', 'A-001', '--title', 'x', '--owner', 'ios-developer'], dir);
   for (const [e, by] of [['claimed', 'ios-developer'], ['done_reported', 'ios-developer'],
     ['verified', 'verification-engineer'], ['review_requested', 'ios-developer'], ['started', 'code-reviewer']]) {
     board(['move', 'A-001', e, '--by', by], dir);
   }
+  // --bind re-derives its evidence (a verify-done record for exactly this tip) and reads a
+  // context-manifest/v2 (board.mjs, G2-6) — any file at all used to be hashed and accepted.
+  run('node', [join(ROOT, 'scripts/context-manifest.mjs'), 'create', '--source', 'a.txt'], dir);
   const bind = board(['move', 'A-001', 'approved', '--by', 'code-reviewer', '--bind',
-    '--evidence', 'ev.txt', '--context', 'ctx.txt'], dir);
+    '--evidence', evidenceFor(dir, 'A-001'), '--context', 'docs/team/context-manifest.json'], dir);
   if (bind.code !== 0) return { state: 'CANNOT_EVALUATE', detail: `could not bind an approval: ${bind.out.trim().split('\n')[0]}` };
 
   const events = logLines(dir).map((l) => { try { return JSON.parse(l); } catch { return {}; } });
@@ -343,6 +351,14 @@ invariant('I-07', 'Enforced risk route', true, () => sandbox((dir) => {
   }));
   board(['add', 'PAY-001', '--title', 'billing change', '--owner', 'ios-developer',
     '--file', 'src/billing/Checkout.swift', '--invariant', 'totals never negative'], dir);
+  // The merge reads the ticket's DIFF (board.mjs, G2-7: an unknown diff is refused, never "no
+  // risk"), so the fixture carries the ticket's branch, as a real one would.
+  const g = (a) => run('git', ['-c', 'user.name=fc', '-c', 'user.email=fc@localhost', ...a], dir);
+  g(['commit', '-q', '--allow-empty', '-m', 'base']);
+  g(['checkout', '-q', '-b', 'feat/PAY-001-billing']);
+  mkdirSync(join(dir, 'src/billing'), { recursive: true });
+  writeFileSync(join(dir, 'src/billing/Checkout.swift'), 'let total = 0\n');
+  g(['add', 'src']); g(['commit', '-q', '-m', 'billing']); g(['checkout', '-q', '-']);
   for (const [e, by] of [['claimed', 'ios-developer'], ['done_reported', 'ios-developer'],
     ['verified', 'verification-engineer'], ['review_requested', 'ios-developer'],
     ['started', 'code-reviewer'], ['approved', 'code-reviewer']]) board(['move', 'PAY-001', e, '--by', by], dir);

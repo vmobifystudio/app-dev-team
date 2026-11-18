@@ -171,7 +171,12 @@ import("'"$HERE"'/lib/events.mjs").then((m) => {
   const chain = m.verifyChain(text);
   if (!chain.ok) { process.stderr.write("chain_append: log already broken\n"); process.exit(1); }
   const event = JSON.parse(line);
-  fs.appendFileSync(log, JSON.stringify({ ...event, hash: m.chainHash(chain.tip, event) }) + "\n");
+  const hash = m.chainHash(chain.tip, event);
+  fs.appendFileSync(log, JSON.stringify({ ...event, hash }) + "\n");
+  // A deliberate, chained hand-append (a repaired or migrated log) re-trusts the board anchor too
+  // (lib/events.mjs, G2-10) — the step a human takes knowingly; without it the append reads as
+  // tampering, which is exactly what an un-anchored append is.
+  if (m.anchorPath(log)) m.writeAnchor(log, chain.chained + 1, hash);
 });
 ' "$1" "$2"
 }
@@ -2357,15 +2362,61 @@ bm_evidence() {  # <dir> <ticket>  -> prints the record path, or nothing
       _base=$(git rev-parse HEAD)
     fi
     [ -n "$_base" ] || _base=$(git rev-parse "$_br^")
-    # A project whose profile declares test.fast must be verified WITH it (lib/evidence.mjs refuses a
-    # caller-chosen command there), so the fixture asks for the declared scope like a team would.
-    _cmd='echo "Executed 1 tests, with 0 failures"'
-    grep -q '"fast"' docs/team/project-profile.json 2>/dev/null && _cmd=fast
-    sh "$HERE/verify-done.sh" "$_br" "$_base" "$_cmd" 2>/dev/null \
+    # `verified` needs a run of a command the PROJECT PROFILE declares (lib/evidence.mjs, G2-3) —
+    # a caller-chosen command never verifies a code ticket. A scratch project with no profile gets
+    # one declaring test.fast, the way a team's bootstrap would, and the fixture runs `fast`.
+    if [ ! -f docs/team/project-profile.json ]; then
+      mkdir -p docs/team
+      printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 1 tests, with 0 failures\\""}}\n' > docs/team/project-profile.json
+    fi
+    sh "$HERE/verify-done.sh" "$_br" "$_base" fast 2>/dev/null \
       | sed -n 's/^  Evidence: //p' )
+}
+# `approved --bind` re-derives --evidence (a verify-done record for EXACTLY the bound commit, under
+# docs/team/evidence/) and reads --context as a context-manifest/v2 (board.mjs, G2-6). The bind
+# assertions below are about the commit range, so bm supplies both the honest way when the caller
+# passed the old placeholder files: verify-done runs test.fast on a branch at the bound commit, and
+# the given context file becomes the one source of a real manifest. The evidence/context contract
+# itself is asserted against `node "$BD"` directly in the Sprint 3 track F1 section.
+bm_bind_evidence() {  # <dir> <sha> -> record path
+  case "$1" in "$TMP"/*) ;; *) return 1 ;; esac
+  ( cd "$1" || exit 1
+    if [ ! -f docs/team/project-profile.json ]; then
+      mkdir -p docs/team
+      printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 1 tests, with 0 failures\\""}}\n' > docs/team/project-profile.json
+    fi
+    _eb="evbind-$(date +%s)-$$"
+    git update-ref "refs/heads/$_eb" "$2" || exit 1
+    _wt=$(mktemp -d "$TMP/evbind.XXXXXX"); rmdir "$_wt"
+    git worktree add -q --detach "$_wt" "$2" >/dev/null 2>&1 || exit 1
+    node "$HERE/lib/evidence.mjs" test --branch "$_eb" --base "$2" --dir "$_wt" --scope fast 2>/dev/null \
+      | node -e 'let d = ""; process.stdin.on("data", (c) => { d += c; }).on("end", () => { try { process.stdout.write(JSON.parse(d).record); } catch { /* none */ } })'
+    git worktree remove --force "$_wt" >/dev/null 2>&1 )
+}
+bm_bind_context() {  # <dir> <file> -> docs/team/context-manifest.json naming that file
+  ( cd "$1" && [ -f "$2" ] && mkdir -p docs/team \
+    && node "$HERE/context-manifest.mjs" create --source "$2" >/dev/null 2>&1 && echo docs/team/context-manifest.json )
 }
 bm() {
   d=$1; shift
+  if [ "${1:-}" = move ] && [ "${3:-}" = approved ] && printf '%s\n' "$@" | grep -qx -- '--bind'; then
+    _bc=$(printf '%s\n' "$@" | awk 'p { print; exit } $0 == "--commit" { p = 1 }')
+    _bc=$( cd "$d" && { [ -n "$_bc" ] && git rev-parse --verify -q "$_bc^{commit}"; } \
+      || { _b=$(git branch --format='%(refname:short)' | grep -i -F -- "$2"); [ "$(printf '%s\n' "$_b" | grep -c .)" = 1 ] && git rev-parse "$_b"; } \
+      || git rev-parse HEAD 2>/dev/null )
+    _n=$#; _i=0; _next=''
+    while [ "$_i" -lt "$_n" ]; do
+      _i=$((_i + 1)); _a=$1; shift
+      case "$_next" in
+        ev) case "$_a" in docs/team/evidence/*) ;; *) [ -n "$_bc" ] && _a=$(bm_bind_evidence "$d" "$_bc") ;; esac ;;
+        ctx) case "$_a" in docs/team/context-manifest.json) ;; *) _a=$(bm_bind_context "$d" "$_a") ;; esac ;;
+      esac
+      _next=''
+      [ "$_a" = --evidence ] && _next=ev
+      [ "$_a" = --context ] && _next=ctx
+      set -- "$@" "$_a"
+    done
+  fi
   if [ "${1:-}" = move ] && { [ "${3:-}" = verified ] || [ "${3:-}" = qa_passed ]; }; then
     _has_ev=''
     for _a in "$@"; do [ "$_a" = '--evidence' ] && _has_ev=1; done
@@ -2707,9 +2758,18 @@ assert_exit 0 "reopened is legal from review too" bm "$RO" move R-001 reopened -
 # --- W8/G-F11: a QA- ticket IS the QA. Routing it through the `qa` stage asked qa-engineer to
 # qa_passed its own ticket (refused: NOT_ON_OWN_TICKET) and told nobody else to, so it never closed.
 # And G-F1: tech-manager, which merges, no longer approves or certifies QA.
+# Design decision 1 (Sprint 3): a QA- ticket is docs-only — verified on a --docs-only record, it
+# merges straight from in_progress (the orchestrator reviews it inline) and closes from merged.
 QT=$(newboard bd-qa-ticket)
+( cd "$QT" && git init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m base \
+  && git checkout -q -b docs/QA-001-plan && mkdir -p docs && echo plan > docs/50-test-plan.md && git add docs/50-test-plan.md \
+  && git -c user.name=t -c user.email=t@t commit -qm plan && git checkout -q main ) >/dev/null 2>&1
 bm "$QT" add QA-001 --title "Test plan" --owner qa-engineer >/dev/null 2>&1
-drive "$QT" QA-001 qa-engineer
+bm "$QT" move QA-001 claimed --by qa-engineer >/dev/null 2>&1
+bm "$QT" move QA-001 done_reported --by qa-engineer >/dev/null 2>&1
+QTE=$( cd "$QT" && sh "$HERE/verify-done.sh" --docs-only docs/QA-001-plan main 2>/dev/null | sed -n 's/^  Evidence: //p' )
+bm "$QT" move QA-001 verified --by tech-manager --evidence "$QTE" >/dev/null 2>&1
+bm "$QT" move QA-001 merged --by tech-manager >/dev/null 2>&1
 assert_exit 0 "a QA- ticket closes straight after merged, with no qa_passed (W8)" \
   bm "$QT" move QA-001 closed --by tech-manager
 bm "$QT" add APP-020 --title "Feature" --owner ios-developer >/dev/null 2>&1
@@ -2896,7 +2956,7 @@ assert_exit 0 "board-doctor stays clean on a legally generated static-only board
 # Without this the static lane would be a one-way street into a board that can never reach done.
 assert_exit 0 "running the suite later and appending verified clears the static flag" \
   bm "$S" move S-001 verified --by tech-manager --detail "suite ran green"
-assert_exit 0 "...and only then is closed accepted" bm "$S" move S-001 closed --by tech-manager
+assert_exit 0 "...and only then is closed accepted" bm "$S" move S-001 closed --by tech-manager --head main
 grep -q 'static only' "$S/docs/31-board.md" \
   && bad "...and the marker is gone from the board once it is earned" \
   || ok "...and the marker is gone from the board once it is earned"
@@ -5244,7 +5304,9 @@ sed -i.bak 's/[0-9][0-9]* top-level scripts/999 top-level scripts/' "$MDC/docs/H
 # elsewhere, and a probe that cannot see the requirement cannot prove the requirement exists.
 VD="$TMP/verdict"; mkdir -p "$VD/docs/53-reviews"
 vd_reset() {
-  rm -rf "$VD/docs"; mkdir -p "$VD/docs/53-reviews"
+  # A fresh board in the same repository: the old log's anchor (lib/events.mjs, G2-10) goes too —
+  # deleting a log under its anchor is otherwise refused as a truncation, which is the point.
+  rm -rf "$VD/docs" "$VD/.git/studio"; mkdir -p "$VD/docs/53-reviews"
   ( cd "$VD"
     node "$BD" add V-001 --title t --owner ios-developer --by tech-manager
     node "$BD" move V-001 claimed          --by ios-developer
@@ -7901,8 +7963,10 @@ bm "$FCB" move T-001 started --by code-reviewer >/dev/null 2>&1
 # untracked file to the very working tree whose `files` manifest the next assertion pins. A test
 # fixture that perturbs the thing it measures is the measurement, not the subject.
 printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/x\n\n## Not checked\nNothing.\n' > "$TMP/fcb-verdict.md"
+# --bind re-derives its evidence and reads a context manifest (G2-6): made the honest way, by bm's helpers.
+FCB_EV=$(bm_bind_evidence "$FCB" "$( cd "$FCB" && git rev-parse HEAD )"); FCB_CTX=$(bm_bind_context "$FCB" ctx.txt)
 ( cd "$FCB" && node "$BD" move T-001 approved --by code-reviewer --verdict "$TMP/fcb-verdict.md" \
-    --bind --evidence ev.txt --context ctx.txt ) >/dev/null 2>&1
+    --bind --evidence "$FCB_EV" --context "$FCB_CTX" ) >/dev/null 2>&1
 if grep -q '"base_source":"merge-base with main"' "$FCB/docs/31-board-events.jsonl" 2>/dev/null; then
   ok "an approval binds base..head, resolved from the integration branch"
 else bad "an approval binds base..head, resolved from the integration branch"; fi
@@ -8128,6 +8192,11 @@ bm "$FCP" add PAY-001 --title "billing change" --owner ios-developer \
 if grep -q '"required_approvals":\["code-reviewer","security-reviewer"\]' "$FCP/docs/31-board-events.jsonl" 2>/dev/null; then
   ok "the whole policy decision is stored on the ticket, not just its risk tier"
 else bad "the whole policy decision is stored on the ticket, not just its risk tier"; fi
+# The merge reads the ticket's DIFF (G2-7: an unknown diff is refused, never "no risk"), so the
+# fixture carries the ticket's branch, as a real ticket would.
+( cd "$FCP" && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m base \
+  && git checkout -q -b feat/PAY-001-billing && mkdir -p src/billing && echo 'let total = 0' > src/billing/Checkout.swift \
+  && git add src && git -c user.name=t -c user.email=t@t commit -q -m billing && git checkout -q - ) >/dev/null 2>&1
 for E in "claimed ios-developer" "done_reported ios-developer"; do
   set -- $E; bm "$FCP" move PAY-001 "$1" --by "$2" >/dev/null 2>&1; done
 bm "$FCP" move PAY-001 verified --by verification-engineer >/dev/null 2>&1
@@ -8496,7 +8565,8 @@ bm "$FCB5" move T-001 started --by code-reviewer >/dev/null 2>&1
 bm "$FCB5" move T-001 approved --by code-reviewer >/dev/null 2>&1
 bm "$FCB5" move T-001 merged --by tech-manager >/dev/null 2>&1
 bm "$FCB5" move T-001 qa_passed --by qa-engineer >/dev/null 2>&1
-bm "$FCB5" move T-001 closed --by tech-manager >/dev/null 2>&1
+# G2-8: no branch is named for T-001, so the commit being closed is named (it is on the integration branch).
+bm "$FCB5" move T-001 closed --by tech-manager --head HEAD >/dev/null 2>&1
 printf '{"schema":"scheduler-plan/v1","max_parallel":2,"tasks":[{"id":"T-001"},{"id":"T-002"}]}\n' \
   > "$FCB5/docs/team/schedule.json"
 assert_exit 0 "one completed ticket does not halt every dispatch" \
@@ -9924,7 +9994,9 @@ BD="$HERE/board.mjs"
 tcg() { git -c user.name=t -c user.email=t@localhost "$@"; }
 # tc_proj <name> -> a git project with ticket TC-1 claimed + done_reported on feat/TC-1-x (one src commit)
 tc_proj() {
-  _p="$TMP/tc-$1"; rm -rf "$_p"; mkdir -p "$_p/docs" "$_p/src"
+  _p="$TMP/tc-$1"; rm -rf "$_p"; mkdir -p "$_p/docs/team" "$_p/src"
+  # The profile declares test.fast: `verified` needs a run of a DECLARED command (G2-3).
+  printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$_p/docs/team/project-profile.json"
   ( cd "$_p" && git init -q -b main && tcg commit -q --allow-empty -m base \
     && node "$BD" add TC-1 --title "t" --owner ios-developer >/dev/null \
     && git checkout -q -b feat/TC-1-x && echo 'let a = 1' > src/A.swift && git add src/A.swift \
@@ -9934,8 +10006,19 @@ tc_proj() {
   printf '%s' "$_p"
 }
 TC_GREEN='echo "Executed 3 tests, with 0 failures"'
-tc_vd() {  # tc_vd <proj> <branch> -> record path
-  ( cd "$1" && sh "$HERE/verify-done.sh" "$2" main "$TC_GREEN" 2>/dev/null | sed -n 's/^  Evidence: //p' )
+tc_vd() {  # tc_vd <proj> <branch> [test-command, default: fast] -> record path
+  ( cd "$1" && sh "$HERE/verify-done.sh" "$2" main "${3:-fast}" 2>/dev/null | sed -n 's/^  Evidence: //p' )
+}
+# tc_gate <root> <gate> <result> <head> <out> <log-text> — a gate-result/v1 written IN-PROCESS with its
+# raw log, the way journey-gate.mjs writes one (the CLI no longer takes a result from its caller, G2-2).
+tc_gate() {
+  ( cd "$1" && node --input-type=module -e "
+import { writeFileSync } from 'node:fs';
+import { writeEvidenceLog } from '$HERE/lib/evidence.mjs';
+const [gate, result, head, out, text] = process.argv.slice(1);
+const log = writeEvidenceLog('.', gate + '-' + Date.now(), text + 'RESULT: ' + result.replace('_', ' ') + '\\nGATE-SUBJECT: ' + head + '\\n');
+writeFileSync(out, JSON.stringify({ schema: 'gate-result/v1', gate, subject: { head, dirty: false }, evaluated_at: new Date().toISOString(), result, ...log }, null, 2));
+" "$2" "$3" "$4" "$5" "$6" )
 }
 tcm() { ( cd "$1" && shift && node "$BD" "$@" ); }
 
@@ -9965,29 +10048,29 @@ assert_has "$TMP/err" "is not under docs/team/evidence" "TC: ...evidence is what
 ( cd "$E" && git checkout -q feat/TC-1-x && echo 'let b = 2' >> src/A.swift && tcg commit -qam more && git checkout -q main )
 assert_exit 1 "TC: a record for an older tip of the ticket branch is refused" tcm "$E" move TC-1 verified --by tech-manager --evidence "$EV"
 assert_has "$TMP/err" "does not contain" "TC: ...it is about older code than the ticket's tip"
-mkdir -p "$E/docs/team"; printf '{"schema":"project-profile/v1","test":{"fast":"npm test"}}\n' > "$E/docs/team/project-profile.json"
-EV2=$(tc_vd "$E" feat/TC-1-x)
+EV2=$(tc_vd "$E" feat/TC-1-x "$TC_GREEN")
 assert_exit 1 "TC: a caller-chosen test command is refused when the profile declares one" tcm "$E" move TC-1 verified --by tech-manager --evidence "$EV2"
 assert_has "$TMP/err" "not a test command the project profile declares" "TC: ...naming the declared commands"
-rm -f "$E/docs/team/project-profile.json"
 DOCEV=$( cd "$E" && sh "$HERE/verify-done.sh" --docs-only feat/TC-1-x main 2>/dev/null | sed -n 's/^  Evidence: //p' )
 assert_exit 1 "TC: a --docs-only record on a branch that changes source is refused" tcm "$E" move TC-1 verified --by tech-manager --evidence "$DOCEV"
 assert_has "$TMP/err" "non-document files" "TC: ...re-derived from git, not taken from the record"
-assert_exit 0 "TC: a current, re-derivable green record is accepted" tcm "$E" move TC-1 verified --by tech-manager --evidence "$EV2"
+EVOK=$(tc_vd "$E" feat/TC-1-x)
+assert_exit 0 "TC: a current, re-derivable green record is accepted" tcm "$E" move TC-1 verified --by tech-manager --evidence "$EVOK"
 grep '"event":"verified"' "$E/docs/31-board-events.jsonl" | grep -q '"evidence_verdict":"green"' \
   && ok "TC: ...and the verified event records which evidence it rests on" \
   || bad "TC: ...and the verified event records which evidence it rests on"
 
 # ·· G-F4: approved --bind compares the verdict's Scope with the bound commit
 tcm "$E" move TC-1 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
-printf 'x\n' > "$E/ev.txt"; printf 'x\n' > "$E/ctx.txt"
+EVB=$(tc_vd "$E" feat/TC-1-x)
+( cd "$E" && node "$HERE/context-manifest.mjs" create --source docs/team/project-profile.json ) >/dev/null 2>&1
 printf 'REVIEW VERDICT: APPROVE\nScope: main..main\n\n## Not checked\nNothing\n' > "$E/v-bad.md"
 assert_exit 1 "TC: a bound approval whose verdict Scope is not the bound candidate is refused" \
-  tcm "$E" move TC-1 approved --by code-reviewer --bind --evidence ev.txt --context ctx.txt --verdict v-bad.md
+  tcm "$E" move TC-1 approved --by code-reviewer --bind --evidence "$EVB" --context docs/team/context-manifest.json --verdict v-bad.md
 assert_has "$TMP/err" "the review read a different candidate" "TC: ...naming the commit the approval binds"
 printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/TC-1-x\n\n## Not checked\nNothing\n' > "$E/v-ok.md"
 assert_exit 0 "TC: ...and the verdict whose Scope ends at the bound tip is accepted" \
-  tcm "$E" move TC-1 approved --by code-reviewer --bind --evidence ev.txt --context ctx.txt --verdict v-ok.md
+  tcm "$E" move TC-1 approved --by code-reviewer --bind --evidence "$EVB" --context docs/team/context-manifest.json --verdict v-ok.md
 
 # ·· G-F4: qa_passed needs post-merge evidence
 tcm "$E" move TC-1 merged --by tech-manager >/dev/null 2>&1
@@ -10010,8 +10093,8 @@ printf '{"schema":"gate-result/v1","gate":"journey-gate","subject":{"head":"%s",
 rstate() { node -e 'import(process.argv[1]).then((m)=>{const g=m.reduceReadiness(process.argv[2]).gates.find((x)=>x.gate===process.argv[3]);process.stdout.write(g.state+" "+g.detail)})' "$HERE/lib/readiness.mjs" "$R" "$1"; }
 case "$(rstate journey)" in CANNOT_EVALUATE*re-derive*) ok "TC: readiness: a hand-written PASS gate-result is CANNOT_EVALUATE, not PASS" ;;
   *) bad "TC: readiness: a hand-written PASS gate-result is CANNOT_EVALUATE, not PASS" "$(rstate journey)" ;; esac
-printf 'journey output\n' > "$TMP/tc-gl.txt"
-( cd "$R" && node "$HERE/lib/evidence.mjs" gate --gate journey-gate --result PASS --log "$TMP/tc-gl.txt" --out docs/team/journey-result.json --head "$RH" --dirty false )
+tc_gate "$R" journey-gate PASS "$RH" docs/team/journey-result.json 'journey output
+'
 case "$(rstate journey)" in PASS*) ok "TC: readiness: a result written with its raw log re-derives and PASSes" ;;
   *) bad "TC: readiness: a result written with its raw log re-derives and PASSes" "$(rstate journey)" ;; esac
 JL="$R/$(node -e 'console.log(require(process.argv[1]).log)' "$R/docs/team/journey-result.json")"
@@ -10083,10 +10166,10 @@ tcm "$F" move TC-1 approved --by code-reviewer --verdict v.md >/dev/null 2>&1
 assert_exit 1 "TC: a ticket planned without risk whose diff touches auth/ cannot merge on medium approvals" tcm "$F" move TC-1 merged --by tech-manager
 assert_has "$TMP/err" "escalated from unplanned" "TC: ...the tier comes from the diff"
 assert_has "$TMP/err" "approval by tech-lead" "TC: ...and the refusal lists the missing approval"
-assert_has "$TMP/err" "evidence \"runtime-gate\"" "TC: ...and the missing required_evidence"
+# Decision 6: runtime evidence is the WAVE's to check (wave-integrate), not a precondition of merged —
+# the refusal says so, and the merged event still carries it in required_evidence for the wave.
+assert_has "$TMP/err" "\"runtime-gate\" is checked at the WAVE" "TC: ...and the missing required_evidence"
 tcm "$F" move TC-1 approved --by tech-lead --verdict v.md >/dev/null 2>&1
-printf 'runtime output\n' > "$TMP/tc-rt.txt"
-( cd "$F" && node "$HERE/lib/evidence.mjs" gate --gate runtime-gate --result PASS --log "$TMP/tc-rt.txt" --out docs/team/runtime-result.json --head "$(git rev-parse feat/TC-1-x)" --dirty false )
 assert_exit 0 "TC: ...and merges once the higher tier's approvals and evidence exist" tcm "$F" move TC-1 merged --by tech-manager
 grep '"event":"merged"' "$F/docs/31-board-events.jsonl" | grep -q '"effective":"high"' \
   && ok "TC: ...recording the effective risk on the merged event" || bad "TC: ...recording the effective risk on the merged event"
@@ -10264,6 +10347,268 @@ slg Bash agent-1 command "tail docs/team/actor-tokens.jsonl"
 node -e 'process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "a", cwd: process.argv[1], tool_input: { command: "node board.mjs actor mint" } }))' "$TMP" | sh "$SLG" >/dev/null 2>&1
 [ $? = 0 ] && ok "S2: guard-gate-writes is a no-op outside an app-dev-team project" || bad "S2: guard-gate-writes is a no-op outside an app-dev-team project"
 rm -rf "$SL"
+
+# --- Sprint 3 track F1: gates that are real, not paper (reaudit G2-*, W2-4/5/6/10, R2-3) ---
+# Every refusal is asserted against `node "$BD"` / the script directly, so mutate.sh (MF*) can break
+# each check and watch the assertion go red.
+BD="$HERE/board.mjs"
+f1g() { git -c user.name=t -c user.email=t@localhost "$@"; }
+F1_FAST='echo "Executed 2 tests, with 0 failures"'
+# f1_proj <name> [policy-json] -> git project; profile declares test.fast; F-1 claimed+done_reported on feat/F-1-x
+f1_proj() {
+  _p="$TMP/f1-$1"; rm -rf "$_p"; mkdir -p "$_p/docs/team" "$_p/src" "$_p/Tests"
+  printf '{"schema":"project-profile/v1","test":{"fast":"%s"}}\n' "$(printf '%s' "$F1_FAST" | sed 's/"/\\"/g')" > "$_p/docs/team/project-profile.json"
+  _pol=${2:-}; [ -n "$_pol" ] || _pol='{}'
+  printf '%s\n' "$_pol" > "$_p/.studio-policy.json"
+  ( cd "$_p" && git init -q -b main && f1g commit -q --allow-empty -m base \
+    && node "$BD" add F-1 --title t --owner ios-developer \
+    && git checkout -q -b feat/F-1-x && echo 'let a = 1' > src/A.swift \
+    && printf 'func testA() { XCTAssertEqual(1, 1) }\n' > Tests/ATests.swift && git add src Tests \
+    && f1g commit -q -m work && git checkout -q main \
+    && node "$BD" move F-1 claimed --by ios-developer && node "$BD" move F-1 done_reported --by ios-developer ) >/dev/null 2>&1
+  printf '%s' "$_p"
+}
+f1_vd() { ( cd "$1" && sh "$HERE/verify-done.sh" "$2" "${3:-main}" "${4:-fast}" 2>/dev/null | sed -n 's/^  Evidence[^:]*: //p' ); }
+f1m() { ( cd "$1" && shift && node "$BD" "$@" ); }
+# f1_run <proj> <checked-out branch> -> a record of test.fast run by evidence.mjs on that branch (QA's run on the merged tree)
+f1_run() { ( cd "$1" && node "$HERE/lib/evidence.mjs" test --branch "$2" --base "$2" --dir . --scope fast 2>/dev/null \
+  | node -e 'let d = ""; process.stdin.on("data", (c) => { d += c; }).on("end", () => process.stdout.write(JSON.parse(d).record))' ); }
+# f1_review <proj> <ticket> <branch> <ev> -> approve --bind F-1 with a real record + context manifest
+f1_verdict() {  # <proj> <base> <tip> [not-checked-body] [scope-override]
+  printf 'REVIEW VERDICT: APPROVE\nScope: %s\n\n## Not checked\n%s\n' "${5:-$2..$3}" "${4-Nothing.}" > "$1/v.md"
+}
+f1_ctx() { ( cd "$1" && node "$HERE/context-manifest.mjs" create --source docs/team/project-profile.json >/dev/null 2>&1 ); }
+
+# ·· G2-20 / W2-4: whole-id ticket matching, longest board id wins
+node --input-type=module -e "
+import { matchesTicket as m } from '$HERE/lib/integration.mjs';
+const all = ['APP-001', 'APP-001-analytics', 'APP-0010'];
+const cases = [['feat/APP-001-login','APP-001',true],['feat/APP-0010-x','APP-001',false],['feat/APP-0010-x','APP-0010',true],
+  ['feat/APP-001-analytics-events','APP-001',false],['feat/APP-001-analytics-events','APP-001-analytics',true],['feat/APP-1-x','APP-10',false]];
+process.exit(cases.every(([n, i, w]) => m(n, i, all) === w) ? 0 : 1);" \
+  && ok "F1: matchesTicket is whole-id and gives a branch to the LONGEST board id (APP-001 / APP-001-analytics / APP-0010)" \
+  || bad "F1: matchesTicket is whole-id and gives a branch to the LONGEST board id (APP-001 / APP-001-analytics / APP-0010)"
+F1M="$TMP/f1-match"; rm -rf "$F1M"; mkdir -p "$F1M/docs"
+( cd "$F1M" && git init -q -b main && f1g commit -q --allow-empty -m base \
+  && for t in APP-001 APP-001-analytics APP-0010; do node "$BD" add "$t" --title t >/dev/null; done \
+  && git branch feat/APP-001-login && git branch feat/APP-001-analytics-events && git branch feat/APP-0010-x ) >/dev/null 2>&1
+( cd "$F1M" && node --input-type=module -e "
+import { gitAt, ticketTip, ticketIdsFromBoard } from '$HERE/lib/integration.mjs';
+const g = gitAt('.'); const ids = ticketIdsFromBoard('.');
+const b = (id) => ticketTip(g, id, ids).branch;
+process.exit(b('APP-001') === 'feat/APP-001-login' && b('APP-001-analytics') === 'feat/APP-001-analytics-events' && b('APP-0010') === 'feat/APP-0010-x' ? 0 : 1);" ) \
+  && ok "F1: ...with all three branches present, each ticket's tip is its own branch (no ambiguity, no theft)" \
+  || bad "F1: ...with all three branches present, each ticket's tip is its own branch (no ambiguity, no theft)"
+
+# ·· G2-2: the evidence CLI never takes an outcome from its caller
+F1E=$(f1_proj ev)
+( cd "$F1E" && node "$HERE/lib/evidence.mjs" test --branch feat/F-1-x --base main --exit 0 --log /dev/null ) >/dev/null 2>"$TMP/err"
+[ $? = 2 ] && grep -q "is not accepted" "$TMP/err" \
+  && ok "F1: evidence.mjs test refuses --exit/--log — the writer observes the outcome itself (G2-2)" \
+  || bad "F1: evidence.mjs test refuses --exit/--log — the writer observes the outcome itself (G2-2)" "$(cat "$TMP/err")"
+( cd "$F1E" && node "$HERE/lib/evidence.mjs" gate --gate runtime-gate --result PASS ) >/dev/null 2>&1
+[ $? = 2 ] && ok "F1: evidence.mjs gate refuses --result" || bad "F1: evidence.mjs gate refuses --result"
+( cd "$F1E" && node "$HERE/lib/evidence.mjs" gate --gate /bin/true --out docs/team/x.json ) >/dev/null 2>"$TMP/err"
+[ $? = 2 ] && grep -q "unknown gate" "$TMP/err" && [ ! -f "$F1E/docs/team/x.json" ] \
+  && ok "F1: evidence.mjs gate runs only a known plugin gate script, never a caller's path" \
+  || bad "F1: evidence.mjs gate runs only a known plugin gate script, never a caller's path" "$(cat "$TMP/err")"
+F1EV=$(f1_vd "$F1E" feat/F-1-x)
+grep -q '"command_source": "profile"' "$F1E/$F1EV" 2>/dev/null && grep -q '"verdict": "green"' "$F1E/$F1EV" \
+  && ok "F1: verify-done fast -> evidence.mjs ran test.fast itself and recorded command_source profile" \
+  || bad "F1: verify-done fast -> evidence.mjs ran test.fast itself and recorded command_source profile" "ev=$F1EV"
+
+# ·· G2-3: a caller-chosen command never verifies a code ticket; a profile with none cannot either
+F1C=$(f1_vd "$F1E" feat/F-1-x main "$F1_FAST")
+assert_exit 1 "F1: verified on a caller-command record is refused even when the string equals test.fast (G2-3)" \
+  f1m "$F1E" move F-1 verified --by tech-manager --evidence "$F1C"
+assert_has "$TMP/err" 'command_source "caller"' "F1: ...naming command_source caller"
+cp "$F1E/docs/team/project-profile.json" "$TMP/f1-prof.bak"
+printf '{"schema":"project-profile/v1","test":{}}\n' > "$F1E/docs/team/project-profile.json"
+assert_exit 2 "F1: a profile that declares no test command cannot verify a code ticket (G2-3)" \
+  f1m "$F1E" move F-1 verified --by tech-manager --evidence "$F1EV"
+assert_has "$TMP/err" "declares no test command" "F1: ...and says to declare test.fast"
+cp "$TMP/f1-prof.bak" "$F1E/docs/team/project-profile.json"
+
+# ·· G2-4: evidence from a descendant scratch branch does not verify the ticket's tip
+( cd "$F1E" && git branch scratch-f1 feat/F-1-x && git checkout -q scratch-f1 && echo 'let z = 9' >> src/A.swift \
+  && f1g commit -qam extra && git checkout -q main ) >/dev/null 2>&1
+F1D=$(f1_vd "$F1E" scratch-f1)
+assert_exit 1 "F1: verified evidence from a DESCENDANT of the ticket tip is refused (G2-4)" \
+  f1m "$F1E" move F-1 verified --by tech-manager --evidence "$F1D"
+assert_has "$TMP/err" "DESCENDANT" "F1: ...it carries commits the ticket does not"
+assert_exit 0 "F1: ...and the record for exactly the tip verifies" f1m "$F1E" move F-1 verified --by tech-manager --evidence "$F1EV"
+
+# ·· G2-22: tests that assert nothing do not verify
+F1A=$(f1_proj assert)
+( cd "$F1A" && git checkout -q feat/F-1-x && printf 'func testA() { _ = 1 }\n' > Tests/ATests.swift && f1g commit -qam hollow && git checkout -q main ) >/dev/null 2>&1
+( cd "$F1A" && sh "$HERE/verify-done.sh" feat/F-1-x main fast ) >"$TMP/f1a.txt" 2>/dev/null
+[ $? = 2 ] && grep -q "ZERO assertions" "$TMP/f1a.txt" \
+  && ok "F1: verify-done downgrades a green run whose changed tests assert nothing to CANNOT EVALUATE (G2-22)" \
+  || bad "F1: verify-done downgrades a green run whose changed tests assert nothing to CANNOT EVALUATE (G2-22)" "$(head -5 "$TMP/f1a.txt")"
+F1AR=$(grep -l '"assertion_census"' "$F1A"/docs/team/evidence/test-*.json 2>/dev/null | head -n 1)
+assert_exit 1 "F1: ...and the board refuses verified on that record" f1m "$F1A" move F-1 verified --by tech-manager --evidence "$F1AR"
+assert_has "$TMP/err" "ZERO assertions" "F1: ...naming the census"
+
+# ·· G2-25: docs/ that is a served site is not documentation
+F1S=$(f1_proj site)
+( cd "$F1S" && git checkout -q -b docs/F-2-site && mkdir -p docs/site && echo '<html></html>' > docs/index.html && echo 'x()' > docs/app.js \
+  && git add docs/index.html docs/app.js && f1g commit -qm site && git checkout -q main \
+  && node "$BD" add F-2 --title s --owner ux-architect && node "$BD" move F-2 claimed --by ux-architect \
+  && node "$BD" move F-2 done_reported --by ux-architect ) >/dev/null 2>&1
+F1SD=$( cd "$F1S" && sh "$HERE/verify-done.sh" --docs-only docs/F-2-site main 2>/dev/null | sed -n 's/^  Evidence: //p' )
+assert_exit 1 "F1: a --docs-only record over a served docs/ site (docs/index.html) is refused (G2-25)" \
+  f1m "$F1S" move F-2 verified --by tech-manager --evidence "$F1SD"
+assert_has "$TMP/err" "docs/app.js" "F1: ...the site's script is product, not a document"
+
+# ·· G2-26 / G2-5 / G2-6: the review document and the binding
+F1B=$(f1_proj bind '{"requireApprovalBinding": true}')
+F1BEV=$(f1_vd "$F1B" feat/F-1-x)
+f1m "$F1B" move F-1 verified --by tech-manager --evidence "$F1BEV" >/dev/null 2>&1
+f1m "$F1B" move F-1 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
+f1_ctx "$F1B"
+F1TIP=$( cd "$F1B" && git rev-parse feat/F-1-x ); F1MB=$( cd "$F1B" && git merge-base main feat/F-1-x )
+f1_verdict "$F1B" "$F1MB" "$F1TIP" "Everything"
+assert_exit 1 "F1: an APPROVE whose ## Not checked says Everything is refused (G2-26)" \
+  f1m "$F1B" move F-1 approved --by code-reviewer --verdict v.md --bind --evidence "$F1BEV" --context docs/team/context-manifest.json
+f1_verdict "$F1B" "$F1MB" "$F1TIP" ""
+assert_exit 1 "F1: ...so is an empty ## Not checked" \
+  f1m "$F1B" move F-1 approved --by code-reviewer --verdict v.md --bind --evidence "$F1BEV" --context docs/team/context-manifest.json
+f1_verdict "$F1B" "$F1MB" "$F1TIP" "Nothing." "nothing..was..read"
+assert_exit 1 "F1: a Scope that is not exactly <base>..<head> is refused (G2-5)" \
+  f1m "$F1B" move F-1 approved --by code-reviewer --verdict v.md --bind --evidence "$F1BEV" --context docs/team/context-manifest.json
+f1_verdict "$F1B" "$F1MB" "$F1TIP"
+assert_exit 1 "F1: --bind --evidence must be a record under docs/team/evidence/ (G2-6)" \
+  f1m "$F1B" move F-1 approved --by code-reviewer --verdict v.md --bind --evidence /etc/hosts --context docs/team/context-manifest.json
+assert_has "$TMP/err" "is not under docs/team/evidence" "F1: ...the evidence is re-derived, not hashed by name"
+assert_exit 1 "F1: --bind --context must be a context-manifest/v2 (G2-6)" \
+  f1m "$F1B" move F-1 approved --by code-reviewer --verdict v.md --bind --evidence "$F1BEV" --context docs/team/project-profile.json
+assert_has "$TMP/err" "context-manifest/v2" "F1: ...naming the manifest it must be"
+assert_exit 0 "F1: ...and the honest bind (record for the tip + the manifest) is accepted" \
+  f1m "$F1B" move F-1 approved --by tech-lead --verdict v.md --bind --evidence "$F1BEV" --context docs/team/context-manifest.json
+
+# ·· G2-13: the approver may not merge it
+assert_exit 1 "F1: the role that approved a ticket may not merge it (G2-13)" f1m "$F1B" move F-1 merged --by tech-lead
+assert_has "$TMP/err" "may not also write" "F1: ...separation of duties, not a capability gap (tech-lead may merge in general)"
+f1m "$F1B" move F-1 merged --by tech-manager >/dev/null 2>&1
+( cd "$F1B" && git merge -q --no-ff -m m feat/F-1-x ) >/dev/null 2>&1
+F1Q=$(f1_run "$F1B" main)
+f1m "$F1B" move F-1 qa_passed --by qa-engineer --evidence "$F1Q" >/dev/null 2>&1
+
+# ·· G2-9: a commit pushed after the approval does not close under it
+( cd "$F1B" && git checkout -q feat/F-1-x && echo 'let late = 1' >> src/A.swift && f1g commit -qam late \
+  && git checkout -q main && git merge -q --no-ff -m m2 feat/F-1-x ) >/dev/null 2>&1
+assert_exit 1 "F1: closed is refused when the merged tip is not the approved commit (G2-9)" f1m "$F1B" move F-1 closed --by tech-manager
+assert_has "$TMP/err" "not the approved code" "F1: ...ancestry alone is not enough"
+( cd "$F1B" && node "$HERE/approval-check.mjs" --head main ) >/dev/null 2>"$TMP/err"
+[ $? = 1 ] && grep -q "unreviewed" "$TMP/err" \
+  && ok "F1: approval-check (ship mode) refuses a branch that moved past its approval (G2-9)" \
+  || bad "F1: approval-check (ship mode) refuses a branch that moved past its approval (G2-9)" "$(cat "$TMP/err")"
+
+# ·· G2-8 / G2-7: no branch named for the ticket means the subject must be named
+F1N=$(f1_proj nobranch)
+( cd "$F1N" && git branch -m feat/F-1-x feat/unnamed ) >/dev/null 2>&1
+( cd "$F1N" && git checkout -q feat/unnamed ) >/dev/null 2>&1
+F1NE=$(f1_run "$F1N" feat/unnamed)
+( cd "$F1N" && git checkout -q main ) >/dev/null 2>&1
+f1m "$F1N" move F-1 verified --by tech-manager --evidence "$F1NE" >/dev/null 2>&1
+f1m "$F1N" move F-1 review_requested --by ios-developer >/dev/null 2>&1
+printf 'REVIEW VERDICT: APPROVE\nScope: x..y..z\n\n## Not checked\nNothing.\n' > "$F1N/v.md"
+assert_exit 1 "F1: a three-sided Scope is refused by the verdict contract itself, with or without --bind (G2-5)" \
+  f1m "$F1N" move F-1 approved --by code-reviewer --verdict v.md
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\n## Not checked\nNothing.\n' > "$F1N/v.md"
+f1m "$F1N" move F-1 approved --by code-reviewer --verdict v.md >/dev/null 2>&1
+printf '{"schema":"risk-policy/v1","default":{"risk":"low","model":"sonnet"},"rules":[{"pattern":"src/","risk":"high","model":"opus","approvals":["security-reviewer"]}]}\n' > "$F1N/docs/team/risk-policy.json"
+assert_exit 1 "F1: merged with a risk policy and no branch named for the ticket is refused — unknown diff is not no-risk (G2-7)" \
+  f1m "$F1N" move F-1 merged --by tech-manager
+assert_has "$TMP/err" "no branch is named for F-1" "F1: ...naming why the diff is unknown"
+assert_exit 1 "F1: ...and with --head naming it, the diff escalates to the policy's tier" \
+  f1m "$F1N" move F-1 merged --by tech-manager --head feat/unnamed
+assert_has "$TMP/err" "security-reviewer" "F1: ...requiring the escalated tier's approval"
+rm -f "$F1N/docs/team/risk-policy.json"
+f1m "$F1N" move F-1 merged --by tech-manager --head feat/unnamed >/dev/null 2>&1
+( cd "$F1N" && git checkout -q feat/unnamed ) >/dev/null 2>&1; F1NQ=$(f1_run "$F1N" feat/unnamed); ( cd "$F1N" && git checkout -q main ) >/dev/null 2>&1
+f1m "$F1N" move F-1 qa_passed --by qa-engineer --evidence "$F1NQ" >/dev/null 2>&1
+assert_exit 1 "F1: closed with no branch named for the ticket and no --head is refused (G2-8)" f1m "$F1N" move F-1 closed --by tech-manager
+assert_has "$TMP/err" "which code is unknown" "F1: ...because the code being closed is unknown"
+assert_exit 1 "F1: ...and --head naming an unmerged commit is refused" f1m "$F1N" move F-1 closed --by tech-manager --head feat/unnamed
+assert_has "$TMP/err" "is not merged into main" "F1: ...because it is not on the integration branch"
+
+# ·· W2-5 / R2-3: the bind base is the integration branch (develop)
+F1W=$(f1_proj develop '{"requireApprovalBinding": true}')
+( cd "$F1W" && git branch develop main && git checkout -q develop && echo d > src/D.swift && git add src/D.swift && f1g commit -qm dev \
+  && git checkout -q feat/F-1-x && git rebase -q develop && git checkout -q main ) >/dev/null 2>&1
+F1WEV=$(f1_vd "$F1W" feat/F-1-x develop)
+f1m "$F1W" move F-1 verified --by tech-lead --evidence "$F1WEV" >/dev/null 2>&1
+f1m "$F1W" move F-1 review_requested --by ios-developer >/dev/null 2>&1
+f1_ctx "$F1W"
+f1_verdict "$F1W" "$( cd "$F1W" && git merge-base develop feat/F-1-x )" "$( cd "$F1W" && git rev-parse feat/F-1-x )"
+assert_exit 1 "F1: the role that verified a ticket may not approve it (G2-13)" \
+  f1m "$F1W" move F-1 approved --by tech-lead --verdict v.md --bind --evidence "$F1WEV" --context docs/team/context-manifest.json
+assert_has "$TMP/err" "certified the run" "F1: ...verify, approve and merge are no longer one role's three signatures"
+assert_exit 0 "F1: on a develop-model project the bind base is the merge-base with develop, matching the reviewer's Scope (W2-5)" \
+  f1m "$F1W" move F-1 approved --by code-reviewer --verdict v.md --bind --evidence "$F1WEV" --context docs/team/context-manifest.json
+
+# ·· design decision 1 / W2-6: a docs-only QA- ticket closes from merged, no approval, no integration
+F1QA=$(f1_proj qa)
+( cd "$F1QA" && git checkout -q -b docs/QA-1-w1 && echo plan > docs/50-test-plan.md && git add docs/50-test-plan.md && f1g commit -qm plan \
+  && git checkout -q main && node "$BD" add QA-1-w1 --title qa --owner qa-engineer && node "$BD" move QA-1-w1 claimed --by qa-engineer \
+  && node "$BD" move QA-1-w1 done_reported --by qa-engineer ) >/dev/null 2>&1
+F1QD=$( cd "$F1QA" && sh "$HERE/verify-done.sh" --docs-only docs/QA-1-w1 main 2>/dev/null | sed -n 's/^  Evidence: //p' )
+f1m "$F1QA" move QA-1-w1 verified --by tech-manager --evidence "$F1QD" >/dev/null 2>&1
+assert_exit 0 "F1: a docs-only QA- ticket merges straight from verified, reviewed inline (decision 1)" f1m "$F1QA" move QA-1-w1 merged --by tech-manager
+assert_exit 0 "F1: ...and closes from merged without being on the integration branch (W2-6)" f1m "$F1QA" move QA-1-w1 closed --by tech-manager
+assert_exit 1 "F1: ...while a code ticket still cannot skip review" f1m "$F1QA" move F-1 merged --by tech-manager
+
+# ·· G2-10: the board log is anchored outside the tree
+F1T="$F1QA/docs/31-board-events.jsonl"
+cp "$F1T" "$TMP/f1-log.bak"
+node -e '
+const fs = require("fs"); const { createHash } = require("crypto");
+const sha = (t) => createHash("sha256").update(t).digest("hex").slice(0, 32);
+const canon = (e) => { const o = {}; for (const k of Object.keys(e).filter((k) => k !== "hash" && k !== "_line").sort()) o[k] = e[k]; return JSON.stringify(o); };
+let prev = null; const out = [];
+for (const l of fs.readFileSync(process.argv[1], "utf8").split("\n").filter(Boolean)) {
+  const e = JSON.parse(l); if (e.event === "created") e.detail.title = "REWRITTEN";
+  const base = prev === null ? sha("") : prev; e.hash = sha(`${base}\n${canon(e)}`); prev = e.hash; out.push(JSON.stringify(e)); }
+fs.writeFileSync(process.argv[1], out.join("\n") + "\n");' "$F1T"
+assert_exit 1 "F1: board verify reports a rewrite whose every hash was RECOMPUTED (G2-10)" f1m "$F1QA" verify
+assert_exit 2 "F1: a log rewritten with every hash RECOMPUTED is refused — the anchor outside the tree disagrees (G2-10)" f1m "$F1QA" show
+assert_has "$TMP/err" "different hash than the anchor" "F1: ...naming the rewrite"
+head -n 3 "$TMP/f1-log.bak" > "$F1T"
+assert_exit 2 "F1: a truncated log is refused" f1m "$F1QA" show
+cp "$TMP/f1-log.bak" "$F1T"
+assert_exit 0 "F1: ...and the original log reads again" f1m "$F1QA" show
+rm -rf "$( cd "$F1QA" && git rev-parse --path-format=absolute --git-common-dir )/studio"
+assert_exit 2 "F1: deleting the anchor of an anchored log is refused" f1m "$F1QA" show
+
+# ·· G2-12: the policy floor is on the log from the first event
+F1P=$(f1_proj floor '{"requireActorTokens": true}')
+printf '{}\n' > "$F1P/.studio-policy.json"
+assert_exit 2 "F1: deleting requireActorTokens before any gate event was written is still refused (G2-12)" \
+  f1m "$F1P" move F-1 verified --by tech-manager --evidence "$(f1_vd "$F1P" feat/F-1-x)"
+assert_has "$TMP/err" 'Restore "requireActorTokens": true' "F1: ...naming the key to restore"
+
+# ·· W2-10: printed next-step commands carry the inline mint
+printf '{"requireActorTokens": true}\n' > "$F1P/.studio-policy.json"
+( cd "$F1P" && sh "$HERE/verify-done.sh" feat/F-1-x main fast ) >"$TMP/f1t.txt" 2>/dev/null
+grep -q 'move F-1 verified --by tech-manager --evidence .* --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket F-1)"' "$TMP/f1t.txt" \
+  && ok "F1: verify-done prints the board command with the inline-mint --token under requireActorTokens (W2-10)" \
+  || bad "F1: verify-done prints the board command with the inline-mint --token under requireActorTokens (W2-10)" "$(grep Next "$TMP/f1t.txt")"
+f1m "$F1P" move F-1 verified --by tech-manager --evidence x >/dev/null 2>"$TMP/err"
+grep -q 'actor mint --role tech-manager --ticket F-1)"' "$TMP/err" \
+  && ok "F1: ...and a token refusal shows the same inline form" || bad "F1: ...and a token refusal shows the same inline form" "$(cat "$TMP/err")"
+
+# ·· G2-14 / G2-17: founder tokens need a human at a terminal; mints record their session
+( cd "$F1P" && node "$BD" actor mint --role founder --ticket F-1 </dev/null ) >/dev/null 2>"$TMP/err"
+[ $? = 1 ] && grep -q "human founder at a terminal" "$TMP/err" \
+  && ok "F1: actor mint --role founder is refused without a TTY (G2-14)" \
+  || bad "F1: actor mint --role founder is refused without a TTY (G2-14)" "$(cat "$TMP/err")"
+( cd "$F1P" && CLAUDE_CODE_SESSION_ID=f1-session STUDIO_SESSION_ID= node "$BD" actor mint --role tech-manager --ticket F-1 ) >/dev/null 2>&1
+tail -n 1 "$F1P/docs/team/actor-tokens.jsonl" | grep -q '"session":"f1-session"' \
+  && ok "F1: a mint records the Claude Code session it ran in (G2-17)" \
+  || bad "F1: a mint records the Claude Code session it ran in (G2-17)" "$(tail -n 1 "$F1P/docs/team/actor-tokens.jsonl")"
+rm -rf "$F1M" "$F1E" "$F1A" "$F1S" "$F1B" "$F1N" "$F1W" "$F1QA" "$F1P"
+
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

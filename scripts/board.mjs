@@ -42,8 +42,8 @@
  *   2  cannot evaluate — the log or board is missing or unreadable
  */
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, realpathSync, renameSync } from 'node:fs';
+import { resolve, dirname, basename, join } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
@@ -51,9 +51,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { withFileLock } from './lib/atomic.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
-import { resolveActor, verifyActorToken, mintActorToken, revokeActorToken, listActorTokens, TOKEN_REGISTRY } from './lib/actor.mjs';
+import { resolveActor, verifyActorToken, mintActorToken, revokeActorToken, listActorTokens, TOKEN_REGISTRY, inlineTokenFlag } from './lib/actor.mjs';
 import { GATE_EVENTS } from './lib/capabilities.mjs';
-import { verifyTestEvidence, verifyQaEvidence, checkGateLog } from './lib/evidence.mjs';
+import { verifyTestEvidence, verifyQaEvidence } from './lib/evidence.mjs';
 import { RANK, routeFiles } from './lib/risk.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
@@ -68,10 +68,14 @@ import {
   dependentsOf,
   renderBoard,
   deriveMetrics,
+  isQaDocs,
+  anchorPath,
+  checkAnchor,
+  writeAnchor,
 } from './lib/events.mjs';
 import { VERDICT_EVENTS, readVerdict } from './lib/verdict.mjs';
 import { checkApprovals } from './lib/approval.mjs';
-import { gitAt, integrationBase, ticketBranches, ticketTip, isAncestor } from './lib/integration.mjs';
+import { gitAt, integrationBase, ticketTip, isAncestor } from './lib/integration.mjs';
 
 const DEFAULT_LOG = 'docs/31-board-events.jsonl';
 const DEFAULT_BOARD = 'docs/31-board.md';
@@ -114,6 +118,10 @@ const die = (code, message) => {
   process.stderr.write(`board: ${message}\n`);
   process.exit(code);
 };
+
+/** The ids on this board — so a branch goes to the LONGEST id it matches (lib/integration.mjs). */
+let BOARD_IDS = [];
+const boardIds = () => BOARD_IDS;
 
 /** Resolve an ID the user typed to the one on the board, whatever case either is in. */
 function resolveId(tickets, id) {
@@ -225,8 +233,11 @@ function loadLog(logPath, { required = true } = {}) {
         `  Recover the log from version control (git checkout -- ${logPath}), then re-run.`
     );
   }
+  const anchored = checkAnchor(logPath, text, chain);
+  if (!anchored.ok) die(2, anchored.reason);
   return { events };
 }
+
 
 /**
  * Append one event, chained to everything already in the log.
@@ -315,13 +326,19 @@ function append(logPath, event) {
   // Added at the append boundary rather than at each call site, because a field every writer must
   // remember is a field some writer will forget — the lesson of `assign` dropping the idempotency
   // key three commits ago.
+  const anchored = checkAnchor(logPath, existing, chain);
+  if (!anchored.ok) die(2, `refusing to append: ${anchored.reason}`);
+  const anchor = anchorPath(logPath);
   const enveloped = {
     schema: 'board-event/v1',
     event_id: randomUUID(),
     ...event,
+    ...(anchor ? { anchored: true } : {}),
   };
   const sep = existing && !existing.endsWith('\n') ? '\n' : '';
-  appendFileSync(logPath, `${sep}${JSON.stringify({ ...enveloped, hash: chainHash(chain.tip, enveloped) })}\n`);
+  const hash = chainHash(chain.tip, enveloped);
+  appendFileSync(logPath, `${sep}${JSON.stringify({ ...enveloped, hash })}\n`);
+  if (anchor) writeAnchor(logPath, chain.chained + 1, hash);
 }
 
 /**
@@ -349,16 +366,35 @@ function stampActor(paths, flags, ticket, eventName) {
   const role = String(flags.by || '');
   const gate = GATE_EVENTS.has(eventName);
   const refuseToken = (r) => die(r.code, `refusing ${eventName} on ${ticket}: ${r.reason}\n` +
-    '  A gate event needs --token <the token minted for THIS spawn>\n' +
-    `  (board.mjs actor mint --role ${role || '<role>'} --ticket ${ticket}, run by the orchestrator, never by the agent itself).`);
+    '  A gate event needs --token <the token minted for THIS spawn>. A spawned agent uses the one in its\n' +
+    '  prompt; the orchestrator mints its own inline, in the same command:\n' +
+    `    node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move ${ticket} ${eventName} --by ${role || '<role>'}${inlineTokenFlag(root, role || '<role>', ticket) || ` --token "$(node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role ${role || '<role>'} --ticket ${ticket})"`} …`);
+  // G2-12: THE POLICY FLOOR IS RECORDED ON EVERY EVENT, not inferred from the first gate event — so
+  // deleting requireActorTokens (or requireApprovalBinding) before any gate was written is refused
+  // as well. A board with no event yet has no floor: that is the stated bound.
+  const floor = RATCHETED.filter((k) => policy[k] === true);
+  const lowered = gate ? ratchetedOff(paths.log, policy) : [];
+  if (lowered.length) {
+    die(2, `refusing ${eventName} on ${ticket}: this board recorded ${lowered.join(' and ')} on earlier events, and\n` +
+      '  .studio-policy.json no longer sets it. Turning a gate off mid-board is a downgrade an agent could\n' +
+      `  make by editing one file, so it is refused. Restore ${lowered.map((k) => `"${k}": true`).join(', ')}.`);
+  }
+  const withFloor = (actor) => (floor.length ? { ...actor, policy_floor: floor } : actor);
+  // G2-14: a founder token opens ONE override. A token_id already on the log is spent.
+  const spent = (r) => {
+    if (r.ok && r.actor.single_use && logHasToken(paths.log, r.actor.token_id)) {
+      die(1, `refusing ${eventName} on ${ticket}: founder token ${r.actor.token_id} was already used — it is single-use. Mint a new one at your terminal.`);
+    }
+    return r;
+  };
   // G-F1: PER-SPAWN TOKENS. Required on gate events; verified (and stamped) wherever one is given.
   if (policy.requireActorTokens === true) {
     if (gate || token) {
-      const r = verifyActorToken({ root, token, role, ticket, required: true });
+      const r = spent(verifyActorToken({ root, token, role, ticket, required: true }));
       if (!r.ok) refuseToken(r);
-      return r.actor;
+      return withFloor(r.actor);
     }
-    return { schema: 'actor/v1', actor_id: 'unattested', role, mode: 'work-unattested', session: process.env.STUDIO_SESSION_ID || null };
+    return withFloor({ schema: 'actor/v1', actor_id: 'unattested', role, mode: 'work-unattested', session: process.env.STUDIO_SESSION_ID || null });
   }
   // THE RATCHET. A board that ever recorded a token-required gate cannot have that requirement
   // dropped by editing .studio-policy.json — the edit an agent with Write would make.
@@ -368,9 +404,9 @@ function stampActor(paths, flags, ticket, eventName) {
       '  agent could make by editing one file, so it is refused. Restore "requireActorTokens": true.');
   }
   if (token) {
-    const r = verifyActorToken({ root, token, role, ticket, required: false });
+    const r = spent(verifyActorToken({ root, token, role, ticket, required: false }));
     if (!r.ok) refuseToken(r);
-    return r.actor;
+    return withFloor(r.actor);
   }
   const result = resolveActor({
     root,
@@ -387,7 +423,23 @@ function stampActor(paths, flags, ticket, eventName) {
       '  requireAttestedActors is on, so a role must be GRANTED to an actor in docs/team/actors.json\n' +
       '  and proven with a token, not merely spelled correctly in --by.');
   }
-  return result.actor;
+  return withFloor(result.actor);
+}
+
+/** Policy keys that, once recorded on a board, cannot be switched off for it (G2-12). */
+const RATCHETED = ['requireActorTokens', 'requireApprovalBinding'];
+function ratchetedOff(logPath, policy) {
+  if (!existsSync(logPath)) return [];
+  const seen = new Set();
+  for (const l of readFileSync(logPath, 'utf8').split('\n')) {
+    if (!l.includes('"policy_floor"')) continue;
+    try { for (const k of JSON.parse(l).actor?.policy_floor || []) seen.add(k); } catch { /* parse errors are loadLog's */ }
+  }
+  return RATCHETED.filter((k) => seen.has(k) && policy[k] !== true);
+}
+function logHasToken(logPath, tokenId) {
+  if (!existsSync(logPath)) return false;
+  return readFileSync(logPath, 'utf8').split('\n').some((l) => l.includes(tokenId) && (() => { try { return JSON.parse(l).actor?.token_id === tokenId; } catch { return false; } })());
 }
 
 /** Did any event on this log carry an actor stamped under requireActorTokens? */
@@ -657,14 +709,14 @@ function claimLease(ticket, flags, paths) {
  * merge-reconcile uses). HEAD is used only when no branch is named for the ticket at all (work
  * committed straight onto the current branch), and the detail says which one was bound.
  */
-function bindApprovalEvidence(flags, ticket) {
+function bindApprovalEvidence(flags, ticket, state) {
   let commit;
   let commitSource = 'explicit --commit';
   if (typeof flags.commit === 'string' && flags.commit) {
     try { commit = execFileSync('git', ['rev-parse', '--verify', `${flags.commit}^{commit}`], { encoding: 'utf8' }).trim(); }
     catch { return { ok: false, code: 2, reason: `--commit ${flags.commit} does not resolve to a real commit` }; }
   } else {
-    const tip = ticketTip(gitAt(process.cwd()), ticket);
+    const tip = ticketTip(gitAt(process.cwd()), ticket, boardIds());
     if (tip.ambiguous.length) {
       return { ok: false, code: 2, reason: `several branches are named for ${ticket} (${tip.ambiguous.join(', ')}) — pass --commit <sha> naming the one you reviewed` };
     }
@@ -690,10 +742,14 @@ function bindApprovalEvidence(flags, ticket) {
   // candidate is every commit the branch adds. `--base` overrides it. When no integration branch is
   // resolvable we fall back to `${commit}^` and SAY SO in the recorded detail, rather than silently
   // narrowing the subject back to one commit.
+  // W2-5 / R2-3: the base is the merge-base with the INTEGRATION branch (develop on the flagship
+  // model), the same branch compose's Range and verify-done measure from. Hard-coding main/master
+  // made every develop-model Scope disagree with the bound base, so the first approval was refused.
   let base = typeof flags.base === 'string' ? flags.base : '';
   let baseSource = 'explicit --base';
   if (!base) {
-    for (const ref of ['main', 'master', 'origin/main', 'origin/master']) {
+    const integration = integrationBase(gitAt(process.cwd()));
+    for (const ref of [integration, 'origin/main', 'origin/master'].filter(Boolean)) {
       try {
         const mb = execFileSync('git', ['merge-base', ref, commit], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
         if (mb && mb !== commit) { base = mb; baseSource = `merge-base with ${ref}`; break; }
@@ -721,10 +777,20 @@ function bindApprovalEvidence(flags, ticket) {
   catch { /* recorded as empty; the diff hash is still authoritative */ }
   if (!flags.evidence) return { ok: false, reason: '--bind requires --evidence <path to the evidence the review used>' };
   if (!flags.context) return { ok: false, reason: '--bind requires --context <path to the context the review used>' };
-  const evidencePath = resolve(process.cwd(), String(flags.evidence));
-  const contextPath = resolve(process.cwd(), String(flags.context));
-  if (!existsSync(evidencePath)) return { ok: false, reason: `no evidence file at ${flags.evidence}` };
-  if (!existsSync(contextPath)) return { ok: false, reason: `no context file at ${flags.context}` };
+  // G2-6: --evidence is a record under docs/team/evidence/ that RE-DERIVES for this ticket and ran
+  // on exactly the commit being approved (a --static record when the ticket is verified_static);
+  // --context is a context-manifest/v2. Any file at all (/etc/hosts) used to be hashed and accepted.
+  const { root } = studioPolicy();
+  const ev = verifyTestEvidence(root, flags.evidence, { ticket, allowStatic: Boolean(state?.verifiedStatic), exactHead: commit });
+  if (!ev.ok) return { ok: false, code: ev.code, reason: `--evidence: ${ev.reason}` };
+  const evidencePath = resolve(root, ev.detail.evidence);
+  const contextPath = existsSync(resolve(process.cwd(), String(flags.context))) ? resolve(process.cwd(), String(flags.context)) : resolve(root, String(flags.context));
+  if (!existsSync(contextPath)) return { ok: false, code: 2, reason: `no context file at ${flags.context}` };
+  let manifest = null;
+  try { manifest = JSON.parse(readFileSync(contextPath, 'utf8')); } catch { /* refused below */ }
+  if (!manifest || manifest.schema !== 'context-manifest/v2' || !Array.isArray(manifest.sources)) {
+    return { ok: false, reason: `--context ${flags.context} is not a context-manifest/v2 (context-manifest.mjs create writes docs/team/context-manifest.json) — the context a review used is a manifest of hashed sources, not any file` };
+  }
   return {
     ok: true,
     detail: {
@@ -734,6 +800,7 @@ function bindApprovalEvidence(flags, ticket) {
       base_source: baseSource,
       files,
       diff_hash: createHash('sha256').update(diff).digest('hex'),
+      evidence: ev.detail.evidence,
       evidence_hash: createHash('sha256').update(readFileSync(evidencePath)).digest('hex'),
       context_snapshot: createHash('sha256').update(readFileSync(contextPath)).digest('hex'),
     },
@@ -745,6 +812,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
   const { events } = loadLog(paths.log);
   const { tickets } = reduce(events);
   const ticket = resolveId(tickets, id);
+  BOARD_IDS = [...tickets.values()].map((t) => t.id);
 
   const event = {
     ts: new Date().toISOString(),
@@ -812,7 +880,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
   }
 
   if (name === 'approved' && flags.bind) {
-    const bound = bindApprovalEvidence(flags, ticket);
+    const bound = bindApprovalEvidence(flags, ticket, tickets.get(key(ticket)));
     if (!bound.ok) {
       process.stderr.write(`board: refused ${ticket} approved — ${bound.reason}\n`);
       process.exit(bound.code || 1);
@@ -820,8 +888,10 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     // G-F4: THE VERDICT'S `Scope:` MUST BE THE CANDIDATE THAT WAS BOUND. A verdict reading
     // `Scope: main..HEAD` written on main, or naming last cycle's tip, approves a range that is not
     // the commit this approval pins.
+    // G2-5: lib/verdict.mjs guarantees EXACTLY two sides (it refuses `a..b..c`), so this comparison
+    // is never skipped — it used to be, whenever the split did not give two parts.
     const scope = String(event.detail?.reviewed_scope || '').split('..');
-    if (scope.length === 2) {
+    {
       const g = gitAt(process.cwd());
       const to = g(['rev-parse', '--verify', `${scope[1]}^{commit}`]);
       const from = g(['rev-parse', '--verify', `${scope[0]}^{commit}`]);
@@ -863,7 +933,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
       : { note: event.detail || undefined, ...ev.detail };
   }
 
-  const gitBlock = gitRefusal(name, ticket, flags, events);
+  const gitBlock = gitRefusal(name, ticket, flags, events, tickets.get(key(ticket)));
   if (gitBlock) {
     process.stderr.write(`board: refused ${ticket} ${name} — ${gitBlock}\n`);
     process.exit(1);
@@ -871,7 +941,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
 
   // G-F7: RISK FROM THE DIFF, at the merge it governs.
   if (name === 'merged') {
-    const risk = mergeRisk(ticket, tickets.get(key(ticket)), paths);
+    const risk = mergeRisk(ticket, tickets.get(key(ticket)), paths, flags);
     if (risk.refusal) {
       process.stderr.write(`board: refused ${ticket} merged — ${risk.refusal}\n`);
       process.exit(1);
@@ -912,32 +982,59 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
  *           asked before `done` instead of a round after. No branch / no integration branch:
  *           unknown, and unchanged.
  */
-function gitRefusal(name, ticket, flags, events) {
+function gitRefusal(name, ticket, flags, events, state) {
   if (name !== 'merged' && name !== 'closed') return '';
+  // Design decision 1: a docs-only QA- ticket is reviewed inline and closes from merged without
+  // being on the integration branch. Nothing to bind, nothing to integrate.
+  if (state && isQaDocs(state)) return '';
   const git = gitAt(process.cwd());
+  if (git(['rev-parse', '--git-dir']) === null) return ''; // no repository: no commit to bind (stated bound)
+  const binding = studioPolicy().policy.requireApprovalBinding === true;
   if (name === 'closed') {
-    const mine = ticketBranches(git, ticket);
-    const base = mine.length ? integrationBase(git) : '';
-    if (base && !mine.some((b) => isAncestor(git, b, base))) {
-      return `${mine.join(', ')} is not merged into ${base} — "done" would claim integrated code that is not on the integration branch. Merge it (or land the wave) first.`;
+    const base = integrationBase(git);
+    if (!base) return '';
+    // G2-8: no branch named for the ticket used to mean "nothing to check" and closed passed. Now
+    // the subject must be known — the branch tip, or --head naming the merged commit.
+    const subj = mergeSubject(git, ticket, flags);
+    if (subj.error) return `${subj.error} — "done" asserts integrated code, and which code is unknown.`;
+    if (!isAncestor(git, subj.sha, base)) {
+      return `${subj.source} (${subj.sha.slice(0, 12)}) is not merged into ${base} — "done" would claim integrated code that is not on the integration branch. Merge it (or land the wave) first.`;
+    }
+    // G2-9: what merged must be WHAT WAS APPROVED. Ancestry alone let commits pushed after the
+    // `merged` event ride into `done` unreviewed.
+    if (binding) {
+      const { counted, issues } = checkApprovals(events, { ticket, head: subj.sha, cwd: process.cwd() });
+      if (!counted.length) return `requireApprovalBinding is on and ${ticket} carries no bound approval to close against`;
+      if (issues.length) return `the code being closed (${subj.sha.slice(0, 12)}) is not the approved code:\n  ${issues.join('\n  ')}`;
     }
     return '';
   }
-  if (studioPolicy().policy.requireApprovalBinding !== true) return '';
-  const tip = ticketTip(git, ticket);
-  const given = typeof flags.head === 'string' ? flags.head : '';
-  let head = tip.sha;
-  if (given) {
-    const sha = git(['rev-parse', '--verify', `${given}^{commit}`]);
-    if (!sha) return `--head ${given} does not resolve to a commit`;
-    if (tip.sha && sha !== tip.sha) return `--head ${given} is not the tip of ${tip.branch} (${tip.sha}) — the tip is what merges, so the approval is checked against it`;
-    head = sha;
+  if (!binding) return '';
+  const subj = mergeSubject(git, ticket, flags);
+  if (subj.error) return `requireApprovalBinding is on and ${ticket}'s branch tip is unknown: ${subj.error}`;
+  const { issues } = checkApprovals(events, { ticket, head: subj.sha, cwd: process.cwd() });
+  return issues.length ? `the approval is not bound to ${subj.sha}:\n  ${issues.join('\n  ')}` : '';
+}
+
+/**
+ * The commit a `merged` / `closed` is ABOUT (G2-7, G2-8): the one branch named for the ticket, or
+ * --head (or --commit) when no branch is. A --head that disagrees with a resolvable tip is refused —
+ * the tip is what merges. `{sha, source}` or `{error}`.
+ */
+function mergeSubject(git, ticket, flags) {
+  const tip = ticketTip(git, ticket, boardIds());
+  const given = typeof flags.head === 'string' && flags.head ? flags.head : typeof flags.commit === 'string' ? flags.commit : '';
+  if (!given) {
+    if (tip.sha) return { sha: tip.sha, source: `the tip of ${tip.branch}` };
+    return { error: `${tip.ambiguous.length ? `several branches are named for ${ticket} (${tip.ambiguous.join(', ')})` : `no branch is named for ${ticket}`}. Pass --head <sha> of the commit being merged` };
   }
-  if (!head) {
-    return `requireApprovalBinding is on and ${ticket}'s branch tip is unknown (${tip.ambiguous.length ? `several branches: ${tip.ambiguous.join(', ')}` : 'no branch is named for it'}). Pass --head <sha> of the commit being merged.`;
+  const sha = git(['rev-parse', '--verify', `${given}^{commit}`]);
+  if (!sha) return { error: `--head ${given} does not resolve to a commit` };
+  if (tip.sha && sha !== tip.sha) return { error: `--head ${given} is not the tip of ${tip.branch} (${tip.sha}) — the tip is what merges, so the approval is checked against it` };
+  if (tip.ambiguous.length && !tip.ambiguous.some((b) => git(['rev-parse', `${b}^{commit}`]) === sha)) {
+    return { error: `--head ${given} is not the tip of any branch named for ${ticket} (${tip.ambiguous.join(', ')})` };
   }
-  const { issues } = checkApprovals(events, { ticket, head, cwd: process.cwd() });
-  return issues.length ? `the approval is not bound to ${head}:\n  ${issues.join('\n  ')}` : '';
+  return { sha, source: tip.sha ? `the tip of ${tip.branch}` : `--head ${given}` };
 }
 
 /**
@@ -955,26 +1052,36 @@ const EVIDENCE_CHECKS = {
   'migration-plan': (st) => Boolean(String(st.meta?.rollback || '').trim()),
 };
 const RUNTIME_KINDS = new Set(['runtime-gate', 'runtime-evidence']);
-function runtimeEvidence(g, tip) {
-  const { root } = studioPolicy();
-  const p = resolve(root, 'docs/team/runtime-result.json');
-  if (!existsSync(p)) return false;
-  let v; try { v = JSON.parse(readFileSync(p, 'utf8')); } catch { return false; }
-  const head = v.subject?.head;
-  return v.schema === 'gate-result/v1' && v.result === 'PASS' && v.subject?.dirty === false && Boolean(head) &&
-    (!tip || head === tip || isAncestor(g, tip, head)) && checkGateLog(root, v).ok;
-}
-function mergeRisk(ticket, state, paths) {
+function mergeRisk(ticket, state, paths, flags = {}) {
   const policyPath = resolve(dirname(paths.log), 'team', 'risk-policy.json');
-  if (!state || !existsSync(policyPath)) return {};
+  if (!state) return {};
+  if (isQaDocs(state)) return { detail: { planned: null, diff: 'docs-only QA ticket', effective: null } };
+  if (!existsSync(policyPath)) {
+    // G2-18: a DELETED policy enforces nothing, so it is refused, not read as "no policy yet": the
+    // board recorded a decision from it, or the integration branch still carries it.
+    const g0 = gitAt(process.cwd());
+    const base0 = integrationBase(g0);
+    const committed = base0 && g0(['cat-file', '-e', `${base0}:docs/team/risk-policy.json`]) !== null;
+    if (state.meta?.policy_decision || committed) {
+      return { refusal: `docs/team/risk-policy.json is missing, but ${state.meta?.policy_decision ? `${ticket} was planned under it` : `${base0} still carries it`} — restore it; a deleted policy enforces nothing.` };
+    }
+    return {};
+  }
   let policy;
   try { policy = JSON.parse(readFileSync(policyPath, 'utf8')); } catch (e) { return { refusal: `risk-policy.json is unreadable (${e.message}) — cannot tell what this merge requires` }; }
   if (policy.schema !== 'risk-policy/v1' || !Array.isArray(policy.rules)) return { refusal: 'risk-policy.json is not risk-policy/v1 — cannot tell what this merge requires' };
   const g = gitAt(process.cwd());
-  const tip = ticketTip(g, ticket);
+  // G2-7: the diff is the SUBJECT's — the ticket's branch tip, or --head when no branch is named for
+  // it. An unknown diff is a refusal, never "no risk": a branch named without the ticket id used to
+  // skip escalation entirely.
+  const subj = mergeSubject(g, ticket, flags);
+  if (subj.error) return { refusal: `${subj.error}\n  risk-policy.json is in force, so the merge must know which files it lands.` };
+  const tip = { sha: subj.sha };
   const base = integrationBase(g);
-  const mb = tip.sha && base ? g(['merge-base', base, tip.sha]) : null;
+  if (!base) return { refusal: 'risk-policy.json is in force and no integration branch (develop/main/master) exists, so the diff — and the risk it carries — is unknown' };
+  const mb = g(['merge-base', base, tip.sha]);
   const files = mb ? (g(['diff', '--name-only', mb, tip.sha]) || '').split('\n').filter(Boolean) : null;
+  if (files === null) return { refusal: `cannot diff ${tip.sha.slice(0, 12)} against ${base} — the diff, and the risk it carries, is unknown` };
   const planned = state.meta?.policy_decision || null;
   const diff = files && files.length ? routeFiles(policy, files) : null;
   const plannedRank = planned?.risk ? RANK[planned.risk] : -1;
@@ -985,8 +1092,11 @@ function mergeRisk(ticket, state, paths) {
   const have = new Set(state.approvals.map((a) => a.by).filter((b) => b && !workers.has(b)));
   const missing = [
     ...approvals.filter((r) => !have.has(r)).map((r) => `approval by ${r}`),
-    ...evidence.filter((k) => (RUNTIME_KINDS.has(k) ? !runtimeEvidence(g, tip.sha) : !(EVIDENCE_CHECKS[k] && EVIDENCE_CHECKS[k](state))))
-      .map((k) => (EVIDENCE_CHECKS[k] || RUNTIME_KINDS.has(k) ? `evidence "${k}"` : `evidence "${k}" (no checker exists for this kind — fix risk-policy.json)`)),
+    // Decision 6 / W2-3: runtime evidence is checked at the WAVE (wave-integrate runs runtime-gate.sh
+    // on the merged wave tree before a high/critical ticket lands), not before `merged`. It stays in
+    // required_evidence on the merged event, which is what the wave reads.
+    ...evidence.filter((k) => !RUNTIME_KINDS.has(k)).filter((k) => !(EVIDENCE_CHECKS[k] && EVIDENCE_CHECKS[k](state)))
+      .map((k) => (EVIDENCE_CHECKS[k] ? `evidence "${k}"` : `evidence "${k}" (no checker exists for this kind — fix risk-policy.json)`)),
   ];
   const detail = {
     planned: planned?.risk || null,
@@ -1001,7 +1111,8 @@ function mergeRisk(ticket, state, paths) {
     return {
       refusal: `${ticket}'s merge requires ${detail.effective || 'its planned'} risk${escalated ? ` (escalated from ${detail.planned || 'unplanned'}: the diff touches ${diff.because})` : ''} — missing: ${missing.join('; ')}.\n` +
         '  How each is earned: approval by <role> = that role\'s `approved`; "security-review" = an `approved` by security-reviewer;\n' +
-        '  "runtime-gate" = docs/team/runtime-result.json PASS on a tree containing the ticket tip; "migration-plan" = `add --rollback` on the ticket.',
+        '  "migration-plan" = `add --rollback` on the ticket. "runtime-gate" is checked at the WAVE: wave-integrate runs runtime-gate.sh\n' +
+        '  on the merged wave tree before a high/critical ticket lands.',
       detail,
     };
   }
@@ -1127,6 +1238,11 @@ function cmdVerify(paths) {
         '  This is a rewritten history, not a board rule violation. Recover the log from version\n' +
         `  control (git checkout -- ${paths.log}) and find out what wrote to it directly.\n`
     );
+    process.exit(1);
+  }
+  const anchored = checkAnchor(paths.log, text, chain);
+  if (!anchored.ok) {
+    process.stdout.write(`AUDIT CHAIN: does NOT match its anchor\n  ${anchored.reason.split('\n').join('\n  ')}\n`);
     process.exit(1);
   }
   process.stdout.write(
@@ -1491,6 +1607,7 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
           '  add <ID> --title T [--owner R] [--depends A,B] [--status todo|blocked] ...\n' +
           '  move <ID> <event> --by <role> [--detail "..."]\n' +
           '  move <ID> merged --by <role> [--head <sha>]   --head only when no branch is named for <ID>\n' +
+          '  move <ID> closed --by <role> [--head <sha>]   likewise: the merged commit must be the approved one\n' +
           '  move <ID> reopened --by founder  blocked|review -> in_progress, +1 review cycle over the cap\n' +
           '  assign <ID> --to <role>\n' +
           '  show [ID] [--json]\n' +
@@ -1498,7 +1615,7 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
           '  verify                          the audit chain — was this log rewritten?\n' +
           '  move <ID> verified --by <role> --evidence <record verify-done printed> [--token T]\n' +
           '  move <ID> qa_passed --by <role> --evidence docs/team/journey-result.json|<post-merge record> [--token T]\n' +
-          '  actor mint --role R --ticket T [--ttl-minutes N]   orchestrator only: prints a per-spawn token once\n' +
+          '  actor mint --role R --ticket T [--ttl-minutes N]   orchestrator only: prints a per-spawn token once\n' +          '  actor mint --role founder --ticket T   the human founder, at a terminal (TTY): single-use, 30 min\n' +
           '  actor revoke --token-id ID | actor list\n' +
           '  migrate [board.md] [--out log.jsonl]\n' +
           `  events: ${[...EVENTS].join(' ')}\n`

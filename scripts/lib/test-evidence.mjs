@@ -84,7 +84,9 @@ export function classifyTestRun(status, output) {
 // CLI for verify-done.sh: test-evidence.mjs <exit-code> <log-file>  ->  "<verdict>\t<why>"
 // realpath: import.meta.url is resolved through symlinks (/var -> /private/var on macOS), argv[1]
 // is not — comparing them raw made the CLI print nothing under a symlinked path.
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+// The guard never throws: under `node -e` argv[1] is an ordinary argument, not a path.
+const isMain = () => { try { return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href; } catch { return false; } };
+if (process.argv[1] && isMain()) {
   let log = '';
   try { log = readFileSync(process.argv[3], 'utf8'); } catch { /* empty log: no evidence */ }
   const r = classifyTestRun(Number(process.argv[2]), log);

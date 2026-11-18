@@ -14,11 +14,23 @@
       ],
       "reader": null
     },
+    "assertion-census/v1": {
+      "files": [
+        "scripts/assertion-census.mjs"
+      ],
+      "reader": "scripts/lib/evidence.mjs verifyTestEvidence — the board refuses `verified` when a branch's changed tests assert nothing (G2-22)"
+    },
     "audit-anchor/v1": {
       "files": [
         "scripts/audit-anchor.mjs"
       ],
       "reader": null
+    },
+    "board-anchor/v1": {
+      "files": [
+        "scripts/lib/events.mjs"
+      ],
+      "reader": "scripts/lib/events.mjs checkAnchor — board.mjs on every read and append of the event log (G2-10)"
     },
     "board-event/v1": {
       "files": [

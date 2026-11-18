@@ -17,6 +17,13 @@
  *                      `RESULT:` line must agree with `result` and whose `GATE-SUBJECT:` line must
  *                      name `subject.head`. Readiness refuses a result without one.
  *
+ * THE WRITER RUNS THE THING ITSELF (G2-2). The CLI used to take `--result`, `--exit` and `--log`
+ * from its caller, so `evidence.mjs test --exit 0 --log <a file saying "Executed 9 tests">` minted
+ * a record the board accepted: a forgery through the sanctioned door. Now `test` runs the command
+ * (resolved from the project profile for `--scope`), `docs`/`static` derive head and files from
+ * git, and `gate` runs a KNOWN plugin gate script (GATES below) — each records its own exit code and
+ * output. Nothing a caller says about an outcome is written down.
+ *
  * THE BOUND, STATED. Re-derivation defeats a hand-written VERDICT — a result that says PASS over a
  * log that says otherwise, a green with no log, a log edited after the fact, a record for another
  * commit. It does NOT defeat an agent that fabricates the raw log itself and hashes it: every byte
@@ -31,9 +38,15 @@ import { dirname, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
 import { classifyTestRun } from './test-evidence.mjs';
-import { gitAt, integrationBase, isAncestor, ticketTip } from './integration.mjs';
+import { gitAt, integrationBase, isAncestor, ticketIdsFromBoard, ticketTip } from './integration.mjs';
 import { resolveProjectRoot } from './root.mjs';
+import { treeDirty } from './readiness.mjs';
+import { inlineTokenFlag } from './actor.mjs';
+import { censusTestFiles, isTestFile } from '../assertion-census.mjs';
 
 export const EVIDENCE_DIR = 'docs/team/evidence';
 export const PRODUCERS = new Set(['verify-done.sh', 'wave-integrate.mjs']);
@@ -59,12 +72,14 @@ export function writeEvidenceLog(root, name, text) {
 }
 
 /** Write a test-evidence/v1 record (and its raw log). Returns the root-relative record path. */
-export function writeTestEvidence(root, { producedBy, branch, base, head, mode, command = '', commandSource = 'caller', exitCode = null, output = '', commits = null, files = null }) {
+export function writeTestEvidence(root, { producedBy, branch, base, head, mode, command = '', commandSource = 'caller', exitCode = null, output = '', commits = null, files = null, census = null, dirty = null }) {
   const name = stem('test', head);
   const record = {
     schema: 'test-evidence/v1', produced_by: producedBy, at: new Date().toISOString(),
     branch, base, head, mode, commits, files_changed: files,
     command, command_source: commandSource, exit_code: exitCode, verdict: 'n/a', why: '', log: null, log_sha256: null,
+    ...(census ? { assertion_census: census } : {}),
+    ...(dirty === null ? {} : { dirty }),
   };
   if (mode === 'tests') {
     const c = classifyTestRun(Number(exitCode), output);
@@ -99,24 +114,38 @@ function readLog(root, rec) {
   return { ok: true, text };
 }
 
-/** Declared test commands (project-profile test.fast / test.full). Empty when the profile declares none. */
-function declaredCommands(root) {
+/** Declared test commands by scope (project-profile test.fast / test.full). {} when none. */
+function profileTests(root) {
   try {
-    const p = JSON.parse(readFileSync(resolve(root, 'docs/team/project-profile.json'), 'utf8'));
-    return [p.test?.fast, p.test?.full].filter((c) => typeof c === 'string' && c.trim());
-  } catch { return []; }
+    const t = JSON.parse(readFileSync(resolve(root, 'docs/team/project-profile.json'), 'utf8')).test || {};
+    return Object.fromEntries(['fast', 'full'].filter((k) => typeof t[k] === 'string' && t[k].trim()).map((k) => [k, t[k]]));
+  } catch { return {}; }
 }
+function declaredCommands(root) { return Object.values(profileTests(root)); }
 
 // ponytail: "a document" is a path under docs/ or a prose extension. A docs ticket shipping a .json
 // schema needs a real test run; widen this list only with a reason.
-const DOC_FILE = /^docs\/|\.(md|mdx|txt|rst)$/i;
+// G2-25: a docs/ that is a SERVED SITE (GitHub Pages: docs/index.html, _config.yml or CNAME at the
+// head) is product, not documentation — there only prose extensions count as documents.
+const PROSE_FILE = /\.(md|mdx|txt|rst)$/i;
+const docFile = (served) => (f) => PROSE_FILE.test(f) || (!served && /^docs\//.test(f));
+function docsIsServedSite(git, head) {
+  const listed = git(['ls-tree', '--name-only', `${head}:docs`]);
+  return Boolean(listed && listed.split('\n').some((f) => ['index.html', '_config.yml', 'CNAME'].includes(f)));
+}
 
-/** Is `head` the ticket's tip, or a descendant of it? `{ok, reason, code}`. */
-function boundToTicket(git, ticket, head, recordedBranch) {
-  const tip = ticketTip(git, ticket);
+/**
+ * Is `head` the ticket's tip (or, unless `exact`, a descendant of it)? `{ok, reason, code}`.
+ * G2-4: verify-done evidence must be EXACTLY the tip — a descendant scratch branch carrying extra
+ * commits was accepted for `verified`. Descendants stay legal for a wave run and for QA's run on
+ * the merged tree, where the ticket is, by construction, an ancestor of what ran.
+ */
+function boundToTicket(git, ticket, head, recordedBranch, { exact = false, root = '' } = {}) {
+  const tip = ticketTip(git, ticket, root ? ticketIdsFromBoard(root) : []);
   if (tip.ambiguous.length) return { ok: false, code: 2, reason: `several branches are named for ${ticket} (${tip.ambiguous.join(', ')}) — the evidence cannot be bound to one` };
   if (tip.sha) {
-    if (tip.sha === head || isAncestor(git, tip.sha, head)) return { ok: true, tip: tip.sha };
+    if (tip.sha === head || (!exact && isAncestor(git, tip.sha, head))) return { ok: true, tip: tip.sha };
+    if (exact && isAncestor(git, tip.sha, head)) return { ok: false, reason: `the evidence ran on ${head.slice(0, 12)}, a DESCENDANT of ${ticket}'s tip ${tip.sha.slice(0, 12)} (${tip.branch}) carrying commits the ticket does not — \`verified\` is about exactly the tip. Re-run verify-done on ${tip.branch}.` };
     return { ok: false, reason: `the evidence ran on ${head.slice(0, 12)}, which does not contain ${ticket}'s branch tip ${tip.sha.slice(0, 12)} (${tip.branch}) — it is about older or different code. Re-run verify-done on the current tip.` };
   }
   // No branch named for the ticket (work on a shared branch): the record must still describe the
@@ -130,7 +159,7 @@ function boundToTicket(git, ticket, head, recordedBranch) {
  * Re-derive a test-evidence/v1 record for `ticket`. `afterTs` (qa_passed) requires the run to have
  * happened after that moment (the merge). Returns `{ok, detail}` or `{ok:false, code, reason}`.
  */
-export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = process.cwd() } = {}) {
+export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = process.cwd(), allowStatic = false, exactHead = '' } = {}) {
   const loc = locate(root, given);
   if (!loc.ok) return loc;
   let rec;
@@ -140,8 +169,10 @@ export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = pr
   if (!PRODUCERS.has(rec.produced_by)) return fail(`names producer ${JSON.stringify(rec.produced_by)}; only ${[...PRODUCERS].join(' / ')} write test evidence`);
   const git = gitAt(cwd);
   if (!rec.head || git(['cat-file', '-e', `${rec.head}^{commit}`]) === null) return fail(`its head ${rec.head || '(none)'} is not a commit in this repository`, 2);
-  const bound = boundToTicket(git, ticket, rec.head, rec.branch);
+  const exact = rec.produced_by === 'verify-done.sh' && !afterTs;
+  const bound = boundToTicket(git, ticket, rec.head, rec.branch, { exact, root });
   if (!bound.ok) return fail(bound.reason, bound.code || 1);
+  if (exactHead && rec.head !== exactHead) return fail(`ran on ${String(rec.head).slice(0, 12)}, not the commit being approved (${exactHead.slice(0, 12)})`);
   if (afterTs && !(Date.parse(rec.at) > Date.parse(afterTs))) return fail(`was recorded at ${rec.at}, before ${ticket} merged (${afterTs}) — QA evidence is a run on the MERGED tree, not the developer's pre-review run`);
 
   if (rec.mode === 'tests') {
@@ -150,18 +181,29 @@ export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = pr
     const again = classifyTestRun(Number(rec.exit_code), log.text);
     if (again.verdict !== rec.verdict) return fail(`says "${rec.verdict}" but re-classifying its own log gives "${again.verdict}"${again.why ? ` (${again.why})` : ''} — the recorded verdict is not the one its log supports`);
     if (again.verdict !== 'green') return fail(`the suite did not run green (${again.verdict}${again.why ? `: ${again.why}` : ''})`);
+    // G2-3: the command must be one the PROFILE declares, resolved by the writer from the profile
+    // (command_source "profile"). A profile that declares none cannot verify a code ticket at all.
     const declared = declaredCommands(root);
-    if (declared.length && !declared.includes(rec.command)) {
-      return fail(`ran "${rec.command}", which is not a test command the project profile declares (${declared.map((c) => `"${c}"`).join(', ')}) — a caller-chosen command can be \`echo "Executed 9 tests"\`. Run verify-done with \`fast\` or \`full\`.`);
+    if (!declared.length) {
+      return fail('the project profile declares no test command (docs/team/project-profile.json test.fast / test.full), so no run can verify a code ticket — a caller-chosen command can be `echo "Executed 9 tests"`. Declare test.fast, then run verify-done with `fast`.', 2);
+    }
+    if (rec.command_source !== 'profile' || !declared.includes(rec.command)) {
+      return fail(`ran "${rec.command}" (command_source ${JSON.stringify(rec.command_source)}), which is not a test command the project profile declares (${declared.map((c) => `"${c}"`).join(', ')}) — a caller-chosen command can be \`echo "Executed 9 tests"\`. Run verify-done with \`fast\` or \`full\`.`);
+    }
+    if (rec.dirty === true) return fail('the suite ran on a working tree with uncommitted changes to tracked files — it tested code that is not the commit. Commit or discard, then re-run.');
+    // G2-22: a changed suite whose tests assert nothing is not evidence the code works.
+    if (rec.assertion_census?.assert_nothing) {
+      return fail(`the changed test files declare ${rec.assertion_census.tests} test(s) and ZERO assertions (${(rec.assertion_census.files || []).join(', ')}) — a suite that asserts nothing passes whatever the code does.`);
     }
   } else if (rec.mode === 'docs-only') {
     if (afterTs) return fail('is a --docs-only record; QA needs a run of the suite or a journey-gate result');
-    const base = git(['merge-base', String(rec.base || 'main'), rec.head]);
+    const base = git(['merge-base', String(rec.base || integrationBase(git) || 'main'), rec.head]);
     const files = base ? (git(['diff', '--name-only', base, rec.head]) || '').split('\n').filter(Boolean) : [];
     if (!files.length) return fail('a --docs-only record whose branch changes no files (re-derived from git) verifies nothing');
-    const code = files.filter((f) => !DOC_FILE.test(f));
+    const isDoc = docFile(docsIsServedSite(git, rec.head));
+    const code = files.filter((f) => !isDoc(f));
     if (code.length) return fail(`is --docs-only, but the branch changes non-document files (re-derived from git): ${code.slice(0, 5).join(', ')}${code.length > 5 ? ', …' : ''} — run the tests`);
-  } else {
+  } else if (!(allowStatic && rec.mode === 'static')) {
     return fail(`has mode ${JSON.stringify(rec.mode)}; only "tests" and "docs-only" earn verified`);
   }
   return {
@@ -228,7 +270,7 @@ function verifyJourney(root, abs, rel, { ticket, cwd }) {
   const derived = checkGateLog(root, v);
   if (!derived.ok) return fail(derived.reason);
   const git = gitAt(cwd);
-  const tip = ticketTip(git, ticket);
+  const tip = ticketTip(git, ticket, ticketIdsFromBoard(root));
   const head = String(v.subject.head);
   if (tip.ambiguous.length) return fail(`several branches are named for ${ticket} (${tip.ambiguous.join(', ')})`, 2);
   if (tip.sha && !(tip.sha === head || isAncestor(git, tip.sha, head))) return fail(`the journeys ran on ${head.slice(0, 12)}, which does not contain ${ticket}'s tip ${tip.sha.slice(0, 12)}`);
@@ -239,37 +281,139 @@ function verifyJourney(root, abs, rel, { ticket, cwd }) {
   return { ok: true, detail: { evidence: rel, evidence_sha256: sha256(readFileSync(abs)), evidence_head: head, evidence_mode: 'journey-gate', log_sha256: v.log_sha256 } };
 }
 
+// Writers that RUN the thing ----------------------------------------------------------------------
+
+/**
+ * Run a test command on `branch` checked out in `dir` and record what happened. The command is
+ * `test.<scope>` from the project profile (command_source "profile") or, for a caller-supplied
+ * `command`, command_source "caller" — which the board refuses for `verified` (G2-3). The exit code
+ * and output are this process's own observation; `dir` must have `branch`'s commit checked out.
+ * The changed test files go through the assertion census (G2-22).
+ */
+export function runTestEvidence(root, { branch, base, dir, scope = '', command = '', cwd = process.cwd(), producedBy = 'verify-done.sh' }) {
+  const git = gitAt(cwd);
+  const head = git(['rev-parse', '--verify', `${branch}^{commit}`]);
+  if (!head) return { ok: false, reason: `${branch} does not resolve to a commit` };
+  let cmd = command;
+  let source = 'caller';
+  if (scope) {
+    cmd = profileTests(root)[scope] || '';
+    source = 'profile';
+    if (!cmd) return { ok: false, reason: `the project profile declares no test.${scope}` };
+  }
+  if (!cmd) return { ok: false, reason: 'no test command (give --scope fast|full, or --command)' };
+  const at = resolve(cwd, dir || '.');
+  const inDir = gitAt(at);
+  const dirHead = inDir(['rev-parse', 'HEAD']);
+  if (dirHead !== head) return { ok: false, reason: `${at} has ${dirHead || 'nothing'} checked out, not ${branch} (${head})` };
+  const dirty = inDir(['status', '--porcelain', '--untracked-files=no']);
+  const run = spawnSync('sh', ['-c', cmd], { cwd: at, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+  const output = `${run.stdout || ''}${run.stderr || ''}${run.error ? `\n${run.error.message}\n` : ''}`;
+  const exitCode = run.status === null ? 128 : run.status;
+  const mb = git(['merge-base', base, head]);
+  const changed = mb ? (git(['diff', '--name-only', mb, head]) || '').split('\n').filter(Boolean) : [];
+  const tests = changed.filter(isTestFile).flatMap((f) => {
+    const text = git(['show', `${head}:${f}`]);
+    return text === null ? [] : [{ path: f, text }];
+  });
+  const census = tests.length ? censusTestFiles(tests) : null;
+  const commits = Number(git(['rev-list', '--count', `${base}..${head}`]) || 0);
+  const rel = writeTestEvidence(root, {
+    producedBy, branch, base, head, mode: 'tests', command: cmd, commandSource: source, exitCode, output,
+    commits, files: changed.length, census, dirty: Boolean(dirty),
+  });
+  const rec = JSON.parse(readFileSync(resolve(root, rel), 'utf8'));
+  return { ok: true, record: rel, verdict: rec.verdict, why: rec.why, exit: exitCode, log: rec.log ? resolve(root, rec.log) : '', command: cmd, command_source: source, census, dirty: Boolean(dirty) };
+}
+
+/** A docs-only or static record: head and counts come from git, never from the caller. */
+export function writeBranchEvidence(root, { branch, base, mode, cwd = process.cwd() }) {
+  const git = gitAt(cwd);
+  const head = git(['rev-parse', '--verify', `${branch}^{commit}`]);
+  if (!head) return { ok: false, reason: `${branch} does not resolve to a commit` };
+  const mb = git(['merge-base', base, head]);
+  const files = mb ? (git(['diff', '--name-only', mb, head]) || '').split('\n').filter(Boolean).length : 0;
+  const commits = Number(git(['rev-list', '--count', `${base}..${head}`]) || 0);
+  return { ok: true, record: writeTestEvidence(root, { producedBy: 'verify-done.sh', branch, base, head, mode, commits, files }) };
+}
+
+/** The gate scripts `gate` may run, by name. Only the plugin's own — never a caller's path. */
+const HERE = dirname(fileURLToPath(import.meta.url));
+export const GATES = { 'runtime-gate': ['sh', resolve(HERE, '..', 'runtime-gate.sh')] };
+
+/**
+ * Run a known gate against `projectRoot` and write its gate-result/v1: result from the gate's OWN
+ * exit code (0 PASS, 1 FAIL, anything else CANNOT_EVALUATE), head and dirty from git (dirty = the
+ * tree was dirty BEFORE the run, or HEAD moved during it; no head -> dirty null), log = its own output.
+ */
+export function runGate(projectRoot, { gate, out, args = [] }) {
+  const argv = GATES[gate];
+  if (!argv) return { ok: false, code: 2, reason: `unknown gate ${JSON.stringify(gate)} — only ${Object.keys(GATES).join(', ')} (journey-gate records itself)` };
+  if (args.includes('--record') || args.includes('--project-root')) return { ok: false, code: 2, reason: '--record / --project-root cannot be passed through; this command is the recording, and --root names the project' };
+  const root = resolve(projectRoot);
+  const git = gitAt(root);
+  const head = git(['rev-parse', 'HEAD']);
+  const dirtyBefore = head ? treeDirty(root) : true;
+  const run = spawnSync(argv[0], [...argv.slice(1), '--project-root', root, ...args], { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  const raw = `${run.stdout || ''}${run.stderr || ''}`;
+  const result = run.status === 0 ? 'PASS' : run.status === 1 ? 'FAIL' : 'CANNOT_EVALUATE';
+  // Dirty is the tree the gate was GIVEN (W2-12): a build's own dist/ must not dirty its record. HEAD
+  // moving under the run still voids it.
+  const dirty = head ? (dirtyBefore || git(['rev-parse', 'HEAD']) !== head) : null;
+  const text = `${raw}${raw.endsWith('\n') || !raw ? '' : '\n'}RESULT: ${result.replace('_', ' ')}\nGATE-SUBJECT: ${head ?? 'null'}\n`;
+  const outAbs = resolve(root, out || `docs/team/${gate.replace(/-gate$/, '')}-result.json`);
+  mkdirSync(dirname(outAbs), { recursive: true });
+  writeFileSync(outAbs, `${JSON.stringify({
+    schema: 'gate-result/v1', gate, subject: { head: head || null, dirty },
+    evaluated_at: new Date().toISOString(), result, ...writeEvidenceLog(root, stem(gate, head), text),
+  }, null, 2)}\n`);
+  return { ok: true, status: run.status, stdout: run.stdout || '', stderr: run.stderr || '', result, out: outAbs };
+}
+
 // CLI ----------------------------------------------------------------------------------------------
-//   evidence.mjs test --branch B --base X --head SHA --mode tests|docs-only [--command C]
-//                     [--command-source profile|caller] [--exit N] [--log FILE] [--commits N] [--files N]
-//       -> prints the record path (root-relative). Used by verify-done.sh.
-//   evidence.mjs gate --gate NAME --result PASS|FAIL|CANNOT_EVALUATE --log FILE --out RESULT.json
-//                     [--head SHA] [--dirty true|false]
-//       -> writes a gate-result/v1 whose raw log readiness can re-derive. For runtime-gate --record.
-if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
-  const [cmd, ...rest] = process.argv.slice(2);
+//   evidence.mjs test   --branch B --base X --dir D (--scope fast|full | --command C)
+//       runs the command itself; prints one JSON line {record, verdict, why, exit, log, ...}
+//   evidence.mjs docs   --branch B --base X      a --docs-only record (head/files from git)
+//   evidence.mjs static --branch B --base X      a --static record (the suite is owed to the wave)
+//   evidence.mjs gate   --gate runtime-gate [--root R] [--out RESULT.json] -- <gate args>
+//       runs the plugin's own gate script, prints its output, exits with its code
+//   evidence.mjs token-flag --role R --ticket T   the inline-mint --token text, or nothing
+// There is no --result, --exit or --log: a writer that accepts the outcome from its caller is a
+// forgery service with a schema (G2-2).
+// The guard never throws: under `node -e` argv[1] is an ordinary argument, not a path.
+const isMain = () => { try { return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href; } catch { return false; } };
+if (process.argv[1] && isMain()) {
+  const argv = process.argv.slice(2);
+  const dash = argv.indexOf('--');
+  const [cmd, ...rest] = dash === -1 ? argv : argv.slice(0, dash);
+  const passthrough = dash === -1 ? [] : argv.slice(dash + 1);
   const f = {};
   for (let i = 0; i < rest.length; i += 1) if (rest[i].startsWith('--')) { f[rest[i].slice(2)] = rest[i + 1] ?? ''; i += 1; }
-  const root = evidenceRoot();
-  const raw = f.log ? readFileSync(f.log, 'utf8') : '';
+  const bye = (code, msg) => { process.stderr.write(`evidence: ${msg}\n`); process.exit(code); };
+  for (const forged of ['result', 'exit', 'log', 'head', 'dirty', 'command-source']) {
+    if (forged in f) bye(2, `--${forged} is not accepted: the writer observes the outcome itself (G2-2)`);
+  }
   if (cmd === 'test') {
-    process.stdout.write(`${writeTestEvidence(root, {
-      producedBy: 'verify-done.sh', branch: f.branch, base: f.base, head: f.head, mode: f.mode,
-      command: f.command || '', commandSource: f['command-source'] || 'caller',
-      exitCode: f.exit === undefined ? null : Number(f.exit), output: raw,
-      commits: f.commits ? Number(f.commits) : null, files: f.files ? Number(f.files) : null,
-    })}\n`);
+    if (!f.branch || !f.base) bye(2, 'test needs --branch and --base');
+    const r = runTestEvidence(evidenceRoot(), { branch: f.branch, base: f.base, dir: f.dir || '.', scope: f.scope || '', command: f.command || '' });
+    if (!r.ok) bye(2, r.reason);
+    process.stdout.write(`${JSON.stringify(r)}\n`);
+  } else if (cmd === 'docs' || cmd === 'static') {
+    if (!f.branch || !f.base) bye(2, `${cmd} needs --branch and --base`);
+    const r = writeBranchEvidence(evidenceRoot(), { branch: f.branch, base: f.base, mode: cmd === 'docs' ? 'docs-only' : 'static' });
+    if (!r.ok) bye(2, r.reason);
+    process.stdout.write(`${r.record}\n`);
+  } else if (cmd === 'token-flag') {
+    // For shell callers that PRINT a next-step board command (W2-10): the inline-mint --token form
+    // when the project requires tokens, else nothing.
+    process.stdout.write(inlineTokenFlag(evidenceRoot(), f.role || '<role>', f.ticket || '<ID>'));
   } else if (cmd === 'gate') {
-    const head = f.head && f.head !== 'null' ? f.head : null;
-    const text = `${raw}${raw.endsWith('\n') || !raw ? '' : '\n'}RESULT: ${String(f.result).replace('_', ' ')}\nGATE-SUBJECT: ${head ?? 'null'}\n`;
-    const out = resolve(root, f.out);
-    mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, `${JSON.stringify({
-      schema: 'gate-result/v1', gate: f.gate, subject: { head, dirty: f.dirty === undefined ? null : f.dirty === 'true' },
-      evaluated_at: new Date().toISOString(), result: f.result, ...writeEvidenceLog(root, stem(f.gate, head), text),
-    }, null, 2)}\n`);
+    const r = runGate(f.root || evidenceRoot(), { gate: f.gate, out: f.out, args: passthrough });
+    if (!r.ok) bye(r.code || 2, r.reason);
+    process.stdout.write(r.stdout);
+    process.stderr.write(r.stderr);
+    process.exit(r.status === null ? 2 : r.status);
   } else {
-    process.stderr.write('evidence: usage: evidence.mjs test ... | evidence.mjs gate ...\n');
-    process.exit(2);
+    bye(2, 'usage: evidence.mjs test|docs|static|gate ... (see the header)');
   }
 }

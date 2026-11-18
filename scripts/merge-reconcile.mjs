@@ -47,7 +47,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { parseArgs } from './lib/args.mjs';
-import { parseEventLog, reduce } from './lib/events.mjs';
+import { isQaDocs, parseEventLog, reduce } from './lib/events.mjs';
 import { gitAt, integrationBase, ticketBranches, isAncestor } from './lib/integration.mjs';
 
 const die = (code, message) => { process.stderr.write(`merge-reconcile: ${message}\n`); process.exit(code); };
@@ -133,9 +133,14 @@ const pending = [];
 const unknown = [];
 let ok = 0;
 
+const ids = [...tickets.values()].map((t) => t.id);
 for (const t of tickets.values()) {
   if (!CLAIMS_INTEGRATED.has(t.status)) continue;
-  const mine = ticketBranches(git, t.id);
+  // Design decision 1: a docs-only QA- ticket closes from merged without being integrated.
+  if (isQaDocs(t)) continue;
+  // Whole-id match, longest board id wins (lib/integration.mjs matchesTicket): APP-1 no longer
+  // claims feat/APP-10-x, nor APP-001 feat/APP-001-analytics-x when APP-001-analytics is a ticket.
+  const mine = ticketBranches(git, t.id, ids);
   if (!mine.length) { unknown.push(t.id); continue; }
   // Any matching branch being merged is enough: a ticket may legitimately have had more than one.
   const merged = mine.some((b) => isAncestor(git, b, base));
