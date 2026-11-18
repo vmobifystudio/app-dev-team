@@ -50,6 +50,7 @@ import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
 import { treeDirty } from './lib/readiness.mjs';
+import { writeEvidenceLog } from './lib/evidence.mjs';
 
 const die = (code, message) => { process.stderr.write(`journey-gate: ${message}\n`); process.exit(code); };
 const { flags } = parseArgs(process.argv.slice(2), {
@@ -222,12 +223,15 @@ if (!driver || !existsSync(driver)) {
 }
 
 const results = [];
+const RAW = [];
 for (const j of selected) {
   const started = new Date().toISOString();
   let raw;
   try {
     raw = execFileSync(driver, ['--root', root, '--journey', j._path], { encoding: 'utf8', timeout: 300000 });
+    RAW.push(`--- driver output: ${j.id}\n${raw}`);
   } catch (e) {
+    RAW.push(`--- driver output: ${j.id} (exit ${e.status})\n${e.stdout || ''}${e.stderr || ''}`);
     const out = `${e.stdout || ''}${e.stderr || ''}`.trim();
     // A driver that dies is not a product that failed. Distinguish them, or a broken harness reads
     // as a broken app and a developer is sent to fix a defect that does not exist (DR4-001).
@@ -327,34 +331,42 @@ function writeResultFile() {
     result: results.some((r) => r.state === 'FAIL') ? 'FAIL'
       : results.some((r) => r.state === 'UNKNOWN') ? 'CANNOT_EVALUATE' : 'PASS',
     journeys: results.map((r) => ({ id: r.j.id, state: r.state, detail: r.detail || '', evidence: r.digests || [] })),
+    ...writeEvidenceLog(root, `journey-${(head || 'nohead').slice(0, 12)}-${Date.now()}`,
+      `${RAW.join('\n')}\n${LOG}GATE-SUBJECT: ${head || 'null'}\n`),
   };
   try { mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, `${JSON.stringify(payload, null, 2)}\n`); }
   catch (e) { process.stderr.write(`journey-gate: could not write ${out}: ${e.message}\n`); }
 }
 
-process.stdout.write('JOURNEY GATE\n');
+// Everything printed from here on is also the RAW LOG the result file points at (G-F6): readiness
+// re-derives the verdict from it, so a hand-written journey-result.json cannot pass.
+let LOG = '';
+const say = (t) => { LOG += t; process.stdout.write(t); };
+say('JOURNEY GATE\n');
 for (const r of results) {
   const label = r.state === 'PASS' ? 'PASS   ' : r.state === 'FAIL' ? 'FAIL   ' : 'UNKNOWN';
-  process.stdout.write(`  ${label}  ${r.j.id}  ${r.detail}\n`);
+  say(`  ${label}  ${r.j.id}  ${r.detail}\n`);
   // The digest is PRINTED, not merely stored. A provenance record nobody can see is a record that
   // silently rots; showing it means a human reading two runs can tell whether the same bytes were
   // examined without going and hashing files themselves.
   (r.evidence || []).forEach((e, i) => {
     const d = (r.digests || [])[i];
-    process.stdout.write(`           evidence: ${e}${d ? `  sha256:${d.sha256.slice(0, 12)} (${d.bytes}B)` : ''}\n`);
+    say(`           evidence: ${e}${d ? `  sha256:${d.sha256.slice(0, 12)} (${d.bytes}B)` : ''}\n`);
   });
 }
 
 const anyFail = results.some((r) => r.state === 'FAIL');
 const anyUnknown = results.some((r) => r.state === 'UNKNOWN');
-process.stdout.write('\n');
-writeResultFile();
+say('\n');
 if (anyFail) {
-  process.stdout.write('RESULT: FAIL — a declared P0 journey did not complete. The product is wrong, not the harness.\n');
+  say('RESULT: FAIL — a declared P0 journey did not complete. The product is wrong, not the harness.\n');
+  writeResultFile();
   process.exit(1);
 }
 if (anyUnknown) {
-  process.stdout.write('RESULT: CANNOT EVALUATE — at least one journey was not exercised. This is NOT a pass.\n');
+  say('RESULT: CANNOT EVALUATE — at least one journey was not exercised. This is NOT a pass.\n');
+  writeResultFile();
   process.exit(2);
 }
-process.stdout.write(`RESULT: PASS — ${results.length} declared P0 journey(s) completed with their assertions holding.\n`);
+say(`RESULT: PASS — ${results.length} declared P0 journey(s) completed with their assertions holding.\n`);
+writeResultFile();

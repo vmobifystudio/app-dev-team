@@ -98,8 +98,10 @@ fi
 # NOTHING IS SUBSTITUTED WHEN THE PROFILE IS SILENT. project-profile.mjs exits 2 for an undeclared
 # scope and this passes that straight through, because a default test command would make "the tests
 # ran" true of a command nobody chose — the same class as an evidence-optional pass.
+CMD_SOURCE=caller
 case "$TEST_CMD" in
   fast|full)
+    CMD_SOURCE=profile
     _scope="$TEST_CMD"
     _resolved=$(node "$(dirname "$0")/project-profile.mjs" test-command --scope "$_scope" 2>&1)
     if [ $? -ne 0 ]; then
@@ -369,7 +371,24 @@ if [ "$TESTS_STATUS" = "unverified" ] || [ "$TESTS_STATUS" = "cannot-run" ]; the
   exit 2
 fi
 
+# THE EVIDENCE RECORD (G-F4). `verified` on the board must cite what THIS script saw: the raw test
+# log, its sha256, the exit code, the classifier's verdict and the exact head it ran on. The board
+# re-hashes the log and re-runs the classifier over it, so "VERIFIED" pasted into --detail is no
+# longer evidence of anything. Written only here, on the VERIFIED path.
+HEAD_SHA=$(git rev-parse "$RESOLVED^{commit}")
+if [ "$DOCS_ONLY" -eq 1 ]; then _mode=docs-only; else _mode=tests; fi
+EVIDENCE=$(node "$(dirname "$0")/lib/evidence.mjs" test --branch "$BRANCH" --base "$BASE" --head "$HEAD_SHA" \
+  --mode "$_mode" --command "$TEST_CMD" --command-source "$CMD_SOURCE" --exit "${TEST_RC:-0}" \
+  --log "${TEST_LOG:-/dev/null}" --commits "$COMMITS" --files "$FILES_CHANGED" 2>&1) || {
+  echo "CANNOT EVALUATE: $BRANCH"
+  echo "  The claim checks out, but the evidence record could not be written: $EVIDENCE"
+  echo "  Without it the board will not accept \`verified\`. Fix the write, re-run."
+  exit 2
+}
+
 echo "VERIFIED: $BRANCH"
-echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=$TESTS_STATUS"
-echo "Next: move the board row to review and spawn the code-reviewer."
+echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=$TESTS_STATUS head=$HEAD_SHA"
+echo "  Evidence: $EVIDENCE"
+echo "Next: record it — board.mjs move <ID> verified --by <role> --evidence $EVIDENCE   (plus --token <yours> under requireActorTokens)"
+echo "  then move the board row to review and spawn the code-reviewer."
 exit 0

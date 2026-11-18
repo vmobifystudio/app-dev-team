@@ -51,7 +51,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { withFileLock } from './lib/atomic.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
-import { resolveActor } from './lib/actor.mjs';
+import { resolveActor, verifyActorToken, mintActorToken, revokeActorToken, listActorTokens, TOKEN_REGISTRY } from './lib/actor.mjs';
+import { GATE_EVENTS } from './lib/capabilities.mjs';
+import { verifyTestEvidence, verifyQaEvidence, checkGateLog } from './lib/evidence.mjs';
+import { RANK, routeFiles } from './lib/risk.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
 import {
@@ -147,6 +150,7 @@ const VALUE_FLAGS = new Set([
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
   'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root', 'base', 'actor', 'actor-token',
   'evidence', 'context', 'run', 'attempt', 'lease-seconds', 'verdict', 'head',
+  'token', 'role', 'ticket', 'ttl-minutes', 'token-id',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
@@ -341,6 +345,33 @@ function stampActor(paths, flags, ticket, eventName) {
   // exists precisely to answer "which project is this, authoritatively" — and it was not on this
   // path at all.
   const { root, policy } = studioPolicy();
+  const token = typeof flags.token === 'string' ? flags.token : '';
+  const role = String(flags.by || '');
+  const gate = GATE_EVENTS.has(eventName);
+  const refuseToken = (r) => die(r.code, `refusing ${eventName} on ${ticket}: ${r.reason}\n` +
+    '  A gate event needs --token <the token minted for THIS spawn>\n' +
+    `  (board.mjs actor mint --role ${role || '<role>'} --ticket ${ticket}, run by the orchestrator, never by the agent itself).`);
+  // G-F1: PER-SPAWN TOKENS. Required on gate events; verified (and stamped) wherever one is given.
+  if (policy.requireActorTokens === true) {
+    if (gate || token) {
+      const r = verifyActorToken({ root, token, role, ticket, required: true });
+      if (!r.ok) refuseToken(r);
+      return r.actor;
+    }
+    return { schema: 'actor/v1', actor_id: 'unattested', role, mode: 'work-unattested', session: process.env.STUDIO_SESSION_ID || null };
+  }
+  // THE RATCHET. A board that ever recorded a token-required gate cannot have that requirement
+  // dropped by editing .studio-policy.json — the edit an agent with Write would make.
+  if (gate && tokenModeWasRequired(paths.log)) {
+    die(2, `refusing ${eventName} on ${ticket}: this board recorded gate events under requireActorTokens, and\n` +
+      '  .studio-policy.json no longer requires them. Turning attestation off mid-board is a downgrade an\n' +
+      '  agent could make by editing one file, so it is refused. Restore "requireActorTokens": true.');
+  }
+  if (token) {
+    const r = verifyActorToken({ root, token, role, ticket, required: false });
+    if (!r.ok) refuseToken(r);
+    return r.actor;
+  }
   const result = resolveActor({
     root,
     role: String(flags.by || ''),
@@ -357,6 +388,15 @@ function stampActor(paths, flags, ticket, eventName) {
       '  and proven with a token, not merely spelled correctly in --by.');
   }
   return result.actor;
+}
+
+/** Did any event on this log carry an actor stamped under requireActorTokens? */
+function tokenModeWasRequired(logPath) {
+  if (!existsSync(logPath)) return false;
+  return readFileSync(logPath, 'utf8').split('\n').some((l) => {
+    if (!l.includes('"required":true')) return false;
+    try { const e = JSON.parse(l); return e.actor?.mode === 'token' && e.actor?.required === true; } catch { return false; }
+  });
 }
 
 /** The project root (from the resolver, never from --log) and its .studio-policy.json ({} if none). */
@@ -777,15 +817,70 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
       process.stderr.write(`board: refused ${ticket} approved — ${bound.reason}\n`);
       process.exit(bound.code || 1);
     }
+    // G-F4: THE VERDICT'S `Scope:` MUST BE THE CANDIDATE THAT WAS BOUND. A verdict reading
+    // `Scope: main..HEAD` written on main, or naming last cycle's tip, approves a range that is not
+    // the commit this approval pins.
+    const scope = String(event.detail?.reviewed_scope || '').split('..');
+    if (scope.length === 2) {
+      const g = gitAt(process.cwd());
+      const to = g(['rev-parse', '--verify', `${scope[1]}^{commit}`]);
+      const from = g(['rev-parse', '--verify', `${scope[0]}^{commit}`]);
+      const problem = !to || !from
+        ? `the verdict's Scope ${scope.join('..')} does not resolve to two commits here`
+        : to !== bound.detail.commit
+          ? `the verdict's Scope ends at ${to.slice(0, 12)} but the approval binds ${bound.detail.commit.slice(0, 12)} (${bound.detail.commit_source}) — the review read a different candidate`
+          : !(from === bound.detail.base || isAncestor(g, from, bound.detail.base))
+            ? `the verdict's Scope starts at ${from.slice(0, 12)}, after the candidate's base ${bound.detail.base.slice(0, 12)} — part of what is being approved was never in the reviewed range`
+            : '';
+      if (problem) {
+        process.stderr.write(`board: refused ${ticket} approved — ${problem}\n  Write "Scope: ${bound.detail.base}..${bound.detail.commit}" (the range you read).\n`);
+        process.exit(1);
+      }
+    }
     event.detail = typeof event.detail === 'object' && event.detail
       ? { ...event.detail, ...bound.detail }
       : { note: event.detail || undefined, ...bound.detail };
+  }
+
+  // G-F4: THE EVIDENCE A GATE CITES IS RE-DERIVED, NOT READ. `verified` names the record
+  // verify-done wrote; the board re-hashes its raw log, re-runs the classifier over it and checks it
+  // ran on (a descendant of) the ticket's branch tip. `qa_passed` names a journey-gate result or a
+  // post-merge test run, re-derived the same way.
+  if (name === 'verified' || name === 'qa_passed') {
+    const { root } = studioPolicy();
+    const ev = name === 'verified'
+      ? verifyTestEvidence(root, flags.evidence, { ticket })
+      : verifyQaEvidence(root, flags.evidence, { ticket, mergedTs: events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'merged')?.ts || '' });
+    if (!ev.ok) {
+      process.stderr.write(`board: refused ${ticket} ${name} — ${ev.reason}\n` +
+        (name === 'verified'
+          ? '  `verified` needs --evidence <the record verify-done.sh printed> (docs/team/evidence/test-*.json).\n'
+          : '  `qa_passed` needs --evidence docs/team/journey-result.json (a journey-gate PASS), or a verify-done record of a run on the merged tree.\n'));
+      process.exit(ev.code || 1);
+    }
+    event.detail = typeof event.detail === 'object' && event.detail
+      ? { ...event.detail, ...ev.detail }
+      : { note: event.detail || undefined, ...ev.detail };
   }
 
   const gitBlock = gitRefusal(name, ticket, flags, events);
   if (gitBlock) {
     process.stderr.write(`board: refused ${ticket} ${name} — ${gitBlock}\n`);
     process.exit(1);
+  }
+
+  // G-F7: RISK FROM THE DIFF, at the merge it governs.
+  if (name === 'merged') {
+    const risk = mergeRisk(ticket, tickets.get(key(ticket)), paths);
+    if (risk.refusal) {
+      process.stderr.write(`board: refused ${ticket} merged — ${risk.refusal}\n`);
+      process.exit(1);
+    }
+    if (risk.detail) {
+      event.detail = typeof event.detail === 'object' && event.detail
+        ? { ...event.detail, merge_risk: risk.detail }
+        : { note: event.detail || undefined, merge_risk: risk.detail };
+    }
   }
 
   append(paths.log, event);
@@ -843,6 +938,74 @@ function gitRefusal(name, ticket, flags, events) {
   }
   const { issues } = checkApprovals(events, { ticket, head, cwd: process.cwd() });
   return issues.length ? `the approval is not bound to ${head}:\n  ${issues.join('\n  ')}` : '';
+}
+
+/**
+ * G-F7: the risk the ticket's DIFF carries, against risk-policy.json's path rules, and the
+ * approvals and `required_evidence` the higher of (planned, diff) tier demands — checked here, at
+ * the merge, with the missing list in the refusal.
+ *
+ * Unknown diff (no branch named for the ticket, or no integration branch) falls back to the planned
+ * decision and SAYS so in the recorded detail; no policy file means nothing to enforce.
+ */
+const EVIDENCE_CHECKS = {
+  // An approval by a role that did not work on it — events.mjs already refuses a merge without one.
+  review: (st) => st.approvals.length > 0,
+  'security-review': (st) => st.approvals.some((a) => a.by === 'security-reviewer'),
+  'migration-plan': (st) => Boolean(String(st.meta?.rollback || '').trim()),
+};
+const RUNTIME_KINDS = new Set(['runtime-gate', 'runtime-evidence']);
+function runtimeEvidence(g, tip) {
+  const { root } = studioPolicy();
+  const p = resolve(root, 'docs/team/runtime-result.json');
+  if (!existsSync(p)) return false;
+  let v; try { v = JSON.parse(readFileSync(p, 'utf8')); } catch { return false; }
+  const head = v.subject?.head;
+  return v.schema === 'gate-result/v1' && v.result === 'PASS' && v.subject?.dirty === false && Boolean(head) &&
+    (!tip || head === tip || isAncestor(g, tip, head)) && checkGateLog(root, v).ok;
+}
+function mergeRisk(ticket, state, paths) {
+  const policyPath = resolve(dirname(paths.log), 'team', 'risk-policy.json');
+  if (!state || !existsSync(policyPath)) return {};
+  let policy;
+  try { policy = JSON.parse(readFileSync(policyPath, 'utf8')); } catch (e) { return { refusal: `risk-policy.json is unreadable (${e.message}) — cannot tell what this merge requires` }; }
+  if (policy.schema !== 'risk-policy/v1' || !Array.isArray(policy.rules)) return { refusal: 'risk-policy.json is not risk-policy/v1 — cannot tell what this merge requires' };
+  const g = gitAt(process.cwd());
+  const tip = ticketTip(g, ticket);
+  const base = integrationBase(g);
+  const mb = tip.sha && base ? g(['merge-base', base, tip.sha]) : null;
+  const files = mb ? (g(['diff', '--name-only', mb, tip.sha]) || '').split('\n').filter(Boolean) : null;
+  const planned = state.meta?.policy_decision || null;
+  const diff = files && files.length ? routeFiles(policy, files) : null;
+  const plannedRank = planned?.risk ? RANK[planned.risk] : -1;
+  const escalated = Boolean(diff && RANK[diff.risk] > plannedRank);
+  const approvals = [...new Set([...(planned?.required_approvals || []), ...(escalated ? diff.approvals : [])])];
+  const evidence = [...new Set([...(planned?.required_evidence || []), ...(escalated ? diff.required_evidence : [])])];
+  const workers = new Set([state.owner, ...state.events.filter((e) => e.event === 'claimed' || e.event === 'done_reported').map((e) => e.by)].filter(Boolean));
+  const have = new Set(state.approvals.map((a) => a.by).filter((b) => b && !workers.has(b)));
+  const missing = [
+    ...approvals.filter((r) => !have.has(r)).map((r) => `approval by ${r}`),
+    ...evidence.filter((k) => (RUNTIME_KINDS.has(k) ? !runtimeEvidence(g, tip.sha) : !(EVIDENCE_CHECKS[k] && EVIDENCE_CHECKS[k](state))))
+      .map((k) => (EVIDENCE_CHECKS[k] || RUNTIME_KINDS.has(k) ? `evidence "${k}"` : `evidence "${k}" (no checker exists for this kind — fix risk-policy.json)`)),
+  ];
+  const detail = {
+    planned: planned?.risk || null,
+    diff: diff ? diff.risk : files ? 'none' : 'unknown',
+    because: diff?.because || null,
+    effective: escalated ? diff.risk : planned?.risk || null,
+    files_considered: files ? files.length : null,
+    required_approvals: approvals,
+    required_evidence: evidence,
+  };
+  if (missing.length) {
+    return {
+      refusal: `${ticket}'s merge requires ${detail.effective || 'its planned'} risk${escalated ? ` (escalated from ${detail.planned || 'unplanned'}: the diff touches ${diff.because})` : ''} — missing: ${missing.join('; ')}.\n` +
+        '  How each is earned: approval by <role> = that role\'s `approved`; "security-review" = an `approved` by security-reviewer;\n' +
+        '  "runtime-gate" = docs/team/runtime-result.json PASS on a tree containing the ticket tip; "migration-plan" = `add --rollback` on the ticket.',
+      detail,
+    };
+  }
+  return { detail };
 }
 
 /**
@@ -974,6 +1137,41 @@ function cmdVerify(paths) {
         : '.\n')
   );
   process.exit(0);
+}
+
+/**
+ * `board.mjs actor mint|revoke|list` — the per-spawn capability tokens (lib/actor.mjs header).
+ * mint is run by the ORCHESTRATOR; the plaintext token is printed once, to stdout, and only its
+ * sha256 is kept. A spawned agent must never run it (Track B's hook refuses it from subagents).
+ */
+function cmdActor(sub, flags) {
+  const { root } = studioPolicy();
+  const regPath = resolve(root, TOKEN_REGISTRY);
+  if (sub === 'mint') {
+    const r = withFileLock(regPath, () => mintActorToken({ root, role: String(flags.role || ''), ticket: typeof flags.ticket === 'string' ? flags.ticket : '', ttlMinutes: flags['ttl-minutes'] || 240 }), { die });
+    if (!r.ok) die(1, `actor mint: ${r.reason}`);
+    process.stderr.write(`board: minted token ${r.record.token_id} for ${r.record.role} on ${r.record.ticket}, expires ${r.record.expires_at}.\n` +
+      "  Put it in THAT agent's spawn prompt only. It is not stored anywhere; mint again if lost.\n");
+    process.stdout.write(`${r.token}\n`);
+    return;
+  }
+  if (sub === 'revoke') {
+    const r = withFileLock(regPath, () => revokeActorToken({ root, tokenId: String(flags['token-id'] || '') }), { die });
+    if (!r.ok) die(1, `actor revoke: ${r.reason}`);
+    process.stdout.write(`revoked ${flags['token-id']}\n`);
+    return;
+  }
+  if (sub === 'list') {
+    const r = listActorTokens(root);
+    if (!r.ok) die(2, r.reason);
+    const revoked = new Set(r.records.filter((x) => x.kind === 'revoke').map((x) => x.token_id));
+    for (const x of r.records.filter((y) => y.kind === 'mint')) {
+      const state = revoked.has(x.token_id) ? 'revoked' : Date.parse(x.expires_at) <= Date.now() ? 'expired' : 'live';
+      process.stdout.write(`${x.token_id}  ${x.role.padEnd(22)} ${x.ticket.padEnd(14)} ${state.padEnd(8)} minted ${x.minted_at}\n`);
+    }
+    return;
+  }
+  die(1, 'actor needs mint --role R --ticket T [--ttl-minutes N] | revoke --token-id ID | list');
 }
 
 function cmdRender(paths) {
@@ -1194,6 +1392,7 @@ const EXPECTED_POSITIONALS = {
   show: { max: 1, usage: 'show [ID] [--json]' },
   render: { max: 0, usage: 'render' },
   verify: { max: 0, usage: 'verify' },
+  actor: { max: 1, usage: 'actor mint --role R --ticket T [--ttl-minutes N] | actor revoke --token-id ID | actor list' },
   migrate: { max: 1, usage: 'migrate [path/to/31-board.md] [--out log.jsonl]' },
 };
 
@@ -1284,6 +1483,8 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
       return cmdVerify(paths);
     case 'migrate':
       return cmdMigrate(rest[0], flags, paths);
+    case 'actor':
+      return cmdActor(rest[0], flags);
     default:
       process.stderr.write(
         `board: unknown command "${command ?? ''}"\n` +
@@ -1295,6 +1496,10 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
           '  show [ID] [--json]\n' +
           '  render\n' +
           '  verify                          the audit chain — was this log rewritten?\n' +
+          '  move <ID> verified --by <role> --evidence <record verify-done printed> [--token T]\n' +
+          '  move <ID> qa_passed --by <role> --evidence docs/team/journey-result.json|<post-merge record> [--token T]\n' +
+          '  actor mint --role R --ticket T [--ttl-minutes N]   orchestrator only: prints a per-spawn token once\n' +
+          '  actor revoke --token-id ID | actor list\n' +
           '  migrate [board.md] [--out log.jsonl]\n' +
           `  events: ${[...EVENTS].join(' ')}\n`
       );
