@@ -1,0 +1,11 @@
+# The studio's OWN operational files: written by the loop while it runs, never part of the release
+# candidate. A dirty-tree check excludes exactly these (W3 / G-F6) — every other change, source
+# above all, still makes the tree dirty. One git pathspec per line, relative to the project root;
+# read by lib/readiness.mjs, runtime-gate.sh and ship-gate.sh. Never add a glob or a source path.
+docs/31-board-events.jsonl
+docs/31-board.md
+docs/team
+docs/53-reviews
+docs/daily
+.agent-wt
+.studio-stop

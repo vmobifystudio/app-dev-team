@@ -74,12 +74,18 @@ esac
 
 [ -d "$ROOT" ] || { echo "runtime-gate: no such directory: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
+OPS_PATHS="$(cd "$(dirname "$0")" && pwd)/lib/operational-paths.txt"
 
 record() {  # <PASS|FAIL|CANNOT_EVALUATE> — bound to HEAD and tree cleanliness, like journey-gate
   [ "$RECORD" = 1 ] || return 0
   head=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
   if [ -z "$head" ]; then hj=null; dj=null
-  else hj="\"$head\""; [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ] && dj=true || dj=false; fi
+  # The studio's own operational files (board log, docs/team/, reviews...) do not make the tree
+  # dirty — otherwise every honest result is STALE (W3). One list: lib/operational-paths.txt.
+  # A git error counts as dirty, never as clean.
+  # shellcheck disable=SC2046
+  else hj="\"$head\""; st=$(git -C "$ROOT" status --porcelain -- ':(top)' $(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(exclude)/' "$OPS_PATHS") 2>/dev/null) || st=error
+       [ -n "$st" ] && dj=true || dj=false; fi
   mkdir -p "$ROOT/docs/team" 2>/dev/null &&
   printf '{\n  "schema": "gate-result/v1",\n  "gate": "runtime-gate",\n  "subject": { "head": %s, "dirty": %s },\n  "evaluated_at": "%s",\n  "result": "%s"\n}\n' \
     "$hj" "$dj" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$ROOT/docs/team/runtime-result.json" ||

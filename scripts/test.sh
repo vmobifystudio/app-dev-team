@@ -4034,6 +4034,39 @@ ok "a zero exit with no ran-evidence is CANNOT EVALUATE, not tests=green"
   && ok "...and AGP's own connectedAndroidTest completion line ('Finished N tests on <device>') verifies too" \
   || bad "...and AGP's own connectedAndroidTest completion line ('Finished N tests on <device>') verifies too" "$(head -2 "$TMP/vdg4.txt")"
 
+# --- W1 / G-F5: green needs a runner's own count of at least one test (lib/test-evidence.mjs) ------
+#
+# W1: the ran-evidence regex knew XCTest, TAP and AGP, so a Jest, Vitest, pytest, go or Gradle suite
+# that passed was CANNOT EVALUATE forever. G-F5: in the other direction, "Executed 0 tests" and a
+# bare `echo "test case"` were GREEN. One classifier now serves verify-done.sh and wave-integrate.mjs.
+vd_green() {  # <label> <test command>
+  ( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "$2" ) >"$TMP/vdw1.txt" 2>/dev/null
+  [ $? = 0 ] && grep -q "tests=green" "$TMP/vdw1.txt" && ok "$1" || bad "$1" "$(head -3 "$TMP/vdw1.txt")"
+}
+vd_green "verify-done reads a passing Jest summary as green (W1)" "printf 'Test Suites: 1 passed, 1 total\nTests:       3 passed, 3 total\nSnapshots:   0 total\n'"
+vd_green "verify-done reads a passing Vitest summary as green (W1)" "printf ' Test Files  1 passed (1)\n      Tests  3 passed (3)\n   Duration  300ms\n'"
+vd_green "verify-done reads a passing pytest summary as green (W1)" "printf 'collected 3 items\n\n============================== 3 passed in 0.12s ===============================\n'"
+vd_green "verify-done reads a passing go test summary as green (W1)" "printf 'ok  \tgithub.com/x/y\t0.012s\n?   \tgithub.com/x/z\t[no test files]\n'"
+vd_green "verify-done reads a Gradle test task + BUILD SUCCESSFUL as green (W1)" "printf '> Task :app:compileDebugUnitTestKotlin\n> Task :app:testDebugUnitTest\n\nBUILD SUCCESSFUL in 9s\n'"
+vd_zero() {  # <label> <test command>
+  ( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "$2" ) >"$TMP/vdz.txt" 2>/dev/null
+  RC=$?
+  [ "$RC" = 2 ] && head -1 "$TMP/vdz.txt" | grep -q "CANNOT EVALUATE" && ok "$1" || bad "$1" "exit $RC: $(head -3 "$TMP/vdz.txt")"
+}
+vd_zero "verify-done: 'Executed 0 tests' is never green (G-F5)" "echo 'Executed 0 tests, with 0 failures (0 unexpected) in 0.000 seconds'"
+vd_zero "verify-done: TAP '# tests 0' is never green (G-F5)" "printf '# tests 0\n# pass 0\n# fail 0\n'"
+vd_zero "verify-done: Jest 'Tests: 0 total' is never green (G-F5)" "printf 'Tests:       0 total\n'"
+vd_zero "verify-done: '0 passed' is never green (G-F5)" "echo '0 passed'"
+vd_zero "verify-done: pytest 'no tests ran' is never green (G-F5)" "echo '=== no tests ran in 0.01s ==='"
+vd_zero "verify-done: 'No tests found' is never green (G-F5)" "echo 'No tests found, exiting with code 0'"
+vd_zero "verify-done: a bare keyword ('test case') on exit 0 is never green (G-F5)" "echo 'test case'"
+assert_has "$TMP/vdz.txt" "a keyword is not a test count" "...and says why: a keyword is not a test count"
+( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "printf 'Tests:       0 total\n'" ) >"$TMP/vdz2.txt" 2>/dev/null
+assert_has "$TMP/vdz2.txt" "ZERO tests" "...and a zero-test run is named as one, not as a missing toolchain"
+# The failing direction may still rest on a keyword: calling a broken run broken is the safe side.
+( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "printf 'Tests:       1 failed, 2 passed, 3 total\n'; exit 1" ) >/dev/null 2>&1
+[ $? = 1 ] && ok "verify-done: a failing Jest run is REJECTED, not CANNOT EVALUATE" || bad "verify-done: a failing Jest run is REJECTED, not CANNOT EVALUATE"
+
 # --- the integration branch resolver's input was never written by anyone ------------------------
 # `grep -rn "Integration branch" agents/ skills/ commands/` returned NOTHING: no role was told to
 # emit the line, so the resolver found no declaration on every real project and fell back to `main`
@@ -4730,7 +4763,7 @@ import("'"$HERE"'/lib/environment.mjs").then(({ classify }) => {
 # Pinned because the obvious tidy-up is to "unify the duplicate", and doing so would turn "no
 # evidence anything ran" into "real failure": DR4-001 reintroduced by a refactor that looks like
 # removing duplication. This assertion exists to make that refactor go red.
-grep -q 'no evidence that a test suite ran at all' "$HERE/verify-done.sh" \
+grep -q 'no evidence that a test suite ran at all' "$HERE/lib/test-evidence.mjs" \
   && ok "verify-done.sh keeps its stricter third stage — output with no sign a suite ran is CANNOT EVALUATE" \
   || bad "verify-done.sh keeps its stricter third stage — output with no sign a suite ran is CANNOT EVALUATE" \
          "if this was refactored onto lib/environment.mjs, DR4-001 is back: silence now reads as a real failure"
@@ -4796,7 +4829,7 @@ grep -q 'CANNOT EVALUATE' "$TMP/out" \
   && ok "...and says so rather than falling back to a command nobody chose" \
   || bad "...and says so rather than falling back to a command nobody chose"
 
-printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[],"test":{"fast":"echo 3 tests run: OK","full":"echo full"}}\n' \
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[],"test":{"fast":"echo Executed 3 tests, with 0 failures","full":"echo full"}}\n' \
   > "$VDS/docs/team/project-profile.json"
 ( cd "$VDS" && sh "$HERE/verify-done.sh" feat/x main fast ) >"$TMP/out" 2>&1
 assert_has "$TMP/out" "resolved from the project profile" \
@@ -7863,6 +7896,47 @@ if [ "$RD_CLI" = "$RD_LIB" ] && [ "$RD_CLI" = "STALE" ]; then
   ok "the CLI and the shared reducer report the same verdict"
 else bad "the CLI and the shared reducer report the same verdict" "cli=$RD_CLI lib=$RD_LIB"; fi
 
+# --- W3 / G-F6: the studio's own operational files do not make the tree dirty ---------------------
+#
+# readiness, runtime-gate and ship-gate counted the board log, docs/team/, reviews and worktrees as
+# uncommitted work, so the loop dirtied the tree just by running and every honest result was STALE.
+# One list (scripts/lib/operational-paths.txt) excludes exactly those; a source change still counts.
+OPD="$TMP/ops-dirty"; rm -rf "$OPD"; mkdir -p "$OPD/docs/team"
+( cd "$OPD" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && echo a > a.txt && echo '{}' > docs/team/keep.json && echo b > docs/31-board.md && git add -A && git commit -qm init ) >/dev/null 2>&1
+( cd "$OPD" && node "$HERE/board.mjs" add OP-001 --title t --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+mkdir -p "$OPD/docs/53-reviews" "$OPD/docs/daily" "$OPD/.agent-wt/OP-001"
+echo r > "$OPD/docs/53-reviews/r.md"; echo d > "$OPD/docs/daily/d.md"; echo w > "$OPD/.agent-wt/OP-001/f"
+echo x >> "$OPD/docs/31-board.md"; echo '{"x":1}' > "$OPD/docs/team/keep.json"; : > "$OPD/.studio-stop"
+op_dirty() { node -e "import('$HERE/lib/readiness.mjs').then(m=>process.stdout.write(String(m.reduceReadiness('$OPD').candidate.dirty)))" 2>/dev/null; }
+[ "$(op_dirty)" = false ] && ok "readiness: a tree dirty ONLY in the studio's operational files is clean (W3)" \
+  || bad "readiness: a tree dirty ONLY in the studio's operational files is clean (W3)" "dirty=$(op_dirty); $(cd "$OPD" && git status --porcelain)"
+sh "$HERE/runtime-gate.sh" --project-root "$OPD" --record >/dev/null 2>&1
+grep -q '"dirty": false' "$OPD/docs/team/runtime-result.json" \
+  && ok "runtime-gate --record: operational files do not record the tree as dirty (W3)" \
+  || bad "runtime-gate --record: operational files do not record the tree as dirty (W3)" "$(cat "$OPD/docs/team/runtime-result.json" 2>&1)"
+printf '{"requireApprovalBinding":true}\n' > "$OPD/.studio-policy.json"
+( cd "$OPD" && git add .studio-policy.json && git commit -qm policy ) >/dev/null 2>&1
+sh "$HERE/ship-gate.sh" "$OPD" >"$TMP/opd-sg.txt" 2>&1
+grep -q "working tree is DIRTY" "$TMP/opd-sg.txt" \
+  && bad "ship-gate: operational files do not make approval binding UNKNOWN (G-F6)" "$(grep -A3 DIRTY "$TMP/opd-sg.txt")" \
+  || ok "ship-gate: operational files do not make approval binding UNKNOWN (G-F6)"
+# ...and a real change still counts, tracked or untracked, everywhere.
+echo src > "$OPD/docs/notes.md"
+[ "$(op_dirty)" = true ] && ok "readiness: an untracked non-operational file still makes the tree dirty" \
+  || bad "readiness: an untracked non-operational file still makes the tree dirty" "dirty=$(op_dirty)"
+rm "$OPD/docs/notes.md"; echo changed >> "$OPD/a.txt"
+[ "$(op_dirty)" = true ] && ok "readiness: a modified source file still makes the tree dirty" \
+  || bad "readiness: a modified source file still makes the tree dirty" "dirty=$(op_dirty)"
+sh "$HERE/runtime-gate.sh" --project-root "$OPD" --record >/dev/null 2>&1
+grep -q '"dirty": true' "$OPD/docs/team/runtime-result.json" \
+  && ok "runtime-gate --record: a modified source file still records dirty" \
+  || bad "runtime-gate --record: a modified source file still records dirty" "$(cat "$OPD/docs/team/runtime-result.json" 2>&1)"
+sh "$HERE/ship-gate.sh" "$OPD" >"$TMP/opd-sg2.txt" 2>&1
+grep -q "working tree is DIRTY" "$TMP/opd-sg2.txt" \
+  && ok "ship-gate: a modified source file still makes approval binding UNKNOWN" \
+  || bad "ship-gate: a modified source file still makes approval binding UNKNOWN" "$(tail -5 "$TMP/opd-sg2.txt")"
+
 # --- I-09: a criterion names its own proof -----------------------------------------------------
 # verify-done runs the suite; qa_passed records that QA exercised the ticket. Neither says anything
 # about a SPECIFIC criterion, so a green suite can coexist with the one behaviour the founder asked
@@ -8614,6 +8688,61 @@ PPJSON
 [ $? = 0 ] && ok "a wave whose suite is AGP's own connectedAndroidTest completion line is recognized as GREEN" \
   || bad "a wave whose suite is AGP's own connectedAndroidTest completion line is recognized as GREEN" "$(tail -8 "$TMP/wita.txt")"
 assert_has "$TMP/wita.txt" "WAVE RESULT: GREEN" "...not CANNOT EVALUATE over a real instrumented pass already in the log"
+
+# --- W1/G-F5 in the wave, W6 --push after a green run, W7 no origin --------------------------------
+#
+# W1: a Jest wave was CANNOT EVALUATE forever. G-F5: a wave that ran zero tests must not be green.
+# W6: the documented sequence — `--wave N`, record, `--wave N --push` — died on "already exists".
+# W7: with no `origin`, the push failed with exit 1 ("re-spawn the owners") though $BASE had moved.
+wave_fx() {  # <dir> <full test command> — one ticket APP-903 at the merge gate
+  rm -rf "$1"; mkdir -p "$1/docs/team" "$1/docs/53-reviews"
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":%s}}\n' \
+    "$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$2")" > "$1/docs/team/project-profile.json"
+  ( cd "$1" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+    && printf 'docs/\n.agent-wt/\n' > .gitignore && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
+    && git add -A && git commit -q -m init \
+    && git checkout -q -b feat/APP-903 main && echo x > f.txt && git add f.txt && git commit -q -m APP-903 \
+    && git checkout -q main
+    node "$HERE/board.mjs" add APP-903 --title t --owner web-developer --by tech-manager
+    node "$HERE/board.mjs" move APP-903 claimed --by web-developer
+    node "$HERE/board.mjs" move APP-903 done_reported --by web-developer
+    node "$HERE/board.mjs" move APP-903 verified_static --by tech-manager --detail d
+    node "$HERE/board.mjs" move APP-903 review_requested --by web-developer --detail "-> code-reviewer"
+    printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-903\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-903-cycle-0.md
+    node "$HERE/board.mjs" move APP-903 approved --by code-reviewer --verdict docs/53-reviews/APP-903-cycle-0.md
+    node "$HERE/board.mjs" move APP-903 merged --by tech-manager ) >/dev/null 2>&1
+}
+JEST_OK="printf 'Test Suites: 1 passed, 1 total\nTests:       3 passed, 3 total\n'"
+WJ="$TMP/wave-jest"; wave_fx "$WJ" "$JEST_OK"
+( cd "$WJ" && node "$HERE/wave-integrate.mjs" --root . --wave 1 ) >"$TMP/wj1.txt" 2>&1
+[ $? = 0 ] && grep -q "WAVE RESULT: GREEN" "$TMP/wj1.txt" && ok "a wave whose suite is a passing Jest run is GREEN (W1)" \
+  || bad "a wave whose suite is a passing Jest run is GREEN (W1)" "$(tail -8 "$TMP/wj1.txt")"
+# W6 + W7: --push on the SAME wave lands the green branch; with no origin it says so and exits 0.
+( cd "$WJ" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --push ) >"$TMP/wj2.txt" 2>&1
+[ $? = 0 ] && ok "--wave N --push after a green --wave N lands it instead of refusing 'already exists' (W6)" \
+  || bad "--wave N --push after a green --wave N lands it instead of refusing 'already exists' (W6)" "$(tail -8 "$TMP/wj2.txt")"
+assert_has "$TMP/wj2.txt" "no \`origin\` remote" "...and with no origin the push is SKIPPED with the reason, exit 0 (W7)"
+[ "$(cd "$WJ" && git rev-parse main)" = "$(cd "$WJ" && git rev-parse integration/wave-1)" ] \
+  && ok "...and main really was fast-forwarded to the green wave tip" || bad "...and main really was fast-forwarded to the green wave tip"
+# With an origin, the push reaches it — and a wave branch that MOVED after its green run is refused.
+WJO="$TMP/wave-jest-origin"; wave_fx "$WJO" "$JEST_OK"
+( git init -q --bare "$WJO.git" && cd "$WJO" && git remote add origin "$WJO.git" && git push -q origin main ) >/dev/null 2>&1
+( cd "$WJO" && node "$HERE/wave-integrate.mjs" --root . --wave 1 ) >/dev/null 2>&1
+( cd "$WJO" && GREEN_TIP=$(git rev-parse integration/wave-1) \
+  && git update-ref refs/heads/integration/wave-1 "$(git commit-tree -p "$GREEN_TIP" -m unverified "$GREEN_TIP^{tree}")" \
+  && node "$HERE/wave-integrate.mjs" --root . --wave 1 --push; echo "rc=$?"; git update-ref refs/heads/integration/wave-1 "$GREEN_TIP" ) >"$TMP/wjo1.txt" 2>&1
+assert_has "$TMP/wjo1.txt" "rc=2" "--push refuses an existing wave branch whose tip is NOT the commit that ran green (W6)"
+assert_has "$TMP/wjo1.txt" "has moved since it ran" "...and says why"
+( cd "$WJO" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --push ) >"$TMP/wjo2.txt" 2>&1
+[ $? = 0 ] && grep -q "PUSHED main" "$TMP/wjo2.txt" && ok "...and pushes the green tip to origin once it is back (W6)" \
+  || bad "...and pushes the green tip to origin once it is back (W6)" "$(tail -8 "$TMP/wjo2.txt")"
+[ "$(git --git-dir="$WJO.git" rev-parse main)" = "$(cd "$WJO" && git rev-parse integration/wave-1)" ] \
+  && ok "...and origin's main is the green wave tip" || bad "...and origin's main is the green wave tip"
+# G-F5 in the wave: a suite that ran zero tests is CANNOT EVALUATE, never GREEN.
+WJZ="$TMP/wave-jest-zero"; wave_fx "$WJZ" "printf 'Tests:       0 total\n'"
+( cd "$WJZ" && node "$HERE/wave-integrate.mjs" --root . --wave 1 ) >"$TMP/wjz.txt" 2>&1
+[ $? = 2 ] && grep -q "ZERO tests" "$TMP/wjz.txt" && ok "a wave whose suite ran ZERO tests is CANNOT EVALUATE, not GREEN (G-F5)" \
+  || bad "a wave whose suite ran ZERO tests is CANNOT EVALUATE, not GREEN (G-F5)" "$(tail -8 "$TMP/wjz.txt")"
 
 # --- ship-gate reads the register (OPS-004) --------------------------------------------------------
 #

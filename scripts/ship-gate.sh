@@ -277,7 +277,11 @@ if [ -f "$ROOT/.studio-policy.json" ]; then
       unknown "requireApprovalBinding is on, but $ROOT is not a git repository (or has no commits),
            so no approval can be checked against the candidate being shipped. Approval binding is
            UNKNOWN here, not clear."
-    elif [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]; then
+    # The studio's own operational files (lib/operational-paths.txt — the board log, docs/team/,
+    # reviews) are excluded: they are written by the loop running this gate, so counting them made
+    # the honest path permanently UNKNOWN (W3). A git error counts as dirty, never as clean.
+    # shellcheck disable=SC2046
+    elif ! _st=$(git -C "$ROOT" status --porcelain -- ':(top)' $(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(exclude)/' "$HERE/lib/operational-paths.txt") 2>/dev/null) || [ -n "$_st" ]; then
       # Three distinct states, three distinct messages. The first version of this cleared SHIP_HEAD
       # to skip the detector and then fell through to the `else`, so a DIRTY repo was reported as
       # "not a git repository" as well — two UNKNOWNs for one cause, one of them false. Caught by

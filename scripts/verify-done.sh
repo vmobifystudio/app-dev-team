@@ -201,49 +201,20 @@ CANNOT_EVAL_WHY=""
 # See OPS-003; `build-env.sh --check` says honestly which of the three the project actually uses.
 . "$(dirname "$0")/build-env.sh"
 
-# Did the test command FAIL, or did it never actually RUN? The evidence is the output, and the
-# order of these three questions is the decision.
+# Did the test command FAIL, or did it never actually RUN — and on exit 0, did it run at least
+# one test? ONE definition, shared with wave-integrate.mjs: scripts/lib/test-evidence.mjs (its
+# header has the order of the three questions, and why GREEN is stricter than FAILING: a bare
+# keyword or "Executed 0 tests" is never green — G-F5). The two copies of this regex had drifted,
+# and each new test runner (H7 node --test, H9 AGP) had to be found twice, once per copy.
 #
-# 1. An exit of 126/127 is the shell saying it could not execute the thing at all.
-# 2. A toolchain/environment signature — `xcode-select: error: tool 'xcodebuild' requires Xcode`,
-#    `command not found`, a missing SDK, a missing gradle wrapper — means nothing was exercised.
-#    Checked BEFORE the ran-evidence patterns, because xcodebuild prints "** TEST FAILED **" when
-#    it cannot find an SDK, and that string alone would read as a genuine test failure.
-# 3. Only then, positive evidence that a suite ran and reported: the run happened, so exit 1 is a
-#    real verdict about real code — and exit 0 is a real green.
-# Anything else falls through to cannot-run. See the asymmetry note in the header.
-#
-# Returns 0 = "a suite demonstrably ran". Called on BOTH exit paths; the caller turns that into
-# green or failing using $TEST_RC. It must never be consulted on one branch only.
+# Sets TESTS_STATUS (green | failing | cannot-run) and CANNOT_EVAL_WHY. Called on BOTH exit paths
+# with $TEST_RC: a zero exit is evidence that nothing errored, never evidence that a suite ran.
 classify_test_outcome() {
-  if [ "$TEST_RC" -eq 127 ] || [ "$TEST_RC" -eq 126 ]; then
-    CANNOT_EVAL_WHY="the test command exited $TEST_RC — the shell could not execute it at all"
-    return 1
-  fi
-  if grep -Eqi 'command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|cannot be located|[Uu]nable to find a destination|GradleWrapperMain|permission denied|not recognized as an internal' "$TEST_LOG"; then
-    CANNOT_EVAL_WHY="the output names a missing or unusable toolchain, not a failing assertion"
-    return 1
-  fi
-  # FOUND BY RUNNING A REAL WAVE (H7, 2026-08-08): a `node --test` project — the platform default
-  # for this plugin's own `cli`/`library` projects, and this plugin's own language — prints its TAP
-  # summary as `# tests N` / `# pass N` / `# fail N`, count AFTER the noun. Every alternative above
-  # was built around "N test(s) ... pass/fail", count BEFORE, so it never matched: a suite that ran
-  # green reported CANNOT EVALUATE over evidence sitting in the log being scanned. Found first by
-  # the agent working the ticket itself (recorded in its daily fragment, ticket surface untouched,
-  # correctly deferred to tech-manager) and independently by a wave-integrate.mjs run that hit the
-  # identical regex-shape gap in that file; both are fixed together rather than one at a time.
-  #
-  # FOUND BY RUNNING A REAL WAVE AGAIN (H9, 2026-08-09), same class, third test runner: AGP's
-  # `connectedDebugAndroidTest` on a real emulator prints `Starting N tests on <device>` /
-  # `Finished N tests on <device>`, then `BUILD SUCCESSFUL` — a real, passing instrumented run on a
-  # real emulator, and none of the alternatives above matched it either. `Finished N tests on` is
-  # the reliable anchor: AGP prints it once, always, as a completion marker independent of
-  # pass/fail, the same role `# tests N` plays for Node.
-  if grep -Eqi 'test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|expectation|[0-9]+ (passing|failing)|✗|✘|^#[[:space:]]*(tests|pass|fail)[[:space:]]+[0-9]+|Finished [0-9]+ tests? on' "$TEST_LOG"; then
-    return 0
-  fi
-  CANNOT_EVAL_WHY="the output carries no evidence that a test suite ran at all (exit $TEST_RC, $(wc -l <"$TEST_LOG" | tr -d ' ') line(s) of output)"
-  return 1
+  _tab=$(printf '\t')
+  _c=$(node "$(dirname "$0")/lib/test-evidence.mjs" "$TEST_RC" "$TEST_LOG") \
+    || _c="cannot-run${_tab}the ran-evidence classifier (node scripts/lib/test-evidence.mjs) could not run: $_c"
+  TESTS_STATUS=${_c%%"$_tab"*}
+  CANNOT_EVAL_WHY=${_c#*"$_tab"}
 }
 
 # ONE trap for both the temporary worktree and the test log. Two `trap ... EXIT` statements do not
@@ -318,13 +289,8 @@ if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
     # green-while-nothing-happened case in the repo: a zero exit is evidence that nothing errored,
     # never evidence that a suite ran. Ran-evidence decides both directions; the exit code only
     # decides which verdict a suite that DID run gets.
-    if ( cd "$RUN_DIR" && sh -c "$TEST_CMD" ) >"$TEST_LOG" 2>&1; then
-      TEST_RC=0
-      if classify_test_outcome; then TESTS_STATUS="green"; else TESTS_STATUS="cannot-run"; fi
-    else
-      TEST_RC=$?
-      if classify_test_outcome; then TESTS_STATUS="failing"; else TESTS_STATUS="cannot-run"; fi
-    fi
+    if ( cd "$RUN_DIR" && sh -c "$TEST_CMD" ) >"$TEST_LOG" 2>&1; then TEST_RC=0; else TEST_RC=$?; fi
+    classify_test_outcome
   fi
 
 fi

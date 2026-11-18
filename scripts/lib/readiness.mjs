@@ -37,14 +37,27 @@ function candidate(root) {
     catch { return ''; }
   };
   const head = git(['rev-parse', 'HEAD']);
-  const status = git(['status', '--porcelain']);
   return {
     head: head || null,
     branch: git(['rev-parse', '--abbrev-ref', 'HEAD']) || null,
     // `dirty` is null, not false, when git could not answer. "We could not tell" and "it is clean"
     // are different facts, and only one of them justifies a release.
-    dirty: head ? status.length > 0 : null,
+    dirty: head ? treeDirty(root) : null,
   };
+}
+
+/**
+ * Is the working tree dirty, NOT counting the studio's own operational files (the board log,
+ * docs/team/, reviews, worktrees: lib/operational-paths.txt — the same list runtime-gate.sh and
+ * ship-gate.sh read)? Counting them made every honest gate result STALE (W3 / G-F6). A git error
+ * is dirty, never clean.
+ */
+function treeDirty(root) {
+  const excludes = readFileSync(new URL('./operational-paths.txt', import.meta.url), 'utf8')
+    .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((p) => `:(exclude)${p}`);
+  try {
+    return execFileSync('git', ['status', '--porcelain', '--', ':(top)', ...excludes], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0;
+  } catch { return true; }
 }
 
 function readJson(path) {

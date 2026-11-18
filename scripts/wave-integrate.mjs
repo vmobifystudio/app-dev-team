@@ -67,6 +67,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { parseEventLog, reduce } from './lib/events.mjs';
+import { classifyTestRun } from './lib/test-evidence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const die = (code, message) => { process.stderr.write(`wave-integrate: ${message}\n`); process.exit(code); };
@@ -231,11 +232,23 @@ const cleanup = () => {
 };
 process.on('exit', cleanup);
 
+const GREEN_REF = `refs/studio/wave-green/${WAVE}`;
 if (gitTry(['rev-parse', '--verify', WAVE_BRANCH]).ok) {
+  // W6: `--wave N` ran green, then `--wave N --push` — the documented sequence — used to die here.
+  // Land the branch only if its tip is EXACTLY the commit recorded green; anything else is unverified.
+  const tip = gitTry(['rev-parse', WAVE_BRANCH]).out;
+  const greenTip = gitTry(['rev-parse', '--verify', '--quiet', GREEN_REF]);
+  if (flags.push && greenTip.ok && greenTip.out === tip) {
+    process.stdout.write(`\n  ${WAVE_BRANCH} already exists at ${tip.slice(0, 8)}, the tip this wave integrated GREEN.\n` +
+                         '  Pushing it as-is: nothing is re-merged and the suite is not re-run.\n');
+    pushWave();
+  }
   die(2, `${WAVE_BRANCH} already exists.\n` +
          '  A second run of the same wave would merge on top of the first one\'s result and report it\n' +
          `  as a fresh integration. Delete it deliberately (git branch -D ${WAVE_BRANCH}) once you know\n` +
-         '  what it holds, or run the next wave number.');
+         '  what it holds, or run the next wave number.' +
+         (flags.push ? '\n  --push lands an existing wave branch only when its tip is the commit that ran GREEN; this\n' +
+                       '  one has no green record, or has moved since it ran.' : ''));
 }
 const add = gitTry(['worktree', 'add', '-b', WAVE_BRANCH, WT, BASE]);
 if (!add.ok) die(2, `could not create the integration worktree:\n${add.out.trim()}`);
@@ -295,26 +308,12 @@ const testOut = `${test.stdout || ''}${test.stderr || ''}`;
 
 // The SAME three-way split every other gate here uses, and for the same reason: a missing toolchain
 // and a failing assertion are different sentences, and conflating them sends developers to fix bugs
-// that do not exist (DR4-001).
-const CANNOT_RUN = /command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|GradleWrapperMain|permission denied/i;
-// FOUND BY RUNNING A REAL WAVE (H7, 2026-08-08): a project on Node's built-in test runner
-// (`node --test`, the platform default for a `cli`/`library` project, and this plugin's own
-// language) printed its real TAP summary — `# tests 12`, `# pass 12`, `# fail 0` — and every
-// alternative below failed to match it: the number sits AFTER "tests"/"pass"/"fail", not before, so
-// the "N test(s) ... pass/fail" shape this regex was built around never fires. A wave that had
-// genuinely gone green reported CANNOT EVALUATE instead, over evidence sitting in the very output
-// being scanned. Fixed by recognizing the TAP summary line shape directly, not by widening the
-// existing alternatives (which would risk matching prose that merely mentions "tests" or "pass").
-//
-// FOUND BY RUNNING A REAL WAVE AGAIN (H9, 2026-08-09), same class, third test runner: AGP's
-// `connectedDebugAndroidTest` on a real emulator prints `Starting N tests on <device>` /
-// `Finished N tests on <device>`, then `BUILD SUCCESSFUL` — no alternative above matches that
-// shape either. `Finished N tests on` is the reliable anchor: AGP prints it once, always, as a
-// completion marker independent of pass/fail (the exit code and BUILD FAILED/SUCCESSFUL carry the
-// verdict) — the same role `# tests N` plays for Node.
-const RAN = /test case|executed [0-9]+ test|tests? run:|[0-9]+ (test|assertion|example)s?[,.]? .*(fail|pass)|TEST FAILED|FAILED \(|assertion (failed|error)|[0-9]+ (passing|failing)|^#\s*(tests|pass|fail)\s+[0-9]+|Finished [0-9]+ tests? on/im;
-const cannotRun = test.status === 126 || test.status === 127 || CANNOT_RUN.test(testOut) || !RAN.test(testOut);
-const green = test.status === 0 && !cannotRun;
+// that do not exist (DR4-001). ONE definition, shared with verify-done.sh: lib/test-evidence.mjs —
+// which runner shapes count (W1: Jest, Vitest, pytest, go test, Gradle) and why zero tests or a
+// bare keyword is never green (G-F5).
+const run = classifyTestRun(test.status, testOut);
+const cannotRun = run.verdict === 'cannot-run';
+const green = run.verdict === 'green';
 
 process.stdout.write(`\n${testOut.split('\n').slice(-30).map((l) => `  | ${l}`).join('\n')}\n`);
 
@@ -337,9 +336,9 @@ function baselineAlsoFails() {
   try {
     const baseTest = spawnSync('sh', ['-c', `. "${resolve(HERE, 'build-env.sh')}" && ${TEST_CMD}`], { cwd: BWT, encoding: 'utf8' });
     const baseOut = `${baseTest.stdout || ''}${baseTest.stderr || ''}`;
-    const baseCannotRun = baseTest.status === 126 || baseTest.status === 127 || CANNOT_RUN.test(baseOut) || !RAN.test(baseOut);
-    const baseGreen = baseTest.status === 0 && !baseCannotRun;
-    if (baseCannotRun) return { checked: false, reason: `${BASE} could not be evaluated either — no comparison to make` };
+    const baseRun = classifyTestRun(baseTest.status, baseOut);
+    const baseGreen = baseRun.verdict === 'green';
+    if (baseRun.verdict === 'cannot-run') return { checked: false, reason: `${BASE} could not be evaluated either — no comparison to make` };
     return { checked: true, baseFailed: !baseGreen };
   } finally {
     gitTry(['worktree', 'remove', '--force', BWT], { cwd: ROOT });
@@ -363,6 +362,7 @@ const boardCommands = merged.map((m) => `  node scripts/board.mjs move ${m.id} v
 if (cannotRun) {
   process.stdout.write(
     '\n  WAVE RESULT: CANNOT EVALUATE — the suite did not demonstrably run here.\n' +
+    `  Why: ${run.why}.\n` +
     '  This is NOT a pass and NOT a failure of the code. Every ticket in this wave keeps the\n' +
     '  `verified_static` it already carries, `closed` stays refused, and ship-gate.sh keeps blocking.\n' +
     `  ${WAVE_BRANCH} is kept so the merged tree can be built somewhere that has the toolchain.\n  It is checked out at ${WT}.\n`
@@ -417,6 +417,11 @@ process.stdout.write(
   `${boardCommands}\n`
 );
 
+// Record WHICH tip ran green, so a later `--wave N --push` can land this exact branch without
+// re-merging (W6) — and can refuse a branch that has moved since. A ref, not a file: atomic, and
+// invisible to `git branch`, which the candidate matching above reads.
+gitTry(['update-ref', GREEN_REF, gitTry(['rev-parse', WAVE_BRANCH]).out]);
+
 if (!flags.push) {
   process.stdout.write(
     `\n  NOT PUSHED. --push fast-forwards ${BASE} to ${WAVE_BRANCH} and pushes ONCE — one CI run for the\n` +
@@ -425,88 +430,98 @@ if (!flags.push) {
   );
   process.exit(0);
 }
+pushWave();
 
 // --- push, once ------------------------------------------------------------------------------------------
-// `git merge --ff-only` MERGES INTO WHATEVER IS CHECKED OUT — and this never checked out $BASE.
-//
-// It ran with `cwd: ROOT` and no idea what ROOT had on HEAD. If the operator was standing on any
-// other branch, that branch was silently fast-forwarded to the wave, $BASE never moved, and this
-// printed `PUSHED <base>` and exited 0. Reproduced against a bare remote: `develop` unchanged on
-// both sides, an unrelated `scratch/operator` branch advanced to the wave tip, exit 0.
-//
-// Two wrongs at once: the wave lands nowhere, and a branch nobody leased gets rewritten — which is
-// the rule this file's own header states at line 151, broken by this file.
-//
-// The fix updates the REF instead of merging into a working tree. `git fetch . <src>:<dst>` is
-// fast-forward-only by default, needs no checkout, and refuses outright when <dst> is checked out
-// somewhere — so the one case that genuinely needs a working tree is reported rather than guessed
-// at. Note the printed manual fallback below has always included the `git checkout ${BASE}` this
-// code omitted; the instructions were right and the implementation was not.
-const baseBefore = gitTry(['rev-parse', BASE]).out;
-const waveTip = gitTry(['rev-parse', WAVE_BRANCH]).out;
+function pushWave() {
+  // `git merge --ff-only` MERGES INTO WHATEVER IS CHECKED OUT — and this never checked out $BASE.
+  //
+  // It ran with `cwd: ROOT` and no idea what ROOT had on HEAD. If the operator was standing on any
+  // other branch, that branch was silently fast-forwarded to the wave, $BASE never moved, and this
+  // printed `PUSHED <base>` and exited 0. Reproduced against a bare remote: `develop` unchanged on
+  // both sides, an unrelated `scratch/operator` branch advanced to the wave tip, exit 0.
+  //
+  // Two wrongs at once: the wave lands nowhere, and a branch nobody leased gets rewritten — which is
+  // the rule this file's own header states at line 151, broken by this file.
+  //
+  // The fix updates the REF instead of merging into a working tree. `git fetch . <src>:<dst>` is
+  // fast-forward-only by default, needs no checkout, and refuses outright when <dst> is checked out
+  // somewhere — so the one case that genuinely needs a working tree is reported rather than guessed
+  // at. Note the printed manual fallback below has always included the `git checkout ${BASE}` this
+  // code omitted; the instructions were right and the implementation was not.
+  const baseBefore = gitTry(['rev-parse', BASE]).out;
+  const waveTip = gitTry(['rev-parse', WAVE_BRANCH]).out;
 
-let ff = gitTry(['fetch', '.', `${WAVE_BRANCH}:${BASE}`], { cwd: ROOT });
-if (!ff.ok && /checked out|refusing to fetch into/i.test(ff.out)) {
-  // $BASE is checked out somewhere. If that somewhere is ROOT, a plain ff-only merge is correct and
-  // safe — it is the branch we intend to move. Anywhere else, we do not touch another tree.
-  const head = gitTry(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ROOT }).out;
-  if (head === BASE) ff = gitTry(['merge', '--ff-only', WAVE_BRANCH], { cwd: ROOT });
-  else {
+  let ff = gitTry(['fetch', '.', `${WAVE_BRANCH}:${BASE}`], { cwd: ROOT });
+  if (!ff.ok && /checked out|refusing to fetch into/i.test(ff.out)) {
+    // $BASE is checked out somewhere. If that somewhere is ROOT, a plain ff-only merge is correct and
+    // safe — it is the branch we intend to move. Anywhere else, we do not touch another tree.
+    const head = gitTry(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ROOT }).out;
+    if (head === BASE) ff = gitTry(['merge', '--ff-only', WAVE_BRANCH], { cwd: ROOT });
+    else {
+      process.stdout.write(
+        `\n  PUSH SKIPPED: ${BASE} is checked out in another worktree, and this will not move a branch\n` +
+        `  from under whoever is standing on it. ROOT is on "${head}".\n` +
+        `  Land it from the tree that holds ${BASE}:\n` +
+        `    git checkout ${BASE} && git merge --ff-only ${WAVE_BRANCH} && git push origin ${BASE}\n`
+      );
+      keep = true;
+      process.exit(1);
+    }
+  }
+  if (!ff.ok) {
     process.stdout.write(
-      `\n  PUSH SKIPPED: ${BASE} is checked out in another worktree, and this will not move a branch\n` +
-      `  from under whoever is standing on it. ROOT is on "${head}".\n` +
-      `  Land it from the tree that holds ${BASE}:\n` +
-      `    git checkout ${BASE} && git merge --ff-only ${WAVE_BRANCH} && git push origin ${BASE}\n`
+      `\n  PUSH SKIPPED: ${BASE} could not fast-forward to ${WAVE_BRANCH}:\n${ff.out.split('\n').map((l) => `    ${l}`).join('\n')}\n` +
+      `  Something landed on ${BASE} while the wave was integrating. Re-run the wave against the new tip\n` +
+      '  rather than forcing anything: this never force-pushes and never rewrites the integration branch.\n'
     );
     keep = true;
     process.exit(1);
   }
-}
-if (!ff.ok) {
-  process.stdout.write(
-    `\n  PUSH SKIPPED: ${BASE} could not fast-forward to ${WAVE_BRANCH}:\n${ff.out.split('\n').map((l) => `    ${l}`).join('\n')}\n` +
-    `  Something landed on ${BASE} while the wave was integrating. Re-run the wave against the new tip\n` +
-    '  rather than forcing anything: this never force-pushes and never rewrites the integration branch.\n'
-  );
-  keep = true;
-  process.exit(1);
-}
 
-// CONFIRM THE REF ACTUALLY MOVED BEFORE CLAIMING ANYTHING. The defect above printed PUSHED for a
-// branch that never changed, so "the command exited 0" is not evidence that the wave landed —
-// exactly the claim/verification gap `merge-reconcile.mjs` exists to close one level up.
-const baseAfter = gitTry(['rev-parse', BASE]).out;
-if (baseAfter !== waveTip) {
-  process.stdout.write(
-    `\n  PUSH SKIPPED: ${BASE} did not move. It was ${baseBefore.slice(0, 8)} and is ${baseAfter.slice(0, 8)};\n` +
-    `  the wave tip is ${waveTip.slice(0, 8)}. Nothing was pushed, because nothing landed.\n`
-  );
-  keep = true;
-  process.exit(1);
-}
-
-const push = gitTry(['push', 'origin', BASE], { cwd: ROOT });
-process.stdout.write(push.ok
-  ? `\n  PUSHED ${BASE} — one push, one CI run for the wave. Read it next round with ci-status.mjs.\n`
-  : `\n  PUSH FAILED:\n${push.out.split('\n').map((l) => `    ${l}`).join('\n')}\n  ${BASE} is fast-forwarded locally; nothing was rewritten.\n`);
-
-// Future Conflict #1 (adversarial-operations-review): `orchestrator round` runs merge-reconcile.mjs
-// at ROUND START, but drift can happen at the moment the wave lands too — the same fetch/ff/push
-// sequence above is a second window between "the board believes this is merged" and "git agrees".
-// Running the same reconciliation here, once, right after the ref actually moved, closes that
-// window at the source instead of waiting for it to surface a round later.
-if (push.ok) {
-  const reconcile = spawnSync(
-    process.execPath,
-    [resolve(HERE, 'merge-reconcile.mjs'), '--root', ROOT, '--base', BASE],
-    { cwd: ROOT, encoding: 'utf8' }
-  );
-  process.stdout.write(`\n  merge-reconcile (post-wave):\n${(reconcile.stdout || '').split('\n').map((l) => `    ${l}`).join('\n')}\n`);
-  if (reconcile.status !== 0) {
+  // CONFIRM THE REF ACTUALLY MOVED BEFORE CLAIMING ANYTHING. The defect above printed PUSHED for a
+  // branch that never changed, so "the command exited 0" is not evidence that the wave landed —
+  // exactly the claim/verification gap `merge-reconcile.mjs` exists to close one level up.
+  const baseAfter = gitTry(['rev-parse', BASE]).out;
+  if (baseAfter !== waveTip) {
     process.stdout.write(
-      `  merge-reconcile exited ${reconcile.status} after the push that just landed ${WAVE_BRANCH} on ${BASE}.\n` +
-      '  The wave itself is pushed; treat this as a hand-off to the next round, not a failed push.\n'
+      `\n  PUSH SKIPPED: ${BASE} did not move. It was ${baseBefore.slice(0, 8)} and is ${baseAfter.slice(0, 8)};\n` +
+      `  the wave tip is ${waveTip.slice(0, 8)}. Nothing was pushed, because nothing landed.\n`
     );
+    keep = true;
+    process.exit(1);
   }
+
+  // W7: no `origin` is not a failed push. $BASE already moved (confirmed above), so the wave LANDED;
+  // exit 1 here read as "the wave does not advance — re-spawn the owners" for a fast-forwarded base.
+  const hasOrigin = gitTry(['remote', 'get-url', 'origin'], { cwd: ROOT }).ok;
+  const push = hasOrigin ? gitTry(['push', 'origin', BASE], { cwd: ROOT }) : { ok: true, out: '' };
+  process.stdout.write(!hasOrigin
+    ? `\n  PUSH SKIPPED: this repository has no \`origin\` remote, so there is nowhere to push and no CI run.\n` +
+      `  ${BASE} IS fast-forwarded locally to the green wave tip ${waveTip.slice(0, 8)} — the wave landed.\n` +
+      `  Once a remote exists: git push origin ${BASE}\n`
+    : push.ok
+    ? `\n  PUSHED ${BASE} — one push, one CI run for the wave. Read it next round with ci-status.mjs.\n`
+    : `\n  PUSH FAILED:\n${push.out.split('\n').map((l) => `    ${l}`).join('\n')}\n  ${BASE} is fast-forwarded locally; nothing was rewritten.\n`);
+
+  // Future Conflict #1 (adversarial-operations-review): `orchestrator round` runs merge-reconcile.mjs
+  // at ROUND START, but drift can happen at the moment the wave lands too — the same fetch/ff/push
+  // sequence above is a second window between "the board believes this is merged" and "git agrees".
+  // Running the same reconciliation here, once, right after the ref actually moved, closes that
+  // window at the source instead of waiting for it to surface a round later.
+  if (push.ok) {
+    const reconcile = spawnSync(
+      process.execPath,
+      [resolve(HERE, 'merge-reconcile.mjs'), '--root', ROOT, '--base', BASE],
+      { cwd: ROOT, encoding: 'utf8' }
+    );
+    process.stdout.write(`\n  merge-reconcile (post-wave):\n${(reconcile.stdout || '').split('\n').map((l) => `    ${l}`).join('\n')}\n`);
+    if (reconcile.status !== 0) {
+      process.stdout.write(
+        `  merge-reconcile exited ${reconcile.status} after the push that just landed ${WAVE_BRANCH} on ${BASE}.\n` +
+        '  The wave itself is pushed; treat this as a hand-off to the next round, not a failed push.\n'
+      );
+    }
+  }
+  process.exit(push.ok ? 0 : 1);
 }
-process.exit(push.ok ? 0 : 1);
