@@ -4048,6 +4048,17 @@ vd_green "verify-done reads a passing Vitest summary as green (W1)" "printf ' Te
 vd_green "verify-done reads a passing pytest summary as green (W1)" "printf 'collected 3 items\n\n============================== 3 passed in 0.12s ===============================\n'"
 vd_green "verify-done reads a passing go test summary as green (W1)" "printf 'ok  \tgithub.com/x/y\t0.012s\n?   \tgithub.com/x/z\t[no test files]\n'"
 vd_green "verify-done reads a Gradle test task + BUILD SUCCESSFUL as green (W1)" "printf '> Task :app:compileDebugUnitTestKotlin\n> Task :app:testDebugUnitTest\n\nBUILD SUCCESSFUL in 9s\n'"
+# The CLI verify-done calls must answer when reached through a SYMLINKED path (macOS /var ->
+# /private/var): its main-module guard compared argv[1] raw and printed nothing, and an empty
+# verdict read as VERIFIED.
+rm -rf "$TMP/te-link"; ln -s "$HERE/lib" "$TMP/te-link"
+printf 'Executed 3 tests, with 0 failures\n' > "$TMP/te-log.txt"
+[ "$(node "$TMP/te-link/test-evidence.mjs" 0 "$TMP/te-log.txt" | cut -f1)" = green ] \
+  && ok "test-evidence.mjs answers when invoked through a symlinked path" \
+  || bad "test-evidence.mjs answers when invoked through a symlinked path" "got '$(node "$TMP/te-link/test-evidence.mjs" 0 "$TMP/te-log.txt")'"
+grep -q 'green|failing|cannot-run) ;;' "$HERE/verify-done.sh" \
+  && ok "...and verify-done treats any other classifier output as CANNOT EVALUATE, never green" \
+  || bad "...and verify-done treats any other classifier output as CANNOT EVALUATE, never green"
 vd_zero() {  # <label> <test command>
   ( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "$2" ) >"$TMP/vdz.txt" 2>/dev/null
   RC=$?

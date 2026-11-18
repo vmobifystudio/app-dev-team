@@ -19,7 +19,7 @@
  * lib/environment.mjs DELIBERATELY DISAGREES with this file (it defaults unrecognised failures to
  * REAL failures); see its header. Do not merge the two.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export const CANNOT_RUN = /command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|cannot be located|unable to find a destination|GradleWrapperMain|permission denied|not recognized as an internal/i;
@@ -82,7 +82,9 @@ export function classifyTestRun(status, output) {
 }
 
 // CLI for verify-done.sh: test-evidence.mjs <exit-code> <log-file>  ->  "<verdict>\t<why>"
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// realpath: import.meta.url is resolved through symlinks (/var -> /private/var on macOS), argv[1]
+// is not — comparing them raw made the CLI print nothing under a symlinked path.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   let log = '';
   try { log = readFileSync(process.argv[3], 'utf8'); } catch { /* empty log: no evidence */ }
   const r = classifyTestRun(Number(process.argv[2]), log);

@@ -215,6 +215,11 @@ classify_test_outcome() {
     || _c="cannot-run${_tab}the ran-evidence classifier (node scripts/lib/test-evidence.mjs) could not run: $_c"
   TESTS_STATUS=${_c%%"$_tab"*}
   CANNOT_EVAL_WHY=${_c#*"$_tab"}
+  # Anything but the three known verdicts (empty output included) is CANNOT EVALUATE, never green.
+  case "$TESTS_STATUS" in
+    green|failing|cannot-run) ;;
+    *) TESTS_STATUS="cannot-run"; CANNOT_EVAL_WHY="the ran-evidence classifier returned no verdict ('$_c')" ;;
+  esac
 }
 
 # ONE trap for both the temporary worktree and the test log. Two `trap ... EXIT` statements do not
