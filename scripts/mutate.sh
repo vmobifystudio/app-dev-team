@@ -138,7 +138,7 @@ M11@@scripts/lib/messages.mjs@@if (recent >= MAX_PER_ROLE) {@@if (false) {@@the 
 M12@@scripts/lib/messages.mjs@@if (roles.size > MAX_CHAIN) {@@if (roles.size > MAX_CHAIN + 1) {@@a fifth role on one ticket's thread is refused
 M13@@hooks/block-shared-tree-destructive-git.sh@@[ -n "$DIRTY" ] || continue@@[ -z "$DIRTY" ] || continue@@dirty tree: blocks git stash
 M14@@hooks/block-shared-tree-destructive-git.sh@@} else if (sc == "stash") {@@} else if (sc == "zzzz-no-such-command") {@@dirty tree: blocks git stash
-M15@@scripts/verify-done.sh@@grep -Eqi 'command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|cannot be located|[Uu]nable to find a destination|GradleWrapperMain|permission denied|not recognized as an internal'@@grep -Eqi 'zzzz-this-pattern-matches-nothing'@@a missing toolchain is CANNOT EVALUATE, not REJECTED
+M15@@scripts/lib/test-evidence.mjs@@/command not found|: not found|no such file or directory|xcode-select: error|requires Xcode|xcrun: error|unable to find utility|cannot be located|unable to find a destination|GradleWrapperMain|permission denied|not recognized as an internal/i@@/zzzz-this-pattern-matches-nothing/i@@a missing toolchain is CANNOT EVALUATE, not REJECTED
 M16@@scripts/round-journal.mjs@@if (t.spawns >= caps.spawns) breached.push@@if (t.spawns > caps.spawns) breached.push@@the spawn ceiling fires independently of the round ceiling
 M17@@scripts/lib/capabilities.mjs@@if (!allowed.includes(actor)) {@@if (false) {@@a designer may not write a gate event (verified)
 M18@@scripts/lib/capabilities.mjs@@if (NOT_ON_OWN_TICKET.has(name) && state && same(actor, state.owner)) {@@if (false) {@@QA may not pass the ticket it owns
@@ -168,7 +168,7 @@ M41@@scripts/worktree-reap.mjs@@if (finalMb > MAX_DISK_MB) {@@if (false) {@@the 
 M42@@scripts/ci-status.mjs@@process.exit(ARMED ? code : 0);@@process.exit(0);@@armed, an unanswerable CI question is CANNOT EVALUATE — never a pass@@ci-status: the merge gate
 M43@@scripts/verify-done.sh@@[ "$STATIC" -eq 1 ] && TESTS_STATUS="deferred-to-wave"@@:@@...naming WHY the suite did not run, so it is not mistaken for a missing command@@verify-done --static
 M44@@scripts/worktree-slot.mjs@@if (!mine && others.length >= POOL) {@@if (false) {@@leasing past the pool size is REFUSED — that is the parallelism cap doing its job@@worktree-slot: one tree per WRITER
-M45@@scripts/wave-integrate.mjs@@const green = test.status === 0 && !cannotRun;@@const green = true;@@a wave whose merged tree fails its suite is exit 1 — the wave does not advance@@wave-integrate: merge once
+M45@@scripts/wave-integrate.mjs@@const green = run.verdict === 'green';@@const green = true;@@a wave whose merged tree fails its suite is exit 1 — the wave does not advance@@wave-integrate: merge once
 M46@@scripts/ship-gate.sh@@    1) block "the register has item@@    1) note "the register has item@@ship-gate BLOCKS on a register item nobody has decided about@@ship-gate reads the register
 M47@@scripts/dispatch-preflight.mjs@@if (policy.requireTicketFiles === true) {@@if (false) {@@...and ARMED, the same undeclared ticket is REFUSED at dispatch, not at merge@@requireTicketFiles
 M48@@scripts/merge-reconcile.mjs@@const awaitingWave = (t) => t.status === 'qa' && t.verifiedStatic === true;@@const awaitingWave = () => false;@@a merge-gated ticket awaiting the wave does NOT block the loop@@EE-001
@@ -199,16 +199,22 @@ M73@@scripts/orchestrator.mjs@@const staticOnly = [...tickets.values()].filter((
 M74@@scripts/messages.mjs@@if (candidate.kind === 'answer' && candidate.ticket !== TICKETLESS) {@@if (false) {@@an answer on an already-shipped ticket says it filed a register item
 M75@@scripts/review-pattern-scan.mjs@@.filter(([, tickets]) => tickets.size >= 2)@@.filter(([, tickets]) => tickets.size >= 99)@@two tickets blocking on the same file are correlated@@OPS-014: cross-ticket
 M76@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$REFBLOCK" ]; then@@if false; then@@a push refspec ending :main is blocked, even from a different branch entirely
-M77@@scripts/wave-integrate.mjs@@|^#\s*(tests|pass|fail)\s+[0-9]+|Finished@@|Finished@@a wave whose suite is Node's own `node --test` TAP summary is recognized as GREEN
-M78@@scripts/verify-done.sh@@|^#[[:space:]]*(tests|pass|fail)[[:space:]]+[0-9]+|Finished@@|Finished@@Node's own `node --test` TAP summary (count after the noun) verifies too
+M77@@scripts/lib/test-evidence.mjs@@/^#\s*(?:tests|pass)\s+([0-9]+)/gim,@@/zzzz-never-matches-([0-9]+)/gim,@@a wave whose suite is Node's own `node --test` TAP summary is recognized as GREEN
+M78@@scripts/lib/test-evidence.mjs@@/^#\s*(?:tests|pass)\s+([0-9]+)/gim,@@/zzzz-never-matches-([0-9]+)/gim,@@Node's own `node --test` TAP summary (count after the noun) verifies too
 M79@@hooks/block-cross-worktree-write.sh@@if [ -n "$TARGET_WT" ] && [ "$TARGET_WT" != "$MY_WT" ]; then@@if false; then@@writing into a SIBLING worktree is blocked@@cross-worktree-write hook
-M80@@scripts/wave-integrate.mjs@@|Finished [0-9]+ tests? on/im;@@/im;@@AGP's own connectedAndroidTest completion line is recognized as GREEN
-M81@@scripts/verify-done.sh@@|Finished [0-9]+ tests? on' "$TEST_LOG"; then@@' "$TEST_LOG"; then@@AGP's own connectedAndroidTest completion line ('Finished N tests on <device>') verifies too
+M80@@scripts/lib/test-evidence.mjs@@/Finished ([0-9]+) tests? on/gi,@@/zzzz-never-matches-([0-9]+)/gi,@@AGP's own connectedAndroidTest completion line is recognized as GREEN
+M81@@scripts/lib/test-evidence.mjs@@/Finished ([0-9]+) tests? on/gi,@@/zzzz-never-matches-([0-9]+)/gi,@@AGP's own connectedAndroidTest completion line ('Finished N tests on <device>') verifies too
 M82@@hooks/require-review-verdict.sh@@[ "$RECORDED" = 1 ] && exit 0@@exit 0@@still BLOCKED (the v1 exploit, closed)
 M83@@scripts/wave-integrate.mjs@@baseFailed: !baseGreen };@@baseFailed: false };@@the unmodified base ref fails too — this failure may pre-date the wave
 M84@@hooks/require-review-verdict.sh@@grep '"by":"code-reviewer"' | grep -F '"verdict_path"'@@grep -F '"verdict_path"'@@a real event for the SAME ticket authored by a DIFFERENT role is still BLOCKED
 M85@@hooks/block-cross-worktree-write.sh@@[ -L "$ABS_TARGET" ] && [ "$hops" -lt 40 ] || break@@break@@a symlink in your own worktree pointing at a sibling's file is blocked@@cross-worktree-write hook
 M86@@hooks/block-shared-tree-destructive-git.sh@@if (c == "\n" || c == ";" ||@@if (c == ";" ||@@a newline separates commands, like ;
+M95@@scripts/lib/test-evidence.mjs@@if (most > 0 || uncounted) return { verdict: 'green'@@if (counted || uncounted) return { verdict: 'green'@@verify-done: 'Executed 0 tests' is never green (G-F5)
+M96@@scripts/wave-integrate.mjs@@if (flags.push && greenTip.ok && greenTip.out === tip) {@@if (flags.push) {@@--push refuses an existing wave branch whose tip is NOT the commit that ran green (W6)@@W1/G-F5 in the wave
+M97@@scripts/wave-integrate.mjs@@const push = hasOrigin ? gitTry(['push', 'origin', BASE], { cwd: ROOT }) : { ok: true, out: '' };@@const push = gitTry(['push', 'origin', BASE], { cwd: ROOT });@@--wave N --push after a green --wave N lands it instead of refusing 'already exists' (W6)@@W1/G-F5 in the wave
+M98@@scripts/lib/readiness.mjs@@['status', '--porcelain', '--', ':(top)', ...excludes]@@['status', '--porcelain', '--', ':(top)']@@readiness: a tree dirty ONLY in the studio's operational files is clean (W3)@@W3 / G-F6
+M99@@scripts/runtime-gate.sh@@-e 's/^/:(exclude)/' "$OPS_PATHS")@@-e 's/^/:(exclude)/' /dev/null)@@runtime-gate --record: operational files do not record the tree as dirty (W3)@@W3 / G-F6
+M100@@scripts/ship-gate.sh@@-e 's/^/:(exclude)/' "$HERE/lib/operational-paths.txt")@@-e 's/^/:(exclude)/' /dev/null)@@ship-gate: operational files do not make approval binding UNKNOWN (G-F6)@@W3 / G-F6
 CATALOGUE
 }
 
