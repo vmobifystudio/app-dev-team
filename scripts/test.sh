@@ -11858,6 +11858,11 @@ grep -q 'moved — then release QA.s slot (step 4a)' "$HERE/../commands/app-buil
   && grep -q 'do not run `register.mjs` in your slot' "$HERE/../agents/qa-engineer.md" \
   && ok "Q1: the QA ticket's landing releases its slot, and QA does not import the register in its slot (C5W-9)" \
   || bad "Q1: the QA ticket's landing releases its slot, and QA does not import the register in its slot (C5W-9)"
+# ·· C5W-10: approval-check --ticket on a ticket with no approval is BLOCKED, not CLEAR.
+Q1A="$TMP/q1-ac"; rm -rf "$Q1A"; mkdir -p "$Q1A/docs"; printf '{"requireApprovalBinding":true}\n' > "$Q1A/.studio-policy.json"
+( cd "$Q1A" && git init -q -b main . && q1g commit -q --allow-empty -m init && node "$HERE/board.mjs" add APP-001 --title t --owner web-developer ) >/dev/null 2>&1
+assert_exit 1 "Q1: approval-check --ticket with zero approvals exits 1, never 'CLEAR' (C5W-10)" sh -c 'cd "$1" && node "$2/approval-check.mjs" --ticket APP-001 --head main' sh "$Q1A" "$HERE"
+assert_has "$TMP/out" "has no approval on record" "Q1: ...saying there is no approval (C5W-10)"
 # ·· C5W-5 / C5W-13: the reviewer's template names the files (approved --bind needs one); routing a constant is not a rejection.
 Q1CR="$HERE/../agents/code-reviewer.md"
 grep -q '^Files reviewed: <every path in the diff' "$Q1CR" && grep -q "'Files reviewed: <every path in the Range above" "$HERE/spawn-prompt.mjs" \
