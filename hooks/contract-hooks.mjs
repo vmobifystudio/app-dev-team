@@ -15,7 +15,8 @@
  *                  roles — when the ticket's files overlap in-flight work (contention-check.mjs).
  *   subagent-stop  SubagentStop for contract roles (hooks/persist-ic-report.sh). Persist the final
  *                  message (or, when the payload lacks it, the last assistant message of the
- *                  subagent's own transcript) to docs/team/reports/<ticket-or-role>-<UTC>.md, run
+ *                  subagent's own transcript) to docs/team/reports/<ticket-or-role>-<UTC>.md
+ *                  (credentials and `st_…` role tokens redacted — C5G-8), run
  *                  report-check on it, and block ONCE per subagent with the exact missing lines when
  *                  ticket work fails it. A report whose first line is the role's GATE line
  *                  (`DESIGN QA:`, `ANALYTICS:`, `ASO READY`, `VERIFICATION:` — lib/contract.mjs
@@ -32,14 +33,15 @@
  * FAIL OPEN, like every hook here: unparseable payload, missing node, unreadable state → exit 0.
  * Exit 2 blocks, with the reason on stderr (Claude Code feeds it back to the model).
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { contractFor, gateHeaderOf } from '../scripts/lib/contract.mjs';
+import { redact } from '../scripts/lib/redact.mjs';
 
 // The scripts this hook runs. It lives in hooks/ so the plugin's script count stays what it says.
 const HERE = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
@@ -156,7 +158,8 @@ function subagentStop() {
   const dir = join(root, 'docs', 'team', 'reports');
   const stamp = new Date().toISOString().replace(/[-:.]/g, '');
   const file = join(dir, `${(ticket || role).replace(/[^A-Za-z0-9-]/g, '')}-${stamp}.md`);
-  try { mkdirSync(dir, { recursive: true }); writeFileSync(file, `${report}\n`); } catch { allow(); }
+  // C5G-8: a report that pastes its `--token st_…` command must not leave a live role token on disk.
+  try { mkdirSync(dir, { recursive: true }); writeFileSync(file, `${redact(report).text}\n`); } catch { allow(); }
 
   // A gate verdict (the role judged someone else's work) is not a DONE and owes no DONE contract.
   if (head[1] === 'BLOCKED' || !ticket || gateHeaderOf(role, report)) allow();
@@ -296,7 +299,7 @@ function shellCommands(src) {
         if (m) { heredocs.push({ delim: m[2], quoted: Boolean(m[1]), cmd: cur }); i = j + 1 + m[0].length; } else i = j + 1;
         continue;
       }
-      cur.push({ op: c === '>' ? '>' : '<' }); i = j; continue;
+      cur.push({ op: c === '>' || src[i + 1] === '>' ? '>' : '<' }); i = j; continue; // C5G-2: `<>` opens for writing
     }
     part('u', c); i++;
   }
@@ -324,7 +327,9 @@ function wordValue(w, vars) {
   return { text, pat };
 }
 
-/** Pattern string → path segments, resolved against `cwd` (itself a segment list, possibly ANY-led). */
+// C5G-7: symlinks `ln -s` made EARLIER IN THIS COMMAND (`ln -s docs/team l; echo x > l/…`) — realish only sees links that exist.
+const LINKS = [];
+/** Pattern string → path segments, resolved against `cwd` (itself a segment list, possibly ANY-led), through LINKS. */
 function patSegs(pat, cwd) {
   const raw = pat.startsWith('/') ? [] : pat.startsWith(ANY) ? [] : [...cwd];
   const out = raw;
@@ -333,6 +338,7 @@ function patSegs(pat, cwd) {
     if (s === '..') { if (out.length && out[out.length - 1] !== ANY) out.pop(); continue; }
     out.push(s);
   }
+  for (const l of LINKS) if (out.length >= l.from.length && l.from.every((s, i) => fold(s) === fold(out[i]))) return [...l.to, ...out.slice(l.from.length)];
   return out;
 }
 const segRe = (s) => new RegExp(`^${s.split('').map((ch) => (ch === STAR ? '[^/]*' : ch === ONE ? '[^/]' : ch === ANY ? '.*' : ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))).join('')}$`, DARWIN ? 'i' : '');
@@ -378,6 +384,8 @@ const DOT = { v: { text: '.', pat: '.' } };
 const lastSeg = (s) => s.replace(/\/+$/, '').split('/').pop();
 const under = (dir, w) => ({ v: { text: `${dir.v.text}/${w.v.text}`, pat: `${dir.v.pat}/${w.v.pat}` } });
 const lit = (s) => ({ v: { text: s, pat: s } });
+// `mktemp`, `mktemp -d`, `mktemp -d -t x.XXXX`: a new name under $TMPDIR (no template, -p or --tmpdir that could aim elsewhere).
+const MKTEMP = /^\s*mktemp(\s+(-[dqu]+|-t\s*[^\s/]+|--directory|--quiet))*\s*$/;
 
 /** Paths a unified diff writes (`+++ b/x`, `rename to`, …), each also with its first component stripped (`-p1`). */
 function patchPaths(text) {
@@ -403,7 +411,7 @@ function writeTargets(name, rest, ctx) {
   if (ctx.xargs && WRITERS.has(name)) tree(DOT); // `… | xargs rm`: the paths come from stdin
   if (['rm', 'rmdir'].includes(name)) plain.forEach(tree);
   if (name === 'tee' || ['touch', 'truncate', 'mkdir', 'unlink', 'chmod', 'chown', 'shred', 'ln', 'sponge'].includes(name)) plain.forEach(path);
-  if (['cp', 'mv', 'install', 'ln', 'rsync', 'scp'].includes(name)) {
+  if (['cp', 'mv', 'install', 'ln', 'rsync', 'scp', 'ditto'].includes(name)) {
     let dest = null;
     rest.forEach((a, i) => {
       if (a.v.text === '-t' || a.v.text === '--target-directory') { if (rest[i + 1]) dest = rest[i + 1]; }
@@ -415,7 +423,7 @@ function writeTargets(name, rest, ctx) {
       out.push({ w: dest, tree: false, into: true });
       // C4G-H2: `cp x docs/team/` writes docs/team/x; a recursive copy (`cp -R d/ docs/team`, rsync) may write anything under it.
       srcs.forEach((s) => path(under(dest, { v: { text: lastSeg(s.v.text), pat: lastSeg(s.v.pat) } })));
-      if (name === 'rsync' || (name === 'cp' && flagged(/^-[a-zA-Z]*[rRa]/))) tree(dest);
+      if (name === 'rsync' || name === 'ditto' || (name === 'cp' && flagged(/^-[a-zA-Z]*[rRa]/))) tree(dest);
     }
     if (name === 'mv') srcs.forEach(tree); // moving a directory away moves what it holds
   }
@@ -423,8 +431,29 @@ function writeTargets(name, rest, ctx) {
   if (name === 'sed' && flagged(/^(-i|--in-place|-[a-zA-Z]*i)/)) plain.forEach(path);
   if (/^(perl|ruby)$/.test(name) && flagged(/^-[a-zA-Z]*i/)) plain.forEach(path);
   if (/^g?awk$/.test(name) && rest.some((a, i) => /^(-iinplace|--include=inplace)$/.test(a.v.text) || (/^(-i|--include)$/.test(a.v.text) && rest[i + 1]?.v.text === 'inplace'))) plain.forEach(path);
-  if ((name === 'curl' || name === 'wget')) rest.forEach((a, i) => { if (/^(-o|-O|--output|--output-document)$/.test(a.v.text) && rest[i + 1]) path(rest[i + 1]); });
-  if (name === 'tar' && (rest[0] && /^[a-zA-Z]*x[a-zA-Z]*$/.test(rest[0].v.text) || flagged(/^(-[a-zA-Z]*x[a-zA-Z]*|--extract|--get)$/))) {
+  // C5G-4: the writers a flag points at a file (or a directory) — `-o f`, `-sSo f`, `-of`, `--output f`, `--output=f`, `-out f`.
+  const opt = (short, longs) => {
+    const vals = [];
+    const cut = (a, n) => vals.push({ v: { text: a.v.text.slice(n), pat: a.v.pat.slice(n) } });
+    rest.forEach((a, i) => {
+      const t = a.v.text;
+      for (const l of longs) { if (t === l && rest[i + 1]) vals.push(rest[i + 1]); else if (t.startsWith(`${l}=`)) cut(a, l.length + 1); }
+      if (!short || t.startsWith('--')) return;
+      if (new RegExp(`^-[a-zA-Z]*${short}$`).test(t) && rest[i + 1]) vals.push(rest[i + 1]);
+      else if (t.startsWith(`-${short}`) && t.length > 2) cut(a, 2);
+    });
+    return vals;
+  };
+  const inDir = (d) => path(under(d, { v: { text: '*', pat: STAR } }));
+  if (name === 'curl' || name === 'sort') opt('o', ['--output']).forEach(path);
+  if (name === 'wget') { opt('O', ['--output-document']).forEach(path); opt('P', ['--directory-prefix']).forEach(inDir); }
+  if (name === 'openssl') opt('', ['-out', '-keyout']).forEach(path);
+  if (/^(ex|vi|vim|nvim|ed|red)$/.test(name)) plain.forEach(path);
+  if (name === 'mktemp') plain.forEach(path);
+  if (name === 'split') { const p = rest.filter((a, i) => !a.v.text.startsWith('-') && !/^-[bClnap]$/.test(rest[i - 1]?.v.text || '')); if (p[1]) path({ v: { text: `${p[1].v.text}*`, pat: `${p[1].v.pat}${STAR}` } }); }
+  if (/^7z[az]?$/.test(name) && /^[ex]$/.test(plain[0]?.v.text || '')) { const o = opt('o', []); tree(o[0] || DOT); }
+  if (name === 'cpio' && flagged(/^(-[a-zA-Z]*i|--extract)/)) tree(opt('D', ['--directory'])[0] || DOT);
+  if (/^(bsd|g)?tar$/.test(name) && (rest[0] && /^[a-zA-Z]*x[a-zA-Z]*$/.test(rest[0].v.text) || flagged(/^(-[a-zA-Z]*x[a-zA-Z]*|--extract|--get)$/))) {
     const i = rest.findIndex((a) => a.v.text === '-C' || a.v.text === '--directory');
     const eq = rest.find((a) => a.v.text.startsWith('--directory='));
     tree(i >= 0 && rest[i + 1] ? rest[i + 1] : eq ? { v: { text: eq.v.text.slice(12), pat: eq.v.pat.slice(12) } } : DOT);
@@ -453,6 +482,11 @@ function writeTargets(name, rest, ctx) {
     const VAL = new Set(['-b', '-B', '--orphan', '-s', '--source', '-m', '--message', '-U', '--conflict', '--pathspec-from-file']);
     const paths = (dd >= 0 ? a.slice(dd + 1) : a).filter((x, k, arr) => !x.v.text.startsWith('-') && !VAL.has(arr[k - 1]?.v.text));
     if (['rm', 'mv', 'restore', 'checkout', 'switch'].includes(sub)) paths.map(at).forEach(tree);
+    // C5G-4: plumbing and history verbs that rewrite the whole working tree; a clone or a new worktree written at a path.
+    if (['merge', 'pull', 'cherry-pick', 'rebase', 'revert'].includes(sub) || (sub === 'read-tree' && a.some((x) => /^(-u|--reset)$/.test(x.v.text)))) tree(here0);
+    if (sub === 'checkout-index') (paths.length && !a.some((x) => /^(-a|--all)$/.test(x.v.text)) ? paths.map(at) : [here0]).forEach(tree);
+    if (sub === 'clone' && paths.length > 1) path(at(paths[paths.length - 1]));
+    if (sub === 'worktree' && paths[0]?.v.text === 'add' && paths[1]) path(at(paths[1]));
     if (sub === 'clean') (paths.length ? paths.map(at) : [here0]).forEach(tree);
     if (sub === 'reset' && a.some((x) => /^--(hard|merge|keep)$/.test(x.v.text))) (dd >= 0 && paths.length ? paths.map(at) : [here0]).forEach(tree);
     if (sub === 'stash') {
@@ -471,24 +505,51 @@ function writeTargets(name, rest, ctx) {
 const GUARDED_NAMES = ['team/evidence', 'project-profile.json', 'risk-policy.json', 'capabilities.json', '.studio-policy.json',
   'actor-tokens.jsonl', '31-board-events.jsonl', '-result.json', 'ship-gate-verdict.json', 'audit-anchor.json'];
 const WRITE_CALL = /\b(writeFile(?:Sync)?|appendFile(?:Sync)?|createWriteStream|copyFile(?:Sync)?|cpSync|cp|rename(?:Sync)?|rmSync|rm|unlink(?:Sync)?|truncate(?:Sync)?|symlink(?:Sync)?|write_text|write_bytes|shutil\.\w+|os\.(?:remove|rename|replace|unlink|symlink)|open|File\.write|IO\.write|file_put_contents)\s*\(([^)]*)\)?/g;
+/** A call's argument text split at its top-level commas (quotes and brackets respected). */
+function callArgs(s) {
+  const out = []; let depth = 0; let q = ''; let cur = '';
+  for (const ch of String(s)) {
+    if (q) { cur += ch; if (ch === q) q = ''; continue; }
+    if (/['"`]/.test(ch)) q = ch;
+    else if ('([{'.includes(ch)) depth++;
+    else if (')]}'.includes(ch)) depth--;
+    else if (ch === ',' && depth === 0) { out.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+// Perl/Ruby `open F, ">", $path` / `open(F, ">$ARGV[0]")` (no parens needed): a mode starting `>` or `+>`.
+const PERL_OPEN = /\bopen\b\s*\(?([^;\n]*['"]\s*\+?>[^;\n]*)/g;
 /**
- * The guarded file an inline program WRITES, or ''. A guarded name must sit in the write call's own
- * statement (`fs.writeFileSync('docs/team/risk-policy.json', …)`, `Path('…').write_text()`), or in a
- * variable that call uses — so reading evidence and renaming something else in one program is not a
- * write (FB-n4). Names assembled from pieces (`'risk-' + 'policy.json'`) are past the bound.
+ * `{ hit, writes }`: the guarded file an inline program WRITES ('' if none), and whether it writes
+ * anything at all. Only a write call's PATH counts (FB5-3): its first argument (`writeFileSync(p, …)`),
+ * the destination of a copy, both ends of a rename, every argument of `open`, the receiver of
+ * `Path('…').write_text()` — or a variable assigned a guarded name that the path uses. Content that
+ * mentions a guarded file, or was read from one, is not a write (FB-n4). Names assembled from pieces
+ * (`'risk-' + 'policy.json'`) are past the bound.
  */
 function inlineWrite(body) {
   const named = (s) => GUARDED_NAMES.find((g) => fold(s).includes(fold(g))) || '';
   const tainted = [...body.matchAll(/\b([A-Za-z_$][\w$]*)\s*=\s*([^;\n]*)/g)].filter((m) => named(m[2])).map((m) => m[1]);
+  let writes = false;
   for (const m of body.matchAll(WRITE_CALL)) {
     if (m[1] === 'open' && !/,\s*(?:mode\s*=\s*)?['"](?:[^'"]*[wax+]|\s*[>+])/.test(m[2])) continue;
+    writes = true;
     const start = Math.max(body.lastIndexOf(';', m.index), body.lastIndexOf('\n', m.index)) + 1;
-    const stmt = body.slice(start, m.index + m[0].length);
-    const uses = (t) => new RegExp(`(^|[^\\w$])${t.replace(/\$/g, '\\$')}([^\\w$]|$)`).test(m[2] || '');
-    const hit = named(stmt) || (tainted.some(uses) ? 'a guarded file' : '');
-    if (hit) return hit;
+    const args = callArgs(m[2] || '');
+    const target = /^write_(text|bytes)$/.test(m[1]) ? body.slice(start, m.index)
+      : /^(copyFile(Sync)?|cpSync|cp|shutil\.copy\w*)$/.test(m[1]) ? args.slice(1).join(',')
+        : /^(open|rename(Sync)?|symlink(Sync)?|shutil\.move|os\.\w+)$/.test(m[1]) ? args.join(',') : args[0];
+    const uses = (t) => new RegExp(`(^|[^\\w$])${t.replace(/\$/g, '\\$')}([^\\w$]|$)`).test(target);
+    const hit = named(target) || (tainted.some(uses) ? 'a guarded file' : '');
+    if (hit) return { hit, writes };
   }
-  return '';
+  for (const m of body.matchAll(PERL_OPEN)) {
+    writes = true;
+    if (named(m[1])) return { hit: named(m[1]), writes };
+  }
+  return { hit: '', writes };
 }
 
 /** A path in inline code that loads THIS plugin's actor/evidence/events library (FB-n2: an app's own `src/events.mjs` is not one). */
@@ -524,9 +585,14 @@ function pluginLib(body, hereAbs) {
  * that holds them (`cp x docs/team/`, `rm -rf docs`, `git checkout .`, `find docs -delete`); start a
  * nested `claude` session (G2-16); read Claude Code's transcripts under ~/.claude/projects (G2-15),
  * including by a recursive search rooted at or above them (`grep -r x ~`, `rg x ~/.claude` — C4G-H4).
- * Paths are compared after `cd`, `git -C`, `NAME=value`, `.`/`..`/`//` and symlink resolution
- * (C4G-M2), case-insensitively on macOS (C4G-M1), with globs and unresolvable expansions as
- * wildcards. The main session (no `agent_id`) is the orchestrator and is not restricted. Scripts the
+ * Paths are compared after `cd`, `git -C`, `NAME=value`, `$HOME`/`$PWD`/`$TMPDIR` and
+ * `T=$(mktemp -d)` (a fresh temp dir — the reviewer prompt's own idiom, FB5-1/2), `.`/`..`/`//`,
+ * symlink resolution (C4G-M2) including an `ln -s` made earlier in the same command (C5G-7),
+ * case-insensitively on macOS (C4G-M1), with globs and unresolvable expansions as wildcards. A
+ * redirect counts with or without a command word (`{ …; } > f`, `exec 3> f`, `<>` — C5G-2); an
+ * inline program that writes anything counts every argv path it is handed (C5G-3). The writers are
+ * an ENUMERATED list (C5G-4), deliberately not a reader allowlist: a false block on an honest
+ * command costs more than a writer nobody has thought of yet. The main session (no `agent_id`) is the orchestrator and is not restricted. Scripts the
  * agent runs (verify-done.sh, journey-gate) still write evidence themselves — only hand-written paths
  * are refused. READING evidence, control files and the token registry (hashes only — C4G-L4) is fine,
  * and so is any sentence that merely MENTIONS these words (a quoted `--detail`, a commit message, a
@@ -586,7 +652,8 @@ function guardGateWrites() {
 
   if (payload.tool_name === 'Bash') {
     const src = String(input.command || '');
-    const vars = {};
+    // FB5-1/FB5-2: the shell's own HOME / TMPDIR / PWD are known values, not wildcards (`rm -rf "$TMPDIR/x"`).
+    const vars = { HOME: lit(homedir()).v, TMPDIR: lit(process.env.TMPDIR || tmpdir()).v, PWD: lit(cwd).v };
     const fileBodies = {}; // `cat > x.py <<EOF` earlier in this command: what x.py will hold
     let here = toSegs(cwd);
     const hereAbs = () => (here.some((s) => WILD.test(s)) ? '' : `/${here.join('/')}`);
@@ -595,6 +662,19 @@ function guardGateWrites() {
       if (Object.prototype.hasOwnProperty.call(fileBodies, w.v.text)) return fileBodies[w.v.text];
       if (WILD.test(w.v.pat) || !hereAbs()) return null;
       try { return readFileSync(resolve(hereAbs(), w.v.text), 'utf8').slice(0, 1 << 20); } catch { return null; }
+    };
+    const checkWrites = (targets) => {
+      for (const { w, tree, into } of targets) {
+        // `cp x docs/team/`: docs/team/ is the studio's machine state (profile, policy, tokens, results) — nothing is copied into it.
+        if (into && isDir(w.v.pat, here, G.teamDir[0])) {
+          refuse('copy or move a file into docs/team/ — the studio\'s machine state (profile, policy, tokens, results)');
+        }
+        for (const [key, what] of WRITE_WHAT) {
+          if (hits(w.v.pat, here, G[key], tree)) {
+            refuse(tree ? `${what.replace(/^write /, 'remove, move or overwrite ')} — not even by sweeping the directory that holds it` : what);
+          }
+        }
+      }
     };
     const queue = shellCommands(src);
     while (queue.length) {
@@ -619,6 +699,9 @@ function guardGateWrites() {
         if (!m || args[k].parts?.[0]?.t !== 'u') break;
         const cut = m[0].length;
         vars[m[1]] = { text: args[k].v.text.slice(cut), pat: args[k].v.pat.slice(cut) };
+        // FB5-1: `T=$(mktemp -d)` (the reviewer prompt's own idiom) is a fresh dir under $TMPDIR, not ANY.
+        const ps = args[k].parts || [];
+        if (ps.at(-1)?.t === 'sub' && ps.slice(0, -1).every((p) => p.t === 'u') && MKTEMP.test(ps.at(-1).body)) vars[m[1]] = lit(join(vars.TMPDIR.text, 'mktemp.anon')).v;
       }
       // Reserved words and wrappers (`if`, `do`, `env -i`, `xargs -0`, `sudo -u x`) are not the command.
       let xargs = false;
@@ -631,7 +714,8 @@ function guardGateWrites() {
         while (k < args.length && (args[k].v.text.startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(args[k].v.text))) k += WRAPPER_VALUE.test(args[k].v.text) ? 2 : 1;
       }
       const cmdWords = args.slice(k);
-      if (!cmdWords.length) continue;
+      // C5G-2: `{ …; } > f`, `( … ) > f`, `exec 3> f` — a redirect with no command word still opens its file.
+      if (!cmdWords.length) { checkWrites(redirects.map((w) => ({ w, tree: false }))); continue; }
       const texts = cmdWords.map((w) => w.v.text);
       const name = fold(basename(texts[0]));
       if (['case', 'for', 'select', 'function'].includes(name)) continue;
@@ -648,6 +732,7 @@ function guardGateWrites() {
         if (!t) here = toSegs(homedir());
         else if (t.v.text === '-') here = [ANY];
         else here = patSegs(t.v.pat.includes(ANY) || /[\u0001\u0002]/.test(t.v.pat) ? t.v.pat : t.v.text, here);
+        vars.PWD = hereAbs() ? lit(hereAbs()).v : { text: '', pat: ANY };
         continue;
       }
       // What a shell would read from stdin here, if it is spelled out: a heredoc, a here-string, `echo …|`, `cat <<EOF|`.
@@ -744,15 +829,14 @@ function guardGateWrites() {
           if (cmd.length) queue.push(cmd);
         });
       }
-      for (const { w, tree, into } of writeTargets(name, rest, { redirects, stdin: fed ?? null, stdinFile, read, xargs })) {
-        // `cp x docs/team/`: docs/team/ is the studio's machine state (profile, policy, tokens, results) — nothing is copied into it.
-        if (into && isDir(w.v.pat, here, G.teamDir[0])) {
-          refuse('copy or move a file into docs/team/ — the studio\'s machine state (profile, policy, tokens, results)');
-        }
-        for (const [key, what] of WRITE_WHAT) {
-          if (hits(w.v.pat, here, G[key], tree)) {
-            refuse(tree ? `${what.replace(/^write /, 'remove, move or overwrite ')} — not even by sweeping the directory that holds it` : what);
-          }
+      checkWrites(writeTargets(name, rest, { redirects, stdin: fed ?? null, stdinFile, read, xargs }));
+      if (name === 'ln' && rest.some((w) => /^(-[a-zA-Z]*s[a-zA-Z]*|--symbolic)$/.test(w.v.text))) {
+        const [t, l] = rest.filter((w) => !w.v.text.startsWith('-'));
+        if (t) {
+          let from = patSegs(l ? l.v.pat : lastSeg(t.v.pat), here);
+          const abs = `/${from.join('/')}`;
+          if (!from.some((x) => WILD.test(x)) && existsSync(abs) && statSync(abs).isDirectory()) from = [...from, lastSeg(t.v.pat)];
+          LINKS.push({ from, to: patSegs(t.v.pat, from.slice(0, -1)) }); // a relative target is relative to the link's own dir
         }
       }
       // A program written inline (`node -e`, a heredoc into python, a file this command just wrote) that touches a guarded file.
@@ -765,8 +849,16 @@ function guardGateWrites() {
         if (pluginLib(body, hereAbs()) || /\b(mintActorToken|revokeActorToken|writeTestEvidence|writeEvidenceLog|writeAnchor)\b/.test(body)) {
           refuse('load the actor, evidence or events library into a program of its own');
         }
-        const hit = inlineWrite(body);
+        const { hit, writes } = inlineWrite(body);
         if (hit) refuse(`write ${hit} by hand from a program of its own`);
+        // C5G-3: a program that writes SOMETHING may write a path it is handed on argv
+        // (`node -e "…writeFileSync(process.argv[1]…" <path>`, `python3 - <path> <<EOF`): every argv word is a target.
+        if (writes) {
+          const pi = rest.findIndex((w) => /^(-[a-zA-Z]*[ecE]|--eval|--print)$/.test(w.v.text));
+          for (const w of rest.filter((x, i) => !x.v.text.startsWith('-') && !(pi >= 0 && i === pi + 1))) {
+            for (const [key, what] of WRITE_WHAT) if (hits(w.v.pat, here, G[key])) refuse(`${what} — not by handing its path to a program that writes`);
+          }
+        }
       }
     }
     allow();

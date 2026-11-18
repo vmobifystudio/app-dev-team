@@ -191,6 +191,9 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
       emit("D", "", d, "git branch -D deletes an unmerged branch and the commits only it referenced")
   } else if (sc == "update-ref") {
     if (np >= 1 && P[1] ~ /^refs\/heads\//) emit("R", heads(P[1]), d, "update-ref")
+  } else if (sc == "symbolic-ref") {
+    # C5G-6: pointing refs/heads/<integration> at another branch moves it as surely as update-ref.
+    if (np >= 1 && P[1] ~ /^refs\/heads\// && (np >= 2 || has(A, na, "-d") || has(A, na, "--delete"))) emit("R", heads(P[1]), d, "symbolic-ref")
   } else if (sc == "stash") {
     # list/show/pop/apply/branch/create/store do not discard the tree. A bare stash, push and save
     # sweep it — unless path-scoped after `--`. drop/clear destroy entries on the stack every
@@ -395,6 +398,11 @@ declared_for() {
   printf '%s' "${d:-main}"
 }
 
+# C5G-6: macOS ref storage folds case — `refs/heads/Develop` IS develop there, so compare folded on Darwin.
+DARWIN=""; [ "$(uname -s 2>/dev/null)" = Darwin ] && DARWIN=1
+lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+same_ref() { if [ -n "$DARWIN" ]; then [ "$(lc "$1")" = "$(lc "$2")" ]; else [ "$1" = "$2" ]; fi; }
+
 TAB=$(printf '\t')
 while IFS="$TAB" read -r KIND REF DIR WHY; do
   [ -n "$KIND" ] || continue
@@ -512,12 +520,12 @@ EOF
   # from, with no board event — without the word "merge" ever appearing. A plain
   # `git push origin main` (local main to remote main, no force) is the documented landing step.
   REFBLOCK=""
-  if [ "$REF" = "$DECLARED" ]; then
+  if same_ref "$REF" "$DECLARED"; then
     case "$WHY" in
       push)  REFBLOCK="a push that rewrites or forces $DECLARED on the remote (a refspec ending :$DECLARED, +$DECLARED, --force, or --delete) — no merge, no board event" ;;
       fetch) REFBLOCK="a fetch refspec ending :$DECLARED moves the integration branch's LOCAL ref directly — this is wave-integrate.mjs's own mechanism, run by hand instead of through it" ;;
       branch) REFBLOCK="git branch -f/--force/-M/-C force-moves $DECLARED's pointer directly — no merge object, no history check" ;;
-      update-ref) REFBLOCK="git update-ref moves $DECLARED's pointer at the plumbing layer — the same effect as branch -f" ;;
+      update-ref|symbolic-ref) REFBLOCK="git $WHY moves $DECLARED's pointer at the plumbing layer — the same effect as branch -f" ;;
     esac
   fi
   if [ -n "$REFBLOCK" ]; then

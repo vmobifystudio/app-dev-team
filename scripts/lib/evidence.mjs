@@ -212,14 +212,16 @@ export function commandAccepted(root, rec) {
 //     gets docs/ prose only: CLAUDE.md or .claude/agents/*.md are instructions, not documents).
 //   - .mdx is never a document: it is a JSX module.
 // ponytail: an allow-shape, not a full map of every control file; widen it only with a reason.
-const MANIFEST = /(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|pnpm-(lock|workspace)\.yaml|yarn\.lock|bun\.lockb?|CMakeLists\.txt|[^/]*\.cmake|Makefile|GNUmakefile|requirements[^/]*\.txt|constraints[^/]*\.txt|Pipfile(\.lock)?|pyproject\.toml|setup\.(py|cfg)|poetry\.lock|Gemfile(\.lock)?|Podfile(\.lock)?|[^/]*\.podspec|Cartfile(\.resolved)?|Package\.(swift|resolved)|[^/]*\.gradle(\.kts)?|gradle\.properties|gradle-wrapper\.properties|Cargo\.(toml|lock)|go\.(mod|sum)|Dockerfile|[^/]*\.csproj|Directory\.Build\.props)$/;
+const MANIFEST = /(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|pnpm-(lock|workspace)\.yaml|yarn\.lock|bun\.lockb?|CMakeLists\.txt|[^/]*\.cmake|Makefile|GNUmakefile|requirements[^/]*\.txt|constraints[^/]*\.txt|Pipfile(\.lock)?|pyproject\.toml|setup\.(py|cfg)|poetry\.lock|Gemfile(\.lock)?|Podfile(\.lock)?|[^/]*\.podspec|Cartfile(\.resolved)?|Package\.(swift|resolved)|[^/]*\.gradle(\.kts)?|gradle\.properties|gradle-wrapper\.properties|Cargo\.(toml|lock)|go\.(mod|sum)|Dockerfile|[^/]*\.csproj|Directory\.Build\.props)$/i;
 const PROSE_ANYWHERE = /\.(md|rst)$/i;
 const PROSE_IN_DOCS = /\.(md|rst|txt)$/i;
 const QA_JOURNEY = /^docs\/team\/journeys\/[^/]+\.json$/;
 export const docFile = (served, { qa = false } = {}) => (f) => {
   if (MANIFEST.test(f) || /\.mdx$/i.test(f)) return false;
-  if (f.startsWith('docs/team/')) return qa && QA_JOURNEY.test(f);
-  if (f === BOARD_LOG) return false;
+  // C5G-5: macOS volumes fold case — `docs/Team/risk-policy.json` IS docs/team/risk-policy.json there.
+  const lf = f.toLowerCase();
+  if (lf.startsWith('docs/team/')) return qa && QA_JOURNEY.test(f);
+  if (lf === BOARD_LOG) return false;
   if (f.startsWith('docs/')) return served ? PROSE_IN_DOCS.test(f) : true;
   return !qa && PROSE_ANYWHERE.test(f);
 };
