@@ -67,6 +67,7 @@ import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { parseEventLog, reduce, validate, key } from './lib/events.mjs';
 import { ROLES_IN_MATRIX } from './lib/capabilities.mjs';
 import { BUILD_SPAWNABLE_OWNERS } from './lib/board.mjs';
+import { routeFiles } from './lib/risk.mjs';
 
 const HERE_SCRIPTS = dirname(fileURLToPath(import.meta.url));
 
@@ -230,6 +231,13 @@ function cmdExplain() {
     const who = o.gated ? o.roles.join(', ') : 'any role (a work event)';
     process.stdout.write(`    ${o.gated ? 'GATE ' : '     '}${o.event.padEnd(17)} by ${who}\n`);
     if (o.earned_by) process.stdout.write(`         ${' '.repeat(17)}    earned by: ${o.earned_by}\n`);
+  }
+  // W2-10: under requireActorTokens every GATE line above needs a token minted in the SAME command.
+  let tokens = false;
+  try { tokens = JSON.parse(readFileSync(resolve(ROOT, '.studio-policy.json'), 'utf8')).requireActorTokens === true; } catch { /* no policy */ }
+  if (tokens && options.some((o) => o.gated)) {
+    process.stdout.write(`\n  every GATE event above needs, in the same command:\n` +
+      `    --token "$(node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role <role> --ticket ${state.id})"\n`);
   }
 
   // WHY SOMETHING IS *NOT* LEGAL IS THE MORE USEFUL HALF. An agent that knows the next step still
@@ -497,6 +505,26 @@ function cmdRound() {
     }
   }
 
+  // UNROUTED RISK (W2-14). `board.mjs add` derives risk only when risk-policy.json already exists,
+  // so tickets planned before /app-init wrote the policy carry `risk: null` — and review_requested's
+  // high/critical guard and the reviewer model choice treat null as harmless. The merge still routes
+  // the actual diff (board.mjs mergeRisk); this names the tickets that ran blind until then.
+  {
+    let policy = null;
+    try { policy = JSON.parse(readFileSync(resolve(ROOT, 'docs/team/risk-policy.json'), 'utf8')); } catch { /* none: nothing to route against */ }
+    if (policy && Array.isArray(policy.rules)) {
+      const unrouted = [...tickets.values()].filter((t) => !TERMINAL.has(t.status) && !t.meta?.risk);
+      if (unrouted.length) {
+        process.stdout.write(`  RISK — ${unrouted.length} ticket(s) have no planned risk (created before risk-policy.json existed, or with no --file):\n`);
+        for (const t of unrouted.slice(0, 10)) {
+          const r = (t.meta?.files || []).length ? routeFiles(policy, t.meta.files) : null;
+          process.stdout.write(`    ${t.id}  ${r ? `would route ${r.risk} (${r.because}) — needs ${r.approvals.join(' + ') || 'no approval'}` : 'declares no files — routed only at merge, from its diff'}\n`);
+        }
+        process.stdout.write('    Treat a would-route high/critical ticket as such now (invariants, tech-lead review, runtime at the wave);\n    the merge enforces the diff\'s tier either way.\n\n');
+      }
+    }
+  }
+
   // INTENT DRIFT, REPORTED IN THE ROUND THAT CREATES IT (EE-009).
   //
   // `trace.mjs` walks goal -> outcome -> requirement -> criterion -> ticket -> test -> analytics and
@@ -596,6 +624,14 @@ function cmdShip() {
     worst = Math.max(worst, code);
     const state = code === 0 ? 'CLEAR' : code === 1 ? 'BLOCKED' : 'CANNOT EVALUATE';
     lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}` : code === 2 ? ` — ${s.unknown}` : ''}`);
+    // W2-20: relay the sub-gate's OWN reason lines — "read its lines verbatim" is useless when
+    // nobody printed them. Only the lines that state a non-pass, capped so one gate cannot bury the rest.
+    if (code !== 0) {
+      const why = `${r.stdout || ''}\n${r.stderr || ''}`.split('\n')
+        .filter((l) => /BLOCKED|STALE|CANNOT|UNKNOWN|FAIL|MISSING|REFUSED|DIRTY/.test(l) && !/^\s*(VERDICT|RESULT):/.test(l))
+        .slice(0, 12);
+      for (const l of why) lines.push(`      | ${l.trim()}`);
+    }
   }
 
   process.stdout.write('SHIP PRECONDITIONS\n\n' + lines.join('\n') + '\n\n');

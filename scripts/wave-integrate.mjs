@@ -69,6 +69,7 @@ import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { parseEventLog, reduce } from './lib/events.mjs';
 import { classifyTestRun } from './lib/test-evidence.mjs';
 import { writeTestEvidence } from './lib/evidence.mjs';
+import { RANK, routeFiles } from './lib/risk.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const die = (code, message) => { process.stderr.write(`wave-integrate: ${message}\n`); process.exit(code); };
@@ -146,19 +147,22 @@ const branches = (gitTry(['branch', '--format=%(refname:short)']).out || '').spl
  * the ticket is held out of the wave, because the one thing worse than not integrating a ticket is
  * integrating the wrong half of it.
  */
-const matchesTicket = (branch, id) => {
-  const i = branch.toLowerCase().indexOf(String(id).toLowerCase());
-  if (i < 0) return false;
-  const after = branch[i + String(id).length];
-  return after === undefined || !/[a-z0-9]/i.test(after);
-};
+// TEMP until F1 merges: lib/integration.mjs `matchesTicket(name, id, allIds)` (design decision 4).
+// Whole-token: `(^|/)ID(-[a-z]|$)`, and when a longer board id also matches (APP-001 vs
+// APP-001-analytics) the longest id owns the branch.
+const escRe = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const tokenMatch = (name, id) => new RegExp(`(^|/)${escRe(id)}(-[a-z]|$)`, 'i').test(name);
+const matchesTicket = (name, id, allIds = []) => tokenMatch(name, id)
+  && !allIds.some((o) => String(o).length > String(id).length && tokenMatch(name, o));
+const ALL_IDS = [...tickets.values()].map((t) => t.id);
 
 const candidates = [];
 const noBranch = [];
 const ambiguous = [];
 for (const t of tickets.values()) {
   if (t.status !== 'qa') continue;
-  const mine = branches.filter((b) => matchesTicket(b, t.id));
+  if (/^QA-/i.test(t.id)) continue; // docs-only, closes from `merged` without integration (design 1)
+  const mine = branches.filter((b) => matchesTicket(b, t.id, ALL_IDS));
   if (!mine.length) { noBranch.push(t.id); continue; }
   const already = mine.filter((b) => gitTry(['merge-base', '--is-ancestor', b, BASE]).ok);
   // `already` used to be `.some()`: ANY matching branch being an ancestor skipped the ticket, so a
@@ -366,7 +370,13 @@ const EVIDENCE = green
     mode: 'tests', command: TEST_CMD, commandSource: flags['test-command'] ? 'caller' : 'profile', exitCode: test.status, output: testOut,
   })
   : '';
-const boardCommands = merged.map((m) => `  node scripts/board.mjs move ${m.id} verified --by tech-manager --evidence ${EVIDENCE} --detail "wave ${WAVE} full suite green"`).join('\n');
+// W2-10: printed commands are runnable as printed — the plugin path, and under requireActorTokens
+// the token minted INLINE in the same command (a shell variable does not survive between calls).
+let TOKENS = false;
+try { TOKENS = JSON.parse(readFileSync(resolve(ROOT, '.studio-policy.json'), 'utf8')).requireActorTokens === true; } catch { /* no policy: no tokens */ }
+const BOARD_CLI = 'node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs"';
+const tokenFor = (role, id) => (TOKENS ? ` --token "$(${BOARD_CLI} actor mint --role ${role} --ticket ${id})"` : '');
+const boardCommands = merged.map((m) => `  ${BOARD_CLI} move ${m.id} verified --by tech-manager --evidence ${EVIDENCE} --detail "wave ${WAVE} full suite green"${tokenFor('tech-manager', m.id)}`).join('\n');
 
 if (cannotRun) {
   process.stdout.write(
@@ -426,6 +436,39 @@ process.stdout.write(
   `${boardCommands}\n`
 );
 
+// DESIGN DECISION 6 (W2-3): high/critical runtime evidence is checked HERE, on the wave candidate —
+// not demanded before `merged`, where no tree containing the ticket and its wave-mates exists yet.
+// A wave holding a high/critical ticket does not record green (so cannot be pushed) until
+// runtime-gate.sh passes on the merged tree. Risk = the planned tier, or the tier the ticket's own
+// diff routes to under docs/team/risk-policy.json, whichever is higher.
+{
+  let policy = null;
+  try { policy = JSON.parse(readFileSync(resolve(ROOT, 'docs/team/risk-policy.json'), 'utf8')); } catch { /* none */ }
+  const tier = (m) => {
+    const t = tickets.get(m.id.toUpperCase()) || [...tickets.values()].find((x) => x.id === m.id);
+    const planned = t?.meta?.risk || null;
+    const diff = policy && Array.isArray(policy.rules) && m.files.length ? routeFiles(policy, m.files)?.risk : null;
+    return [planned, diff].filter(Boolean).sort((a, b) => RANK[b] - RANK[a])[0] || null;
+  };
+  const risky = merged.filter((m) => ['high', 'critical'].includes(tier(m)));
+  if (risky.length) {
+    const gate = process.env.STUDIO_RUNTIME_GATE || resolve(HERE, 'runtime-gate.sh'); // env: test seam
+    process.stdout.write(`\n  RUNTIME GATE on the wave candidate — required by ${risky.map((m) => `${m.id} (${tier(m)})`).join(', ')}\n`);
+    const rg = spawnSync('sh', [gate, '--project-root', WT], { cwd: WT, encoding: 'utf8' });
+    process.stdout.write(`${`${rg.stdout || ''}${rg.stderr || ''}`.trim().split('\n').map((l) => `  | ${l}`).join('\n')}\n`);
+    if (rg.status !== 0) {
+      process.stdout.write(
+        `\n  WAVE NOT LANDABLE — the suite is green, but runtime-gate ${rg.status === 1 ? 'FAILED' : 'could not evaluate (exit 2)'} on the merged tree,\n` +
+        '  and a high/critical ticket lands only on a wave that built and launched. The `verified` commands above\n' +
+        `  are still true (the suite ran); landing is not. ${WAVE_BRANCH} is kept at ${WT}.\n` +
+        '  Fix it, or drop the risky ticket from the wave, then re-run with the next wave number.\n'
+      );
+      keep = true;
+      process.exit(rg.status === 1 ? 1 : 2);
+    }
+  }
+}
+
 // Record WHICH tip ran green, so a later `--wave N --push` can land this exact branch without
 // re-merging (W6) — and can refuse a branch that has moved since. A ref, not a file: atomic, and
 // invisible to `git branch`, which the candidate matching above reads.
@@ -479,10 +522,26 @@ function pushWave() {
     }
   }
   if (!ff.ok) {
+    // W2-9: say WHY. "Something landed on BASE" was printed for every failure — including the common
+    // one where BASE never moved and the checkout holds UNTRACKED files the wave adds (a planning
+    // commit that missed docs/4x, CI config, ...). Name those files; never advise stashing them.
+    const baseMoved = !gitTry(['merge-base', '--is-ancestor', BASE, WAVE_BRANCH]).ok;
+    const untracked = [];
+    let inList = false;
+    for (const l of ff.out.split('\n')) {
+      if (/untracked working tree files would be overwritten/i.test(l)) { inList = true; continue; }
+      if (inList && /^\s+\S/.test(l) && !/^\s*(Please|Aborting)/.test(l)) untracked.push(l.trim()); else if (inList) inList = false;
+    }
     process.stdout.write(
       `\n  PUSH SKIPPED: ${BASE} could not fast-forward to ${WAVE_BRANCH}:\n${ff.out.split('\n').map((l) => `    ${l}`).join('\n')}\n` +
-      `  Something landed on ${BASE} while the wave was integrating. Re-run the wave against the new tip\n` +
-      '  rather than forcing anything: this never force-pushes and never rewrites the integration branch.\n'
+      (untracked.length
+        ? `  ${BASE} did not move. The checkout holds UNTRACKED files the wave adds:\n${untracked.map((f) => `      ${f}\n`).join('')}` +
+          '  Commit them on the integration branch if they belong to the project (planning docs, CI), or delete them\n' +
+          '  if the wave\'s copies supersede them — then re-run with --push. Do not stash: a stash is invisible to every gate.\n'
+        : baseMoved
+          ? `  Something landed on ${BASE} while the wave was integrating. Re-run the wave against the new tip\n` +
+            '  rather than forcing anything: this never force-pushes and never rewrites the integration branch.\n'
+          : `  ${BASE} did not move, so this is the checkout, not a race — read git's message above.\n`)
     );
     keep = true;
     process.exit(1);

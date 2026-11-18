@@ -217,7 +217,8 @@ if (!driver || !existsSync(driver)) {
     `\n  ${driver ? `--driver ${driver} does not exist` : 'no --driver was supplied'}. A journey nobody ran is\n` +
     '  UNKNOWN, never a pass: an unrun journey and a passing journey are different facts, and the\n' +
     '  whole reason this gate exists is that they were being reported as the same one.\n' +
-    '  Driver contract: docs/team/journeys/README.md\n'
+    '  Drivers: --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh" | ios.sh | web.sh\n' +
+    '  (web.sh: Playwright from the project, app URL in STUDIO_WEB_URL). Contract: docs/team/journeys/README.md\n'
   );
   process.exit(2);
 }
@@ -228,7 +229,8 @@ for (const j of selected) {
   const started = new Date().toISOString();
   let raw;
   try {
-    raw = execFileSync(driver, ['--root', root, '--journey', j._path], { encoding: 'utf8', timeout: 300000 });
+    // cwd = root, so relative evidence paths land (and are re-checked) in the project; one evidence-bundle dir (S2-25).
+    raw = execFileSync(driver, ['--root', root, '--journey', j._path, '--evidence-dir', 'docs/54-evidence/journeys'], { cwd: root, encoding: 'utf8', timeout: 300000 });
     RAW.push(`--- driver output: ${j.id}\n${raw}`);
   } catch (e) {
     RAW.push(`--- driver output: ${j.id} (exit ${e.status})\n${e.stdout || ''}${e.stderr || ''}`);
