@@ -469,11 +469,28 @@ function reduce(events) {
 function validate(tickets, candidate) {
   const transition = validateTransition(tickets, candidate);
   if (!transition.ok) return transition;
+  // G-F1: SEPARATION BY TOKEN, not only by role name. Under per-spawn tokens one token is one
+  // spawned agent; the token that claimed, reported, verified or approved this ticket may not be the
+  // one that clears its review or its QA.
+  const tokenId = candidate.actor?.token_id;
+  if (tokenId && TOKEN_SEPARATED.has(candidate.event)) {
+    const state = tickets.get(key(candidate.ticket));
+    const prior = (state?.events || []).find((e) => e.actor?.token_id === tokenId && e.event !== candidate.event);
+    if (prior) {
+      return {
+        ok: false,
+        reason: `token ${tokenId} already wrote "${prior.event}" on ${candidate.ticket} — the agent that did that may not also write "${candidate.event}". Spawn the gate's own role with its own token.`,
+        legal: legalEvents(state).filter((e) => e !== candidate.event),
+      };
+    }
+  }
   // Capability runs LAST, so every older refusal keeps its own words. The self-approval message
   // ("a role does not gate its own work") is the one a reviewer needs to read, and it must not be
   // replaced by a generic capability refusal just because this check is newer.
   return checkCapability(tickets.get(key(candidate.ticket)), candidate, legalEvents(tickets.get(key(candidate.ticket)) || { status: 'todo' }));
 }
+
+const TOKEN_SEPARATED = new Set(['approved', 'qa_passed']);
 
 /**
  * Everyone who actually DID work on this ticket.

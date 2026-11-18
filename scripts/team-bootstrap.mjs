@@ -46,16 +46,15 @@
  *
  * Usage:  team-bootstrap.mjs [--root <dir>] [--force] [--context-only]
  *
- * --context-only re-snapshots docs/team/context-manifest.json and touches nothing else. /app-build
- * runs it at the top of every round: the manifest pins git HEAD, and every wave merge moves HEAD, so
- * a manifest taken once at /app-plan went STALE at the first merge and refused every spawn after it.
- * The snapshot is "the context this round's agents were given" — a planning doc that changes
- * mid-round still reads STALE, which is the property the gate exists for.
+ * --context-only re-snapshots docs/team/context-manifest.json and touches nothing else. Run it only
+ * when a planning document changed: the manifest no longer goes STALE because HEAD moved (a wave
+ * merge), so /app-build does not re-snapshot every round. A planning doc that changes mid-round
+ * still reads STALE until it is re-run, which is the property the gate exists for.
  * Exit:   0 written, or already present
  *         1 refused — files exist and --force was not given
  *         2 cannot evaluate — the root does not exist
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -122,7 +121,10 @@ const MANIFESTS = {
           ...(role === 'qa-engineer' ? ['docs/team/journeys'] : [])],
       }))
     ),
-    deny_all: ['docs/team/actors.json'],
+    // The token registry and the evidence store are written by the CLI (board.mjs actor mint,
+    // verify-done, journey-gate) and by no role directly: a role that can write either can forge
+    // a token hash or a test log (lib/actor.mjs, lib/evidence.mjs headers).
+    deny_all: ['docs/team/actors.json', 'docs/team/actor-tokens.jsonl', 'docs/team/evidence'],
   },
   'risk-policy.json': {
     schema: 'risk-policy/v1',
@@ -194,6 +196,28 @@ for (const [name, body] of flags['context-only'] ? [] : Object.entries(MANIFESTS
   written.push(name);
 }
 
+// G-F1: A NEW PROJECT PROVES ITS GATE ROLES. When this run actually wrote the manifests (a project
+// being planned, not --context-only), `requireActorTokens: true` is added to .studio-policy.json if
+// the policy does not already decide it. An existing project that never ran bootstrap keeps its
+// stamped `insecure-local` regime; one that set the key either way keeps its choice.
+let tokenNote = '';
+const policyPath = join(ROOT, '.studio-policy.json');
+if (written.length && existsSync(policyPath)) {
+  try {
+    const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
+    if (!('requireActorTokens' in policy)) {
+      writeFileSync(policyPath, `${JSON.stringify({ ...policy, requireActorTokens: true }, null, 2)}\n`);
+      tokenNote = '\n  .studio-policy.json: requireActorTokens -> true. Every gate event now needs a per-spawn token\n' +
+        '  minted by the orchestrator (board.mjs actor mint --role R --ticket T) and passed as --token.\n';
+    }
+  } catch (e) {
+    tokenNote = `\n  .studio-policy.json is unreadable (${e.message}); requireActorTokens was NOT set.\n`;
+  }
+} else if (written.length) {
+  tokenNote = '\n  No .studio-policy.json (app-init writes it) — requireActorTokens is not on; gate roles are\n' +
+    '  asserted, not proven, and every event is stamped insecure-local.\n';
+}
+
 // The context manifest is NOT written here. It records hashes of real files so a later `verify` can
 // tell whether the context an agent was given has since changed; inventing one would fabricate the
 // freshness claim the gate exists to check.
@@ -229,7 +253,7 @@ if (existsSync(ctx) && !flags.force && !flags['context-only']) {
 
 process.stdout.write(
   `TEAM BOOTSTRAP — wrote ${written.length} manifest(s) to docs/team/\n` +
-  written.map((w) => `  ${w}`).join('\n') + `\n  ${ctxNote}\n` +
+  written.map((w) => `  ${w}`).join('\n') + `\n  ${ctxNote}\n` + tokenNote +
   '\n  These are the four inputs `dispatch-preflight` requires before any owner may be spawned.\n' +
   '  Without them a planned project cannot dispatch AT ALL — which is why 11 of 19 tickets in the\n' +
   '  recorded runs never left `created`.\n' +

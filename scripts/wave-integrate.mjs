@@ -68,6 +68,7 @@ import { parseArgs } from './lib/args.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { parseEventLog, reduce } from './lib/events.mjs';
 import { classifyTestRun } from './lib/test-evidence.mjs';
+import { writeTestEvidence } from './lib/evidence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const die = (code, message) => { process.stderr.write(`wave-integrate: ${message}\n`); process.exit(code); };
@@ -357,7 +358,15 @@ function candidatesFor(output) {
 }
 
 // --- verdict -------------------------------------------------------------------------------------------
-const boardCommands = merged.map((m) => `  node scripts/board.mjs move ${m.id} verified --by tech-manager --detail "wave ${WAVE} full suite green"`).join('\n');
+// G-F4: the green is recorded as test-evidence/v1 (raw log + sha256 + head), the record `verified`
+// must cite. Written only on green; the board re-derives the verdict from the log.
+const EVIDENCE = green
+  ? writeTestEvidence(ROOT, {
+    producedBy: 'wave-integrate.mjs', branch: WAVE_BRANCH, base: BASE, head: gitTry(['rev-parse', WAVE_BRANCH]).out,
+    mode: 'tests', command: TEST_CMD, commandSource: flags['test-command'] ? 'caller' : 'profile', exitCode: test.status, output: testOut,
+  })
+  : '';
+const boardCommands = merged.map((m) => `  node scripts/board.mjs move ${m.id} verified --by tech-manager --evidence ${EVIDENCE} --detail "wave ${WAVE} full suite green"`).join('\n');
 
 if (cannotRun) {
   process.stdout.write(

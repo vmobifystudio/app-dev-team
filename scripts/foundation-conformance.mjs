@@ -67,11 +67,47 @@ function run(cmd, args, cwd) {
  * caller did not, keeping each invariant's subject visible. An invariant that fails because a
  * fixture forgot a fixture file is a harness fault reported as a product fault (DR4-001).
  */
+/**
+ * `verified` / `qa_passed` require --evidence a SCRIPT wrote (lib/evidence.mjs). Supplied the same
+ * honest way a team would: verify-done.sh run on a real branch — the ticket's own when exactly one
+ * is named for it, else a fixture branch made with plumbing so no working tree moves.
+ */
+function evidenceFor(cwd, ticket) {
+  const git = (a) => run('git', ['-c', 'user.name=fc', '-c', 'user.email=fc@localhost', ...a], cwd);
+  if (git(['rev-parse', '--verify', '-q', 'HEAD']).code !== 0) git(['commit', '-q', '--allow-empty', '-m', 'base']);
+  const named = git(['branch', '--format=%(refname:short)']).out.split('\n').filter((b) => b && b.toLowerCase().includes(ticket.toLowerCase()));
+  let branch;
+  let base;
+  if (named.length === 1) {
+    branch = named[0];
+    base = git(['merge-base', 'main', branch]).out.trim() || `${branch}^`;
+  } else {
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd, input: `fixture ${ticket}\n`, encoding: 'utf8' }).trim();
+    const tree = execFileSync('git', ['mktree'], { cwd, input: `100644 blob ${blob}\tev-fixture.txt\n`, encoding: 'utf8' }).trim();
+    base = git(['rev-parse', 'HEAD']).out.trim();
+    const commit = git(['commit-tree', tree, '-p', base, '-m', 'evidence fixture']).out.trim();
+    branch = `evfixture-${Date.now()}`;
+    git(['update-ref', `refs/heads/${branch}`, commit]);
+  }
+  const vd = run('sh', [join(ROOT, 'scripts/verify-done.sh'), branch, base, 'echo "Executed 1 tests, with 0 failures"'], cwd);
+  return (vd.out.match(/^ {2}Evidence: (\S+)/m) || [])[1] || '';
+}
 const board = (args, cwd) => {
+  if ((args.includes('verified') || args.includes('qa_passed')) && args[0] === 'move' && !args.includes('--evidence')) {
+    const ev = evidenceFor(cwd, args[1]);
+    if (ev) args = [...args, '--evidence', ev];
+  }
   if ((args.includes('approved') || args.includes('changes')) && !args.includes('--verdict')) {
     const word = args.includes('approved') ? 'APPROVE' : 'REQUEST CHANGES';
     const path = join(cwd, '.conformance-verdict.md');
-    writeFileSync(path, `REVIEW VERDICT: ${word}\nScope: base..head\n\n## Not checked\nNothing — conformance fixture.\n`);
+    // Under --bind the Scope must be the bound candidate (board.mjs, G-F4), so name it.
+    let scope = 'base..head';
+    if (args.includes('--bind')) {
+      const head = run('git', ['rev-parse', 'HEAD'], cwd).out.trim();
+      const base = run('git', ['merge-base', 'main', head], cwd).out.trim();
+      scope = `${base}..${head}`;
+    }
+    writeFileSync(path, `REVIEW VERDICT: ${word}\nScope: ${scope}\n\n## Not checked\nNothing — conformance fixture.\n`);
     args = [...args, '--verdict', path];
   }
   return run('node', [join(ROOT, 'scripts/board.mjs'), ...args], cwd);
@@ -193,7 +229,26 @@ invariant('I-04', 'Authenticated authority', true, () => sandbox((dir) => {
   const stamped = logLines(dir).some((l) => { try { return JSON.parse(l).actor?.mode === 'attested'; } catch { return false; } });
   if (!stamped) return { state: 'FAIL', detail: 'the accepted event carries no actor/v1 mode — history cannot distinguish proven from asserted' };
 
-  return { state: 'PASS', detail: 'a role must be granted to an actor and proven per-assertion; the regime is stamped on the event' };
+  // 5. PER-SPAWN TOKENS (G-F1), the mode a new project defaults to: the registry holds hashes, so
+  //    READING it proves nothing. A gate event with --by alone, or with a token minted for another
+  //    role, is refused; the token minted for this role on this ticket is accepted.
+  const tokens = sandbox((t) => {
+    writeFileSync(join(t, '.studio-policy.json'), JSON.stringify({ requireActorTokens: true }));
+    board(['add', 'K-001', '--title', 'x', '--owner', 'ios-developer'], t);
+    board(['move', 'K-001', 'claimed', '--by', 'ios-developer'], t);
+    board(['move', 'K-001', 'done_reported', '--by', 'ios-developer'], t);
+    const mint = (role) => run('node', [join(ROOT, 'scripts/board.mjs'), 'actor', 'mint', '--role', role, '--ticket', 'K-001'], t).out.trim();
+    if (board(['move', 'K-001', 'rejected', '--by', 'tech-lead'], t).code === 0) return 'a gate event with --by alone was accepted under requireActorTokens';
+    if (board(['move', 'K-001', 'rejected', '--by', 'tech-lead', '--token', mint('ios-developer')], t).code === 0) return 'a token minted for ios-developer cleared a tech-lead gate';
+    const reg = readFileSync(join(t, 'docs/team/actor-tokens.jsonl'), 'utf8');
+    const good = mint('tech-lead');
+    if (reg.includes(good)) return 'the token registry stores the plaintext token — reading it would mint any role';
+    const r = board(['move', 'K-001', 'rejected', '--by', 'tech-lead', '--token', good], t);
+    return r.code === 0 ? '' : `the correctly minted token was refused: ${r.out.trim().split('\n')[0]}`;
+  });
+  if (tokens) return { state: 'FAIL', detail: tokens };
+
+  return { state: 'PASS', detail: 'a role must be granted to an actor and proven per-assertion (HMAC, or a per-spawn token whose plaintext is on no disk); the regime is stamped on the event' };
 }));
 
 // ---------------------------------------------------------------------------------------------
@@ -284,7 +339,7 @@ invariant('I-07', 'Enforced risk route', true, () => sandbox((dir) => {
     schema: 'risk-policy/v1',
     default: { risk: 'low', model: 'sonnet', approvals: [], required_evidence: [] },
     rules: [{ match: { path: '**/billing/**' }, risk: 'critical', model: 'opus',
-      approvals: ['code-reviewer', 'security-reviewer'], required_evidence: ['threat-model'] }],
+      approvals: ['code-reviewer', 'security-reviewer'], required_evidence: ['security-review'] }],
   }));
   board(['add', 'PAY-001', '--title', 'billing change', '--owner', 'ios-developer',
     '--file', 'src/billing/Checkout.swift', '--invariant', 'totals never negative'], dir);

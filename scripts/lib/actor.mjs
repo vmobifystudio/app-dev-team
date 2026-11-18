@@ -55,10 +55,49 @@
  * how "we'll turn on auth later" becomes an audit log nobody can rely on retrospectively — every
  * historical approval would be permanently ambiguous. Marking each event with the regime it was
  * created under means switching the flag on tomorrow does not retroactively launder yesterday.
+ *
+ * ---------------------------------------------------------------------------------------------
+ * PER-SPAWN CAPABILITY TOKENS (G-F1, 2026-11-18) — the mode new projects default to.
+ *
+ * The HMAC mode above has a key every agent can read (the registry file) or inherit (the session
+ * environment: a subagent inherits it). So it bounds nothing against an agent that reads files.
+ * A token mode whose proof is NOT on disk:
+ *
+ *   board.mjs actor mint --role code-reviewer --ticket APP-7 [--ttl-minutes 240]
+ *
+ * is run by the ORCHESTRATOR (the main session). It prints a random 192-bit token ONCE and stores
+ * only sha256(token) + role + ticket + expiry in `docs/team/actor-tokens.jsonl`. The token goes
+ * into that one agent's spawn prompt and nowhere else. Under `requireActorTokens: true` in
+ * .studio-policy.json every GATE event (capabilities.mjs GATE_EVENTS: verified, verified_static,
+ * rejected, approved, changes, merged, qa_passed, qa_failed, closed, reopened) needs `--token`
+ * whose hash is in the registry, unexpired, unrevoked, minted for exactly this --by role and this
+ * ticket. Reading the registry yields hashes, which mint nothing. Spelling a role yields nothing.
+ *
+ * Separation of duties survives: roles are still checked against history (events.mjs workedOn),
+ * and additionally the TOKEN that appears on a ticket's claimed/done_reported/verified/approved
+ * events may not be the one that writes its approved or qa_passed (events.mjs).
+ *
+ * THE RESIDUAL BOUND — read this before trusting the mode:
+ *   - The orchestrator's context holds every token it minted. Anything that can read that context
+ *     (a transcript reader, a compaction summary, a log of the spawn prompt) can reuse an
+ *     UNEXPIRED token for its role and ticket. Expiry (default 4h) and `actor revoke` bound it;
+ *     nothing here prevents it.
+ *   - `actor mint` is a CLI. A subagent with Bash can run it, and can append a forged hash line to
+ *     the registry, because it is the same OS user in the same tree. What stops that is a
+ *     PreToolUse hook refusing `actor mint` and registry writes from subagent contexts (hook input
+ *     carries agent_id) — Track B's hook, not this file. Without that hook this mode stops a
+ *     CONFUSED or LITERAL agent cold and makes a hostile one take a deliberate, logged step
+ *     (every mint is a line with its session) — it does not stop the hostile one.
+ *   - Work events (claimed, done_reported, review_requested…) need no token; a token passed on
+ *     one is verified and stamped, which is what lets token-level separation see the author.
+ *   - Once any event on a board was written with tokens required, a later policy that no longer
+ *     requires them is refused for gate events (board.mjs): turning the flag off is not a
+ *     downgrade an agent can make by editing .studio-policy.json.
+ *   - Tokens are never read from the environment: subagents inherit it.
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { resolve } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { dirname, resolve } from 'node:path';
 
 const REGISTRY = 'docs/team/actors.json';
 
@@ -210,4 +249,96 @@ function mintToken({ root, actorId, role, ticket, event, ts }) {
   return { ok: true, token: sign(signing, { actorId, role, ticket, event, ts }) };
 }
 
-export { resolveActor, mintToken, REGISTRY };
+// --------------------------------------------------------------------------------------------
+// per-spawn capability tokens
+// --------------------------------------------------------------------------------------------
+
+const TOKEN_REGISTRY = 'docs/team/actor-tokens.jsonl';
+const sha256 = (s) => createHash('sha256').update(String(s)).digest('hex');
+const linkHash = (prev, rec) => sha256(`${prev}\n${JSON.stringify(rec)}`);
+
+/**
+ * Read the token registry, verifying its link chain (each line's `hash` covers the previous line's
+ * hash and its own content), so an edited or deleted line — a quietly un-revoked token — is a
+ * CANNOT EVALUATE rather than a silent change. Appending a forged line is NOT caught here; see the
+ * residual bound in the header.
+ */
+function readTokens(root) {
+  const path = resolve(root, TOKEN_REGISTRY);
+  if (!existsSync(path)) return { ok: true, records: [], tip: '' };
+  let prev = '';
+  const records = [];
+  const lines = readFileSync(path, 'utf8').split('\n').filter((l) => l.trim());
+  for (const [i, line] of lines.entries()) {
+    let rec;
+    try { rec = JSON.parse(line); } catch { return { ok: false, reason: `${TOKEN_REGISTRY} line ${i + 1} is not JSON` }; }
+    const { hash, ...body } = rec;
+    if (hash !== linkHash(prev, body)) return { ok: false, reason: `${TOKEN_REGISTRY} line ${i + 1} does not chain — the registry was edited, reordered or truncated` };
+    prev = hash;
+    records.push(body);
+  }
+  return { ok: true, records, tip: prev };
+}
+
+function appendToken(root, body) {
+  const r = readTokens(root);
+  if (!r.ok) return r;
+  const path = resolve(root, TOKEN_REGISTRY);
+  mkdirSync(dirname(path), { recursive: true });
+  appendFileSync(path, `${JSON.stringify({ ...body, hash: linkHash(r.tip, body) })}\n`);
+  return { ok: true };
+}
+
+/** Mint a token for one role on one ticket. The plaintext is returned ONCE and never stored. */
+function mintActorToken({ root, role, ticket, ttlMinutes = 240 }) {
+  if (!role) return { ok: false, reason: 'mint needs --role' };
+  if (!ticket) return { ok: false, reason: 'mint needs --ticket (a token is scoped to one ticket so a leaked one is not universal)' };
+  const minutes = Number(ttlMinutes);
+  if (!(minutes > 0 && minutes <= 24 * 60)) return { ok: false, reason: '--ttl-minutes must be between 1 and 1440' };
+  const token = `st_${randomBytes(24).toString('base64url')}`;
+  const now = Date.now();
+  const record = {
+    schema: 'actor-token/v1', kind: 'mint', token_id: sha256(token).slice(0, 16), token_sha256: sha256(token),
+    role, ticket: String(ticket).toUpperCase(), minted_at: new Date(now).toISOString(),
+    expires_at: new Date(now + minutes * 60000).toISOString(), session: process.env.STUDIO_SESSION_ID || null,
+  };
+  const w = appendToken(root, record);
+  if (!w.ok) return w;
+  return { ok: true, token, record };
+}
+
+function revokeActorToken({ root, tokenId }) {
+  const r = readTokens(root);
+  if (!r.ok) return r;
+  if (!r.records.some((x) => x.kind === 'mint' && x.token_id === tokenId)) return { ok: false, reason: `no token ${tokenId} in ${TOKEN_REGISTRY}` };
+  return appendToken(root, { schema: 'actor-token/v1', kind: 'revoke', token_id: tokenId, at: new Date().toISOString() });
+}
+
+function listActorTokens(root) { return readTokens(root); }
+
+/**
+ * Prove `role` on `ticket` with a token. `{ok, actor}` or `{ok:false, code, reason}`.
+ * code 2 = cannot evaluate (registry unreadable), 1 = refused.
+ */
+function verifyActorToken({ root, token, role, ticket, required = true }) {
+  if (!token) return { ok: false, code: 1, reason: 'no --token was given' };
+  const r = readTokens(root);
+  if (!r.ok) return { ok: false, code: 2, reason: r.reason };
+  const want = sha256(token);
+  const rec = r.records.find((x) => x.kind === 'mint' && x.token_sha256 === want);
+  if (!rec) return { ok: false, code: 1, reason: `that token is not in ${TOKEN_REGISTRY} — it was never minted here (only "board.mjs actor mint", run by the orchestrator, creates one)` };
+  if (r.records.some((x) => x.kind === 'revoke' && x.token_id === rec.token_id)) return { ok: false, code: 1, reason: `token ${rec.token_id} was revoked` };
+  if (Date.parse(rec.expires_at) <= Date.now()) return { ok: false, code: 1, reason: `token ${rec.token_id} expired at ${rec.expires_at} — mint a fresh one for this spawn` };
+  if (rec.role !== role) return { ok: false, code: 1, reason: `token ${rec.token_id} was minted for "${rec.role}", not "${role}" — a token proves one role, and --by cannot change which` };
+  if (rec.ticket !== String(ticket).toUpperCase()) return { ok: false, code: 1, reason: `token ${rec.token_id} was minted for ${rec.ticket}, not ${ticket}` };
+  return {
+    ok: true,
+    actor: {
+      schema: 'actor/v1', actor_id: `token:${rec.token_id}`, role, mode: 'token', required,
+      token_id: rec.token_id, minted_at: rec.minted_at, expires_at: rec.expires_at,
+      session: process.env.STUDIO_SESSION_ID || null, model: process.env.STUDIO_MODEL || null,
+    },
+  };
+}
+
+export { resolveActor, mintToken, REGISTRY, TOKEN_REGISTRY, mintActorToken, revokeActorToken, listActorTokens, verifyActorToken };

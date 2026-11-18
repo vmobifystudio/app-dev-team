@@ -29,6 +29,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 import { artifactEntry } from './dossier.mjs';
+import { checkGateLog } from './evidence.mjs';
 
 /** The candidate every verdict below is about. A readiness answer with no subject is about nothing. */
 function candidate(root) {
@@ -88,6 +89,14 @@ function gateEntry(root, name, relPath, cand) {
   }
   if (!recorded) {
     return { gate: name, state: 'STALE', detail: 'names no subject commit, so it cannot be shown to describe this candidate', subject: null };
+  }
+  // G-F6: WELL-FORMED JSON IS NOT A VERDICT. A result must point at the raw log it was derived
+  // from, the log must still hash to the recorded sha256, and its own RESULT / GATE-SUBJECT lines
+  // must agree with the file. A hand-written gate-result has no such log, so it can never PASS
+  // here — it is CANNOT_EVALUATE, the state for "no gate actually ran that we can show".
+  const derived = checkGateLog(root, v);
+  if (!derived.ok) {
+    return { gate: name, state: 'CANNOT_EVALUATE', detail: `${relPath} does not re-derive: ${derived.reason}`, subject: recorded };
   }
   const state = v.result === 'PASS' ? 'PASS' : v.result === 'FAIL' ? 'BLOCKED' : 'CANNOT_EVALUATE';
   return { gate: name, state, detail: v.detail || '', subject: recorded };
