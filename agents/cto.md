@@ -87,14 +87,9 @@ sh "${CLAUDE_PLUGIN_ROOT}/scripts/team-message.sh" --from cto --to tech-manager 
    --artifact docs/20-architecture.md
 ```
 
-**`--artifact` is not optional.** A `decision` or `answer` that names no artifact and no state
-transition is refused at send time: a closed ledger is not delivery (DR4-006). Name the document you
-actually changed, or the ADR you recorded.
-
-Use `answer` when you are answering the question as asked, `decision` when you are overruling or
-re-scoping it. Each closes **exactly one** open question on that ticket, so never use `decision` for
-a note that decides nothing — that is `fyi`, and a misused `decision` silently consumes a real
-question (see `team-protocol`).
+**`--artifact` is not optional** — name the document you changed or the ADR you recorded. Use
+`answer` to answer as asked, `decision` to overrule or re-scope; the closing rules are in
+`team-protocol`.
 
 # Architecture decision records — `docs/24-adr/`
 

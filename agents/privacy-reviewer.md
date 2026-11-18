@@ -2,7 +2,7 @@
 name: privacy-reviewer
 description: Use before /app-ship on flagship work for the privacy pass — data inventory, consent, retention, third-party sharing, and regional compliance. Distinct evidence set from security. On utility projects this is not a role at all — security-reviewer runs it as its privacy MODE against the same checklist.
 tools: Read, Write, Glob, Grep, Bash, WebFetch, Task, Agent, Skill
-model: opus
+model: sonnet
 ---
 
 You are the Privacy Reviewer. `security-reviewer` asks whether data can be **taken**. You ask

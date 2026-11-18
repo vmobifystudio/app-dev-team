@@ -53,36 +53,22 @@ and prevents a whole class of "this doesn't match how we build" rework.
    write one line to your per-run fragment (`docs/daily/<today>-<role>-<ticket>.md`) noting the
    divergence so the `tech-manager` can decide whether the KB or the project is wrong.
 
-   **No ticket?** A spec-writing exec has none, and that used to make this rule unfollowable for
-   exactly the roles whose divergences are largest. Use `docs/daily/<today>-<role>-spec.md` — same
-   directory, so the standup collects it with everything else.
+   **No ticket?** A spec-writing exec uses `docs/daily/<today>-<role>-spec.md` — same directory,
+   so the standup collects it.
 
 4. If you discover a genuinely new, reusable convention while working, add a `LEARNING:` line to
    that same fragment so `/app-learn` can fold it back into the KB after ship.
 
-5. **If you just wrote to a file OUTSIDE a leased worktree — a spec, the SRS, the PRD, the
-   backlog, an ADR/PDR/DDR, anything in the shared tree — commit it before you report done or hand
-   off.** `ic-workflow`'s branch-and-commit discipline is written for IC roles working inside a
-   worktree; it says nothing about the execs, `tech-lead`, `cpo`, and every other role that edits
-   `docs/` directly on the shared tree, and until this line existed nothing did. The failure is not
-   hypothetical: a `cpo` wrote a new requirement into the SRS/PRD and created a board ticket, a
-   `tech-lead` wrote the impl spec and handed off — neither committed — and the next command that
-   cut a fresh worktree for the developer (`git worktree add`, which snapshots the last COMMIT, not
-   the live working directory) produced a worktree missing both edits entirely. The developer
-   correctly `BLOCKED`, reporting a ticket and impl spec that "did not exist," because from git's
-   point of view they didn't yet. `git add <the files you touched> && git commit -m "..."` — explicit
-   paths, same rule `ic-workflow` gives ICs, for the same reason: a blanket `git add -A` from a
-   shared-tree role risks staging someone else's in-flight work.
+5. **If you wrote to a file OUTSIDE a leased worktree — a spec, the SRS, the PRD, the backlog, an
+   ADR/PDR/DDR, anything in the shared tree — commit it before you report done or hand off.**
+   `git worktree add` snapshots the last COMMIT, so an uncommitted spec or ticket does not exist in
+   the next developer's worktree. `git add <the files you touched> && git commit -m "..."` —
+   explicit paths only, the same rule `ic-workflow` gives ICs.
 
-6. **Read what your role names, not the whole tree.** `ic-workflow`'s input contract already scopes
-   a developer to exactly three things — the ticket row, the PRD/impl-spec sections it points to,
-   and its own subtree — for a reason: a role that re-reads the full PRD, every prior standup, and
-   every sibling ticket "to be safe" burns budget on context it was never going to use and makes the
-   next context-window compaction more likely mid-ticket. Read the pack this skill names, the doc
-   your input contract names, and nothing wider unless a specific question sends you looking for it.
-   This is not a license to skip house-conventions or defect-hunting's own required reads — it is
-   the same discipline pointed at everything *else*: a role file that grew barnacles ("also skim
-   the last five standups") over time is exactly the kind of accretion this rule exists to refuse.
+6. **Read what your role names, not the whole tree** — the pack this skill names, the docs your
+   input contract names, nothing wider unless a specific question sends you looking. Re-reading the
+   full PRD, every standup and every sibling ticket "to be safe" burns budget and invites a
+   mid-ticket compaction. This never licenses skipping a required read.
 
 ## Anti-patterns
 

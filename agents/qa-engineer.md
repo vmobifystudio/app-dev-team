@@ -69,8 +69,7 @@ Write `docs/50-test-plan.md` with:
    ```
 
    `ship-gate.sh` keys its exit code on this line, not on prose elsewhere in the file — a hold
-   mentioned only in a paragraph used to reach the gate as a `note()`, never a `block()`, so it
-   never actually stopped a release. A missing verdict line is CANNOT EVALUATE, not a silent pass,
+   mentioned only in a paragraph never stops a release. A missing verdict line is CANNOT EVALUATE, not a silent pass,
    so write one every time you touch this file, even when the answer is GO.
 
 ## Journey declarations
@@ -97,19 +96,15 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . import-bugs --by qa-e
 
 Your Markdown stays the place you write — it is human-readable, it reviews on a branch, and every
 agent file already points at it. What changes is that it is now a **source** that gets imported
-rather than the register itself. A bug that never became a board ticket used to be invisible to
-`board-doctor`, to `orchestrator round` and to the sprint summary, and got closed by being
-unmentioned; on the register it holds a non-terminal status and `ship-gate.sh` refuses the release
+rather than the register itself. On the register a bug holds a non-terminal status and `ship-gate.sh` refuses the release
 until somebody decides about it. Deferring is a fine decision — it just has to be one.
 
 **`scripts/ship-gate.sh` reads these rows**, so two things about the shape are load-bearing, not
 style:
 
 - **Severity is its own cell** — `| S1 |`, or bolded `**S1**`. The gate will not read `S1` out of a
-  prose sentence, because a description mentioning "S1" is not a bug row. The gate's pattern used to
-  demand bold on BOTH fields while this template writes neither, so the only files that ever matched
-  were its own fixtures — a real board with `BUG-001 | APP-001 | S1 | iOS | ... | crashes on launch |`
-  produced `RESULT: CLEAR, exit 0`. Both spellings are accepted now; a third one will not be.
+  prose sentence, because a description mentioning "S1" is not a bug row. Those two spellings are
+  accepted; a third one will not be.
 - **Closing a bug means writing `FIXED`, `CLOSED` or `WONTFIX` ON THAT SAME LINE.** A bug closed in
   a paragraph below the table is still an open S1 to the release gate — correctly, since nothing
   mechanical can tie the paragraph to the row.
@@ -151,7 +146,7 @@ verbatim — every field, in its order: `DONE:` · `Worktree:` · `Branch:` · `
 `Shared surfaces touched:` · `Next:`. A field you omit is a gate that silently passes, and
 `Branch:` is required even on a docs-only ticket — `team-protocol` says why.
 
-Writing `50-test-plan.md` or `51-bugs.md` straight into the shared tree — observed live — leaves
+Writing `50-test-plan.md` or `51-bugs.md` straight into the shared tree leaves
 your best find with no provenance: invisible to the board, the doctor, `verify-done.sh` and the
 merge gate, which is the same as not having found it.
 

@@ -215,6 +215,7 @@ M97@@scripts/wave-integrate.mjs@@const push = hasOrigin ? gitTry(['push', 'origi
 M98@@scripts/lib/readiness.mjs@@['status', '--porcelain', '--', ':(top)', ...excludes]@@['status', '--porcelain', '--', ':(top)']@@readiness: a tree dirty ONLY in the studio's operational files is clean (W3)@@W3 / G-F6
 M99@@scripts/runtime-gate.sh@@-e 's/^/:(exclude)/' "$OPS_PATHS")@@-e 's/^/:(exclude)/' /dev/null)@@runtime-gate --record: operational files do not record the tree as dirty (W3)@@W3 / G-F6
 M100@@scripts/ship-gate.sh@@-e 's/^/:(exclude)/' "$HERE/lib/operational-paths.txt")@@-e 's/^/:(exclude)/' /dev/null)@@ship-gate: operational files do not make approval binding UNKNOWN (G-F6)@@W3 / G-F6
+MA01@@skills/defect-hunting/SKILL.md@@`references/round-trip.md`@@`references/round-trip-moved.md`@@every references/ file a SKILL.md or command names exists, and every reference is named@@Sprint 2 track A
 CATALOGUE
 }
 
