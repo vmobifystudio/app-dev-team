@@ -10,7 +10,13 @@
 # This is `defect-hunting` §2 ("never certify by reading — execute it") pointed at the app itself.
 # The team already knows reading is not verifying; it had just never aimed that instinct here.
 #
-# Usage:  sh scripts/runtime-gate.sh [--platform ios|android|auto] [--project-root <path>]
+# Usage:  sh scripts/runtime-gate.sh [--platform ios|android|web|auto] [--project-root <path>]
+#
+# WEB MODE (W11): a `web-app` (roster "Product type: web-app", profile platform "web", or a
+# package.json with no mobile project beside it) is built with `npm run build`, its `test` script
+# run, then its e2e (`test:e2e`/`e2e` script, or Playwright when playwright.config.* exists) — or,
+# with no e2e, served and smoked by scripts/web-smoke.mjs (GET / must be 200 with a body). A missing
+# node/npm, build script, dependency or Playwright install is CANNOT EVALUATE, never a pass.
 #
 # Exit:   0 PASS            — the app built, launched, AND was still running afterwards
 #         1 FAIL            — it did not build, or did not launch
@@ -35,6 +41,7 @@ ROOT=.
 BUILD_TIMEOUT=${RUNTIME_GATE_BUILD_TIMEOUT:-900}    # 15 min — cold SPM resolve plus a clean build
 BOOT_TIMEOUT=${RUNTIME_GATE_BOOT_TIMEOUT:-180}      # 3 min  — first boot of a cold simulator runtime
 LAUNCH_TIMEOUT=${RUNTIME_GATE_LAUNCH_TIMEOUT:-60}   # 1 min  — install + launch on a booted device
+SERVE_TIMEOUT=${RUNTIME_GATE_SERVE_TIMEOUT:-60}     # 1 min  — web: the served app answers GET /
 
 # `shift 2` with only one argument left is a FAILURE in POSIX sh — it does not shift, so `$1` is
 # still the flag and this loop spins forever writing nothing. `sh runtime-gate.sh --project-root`
@@ -60,16 +67,16 @@ while [ $# -gt 0 ]; do
     --project-root) need_value $# "--project-root"; ROOT=${2:-}; shift 2 ;;
     --scheme)       need_value $# "--scheme";       SCHEME_OPT=${2:-}; shift 2 ;;
     --record)       RECORD=1; shift ;;
-    -h|--help)      sed -n '1,30p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '1,37p' "$0"; exit 0 ;;
     *) echo "runtime-gate: unknown argument '$1'" >&2
-       echo "usage: runtime-gate.sh [--platform ios|android|auto] [--project-root <path>] [--scheme <name>] [--record]" >&2
+       echo "usage: runtime-gate.sh [--platform ios|android|web|auto] [--project-root <path>] [--scheme <name>] [--record]" >&2
        exit 2 ;;
   esac
 done
 
 case "$PLATFORM" in
-  ios|android|auto) ;;
-  *) echo "runtime-gate: --platform must be ios, android or auto (got '$PLATFORM')" >&2; exit 2 ;;
+  ios|android|web|auto) ;;
+  *) echo "runtime-gate: --platform must be ios, android, web or auto (got '$PLATFORM')" >&2; exit 2 ;;
 esac
 
 [ -d "$ROOT" ] || { echo "runtime-gate: no such directory: $ROOT" >&2; exit 2; }
@@ -186,14 +193,24 @@ GRADLE=$(found 'build.gradle'); [ -n "$GRADLE" ] || GRADLE=$(found 'build.gradle
 HAS_IOS=0; { [ -n "$XCPROJ" ] || [ -n "$SWIFTPKG" ]; } && HAS_IOS=1
 HAS_ANDROID=0; [ -n "$GRADLE" ] && HAS_ANDROID=1
 
-[ "$PLATFORM" = "android" ] && HAS_IOS=0
-[ "$PLATFORM" = "ios" ] && HAS_ANDROID=0
+# Web: stated by the project (roster product type / profile platform), or inferred from a root
+# package.json when there is no mobile project beside it (a React Native repo is mobile).
+HAS_WEB=0
+if [ -f "$ROOT/package.json" ]; then
+  if grep -qiE '^[[:space:]]*(\*\*)?Product type(\*\*)?[[:space:]]*:.*web-app' "$ROOT/docs/02-team-roster.md" 2>/dev/null ||
+     grep -qE '"platform"[[:space:]]*:[[:space:]]*"web"' "$ROOT/docs/team/project-profile.json" 2>/dev/null ||
+     { [ "$HAS_IOS" -eq 0 ] && [ "$HAS_ANDROID" -eq 0 ]; }; then HAS_WEB=1; fi
+fi
 
-if [ "$HAS_IOS" -eq 0 ] && [ "$HAS_ANDROID" -eq 0 ]; then
+[ "$PLATFORM" = "android" ] && { HAS_IOS=0; HAS_WEB=0; }
+[ "$PLATFORM" = "ios" ] && { HAS_ANDROID=0; HAS_WEB=0; }
+[ "$PLATFORM" = "web" ] && { HAS_IOS=0; HAS_ANDROID=0; }
+
+if [ "$HAS_IOS" -eq 0 ] && [ "$HAS_ANDROID" -eq 0 ] && [ "$HAS_WEB" -eq 0 ]; then
   echo "RUNTIME GATE"
-  echo "  -        UNKNOWN  no iOS or Android project found under $ROOT (searched 3 levels for"
+  echo "  -        UNKNOWN  no iOS, Android or web project found under $ROOT (searched 3 levels for"
   echo "                    *.xcworkspace, *.xcodeproj, Package.swift, build.gradle[.kts],"
-  echo "                    settings.gradle[.kts])."
+  echo "                    settings.gradle[.kts]; package.json at the root for web)."
   [ "$PLATFORM" != "auto" ] && echo "                    --platform $PLATFORM was requested, which excluded the other platform."
   echo "                    Point --project-root at the app repository, or drop --platform."
   echo
@@ -489,8 +506,92 @@ android_gate() {
   fi
 }
 
+# --- Web -------------------------------------------------------------------------------------------
+# has_script <name> — package.json defines it (npm's placeholder "no test specified" does not count).
+has_script() {
+  node -e 'const s=(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).scripts||{})[process.argv[2]];
+           process.exit(s && !/no test specified/.test(s) ? 0 : 1)' "$ROOT/package.json" "$1" 2>/dev/null
+}
+# web_step <label> <log> <command...> — run one step capped, in the project root. Exit 127 (a
+# command the script names is not installed: no node_modules, no CLI) is an environment fact, so
+# it is UNKNOWN, never FAIL — and never a pass.
+web_step() {
+  label=$1; log=$2; shift 2
+  run_capped "$BUILD_TIMEOUT" "$log" sh -c 'cd "$1" || exit 2; shift; "$@"' sh "$ROOT" "$@"
+  RC=$?
+  if [ "$RC" -eq 124 ]; then unknown "web    " "$label exceeded ${BUILD_TIMEOUT}s and was killed."; return 1; fi
+  if [ "$RC" -eq 127 ]; then
+    unknown "web    " "$label could not run: a command it needs is not installed (exit 127).
+                    Install the project's dependencies (npm ci) and re-run. Not run is not passed."
+    keep_log "$log" "$label"; return 1
+  fi
+  if [ "$RC" -ne 0 ]; then fail "web    " "$label failed (exit $RC)."; keep_log "$log" "$label"; return 1; fi
+  return 0
+}
+
+web_gate() {
+  # Same rule as xcodebuild: gate on the tool WORKING, not on it existing.
+  if ! node --version >/dev/null 2>&1 || ! npm --version >/dev/null 2>&1; then
+    unknown "web    " "node/npm is unusable here, so nothing was built or served.
+                    Install Node.js (with npm) and re-run."
+    return
+  fi
+  if ! node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$ROOT/package.json" 2>/dev/null; then
+    unknown "web    " "package.json is not readable JSON, so its scripts are unknown."
+    return
+  fi
+  if ! has_script build; then
+    unknown "web    " "package.json has no \"build\" script, so there is no build to gate.
+                    Add one (the command that produces the deployable output) and re-run."
+    return
+  fi
+  web_step "npm run build" "$WORK/web-build.log" npm run build || return
+  DONE="built"
+  if has_script test; then web_step "npm test" "$WORK/web-test.log" npm test || return; DONE="$DONE, tests passed"; fi
+
+  for s in test:e2e e2e; do
+    if has_script "$s"; then
+      web_step "npm run $s" "$WORK/web-e2e.log" npm run "$s" || return
+      pass "web    " "$DONE, e2e (npm run $s) passed."; return
+    fi
+  done
+  if [ -n "$(find "$ROOT" -maxdepth 1 -name 'playwright.config.*' 2>/dev/null | head -n 1)" ]; then
+    if ! (cd "$ROOT" && npx --no-install playwright --version) >/dev/null 2>&1; then
+      unknown "web    " "$DONE, but playwright.config.* is present and Playwright is not installed, so the
+                    e2e suite was NOT run. npm ci && npx playwright install, then re-run."
+      return
+    fi
+    web_step "npx playwright test" "$WORK/web-e2e.log" npx --no-install playwright test || return
+    pass "web    " "$DONE, Playwright e2e passed."; return
+  fi
+
+  # No e2e: serve it and fetch the root — the web "launched and still running".
+  SMOKE="$(cd "$(dirname "$0")" && pwd)/web-smoke.mjs"
+  if has_script start; then
+    SM=$(node "$SMOKE" --start --root "$ROOT" --timeout "$SERVE_TIMEOUT"); SRC=$?
+  else
+    OUTDIR=""
+    for d in dist build out; do [ -f "$ROOT/$d/index.html" ] && { OUTDIR="$ROOT/$d"; break; }; done
+    if [ -z "$OUTDIR" ]; then
+      unknown "web    " "$DONE, but there is nothing to serve: no \"start\" script and no index.html in
+                    dist/, build/ or out/. Add an e2e script or a start script, then re-run."
+      return
+    fi
+    SM=$(node "$SMOKE" --dir "$OUTDIR" --timeout "$SERVE_TIMEOUT"); SRC=$?
+  fi
+  case "$SRC" in
+    0) pass "web    " "$DONE, served and smoked — $SM" ;;
+    1) fail "web    " "$DONE, but the served app is broken — $SM" ;;
+    *) unknown "web    " "$DONE, but the smoke could not be evaluated — $SM" ;;
+  esac
+}
+
 [ "$HAS_IOS" -eq 1 ] && ios_gate
 [ "$HAS_ANDROID" -eq 1 ] && android_gate
+[ "$HAS_WEB" -eq 1 ] && web_gate
+# A detected platform whose gate printed nothing never ran. WORST is still 0 there, so without this
+# the verdict block below read silence as PASS (found by mutating the web dispatch line away).
+[ -n "$LINES" ] || unknown "-      " "a platform was detected but no gate produced a verdict, so nothing ran."
 
 # --- verdict ---------------------------------------------------------------------------------------
 echo "RUNTIME GATE"

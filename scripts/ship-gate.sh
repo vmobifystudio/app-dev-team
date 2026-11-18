@@ -568,5 +568,8 @@ if [ -n "$BLOCKERS" ]; then
 fi
 echo
 echo "RESULT: CLEAR — preconditions met. Proceed to the parallel readiness agents."
+# G-F13: every scanner above replays a defect class someone already found. CLEAR is not "no defects".
+echo "        LIMIT: the scanners only replay KNOWN defect classes; unknown defects are covered by"
+echo "        red-team-agent and defect-hunting, not by this gate."
 record_verdict CLEAR
 exit 0

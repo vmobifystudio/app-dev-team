@@ -1,6 +1,6 @@
 ---
 description: Grade an existing app against the Mobify Studio House KB and Axiom standards — fan out the specialist auditors, produce a severity-ranked gap report, build a remediation backlog, then fix (safe fixes automatically, risky changes only with your approval)
-argument-hint: [dimension or "all" — e.g. security, monetization, ios, android; default = all]
+argument-hint: [dimension or "all" — e.g. security, monetization, ios, android; default = all] [--yolo]
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
 ---
 
@@ -81,8 +81,9 @@ Dimension (optional, default = all): $ARGUMENTS
    When step 3 files the ticket, `register.mjs link <ID> --ticket AUDIT-NNN --by tech-manager`.
 
 3. **Build the remediation backlog.** Spawn `tech-manager` to turn findings into `AUDIT-NNN` tickets
-   through the board CLI — one `board.mjs add` per ticket, never a hand-written row in
-   `docs/31-board.md` (it is generated) — prioritized by severity, each carrying its violated-rule +
+   through the board CLI — one `board.mjs add` per ticket, appended to the event log
+   `docs/31-board-events.jsonl`; never a hand-written row in the rendered board view (it is
+   regenerated from the log) — prioritized by severity, each carrying its violated-rule +
    Safe/Risky tag in `--notes`:
 
    ```bash
@@ -119,9 +120,26 @@ Dimension (optional, default = all): $ARGUMENTS
      --detail "approved by the founder at the /app-audit gate, <date>"
    ```
 
-   A Risky ticket the user did not approve stays `blocked` with its `needs-approval` reason — that
-   is also what `/app-run --yolo`'s "defer Risky" means: nothing is unblocked, and the summary names
-   each one.
+   A Risky ticket the user did not approve stays `blocked` with its `needs-approval:` reason.
+
+   **`--yolo` (passed through from `/app-run --yolo`) — the defer mechanism.** No question is asked,
+   and the answer is fixed: **approve every Safe ticket, approve nothing Risky.** Concretely:
+   - Safe tickets were born `todo` at step 3, so they are already claimable — step 5 fixes them.
+   - Risky tickets were born `blocked` with `--reason "needs-approval: ..."`. Under `--yolo` no
+     `unblocked` event is written for any of them, so none can be `claimed` — deferral is the board
+     refusing the claim, not an agent remembering not to.
+   - List the deferred set from the log (never from memory) and print it in the summary as
+     `DEFERRED (needs-approval): <ID> <title>`, one per line, plus the same in `docs/80-audit.md`:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json | node -e '
+       const b = JSON.parse(require("fs").readFileSync(0, "utf8"));
+       for (const t of Object.values(b.tickets))
+         if (t.status === "blocked" && /· Risky/.test(t.notes || "")) console.log(`DEFERRED (needs-approval): ${t.id} ${t.title || ""}`);'
+     ```
+   - Their register rows become `DEFERRED(needs-approval)` — a terminal status for step 6, so the
+     re-audit loop ends instead of waiting on an approval nobody was asked for. Releasing one later
+     is the founder's `unblocked` event above, on a later run.
 
    This is `/app-run`'s Gate 1 for a brownfield project. **When `/app-audit` was invoked by
    `/app-run`, `/app-run` owns the gate — print the summary and return it rather than asking, so

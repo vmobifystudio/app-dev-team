@@ -21,6 +21,8 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
      --artifact <path to the built .ipa/.aab> --platform ios|android --variant release \
      --by release-manager
+   # web-app: the artifact is the build output DIRECTORY, hashed over every file in it
+   #   --artifact dist --platform web --variant release --by release-manager
    ```
 
    This step stays explicit because only you know the artifact path — guessing it would be inventing
@@ -45,7 +47,11 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    ending in "read the exit code"; the discipline of running all three, every time, is exactly what
    a 328-line file erodes.
 
-   - Exit `0` → continue to the runtime gate below.
+   - Exit `0` → continue to the runtime gate below. A CLEAR `ship-gate.sh` ends with a `LIMIT:` line,
+     and it means what it says: ship-gate replays KNOWN defects only — each scanner encodes a class
+     somebody already found. A green ship-gate is not "no defects". The coverage for unknown defects
+     is `red-team-agent` (step 2) and the `defect-hunting` skill; quote the LIMIT line in the release
+     summary so nobody reads the gate as more than it is.
    - Exit `1` → **do not release.** It names which precondition. **STALE is not a failure** —
      nothing says the product is broken, it says nobody checked THIS candidate. Re-run the gates it
      names, or rebuild and re-record.
@@ -175,7 +181,10 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    ```
 
    - Exit `0` → the app builds and launches. Quote the evidence paths from
-     `docs/evidence/runtime-<date>-<platform>.png` in the release summary.
+     `docs/evidence/runtime-<date>-<platform>.png` in the release summary. For a `web-app` the
+     gate's `web` line is the evidence: `npm run build`, the `test` script, then the e2e suite
+     (`test:e2e`/`e2e` script or Playwright) or, without one, the build served and `GET /` answering
+     200 with a body. Quote that line.
    - Exit `1` → **stop.** Print the compiler/gradle output verbatim. There is no waiver for this
      one: an app that does not build or does not launch is not a release candidate, and no human is
      entitled to record that it is.
@@ -223,11 +232,12 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
        this is the expected path today and the waiver is the honest record of it.
 
    **Product types the script cannot see are N/A, not waived — and not unchecked.** `runtime-gate.sh`
-   detects iOS and Android only, so a `backend-service`, `web-app`, `cli` or `library` reaches exit
-   `2` structurally, every time, and waiving it every release would train everyone to waive it.
+   detects iOS, Android and `web-app` (a `web-app` is gated like the others — never N/A, never a
+   standing waiver). A `backend-service`, `cli` or `library` reaches exit `2` structurally, every
+   time, and waiving it every release would train everyone to waive it.
    Record `N/A: runtime gate — product type <type> is outside runtime-gate.sh's detection`, **then
    run the equivalent for that type and quote its output**: does the service start and answer a
-   health check, does the page render, does the CLI run `--help` and exit 0, does the library build
+   health check, does the CLI run `--help` and exit 0, does the library build
    and pass its own suite. Same three-state contract, same rule — nothing ships that nobody ran.
    (Extending the script's detection is the planned home for this; until then it is executed here
    and the evidence is quoted here, never assumed.)
@@ -293,7 +303,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
      --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh, as in 1b
    node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
-     --artifact <the .ipa/.aab path release-manager named> --platform ios|android --variant release \
+     --artifact <the .ipa/.aab path, or the web build dir, release-manager named> --platform ios|android|web --variant release \
      --by release-manager
    node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" ship
    ```
