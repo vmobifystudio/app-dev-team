@@ -11783,29 +11783,43 @@ Q1L=$(sed -n "/^   sh -c 'for f in \.gitignore CLAUDE\.md/,/done; true'/p" "$HER
   && ok "Q1: the app-init / app-plan commit loops exit 0 when the last listed path is absent (C5W-14)" \
   || bad "Q1: the app-init / app-plan commit loops exit 0 when the last listed path is absent (C5W-14)" "$Q1L"
 # ·· C5W-2: re-QA after qa_failed cannot pass on the record QA just failed; compose offers the newest one.
-Q1Q=$(tc_proj q1-reqa)
-tcm "$Q1Q" move TC-1 verified --by tech-manager --evidence "$(tc_vd "$Q1Q" feat/TC-1-x)" >/dev/null 2>&1
-tcm "$Q1Q" move TC-1 review_requested --by ios-developer >/dev/null 2>&1
+# Self-contained (so mutate.sh can score this section on its own): TC-1 on feat/TC-1-x, profile test.fast.
+q1m() { ( cd "$1" && shift && node "$HERE/board.mjs" "$@" ); }
+q1_vd() { ( cd "$1" && sh "$HERE/verify-done.sh" "$2" main fast 2>/dev/null | sed -n 's/^  Evidence: //p' ); }
+q1_tc_proj() {
+  _p="$TMP/q1-reqa"; rm -rf "$_p"; mkdir -p "$_p/docs/team" "$_p/src"
+  printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$_p/docs/team/project-profile.json"
+  ( cd "$_p" && git init -q -b main && q1g commit -q --allow-empty -m base \
+    && node "$HERE/board.mjs" add TC-1 --title "t" --owner ios-developer \
+    && git checkout -q -b feat/TC-1-x && echo 'let a = 1' > src/A.swift && git add src/A.swift \
+    && q1g commit -q -m work && git checkout -q main \
+    && node "$HERE/board.mjs" move TC-1 claimed --by ios-developer \
+    && node "$HERE/board.mjs" move TC-1 done_reported --by ios-developer ) >/dev/null 2>&1
+  printf '%s' "$_p"
+}
+Q1Q=$(q1_tc_proj)
+q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$(q1_vd "$Q1Q" feat/TC-1-x)" >/dev/null 2>&1
+q1m "$Q1Q" move TC-1 review_requested --by ios-developer >/dev/null 2>&1
 mkdir -p "$Q1Q/docs/53-reviews"; printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\nsrc/A.swift read.\n\n## Not checked\nNothing.\n' > "$Q1Q/docs/53-reviews/v.md"
-tcm "$Q1Q" move TC-1 approved --by code-reviewer --verdict docs/53-reviews/v.md >/dev/null 2>&1
-tcm "$Q1Q" move TC-1 merged --by tech-manager >/dev/null 2>&1
-( cd "$Q1Q" && node "$BD" add QA-1-w1 --title qa --owner qa-engineer ) >/dev/null 2>&1
+q1m "$Q1Q" move TC-1 approved --by code-reviewer --verdict docs/53-reviews/v.md >/dev/null 2>&1
+q1m "$Q1Q" move TC-1 merged --by tech-manager >/dev/null 2>&1
+( cd "$Q1Q" && node "$HERE/board.mjs" add QA-1-w1 --title qa --owner qa-engineer ) >/dev/null 2>&1
 q1qa() { ( cd "$Q1Q" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-1-w1 --role qa-engineer --tickets TC-1 ) 2>/dev/null | sed -n 's/^Evidence on record: //p'; }
-Q1E1=$(tc_vd "$Q1Q" feat/TC-1-x)
-tcm "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E1" >/dev/null 2>&1
+Q1E1=$(q1_vd "$Q1Q" feat/TC-1-x)
+q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E1" >/dev/null 2>&1
 [ -n "$Q1E1" ] && [ "$(q1qa)" = "$Q1E1" ] && ok "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" \
   || bad "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" "got '$(q1qa)' want '$Q1E1'"
-tcm "$Q1Q" move TC-1 qa_failed --by qa-engineer --detail BUG-001 >/dev/null 2>&1
+q1m "$Q1Q" move TC-1 qa_failed --by qa-engineer --detail BUG-001 >/dev/null 2>&1
 assert_exit 1 "Q1: qa_passed citing the record QA already failed is refused after qa_failed (C5W-2)" \
-  tcm "$Q1Q" move TC-1 qa_passed --by qa-engineer --evidence "$Q1E1"
+  q1m "$Q1Q" move TC-1 qa_passed --by qa-engineer --evidence "$Q1E1"
 assert_has "$TMP/err" "last qa_failed" "Q1: ...naming the qa_failed it predates (C5W-2)"
 case "$(q1qa)" in "none newer than the merge and any qa_failed"*) ok "Q1: ...and compose no longer offers the failed build's record (C5W-2)" ;;
   *) bad "Q1: ...and compose no longer offers the failed build's record (C5W-2)" "$(q1qa)" ;; esac
-Q1E2=$(tc_vd "$Q1Q" feat/TC-1-x)
-tcm "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E2" >/dev/null 2>&1
+Q1E2=$(q1_vd "$Q1Q" feat/TC-1-x)
+q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E2" >/dev/null 2>&1
 [ -n "$Q1E2" ] && [ "$(q1qa)" = "$Q1E2" ] && ok "Q1: after the fix's run, compose offers that newer record (C5W-2)" \
   || bad "Q1: after the fix's run, compose offers that newer record (C5W-2)" "got '$(q1qa)'"
-assert_exit 0 "Q1: ...and qa_passed on it is accepted (C5W-2)" tcm "$Q1Q" move TC-1 qa_passed --by qa-engineer --evidence "$Q1E2"
+assert_exit 0 "Q1: ...and qa_passed on it is accepted (C5W-2)" q1m "$Q1Q" move TC-1 qa_passed --by qa-engineer --evidence "$Q1E2"
 # ·· C5W-3: repeated --file to dispatch-preflight accumulates — routing does not depend on flag order.
 Q1D="$TMP/q1-dpf"; rm -rf "$Q1D"; mkdir -p "$Q1D/docs"; echo "# PRD" > "$Q1D/docs/10-prd.md"
 ( cd "$Q1D" && git init -q -b main . && echo x > a.txt && git add a.txt docs && q1g commit -qm base \
