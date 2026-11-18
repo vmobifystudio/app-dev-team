@@ -60,7 +60,8 @@ import { fileURLToPath } from 'node:url';
 
 import { parseArgs } from './lib/args.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
-import { contractFor, contractBlock, BLOCKED_BLOCK, GATE_HEADERS, matchesTicket } from './lib/contract.mjs';
+import { contractFor, contractBlock, BLOCKED_BLOCK, GATE_HEADERS } from './lib/contract.mjs';
+import { matchesTicket } from './lib/integration.mjs';
 import { ROLE_GATES } from './lib/capabilities.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));

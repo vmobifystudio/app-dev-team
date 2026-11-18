@@ -70,6 +70,7 @@ import { parseEventLog, reduce } from './lib/events.mjs';
 import { classifyTestRun } from './lib/test-evidence.mjs';
 import { writeTestEvidence } from './lib/evidence.mjs';
 import { RANK, routeFiles } from './lib/risk.mjs';
+import { matchesTicket } from './lib/integration.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const die = (code, message) => { process.stderr.write(`wave-integrate: ${message}\n`); process.exit(code); };
@@ -147,13 +148,6 @@ const branches = (gitTry(['branch', '--format=%(refname:short)']).out || '').spl
  * the ticket is held out of the wave, because the one thing worse than not integrating a ticket is
  * integrating the wrong half of it.
  */
-// TEMP until F1 merges: lib/integration.mjs `matchesTicket(name, id, allIds)` (design decision 4).
-// Whole-token: `(^|/)ID(-[a-z]|$)`, and when a longer board id also matches (APP-001 vs
-// APP-001-analytics) the longest id owns the branch.
-const escRe = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const tokenMatch = (name, id) => new RegExp(`(^|/)${escRe(id)}(-[a-z]|$)`, 'i').test(name);
-const matchesTicket = (name, id, allIds = []) => tokenMatch(name, id)
-  && !allIds.some((o) => String(o).length > String(id).length && tokenMatch(name, o));
 const ALL_IDS = [...tickets.values()].map((t) => t.id);
 
 const candidates = [];

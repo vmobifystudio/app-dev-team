@@ -86,24 +86,6 @@ export function gateHeaderOf(role, text) {
   return (GATE_HEADERS[role] || []).find((h) => first.startsWith(h)) || '';
 }
 
-// TEMP until F1 merges: track F1 owns `matchesTicket(name, id, allIds)` and `ticketIdsFromBoard(root)`
-// in lib/integration.mjs. Same signatures; swap the imports and delete this block when it lands.
-// A name belongs to the LONGEST board id that matches it at the start or after `/`, followed by the
-// end or a `-` (so `APP-001-analytics-x` is APP-001-analytics's, and `APP-0010` is never APP-001's).
-const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-export function matchesTicket(name, id, allIds = []) {
-  const hit = (t) => new RegExp(`(?:^|/)${escRe(t)}(?=$|-)`, 'i').test(String(name));
-  if (!hit(id)) return false;
-  const lid = String(id).toLowerCase();
-  return !allIds.some((o) => String(o).toLowerCase().startsWith(`${lid}-`) && hit(o));
-}
-export function ticketIdsFromBoard(root) {
-  try {
-    const log = readFileSync(join(root, 'docs', '31-board-events.jsonl'), 'utf8');
-    return [...new Set([...log.matchAll(/"ticket":"([^"]+)"/g)].map((m) => m[1]))];
-  } catch { return []; }
-}
-
 const CODE_ROLE_SET = new Set(CODE_ROLES);
 const ARTIFACT_ROLE_SET = new Set(ARTIFACT_ROLES);
 
