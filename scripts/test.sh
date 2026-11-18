@@ -2336,6 +2336,10 @@ newboard() {
 # assertions about the evidence contract itself call `node "$BD"` directly.
 bm_evidence() {  # <dir> <ticket>  -> prints the record path, or nothing
   _ed=$1; _et=$2
+  # NEVER OUTSIDE $TMP. A fixture dir that failed to exist would otherwise run this from wherever
+  # the caller stood — and evidence.mjs resolves a linked worktree to the MAIN checkout, so a stray
+  # call once wrote a record into the repo under test.
+  case "$_ed" in "$TMP"/*) ;; *) echo "bm_evidence: refusing to make evidence outside \$TMP ($_ed)" >&2; return 1 ;; esac
   ( cd "$_ed" || exit 1
     _gi() { git -c user.name=t -c user.email=t@localhost "$@"; }
     git rev-parse --git-dir >/dev/null 2>&1 || git init -q -b main
@@ -9849,6 +9853,13 @@ printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/TC-1-x\n\n## Not checked\nNot
 tcm "$U" move TC-1 approved --by code-reviewer --verdict v.md >/dev/null 2>&1
 assert_exit 1 "TC: a required_evidence kind with no checker fails closed at merged" tcm "$U" move TC-1 merged --by tech-manager
 assert_has "$TMP/err" "no checker exists for this kind" "TC: ...and says the policy names an unknown kind"
+# `add --status blocked --reason` keeps the REASON on the blocked event even when --notes is given
+# (track D: app-audit's `needs-approval:` reasons were silently replaced by the notes).
+NB="$TMP/tc-blocked"; rm -rf "$NB"; mkdir -p "$NB/docs"
+tcm "$NB" add TC-2 --title t --status blocked --notes "· Risky" --reason "needs-approval: schema change" >/dev/null 2>&1
+grep '"event":"blocked"' "$NB/docs/31-board-events.jsonl" | grep -q 'needs-approval: schema change' \
+  && ok "TC: add --status blocked records --reason on the blocked event, not --notes" \
+  || bad "TC: add --status blocked records --reason on the blocked event, not --notes"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

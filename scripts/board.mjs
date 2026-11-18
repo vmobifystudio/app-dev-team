@@ -583,7 +583,7 @@ function cmdAdd(id, flags, paths, idempotencyKey = '') {
     const blocked = {
       ...event,
       event: 'blocked',
-      detail: detail.notes || scrub('--reason', flags.reason || '') || 'created blocked',
+      detail: scrub('--reason', flags.reason || '') || detail.notes || 'created blocked',
     };
     append(paths.log, blocked);
     appended.push(blocked);

@@ -46,11 +46,10 @@
  *
  * Usage:  team-bootstrap.mjs [--root <dir>] [--force] [--context-only]
  *
- * --context-only re-snapshots docs/team/context-manifest.json and touches nothing else. /app-build
- * runs it at the top of every round: the manifest pins git HEAD, and every wave merge moves HEAD, so
- * a manifest taken once at /app-plan went STALE at the first merge and refused every spawn after it.
- * The snapshot is "the context this round's agents were given" — a planning doc that changes
- * mid-round still reads STALE, which is the property the gate exists for.
+ * --context-only re-snapshots docs/team/context-manifest.json and touches nothing else. Run it only
+ * when a planning document changed: the manifest no longer goes STALE because HEAD moved (a wave
+ * merge), so /app-build does not re-snapshot every round. A planning doc that changes mid-round
+ * still reads STALE until it is re-run, which is the property the gate exists for.
  * Exit:   0 written, or already present
  *         1 refused — files exist and --force was not given
  *         2 cannot evaluate — the root does not exist
