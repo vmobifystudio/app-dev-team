@@ -255,7 +255,7 @@ MD07@@scripts/release-candidate.mjs@@if (isDir && platform !== 'web') die(2@@if 
 MD08@@scripts/scheduler.mjs@@: t.status === 'in_progress' ? 'running'@@: ['in_progress', 'review', 'qa'].includes(t.status) ? 'running'@@scheduler: only in_progress holds a slot — review and qa tickets do not starve the next wave (C9)@@Sprint 2 track D
 MD09@@scripts/scheduler.mjs@@export const MAX_PARALLEL = 3;@@export const MAX_PARALLEL = 2;@@scheduler.mjs cap prints the one parallelism cap, the same constant scripts import (C9)@@Sprint 2 track D
 MD10@@scripts/ship-gate.sh@@echo "        LIMIT: the scanners only replay KNOWN defect classes; unknown defects are covered by"@@:@@ship-gate and /app-ship state the scanners only replay known defects (G-F13)@@Sprint 2 track D
-MS01@@hooks/contract-hooks.mjs@@if (/\bactor\s+(mint|revoke)\b/.test(cmd)) refuse@@if (false) refuse@@S2: guard-gate-writes refuses a subagent minting an actor token@@Sprint 2 lead
+MS01@@hooks/contract-hooks.mjs@@if (actorCmd) refuse(@@if (false) refuse(@@S2: guard-gate-writes refuses a subagent minting an actor token@@Sprint 2 lead
 MS02@@scripts/spawn-prompt.mjs@@if (policy.requireActorTokens !== true) return [];@@return [];@@S2: compose mints the reviewer's token under requireActorTokens; the registry holds only its hash@@Sprint 2 lead
 MG01@@scripts/lib/readiness.mjs@@if (v.subject?.dirty !== false) {@@if (v.subject?.dirty === true) {@@F2: readiness: a gate result whose dirty is null (unknown) is STALE (G2-11)@@Sprint 3 track F2
 MG02@@scripts/lib/readiness.mjs@@if (verdict === 'PASS' && cand.dirty !== false) verdict = 'STALE';@@if (false) verdict = 'STALE';@@F2: readiness: a candidate with uncommitted source is STALE, never PASS (G2-11)@@Sprint 3 track F2
@@ -274,22 +274,22 @@ MG14@@scripts/project-profile.mjs@@if (/\bweb\b/.test(String(p.platform || '')))
 MG15@@scripts/wave-integrate.mjs@@if (/untracked working tree files would be overwritten/i.test(l))@@if (false)@@F2: wave-integrate names untracked-file collisions instead of 'something landed' (W2-9)@@Sprint 3 track F2
 MG16@@scripts/dispatch-preflight.mjs@@'role', 'operation', 'ticket'];@@'role', 'operation', 'path', 'file', 'ticket'];@@F2: dispatch-preflight needs no --path/--file for a ticket that declares no files, and says it checked none (C2-28)@@Sprint 3 track F2
 MG17@@scripts/orchestrator.mjs@@if (unrouted.length) {@@if (false) {@@F2: orchestrator round names tickets created before risk-policy.json existed (W2-14)@@Sprint 3 track F2
-MG18@@scripts/ship-gate.sh@@grep -q '"requireActorTokens"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null || return 0@@return 0@@F2: ship-gate's printed qa_passed command mints its token inline under requireActorTokens (W2-10)@@Sprint 3 track F2
+MG18@@scripts/ship-gate.sh@@grep -q '"requireActorTokens"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null || return 0@@return 0@@F2: ship-gate's printed qa_passed command carries the agent's prompt token, never a mint, under requireActorTokens (W2-10, C3W-8)@@Sprint 3 track F2
 MG19@@scripts/drivers/web.sh@@catch { cannot('Playwright is not installed in this project@@catch { out('PASS', 'Playwright is not installed in this project@@F2: web driver without Playwright is CANNOT EVALUATE with the exact install line (G2-21)@@Sprint 3 track F2
 MG20@@scripts/worktree-slot.mjs@@if (tickets.length > 1) die(1@@if (false) die(1@@a batch of tickets in one lease is REFUSED — one spawn per ticket@@worktree-slot: one tree per WRITER
 ME01@@scripts/spawn-prompt.mjs@@tokensFor(ROOT, 'qa-engineer', wave.map((r) => r.id))@@tokensFor(ROOT, 'qa-engineer', [])@@S3E: the QA prompt carries one qa-engineer token per wave ticket (Token for APP-NNN:)@@Sprint 3 track E
 ME02@@hooks/contract-hooks.mjs@@|| !ticket || gateHeaderOf(role, report)) allow();@@|| !ticket) allow();@@S3E: a DESIGN QA verdict on stop is persisted and NOT blocked as a missing DONE (R2-8)@@Sprint 3 track E
 ME03@@hooks/contract-hooks.mjs@@for (let n = parts.length; n >= 2; n--)@@for (let n = 2; n >= 2; n--)@@S3E: a hand-written QA-1-w1 prompt is policed as QA-1-w1, not read as QA-1 (W2-16)@@Sprint 3 track E
-ME04@@hooks/contract-hooks.mjs@@|| touch.test(cmd) || cdThere.test(cmd) || viaVar)@@|| touch.test(cmd) || viaVar)@@S3E: guard refuses cd into the evidence dir then write (G2-1)@@Sprint 3 track E
-ME05@@hooks/contract-hooks.mjs@@|| /@anthropic-ai\/claude-code\b/.test(cmd)) refuse(@@&& false) refuse(@@S3E: guard refuses a nested claude session from a subagent (G2-16)@@Sprint 3 track E
+ME04@@hooks/contract-hooks.mjs@@if (name === 'cd' || name === 'pushd') {@@if (false) {@@S3E: guard refuses cd into the evidence dir then write (G2-1)@@Sprint 3 track E
+ME05@@hooks/contract-hooks.mjs@@|| /@anthropic-ai\/claude-code\b/.test(flat)) refuse(@@&& false) refuse(@@S3E: guard refuses a nested claude session from a subagent (G2-16)@@Sprint 3 track E
 ME06@@hooks/require-review-verdict.sh@@[ -n "$MENTIONS" ] || MENTIONS=$(grep -oE "$ID_ERE" "$TRANSCRIPT" 2>/dev/null | sort -u)@@MENTIONS=$(grep -oE "$ID_ERE" "$TRANSCRIPT" 2>/dev/null | sort -u)@@S3E: a reviewer of APP-002 is not let off by APP-001's verdict named elsewhere in its transcript (C2-25)@@Sprint 3 track E
 ME07@@scripts/spawn-prompt.mjs@@ && readFileSync(join(dir, f), 'utf8').trimStart().startsWith('DONE:')).sort().pop();@@ && true).sort().pop();@@S3E: the reviewer gets the DONE report for exactly this ID, never APP-001-analytics's or a DESIGN QA verdict (W2-4, C2-3)@@Sprint 3 track E
 ME08@@scripts/spawn-prompt.mjs@@const gate = /^Work ticket /.test(first) ? '' : (GATE_HEADERS[role] || []).find((h) => text.includes(h));@@const gate = '';@@S3E: a data-analyst ANALYTICS gate prompt is a gate spawn, not an un-contracted IC spawn@@Sprint 3 track E
-ME09@@hooks/contract-hooks.mjs@@ || roots.some((r) => abs.startsWith(join(r, EVIDENCE)))) refuse@@) refuse@@S3E: guard resolves a symlink into the evidence dir before comparing (G2-27)@@Sprint 3 track E
+ME09@@hooks/contract-hooks.mjs@@const real = /[*?[]/.test(abs) ? abs : realish(abs);@@const real = abs;@@S3E: guard resolves a symlink into the evidence dir before comparing (G2-27)@@Sprint 3 track E
 ME10@@hooks/contract-hooks.mjs@@|| lastAssistantText(payload.agent_transcript_path) ||@@||@@S3E: with no last_assistant_message the transcript's last assistant text is persisted and checked (C2-26)@@Sprint 3 track E
 ME11@@hooks/in-studio.sh@@[ "$_studio" = 1 ] || [ -z "$_cwd" ] || exit 0@@true@@S3E: outside a studio project the hook wrapper exits before starting node (C2-27)@@Sprint 3 track E
 ME12@@hooks/require-review-verdict.sh@@[ -e "$_m" ] && exit 0@@true@@S3E: the review hook blocks ONCE per agent_id, and lets stop_hook_active through@@Sprint 3 track E
-ME13@@scripts/spawn-prompt.mjs@@...fence(`git checkout -b feat/${row.id}-<short-slug> ${base}`)]@@...fence('')]@@S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)@@Sprint 3 track E
+ME13@@scripts/spawn-prompt.mjs@@...fence(`git checkout -b ${branchName} ${base}`)]@@...fence('')]@@S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)@@Sprint 3 track E
 ME14@@scripts/lib/contract.mjs@@export const ARTIFACT_CONTRACT = ['Worktree:', 'Branch:',@@export const ARTIFACT_CONTRACT = ['Worktree:',@@S3E: report-check refuses an artifact DONE with no Branch: (C2-8)@@Sprint 3 track E
 MF01@@scripts/lib/integration.mjs@@return o.length > want.length && o.startsWith(`${want}-`) && bare(n, o);@@return false;@@F1: ...with all three branches present, each ticket's tip is its own branch (no ambiguity, no theft)@@Sprint 3 track F1
 MF02@@scripts/lib/integration.mjs@@const bare = (name, id) => new RegExp(`(^|/)${esc(id)}${SLUG}$`).test(name);@@const bare = (name, id) => name.includes(id);@@F1: matchesTicket is whole-id and gives a branch to the LONGEST board id (APP-001 / APP-001-analytics / APP-0010)@@Sprint 3 track F1
@@ -317,6 +317,31 @@ MF23@@scripts/lib/events.mjs@@...(isQaDocs(state) ? ['merged'] : [])@@...[]@@F1:
 MF24@@scripts/board.mjs@@if (state && isQaDocs(state)) return '';@@if (false) return '';@@F1: ...and closes from merged without being on the integration branch (W2-6)@@Sprint 3 track F1
 MF25@@scripts/board.mjs@@const integration = integrationBase(gitAt(process.cwd()));@@const integration = 'main';@@F1: ...and the recorded base is develop's tip, not main's@@Sprint 3 track F1
 MF26@@scripts/verify-done.sh@@TOKFLAG=$(node "$EV" token-flag@@TOKFLAG=$(true "$EV" token-flag@@F1: verify-done prints the board command with the inline-mint --token under requireActorTokens (W2-10)@@Sprint 3 track F1
+ML01@@hooks/contract-hooks.mjs@@if (sp >= 0 && texts.slice(sp + 1).includes('compose'))@@if (false)@@spawn-prompt.mjs" compose --ticket APP-001 --role qa-engineer@@Sprint 4 track K2
+ML02@@hooks/contract-hooks.mjs@@if (dynamicMjs || dynamicScript || ((scriptIdx >= 0) && expansion)) {@@if (false) {@@K2: guard exit 2 for Bash: node scripts/b?ard.mjs@@Sprint 4 track K2
+ML03@@hooks/contract-hooks.mjs@@if (hits(w.v.pat, here, G.control))@@if (false)@@K2: guard exit 2 for Bash: cp x docs/team/risk-policy.json@@Sprint 4 track K2
+ML04@@hooks/contract-hooks.mjs@@if (a.v.text === '-t' || a.v.text === '--target-directory')@@if (false)@@K2: guard exit 2 for Bash: cp -t docs/team/evidence x.json@@Sprint 4 track K2
+ML05@@hooks/contract-hooks.mjs@@if (name === 'dd')@@if (false)@@K2: guard exit 2 for Bash: dd if=x.json@@Sprint 4 track K2
+ML06@@hooks/contract-hooks.mjs@@if (s === '' || s === '.') continue;@@if (s === '') continue;@@K2: guard exit 2 for Bash: echo {} > docs/team/./evidence@@Sprint 4 track K2
+ML07@@hooks/contract-hooks.mjs@@if (name === 'cd' || name === 'pushd') {@@if (false) {@@K2: guard exit 2 for Bash: cd docs/team && cp x.json evidence/@@Sprint 4 track K2
+ML08@@hooks/contract-hooks.mjs@@pat += s.replace(/\[[^\]/]*\]/g, ONE).replace(/\*/g, STAR).replace(/\?/g, ONE);@@pat += s.replace(/\*/g, STAR);@@K2: guard exit 2 for Bash: cp x.json docs/team/evidenc?/@@Sprint 4 track K2
+ML09@@hooks/contract-hooks.mjs@@    if (c === '"') {@@    if (false) {@@K2: guard exit 0 for Bash: node scripts/board.mjs move APP-001 blocked --by ios-developer --detail "the actor field is wrong"@@Sprint 4 track K2
+ML10@@hooks/contract-hooks.mjs@@if (c === '\n' && heredocs.length) {@@if (false) {@@K2: guard exit 0 for Bash: git commit -F - <<EOF@@Sprint 4 track K2
+ML11@@hooks/contract-hooks.mjs@@/\b(actor|evidence|events)\.mjs\b/@@/\b(actor|evidence)\.mjs\b/@@import('./scripts/lib/events.mjs')@@Sprint 4 track K2
+ML12@@hooks/contract-hooks.mjs@@if (['Grep', 'Glob'].includes(payload.tool_name) && input.path) {@@if (false) {@@K2: guard exit 2 for Glob: @@Sprint 4 track K2
+ML13@@hooks/contract-hooks.mjs@@Do not spawn ${role} yourself: stop and return BLOCKED@@run node spawn-prompt.mjs compose --root x@@K2: a subagent's refused spawn is told the orchestrator composes@@Sprint 4 track K2
+ML14@@hooks/contract-hooks.mjs@@if (hits(target, [], G.control))@@if (false)@@K2: guard exit 2 for Write: @@Sprint 4 track K2
+ML15@@hooks/contract-hooks.mjs@@if (writes && CONTROL.some((c) => body.includes(basename(c))))@@if (false)@@writeFileSync('docs/team/capabilities.json'@@Sprint 4 track K2
+ML16@@hooks/contract-hooks.mjs@@if (i > 0 && texts[i + 1]) queue.push(@@if (false) queue.push(@@K2: guard exit 2 for Bash: bash -c "cp x docs/team/evidence/"@@Sprint 4 track K2
+ML17@@hooks/contract-hooks.mjs@@if (/^(perl|ruby)$/.test(name) && flagged(@@if (false && flagged(@@K2: guard exit 2 for Bash: perl -pi -e@@Sprint 4 track K2
+ML18@@scripts/spawn-prompt.mjs@@const branchName = qa ? `qa/${row.id}`@@const branchName = qa ? `feat/${row.id}-<short-slug>`@@K2: QA composes on branch qa/@@Sprint 4 track K2
+ML19@@scripts/spawn-prompt.mjs@@if (role === 'qa-engineer' && !qa && row.owner !== 'qa-engineer') {@@if (false) {@@K2: qa-engineer composed on an app ticket@@Sprint 4 track K2
+ML20@@scripts/worktree-slot.mjs@@'release-auditor', 'red-team-agent'].includes(owner)) {@@'release-auditor', 'red-team-agent'].includes('')) {@@K2: worktree-slot refuses a gate role a slot@@Sprint 4 track K2
+ML21@@scripts/orchestrator.mjs@@actor mint --role tech-manager --ticket ${state.id}@@actor mint --role <role> --ticket ${state.id}@@K2: orchestrator explain mints for the orchestrator's own role only@@Sprint 4 track K2
+ML22@@scripts/orchestrator.mjs@@const why = reason ? ` [${reason.slice(0, 200)}]` : '';@@const why = '';@@K2: orchestrator round carries the failing step's own reason@@Sprint 4 track K2
+ML23@@scripts/project-profile.mjs@@missingBuild = why || 'package.json has no "build" script';@@missingBuild = 'package.json has no "build" script';@@K2: project-profile names the missing package.json@@Sprint 4 track K2
+ML24@@scripts/ship-gate.sh@@if [ "$1" = tech-manager ]; then@@if true; then@@F2: ship-gate's printed qa_passed command carries the agent's prompt token@@Sprint 3 track F2
+ML25@@scripts/drivers/web.sh@@drives a RUNNING app. Start it ${SERVE}@@drives a RUNNING app.@@K2: the web driver with no URL says how to start the app@@Sprint 4 track K2
 CATALOGUE
 }
 

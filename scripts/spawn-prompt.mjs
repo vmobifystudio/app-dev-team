@@ -265,8 +265,17 @@ function slotFor(ROOT, role, id) {
 }
 
 function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
-  const slot = slotFor(ROOT, role, row.id);
   const qa = role === 'qa-engineer' && /^QA-/i.test(row.id);
+  // Design A (C3W-1): QA is composed on the wave's docs-only QA- ticket in EVERY lane. A qa-engineer
+  // composed with the IC template on an app ticket it does not own cut a second `feat/APP-…` branch
+  // for that ticket, and every later branch lookup for it went ambiguous.
+  if (role === 'qa-engineer' && !qa && row.owner !== 'qa-engineer') {
+    die(2, `${row.id} is not a QA- ticket and qa-engineer does not own it. QA is composed on the wave's QA ticket, in every lane:\n` +
+      `  node "${BOARD}" add QA-<sprint>-w<n> --title "QA pass — wave <n>" --owner qa-engineer --by tech-manager\n` +
+      `  node "${resolve(HERE, 'spawn-prompt.mjs')}" compose --ticket QA-<sprint>-w<n> --role qa-engineer --tickets ${row.id}[,…]`);
+  }
+  const branchName = qa ? `qa/${row.id}` : `feat/${row.id}-<short-slug>`;
+  const slot = slotFor(ROOT, role, row.id);
   const [specFile, anchor] = String(row.spec || '').split('#');
   const excerpt = qa ? [] : specExcerpt(ROOT, [...new Set([PLATFORM_SPEC[role], specFile, 'docs/10-prd.md'].filter(Boolean))],
     [row.id, row.feature, anchor, ...(String(row.acceptance || '').match(/\b[A-Z]{1,6}-\d+(?:\.\d+)?\b/g) || [])]);
@@ -293,7 +302,7 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
   } else {
     start = base
       ? [`Base: \`${base}\` (the integration branch). Your FIRST action in your slot, before writing any file:`, '',
-        ...fence(`git checkout -b feat/${row.id}-<short-slug> ${base}`)]
+        ...fence(`git checkout -b ${branchName} ${base}`)]
       : ['Base: UNKNOWN — no integration branch resolved (scripts/integration-branch.sh). Return BLOCKED rather than guess one.'];
   }
 
@@ -320,7 +329,7 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
     '',
     ...start,
     '',
-    ...(qa ? qaWave(ROOT, rows) : [
+    ...(qa ? qaWave(ROOT, rows, row) : [
       'Read, in order: the impl spec your role file names, then whichever of `docs/12-flows.md`,',
       '`docs/13-design-tokens.md`, `docs/14-components.md`, `docs/52-analytics.md`, `docs/40-api.md`',
       'the ticket actually touches.',
@@ -333,7 +342,7 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
     '**Expected output contract.** Return exactly this block, with every field filled in — a',
     'pointer to a skill or a role file is not a substitute; this text, completed:',
     '',
-    ...fence(contractBlock(role, { ticket: row.id })),
+    ...fence(contractBlock(role, { ticket: row.id, ...(qa ? { branch: branchName } : {}) })),
     '',
     'If blocked, return this instead:',
     '',
@@ -348,7 +357,7 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
  * minted for the QA- ticket could never write `qa_passed` on APP-NNN (W2-1). QA records its verdicts
  * itself; the orchestrator only checks them.
  */
-function qaWave(ROOT, rows) {
+function qaWave(ROOT, rows, self) {
   const wanted = typeof flags.tickets === 'string' ? flags.tickets.split(',').map((s) => s.trim()).filter(Boolean) : null;
   const wave = wanted
     ? wanted.map((id) => rows[id.toUpperCase()] || die(2, `--tickets: ${id} is not on the board`))
@@ -360,22 +369,29 @@ function qaWave(ROOT, rows) {
     '(drive the P0 journey per `runtime-gate` where a driver exists), file defects in `docs/51-bugs.md`, and record',
     'each verdict YOURSELF with the commands below. After a `RUNTIME GATE: FAIL` no ticket gets `qa_passed`.',
     '',
-    ...wave.flatMap((r) => [
-      `### ${r.id} — ${r.title || '—'}`,
-      `Owner: ${r.owner || '—'} · Acceptance: ${r.acceptance || '—'}`,
-      `Evidence on record: ${latestEvidence(ROOT, r.id) || 'none — use docs/team/journey-result.json, or the post-merge verify-done record'}`,
-      tokens.has(r.id) ? `Token for ${r.id}: ${tokens.get(r.id)}` : null,
-      '',
-    ]),
-    'Record, per ticket (its own token — never another ticket\'s):',
+    // C3W-1 / design A: the exact commands per ticket, its ID and its own token spelled out — a
+    // `<ID>` template invited one token on every ticket, which the board refuses.
+    ...wave.flatMap((r) => {
+      const T = tokens.has(r.id) ? ` --token ${tokens.get(r.id)}` : '';
+      const ev = latestEvidence(ROOT, r.id);
+      return [
+        `### ${r.id} — ${r.title || '—'}`,
+        `Owner: ${r.owner || '—'} · Acceptance: ${r.acceptance || '—'}`,
+        `Evidence on record: ${ev || 'none — use docs/team/journey-result.json, or the post-merge verify-done record'}`,
+        tokens.has(r.id) ? `Token for ${r.id}: ${tokens.get(r.id)}` : null,
+        'Record its verdict with ONE of:',
+        ...fence([
+          `node "${BOARD}" move ${r.id} qa_passed --by qa-engineer${T} --evidence ${ev || '<docs/team/journey-result.json | a run on the merged tree>'}`,
+          `node "${BOARD}" move ${r.id} qa_failed --by qa-engineer${T} --detail "BUG-NNN"`,
+        ].join('\n')),
+        '',
+      ];
+    }),
+    'Each ticket\'s own token only — never another ticket\'s. If a command is refused for its token, stop and return',
+    'BLOCKED naming the ticket: the orchestrator re-spawns you with a freshly composed prompt (you never mint).',
     '',
-    ...fence([
-      `node "${BOARD}" move <ID> qa_passed --by qa-engineer${tokens.size ? ' --token "<Token for ID>"' : ''} \\`,
-      '  --evidence <docs/team/journey-result.json | that ticket\'s evidence on record, a run on the merged tree>',
-      `node "${BOARD}" move <ID> qa_failed --by qa-engineer${tokens.size ? ' --token "<Token for ID>"' : ''} --detail "BUG-NNN"`,
-    ].join('\n')),
-    '',
-    'Your own ticket is the QA pass itself: its branch holds the test-plan updates and bug entries (a docs-only branch).',
+    `Your own ticket is the QA pass itself: branch \`qa/${self.id}\` holds the test-plan updates, journey declarations and`,
+    'bug entries (docs only — no app code). The orchestrator merges it inline; it needs no review.',
   ];
 }
 
@@ -633,9 +649,10 @@ function cmdVerify() {
   process.stdout.write(
     `SPAWN PROMPT: CONTRACT NOT INLINED — missing ${missing.length} of ${contract.fields.length} field label(s): ${missing.join(' ')}\n\n` +
     '  This is the H5 failure: a prompt that POINTS AT the contract instead of containing it\n' +
-    '  produces an agent that returns none of it — measured, not assumed. Compose the prompt with:\n' +
+    '  produces an agent that returns none of it — measured, not assumed. The ORCHESTRATOR composes it with:\n' +
     `    node scripts/spawn-prompt.mjs compose --root <project> --ticket <ID> --role ${role}\n` +
-    '  and use its output as the spawn message verbatim, rather than a reference to team-protocol.\n'
+    '  and uses its output as the spawn message verbatim. Composing mints the agent\'s tokens, so a\n' +
+    '  subagent never composes: it returns BLOCKED and the orchestrator re-spawns.\n'
   );
   process.exit(1);
 }

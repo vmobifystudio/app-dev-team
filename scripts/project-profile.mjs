@@ -95,6 +95,7 @@ function cmdCheck() {
 
   let blocked = 0;
   let unevaluable = 0;
+  let missingBuild = '';
   process.stdout.write(`PROJECT PROFILE — ${p.platform || 'platform unstated'}\n\n`);
 
   for (const t of tools) {
@@ -128,9 +129,16 @@ function cmdCheck() {
   // With no build script there is no build output to gate or bind — UNPROVEN, not "nothing to build".
   if (/\bweb\b/.test(String(p.platform || ''))) {
     let scripts = null;
-    try { scripts = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).scripts || {}; } catch { /* no package.json */ }
+    let why = '';
+    try { scripts = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).scripts || {}; }
+    catch (e) { why = e.code === 'ENOENT' ? `no package.json at ${ROOT}` : `package.json does not parse (${e.message})`; }
     if (scripts?.build) process.stdout.write(`  PASS             package.json build script (${scripts.build})\n`);
-    else { process.stdout.write('  CANNOT EVALUATE  package.json has no "build" script — add the command that writes the deployable output (dist/)\n'); unevaluable += 1; }
+    else {
+      // C3W-11: say WHICH of the two it is, and that it is not a tool — the RESULT line used to
+      // count it as "declared tool(s) are absent", which sent the reader hunting a missing binary.
+      missingBuild = why || 'package.json has no "build" script';
+      process.stdout.write(`  CANNOT EVALUATE  ${missingBuild} — add the \`build\` script that writes the deployable output (e.g. "build": "vite build" → dist/), and commit package.json\n`);
+    }
   }
 
   const test = p.test || {};
@@ -141,11 +149,12 @@ function cmdCheck() {
     process.stdout.write(`\nRESULT: BLOCKED — ${blocked} tool(s) are the wrong version. This project will not build correctly here.\n`);
     process.exit(1);
   }
-  if (unevaluable) {
-    process.stdout.write(
-      `\nRESULT: CANNOT EVALUATE — ${unevaluable} declared tool(s) are absent, so the toolchain is UNPROVEN here.\n` +
-      '  This is NOT a pass. Install them, or run on a machine that has them.\n'
-    );
+  if (unevaluable || missingBuild) {
+    process.stdout.write(`\nRESULT: CANNOT EVALUATE — ${[
+      unevaluable ? `${unevaluable} declared tool(s) are absent, so the toolchain is UNPROVEN here` : '',
+      missingBuild ? `web build script missing: ${missingBuild}` : '',
+    ].filter(Boolean).join('; ')}.\n` +
+      `  This is NOT a pass. ${unevaluable ? 'Install the absent tools, or run on a machine that has them. ' : ''}${missingBuild ? 'Add package.json "scripts.build".' : ''}\n`);
     process.exit(2);
   }
   process.stdout.write('\nRESULT: CLEAR — every declared tool is present at its declared version.\n');

@@ -43,7 +43,10 @@ let journey;
 try { journey = JSON.parse(readFileSync(journeyPath, 'utf8')); } catch (e) { cannot(`journey is not JSON: ${e.message}`); }
 jid = String(journey.id || '');
 if (!jid) cannot('the journey declaration has no top-level id');
-if (!url) cannot('no app URL — start the app (npm start / a preview server) and pass --url or set STUDIO_WEB_URL');
+// C3W-3: the whole fix, not a hint — a served build, and where it listens.
+const SERVE = 'in a second shell, from the project root: `npm run build && npx vite preview --port 4173` (or `npm start` / ' +
+  'your preview server), then re-run with STUDIO_WEB_URL=http://localhost:4173 set (or --url http://localhost:4173)';
+if (!url) cannot(`no app URL — this driver drives a RUNNING app. Start it ${SERVE}`);
 
 let pw;
 try { pw = createRequire(join(resolve(root), 'package.json'))('playwright'); }
@@ -62,7 +65,7 @@ catch { cannot('Playwright is not installed in this project — run: npm i -D pl
       const failStep = (d) => { throw Object.assign(new Error(d), { step: n }); };
       const wait = async (id) => { try { await el(id).waitFor({ timeout: 5000 }); } catch { failStep(`step ${n}: no element "${id}" on the page`); } };
       switch (s.action) {
-        case 'launch': try { await page.goto(url); } catch (e) { cannot(`step ${n}: could not open ${url} (${e.message}) — is the app running?`); } break;
+        case 'launch': try { await page.goto(url); } catch (e) { cannot(`step ${n}: could not open ${url} (${String(e.message).split('\n')[0]}) — is the app running? Start it ${SERVE}`); } break;
         case 'tap': await wait(s.id); await el(s.id).click(); break;
         case 'enter': await wait(s.id); await el(s.id).fill(String(s.value)); break;
         case 'back': await page.goBack(); break;

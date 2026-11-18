@@ -40,9 +40,15 @@ RELEASES="$ROOT/docs/60-releases.md"
 HERE=$(cd "$(dirname "$0")" && pwd)
 # W2-10: a printed next-step board command carries the inline-mint --token when the project
 # requires tokens — a shell variable minted in one Bash call does not survive to the next.
+# C3W-8: only the orchestrator's OWN role (tech-manager) is printed with a mint. An agent role's token
+# comes in its composed prompt; printing a mint for it is the self-attestation tokens exist to stop.
 token_for() {  # <role> <ticket>
   grep -q '"requireActorTokens"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null || return 0
-  printf ' --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role %s --ticket %s)"' "$1" "$2"
+  if [ "$1" = tech-manager ]; then
+    printf ' --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role %s --ticket %s)"' "$1" "$2"
+  else
+    printf ' --token "<the %s token for %s from its composed prompt — none? re-spawn the agent with a freshly composed prompt>"' "$1" "$2"
+  fi
 }
 
 BLOCKERS=""

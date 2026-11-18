@@ -122,9 +122,15 @@ function preSpawn() {
 
   const verify = node('spawn-prompt.mjs', ['verify', '--role', role], { input: prompt });
   if (verify.status === 1) {
-    block(`BLOCKED — this ${role} spawn prompt does not carry its output contract.\n\n${verify.stdout}\n` +
-      `Compose it, then spawn with that output verbatim:\n` +
-      `  node "${join(HERE, 'spawn-prompt.mjs')}" compose --root "${root}" --ticket ${tickets[0]} --role ${role}`);
+    // Design D: composing MINTS the agent's tokens, so only the orchestrator (the main session, no
+    // agent_id) is told to run it. A subagent spawning a studio role is told to hand back instead.
+    block(`BLOCKED — this ${role} spawn prompt does not carry its output contract.\n\n` +
+      `${payload.agent_id ? verify.stdout.split('\n')[0] : verify.stdout}\n` +
+      (payload.agent_id
+        ? 'The orchestrator composes every spawn prompt (composing mints the agent\'s tokens); a subagent never\n' +
+          `does. Do not spawn ${role} yourself: stop and return BLOCKED naming the ${role} work ${tickets[0]} needs.`
+        : `The orchestrator (you) composes it, then spawns with that output verbatim:\n` +
+          `  node "${join(HERE, 'spawn-prompt.mjs')}" compose --root "${root}" --ticket ${tickets[0]} --role ${role}`));
   }
 
   // Only the ticket this prompt WORKS — "Work ticket X." is spawn-prompt's own first line. A
@@ -183,68 +189,337 @@ function realish(p) {
   try { return join(realpathSync(head), ...tail); } catch { return p; }
 }
 
+// ── A small shell reader (Sprint 4, C3G-2/11/12/17, FB2) ─────────────────────────────────────────
+// The guard used to match regexes over the command with every quote deleted, which both MISSED
+// (`cp -t`, `dd of=`, `docs//team`, `evidenc?`, `$D/studio`) and FALSE-BLOCKED (`--detail "the actor
+// field is wrong"`, a commit message saying "actor mint", `grep "actor-tokens.jsonl"`). It now splits
+// the command into simple commands of shell WORDS (quotes joined, so a quoted sentence is one word
+// and `"mint"` is the word mint), substitutes `NAME=value` assignments made earlier in the same
+// command, and resolves every path-like word against the cwd the command has `cd`-ed to. A glob char
+// in an unquoted word, or an expansion it cannot resolve, is a WILDCARD — `evidenc?`, `$D/studio`
+// and `~/.claude/proj*` match the guarded path they could expand to.
+const PLUGIN = resolve(HERE, '..');
+const STAR = '\u0001'; // unquoted * (one segment)
+const ONE = '\u0002';  // unquoted ? or [..] (one char)
+const ANY = '\u0003';  // an expansion this reader cannot resolve (any text, any depth)
+
+/** `[[word, …], …]` simple commands. A word is `{ parts: [{t:'u'|'q', s} | {t:'var', name} | {t:'sub', body}] }`; operators are `{ op }`. */
+function shellCommands(src) {
+  const cmds = [];
+  const heredocs = [];
+  let cur = [];
+  let word = null;
+  const part = (t, s) => { word ||= { parts: [] }; word.parts.push(t === 'var' ? { t, name: s } : t === 'sub' ? { t, body: s } : { t, s }); };
+  const endWord = () => { if (word) cur.push(word); word = null; };
+  const endCmd = () => { endWord(); if (cur.length) cmds.push(cur); cur = []; };
+  // $( … ) / ` … ` / ${ … } body, balanced well enough for a guard: returns [body, next index].
+  const balanced = (i, open, close) => {
+    let depth = 1; let j = i;
+    for (; j < src.length && depth; j++) { if (src[j] === '\\') { j++; continue; } if (src[j] === open && open !== close) depth++; else if (src[j] === close) depth--; }
+    return [src.slice(i, j - 1), j];
+  };
+  const dollar = (i) => { // src[i] === '$'
+    const n = src[i + 1];
+    if (n === '(') { const [b, j] = balanced(i + 2, '(', ')'); part('sub', b); return j; }
+    if (n === '{') { const [b, j] = balanced(i + 2, '{', '}'); const m = b.match(/^([A-Za-z_][A-Za-z0-9_]*)$/); if (m) part('var', m[1]); else part('sub', b); return j; }
+    const m = src.slice(i + 1).match(/^([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?$!-])/);
+    if (m) { part('var', m[1]); return i + 1 + m[1].length; }
+    part('u', '$'); return i + 1;
+  };
+  for (let i = 0; i < src.length;) {
+    const c = src[i];
+    if (c === '\\') { if (src[i + 1] === '\n') { i += 2; continue; } part('q', src[i + 1] || ''); i += 2; continue; }
+    if (c === "'") { const j = src.indexOf("'", i + 1); const e = j < 0 ? src.length : j; part('q', src.slice(i + 1, e)); i = e + 1; continue; }
+    if (c === '"') {
+      word ||= { parts: [] };
+      let j = i + 1; let buf = '';
+      while (j < src.length && src[j] !== '"') {
+        if (src[j] === '\\' && j + 1 < src.length) { buf += src[j + 1]; j += 2; continue; }
+        if (src[j] === '$' || src[j] === '`') {
+          if (buf) part('q', buf); buf = '';
+          if (src[j] === '`') { const [b, k] = balanced(j + 1, '`', '`'); part('sub', b); j = k; } else j = dollar(j);
+          continue;
+        }
+        buf += src[j]; j++;
+      }
+      if (buf || !word.parts.length) part('q', buf);
+      i = j + 1; continue;
+    }
+    if (c === '$') { i = dollar(i); continue; }
+    if (c === '`') { const [b, j] = balanced(i + 1, '`', '`'); part('sub', b); i = j; continue; }
+    if (c === '#' && !word) { const j = src.indexOf('\n', i); i = j < 0 ? src.length : j; continue; }
+    if (/[ \t]/.test(c)) { endWord(); i++; continue; }
+    if (c === '\n' && heredocs.length) { // skip each heredoc body: data, not commands
+      endCmd();
+      let pos = i + 1;
+      for (const d of heredocs.splice(0)) {
+        while (pos < src.length) {
+          const e = src.indexOf('\n', pos);
+          const line = src.slice(pos, e < 0 ? src.length : e);
+          pos = e < 0 ? src.length : e + 1;
+          if (line.replace(/^\t+/, '') === d) break;
+        }
+      }
+      i = pos; continue;
+    }
+    if (/[;&|\n()]/.test(c)) {
+      if (c === '&' && src[i + 1] === '>') { endWord(); cur.push({ op: '>' }); i += src[i + 2] === '>' ? 3 : 2; continue; }
+      endCmd(); i++; continue;
+    }
+    if (c === '>' || c === '<') {
+      // `2>` — a word of digits right before the operator is its fd, not a file.
+      if (word && word.parts.every((p) => p.t === 'u' && /^\d+$/.test(p.s))) word = null;
+      endWord();
+      let j = i + 1;
+      if (src[j] === '>' || src[j] === '|') j++;
+      if (src[j] === '&') { cur.push({ op: 'dup' }); i = j + 1; continue; } // `2>&1`, `>&2`: an fd, not a path
+      if (c === '<' && src[j] === '<') { // heredoc: the body is data, the delimiter is not a path
+        if (src[j + 1] === '<') { cur.push({ op: '<' }); i = j + 2; continue; } // here-string: one word of data
+        const m = src.slice(j + 1).match(/^-?\s*(['"]?)([A-Za-z0-9_.-]+)\1/);
+        if (m) { heredocs.push(m[2]); i = j + 1 + m[0].length; } else i = j + 1;
+        continue;
+      }
+      cur.push({ op: c === '>' ? '>' : '<' }); i = j; continue;
+    }
+    part('u', c); i++;
+  }
+  endCmd();
+  return cmds;
+}
+
+/** A word as `{ text, pat }`: text with known values substituted (unknown → ''), pat with wildcards. */
+function wordValue(w, vars) {
+  let text = ''; let pat = '';
+  w.parts.forEach((p, idx) => {
+    if (p.t === 'q') { text += p.s; pat += p.s; return; }
+    if (p.t === 'var') {
+      const v = Object.prototype.hasOwnProperty.call(vars, p.name) ? vars[p.name]
+        : p.name === 'CLAUDE_PLUGIN_ROOT' ? { text: PLUGIN, pat: PLUGIN } : null;
+      if (!v) { pat += ANY; return; }
+      text += v.text; pat += v.pat; return;
+    }
+    if (p.t === 'sub') { pat += ANY; return; }
+    let s = p.s;
+    if (idx === 0 && /^~(\/|$)/.test(s)) s = homedir() + s.slice(1);
+    text += s;
+    pat += s.replace(/\[[^\]/]*\]/g, ONE).replace(/\*/g, STAR).replace(/\?/g, ONE);
+  });
+  return { text, pat };
+}
+
+/** Pattern string → path segments, resolved against `cwd` (itself a segment list, possibly ANY-led). */
+function patSegs(pat, cwd) {
+  const raw = pat.startsWith('/') ? [] : pat.startsWith(ANY) ? [] : [...cwd];
+  const out = raw;
+  for (const s of pat.split('/')) {
+    if (s === '' || s === '.') continue;
+    if (s === '..') { if (out.length && out[out.length - 1] !== ANY) out.pop(); continue; }
+    out.push(s);
+  }
+  return out;
+}
+const segRe = (s) => new RegExp(`^${s.split('').map((ch) => (ch === STAR ? '[^/]*' : ch === ONE ? '[^/]' : ch === ANY ? '.*' : ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))).join('')}$`);
+
+/** Could the pattern segments `p` name guarded path `g` (segments) or something under it? */
+function segsHit(p, g, i = 0, j = 0) {
+  if (j === g.length) return true;
+  if (i === p.length) return false;
+  if (p[i] === ANY) { for (let k = j; k < g.length; k++) if (segsHit(p, g, i + 1, k)) return true; return false; }
+  return segRe(p[i]).test(g[j]) && segsHit(p, g, i + 1, j + 1);
+}
+const toSegs = (abs) => abs.split('/').filter(Boolean);
+const hits = (pat, cwd, guards) => { const p = patSegs(pat, cwd); return guards.some((g) => segsHit(p, toSegs(g))); };
+
+const WRAPPERS = new Set(['env', 'exec', 'nohup', 'command', 'time', 'sudo', 'nice', 'xargs', 'builtin']);
+const INTERPRETERS = /^(node|deno|bun|python[0-9.]*|perl|ruby|php|osascript)$/;
+
+/** The words of one simple command a write lands on (redirect targets and each writing tool's destination). */
+function writeTargets(words) {
+  const out = [];
+  const args = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w.op) { if ((w.op === '>') && words[i + 1] && !words[i + 1].op) out.push(words[++i]); else if (w.op !== 'dup' && words[i + 1] && !words[i + 1].op) i++; continue; }
+    args.push(w);
+  }
+  let k = 0;
+  while (k < args.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(args[k].v.text) || WRAPPERS.has(basename(args[k].v.text)))) k++;
+  const name = basename(args[k]?.v.text || '');
+  const rest = args.slice(k + 1);
+  const plain = rest.filter((a) => !a.v.text.startsWith('-'));
+  const flagged = (re) => rest.some((a) => re.test(a.v.text));
+  if (name === 'tee' || ['rm', 'touch', 'truncate', 'mkdir', 'rmdir', 'unlink', 'chmod', 'chown', 'shred', 'ln'].includes(name)) out.push(...plain);
+  if (['cp', 'mv', 'install', 'ln', 'rsync', 'scp'].includes(name)) {
+    if (plain.length) out.push(plain[plain.length - 1]);
+    rest.forEach((a, i) => {
+      if (a.v.text === '-t' || a.v.text === '--target-directory') { if (rest[i + 1]) out.push(rest[i + 1]); }
+      else if (/^(-t|--target-directory=)./.test(a.v.text)) out.push({ v: { text: a.v.text.replace(/^(-t|--target-directory=)/, ''), pat: a.v.pat.replace(/^(-t|--target-directory=)/, '') } });
+    });
+  }
+  if (name === 'dd') rest.filter((a) => a.v.text.startsWith('of=')).forEach((a) => out.push({ v: { text: a.v.text.slice(3), pat: a.v.pat.slice(3) } }));
+  if (name === 'sed' && flagged(/^(-i|--in-place|-[a-zA-Z]*i)/)) out.push(...plain);
+  if (/^(perl|ruby)$/.test(name) && flagged(/^-[a-zA-Z]*i/)) out.push(...plain);
+  if ((name === 'curl' || name === 'wget') ) rest.forEach((a, i) => { if (/^(-o|-O|--output|--output-document)$/.test(a.v.text) && rest[i + 1]) out.push(rest[i + 1]); });
+  return out;
+}
+
 /**
  * guard-gate-writes (PreToolUse on Bash, the file-writing tools, and Read|Grep|Glob). A SUBAGENT (the
  * payload carries `agent_id`) may not: mint, revoke or list actor tokens (any `board.mjs actor`
- * subcommand, however quoted or computed); load actor.mjs / evidence.mjs into its own program
- * (`node -e`, `--input-type`, a heredoc); touch the token registry; write INTO the gate evidence dir
- * by hand (redirect, tee, cp/mv/ln/install target, rm/touch/sed -i, or a `cd` there followed by a
- * write); start a nested `claude` session (which would arrive with no agent_id and pass every check
- * here — G2-16); or read Claude Code's own transcripts under ~/.claude/projects, where minted tokens
- * sit in the orchestrator's history (G2-15). Write/Edit paths are compared after resolving symlinks
- * (G2-27). The main session (no `agent_id`) is the orchestrator and is not restricted. Scripts the
- * agent runs (verify-done.sh, journey-gate) still write evidence themselves — only hand-written
- * paths are refused; READING evidence, and a `2>&1` next to an evidence path, are fine (C2-4).
+ * subcommand); compose a spawn prompt (`spawn-prompt.mjs compose` MINTS — design D: the orchestrator
+ * composes, a subagent never does); run board.mjs / spawn-prompt.mjs / a `*.mjs` whose name or
+ * subcommand is built at runtime (`$(…)`, backticks, `$VAR`, a glob — C3G-2); load actor.mjs /
+ * evidence.mjs / events.mjs into its own program; touch the token registry or the board anchor under
+ * `<git dir>/studio/`; write INTO the gate evidence dir, or write a CONTROL FILE in the main tree
+ * (`docs/team/project-profile.json`, `risk-policy.json`, `capabilities.json`, `.studio-policy.json` —
+ * C3G-3: a subagent that rewrites the profile's test command fakes `test.full`); start a nested
+ * `claude` session (G2-16); or read Claude Code's transcripts under ~/.claude/projects (G2-15).
+ * Paths are compared after `cd`, `NAME=value`, `.`/`..`/`//` and symlink resolution, with globs and
+ * unresolvable expansions as wildcards. The main session (no `agent_id`) is the orchestrator and is
+ * not restricted. Scripts the agent runs (verify-done.sh, journey-gate) still write evidence
+ * themselves — only hand-written paths are refused; READING evidence and control files is fine, and
+ * so is any sentence that merely MENTIONS these words (a quoted `--detail`, a commit message, a grep).
  *
- * THE BOUND, STATED: this is a text match over a shell command, not a sandbox. A subagent that
- * builds a path or a module name at runtime inside a program this hook cannot see into (python,
- * a script file it wrote, base64) is not stopped here; it is stopped, if at all, by the mint side
- * (actor.mjs) and by the board re-deriving evidence from git. This stops the confused and the
- * literal, and makes the hostile leave a visible trail in its own transcript.
+ * THE BOUND, STATED: this is a reading of a shell command, not a sandbox. It cannot see into a
+ * program the subagent wrote to a file, a value computed by a command substitution whose output it
+ * then uses as a path (`D=$(…); cp x "$D"` with nothing else naming the target), python/base64
+ * indirection, or `find -exec`/`xargs` composing the path. Nor can anything here tell a subagent from
+ * the orchestrator by ENVIRONMENT: Claude Code sets the same AI_AGENT / CLAUDE_CODE_CHILD_SESSION in
+ * the main session's Bash and in a subagent's (checked 2026-11-18), so the hook payload's `agent_id`
+ * is the only marker — which is why compose refusal lives here and not in spawn-prompt.mjs. What
+ * this misses is stopped, if at all, by the mint side (actor.mjs), the board re-deriving evidence
+ * from git, and the frozen test commands (design C). It stops the confused and the literal, and
+ * makes the hostile leave a visible trail in its own transcript.
  */
 function guardGateWrites() {
   if (!payload.agent_id) allow();
   const root = projectRoot(payload.cwd);
   if (!root) allow();
   const input = payload.tool_input || {};
+  const cwd = realish(resolve(payload.cwd || process.cwd()));
   const TOKENS = 'docs/team/actor-tokens.jsonl';
-  const EVIDENCE = 'docs/team/evidence/';
+  const CONTROL = ['docs/team/project-profile.json', 'docs/team/risk-policy.json', 'docs/team/capabilities.json', '.studio-policy.json'];
+  const roots = [...new Set([root, cwd].map((r) => realish(resolve(r))))];
+  let common = '';
+  try { common = realish(execFileSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()); } catch { common = join(realish(root), '.git'); }
+  const G = {
+    transcripts: [join(realish(homedir()), '.claude', 'projects'), join(homedir(), '.claude', 'projects')],
+    tokens: roots.map((r) => join(r, TOKENS)),
+    anchor: [join(common, 'studio'), ...roots.map((r) => join(r, '.git', 'studio'))],
+    evidence: roots.map((r) => join(r, 'docs', 'team', 'evidence')),
+    control: CONTROL.map((c) => join(realish(root), c)),
+  };
   const refuse = (what) => block(`guard-gate-writes: a subagent may not ${what}.\n` +
-    '  Actor tokens are minted by the orchestrator (spawn-prompt.mjs compose puts yours in your prompt), and\n' +
-    '  gate evidence is written by the scripts that produce it (verify-done.sh, journey-gate, runtime-gate).\n' +
-    '  Use the token and the evidence path you were given; if you lack one, return BLOCKED and say so.');
+    '  The orchestrator composes every spawn prompt and mints every token in it; gate evidence is written by\n' +
+    '  the scripts that produce it (verify-done.sh, journey-gate, runtime-gate); control files change on the\n' +
+    '  orchestrator\'s say. Use the token and paths your prompt gave you, spelled literally. If you lack one,\n' +
+    '  stop and return BLOCKED naming what is missing — the orchestrator re-spawns you with a fresh prompt.');
+
   if (payload.tool_name === 'Bash') {
-    // Quotes and backslashes removed first: `actor "mint"`, `a\ctor mint` and `'mint'` are `actor mint`.
-    const cmd = String(input.command || '').replace(/["'\\]/g, '');
-    if (/\bactor\s+(mint|revoke)\b/.test(cmd)) refuse('mint or revoke actor tokens');
-    if (/board\.mjs\b[^;&|\n]*\sactor\s+(?!(mint|revoke)\b)/.test(cmd)) refuse('run a `board.mjs actor` subcommand (the subcommand may be in a variable)');
-    if (/\b(mintActorToken|mintToken|revokeActorToken|writeTestEvidence|writeEvidenceLog)\b/.test(cmd)
-      || (/\b(node|deno|bun)\b/.test(cmd) && /\b(actor|evidence)\.mjs\b/.test(cmd))) refuse('load the actor or evidence library into a program of its own');
-    if (cmd.includes(TOKENS) || cmd.includes('actor-tokens.jsonl')) refuse('read or write the actor token registry');
-    if (/(^|[;&|(`\n]|\$\()\s*(?:(?:env|exec|nohup|command|xargs|time|sudo)\s+)*(?:\S*\/)?(claude|claude-code)(\s|$)/.test(cmd)
-      || /@anthropic-ai\/claude-code\b/.test(cmd)) refuse('start a nested `claude` session (it would carry no agent_id past these checks)');
-    if (/\.claude\/projects\b/.test(cmd)) refuse('read Claude Code session transcripts under ~/.claude/projects');
-    if (/\.git\/studio\b/.test(cmd)) refuse('touch the board anchor under .git/studio/');
-    const ev = /\S*docs\/team\/evidence\b\S*/;
-    const into = new RegExp(`(>>?|\\btee\\s+(?:-a\\s+)?)\\s*${ev.source}`);
-    const dest = new RegExp(`\\b(cp|mv|ln|install|rsync)\\b[^;&|\\n]*\\s${ev.source}\\s*($|[;&|\\n])`);
-    const touch = new RegExp(`\\b(rm|touch|truncate|sed\\s+-i\\S*|writeFile\\S*)\\b[^;&|\\n]*${ev.source}`);
-    const cdThere = /\bcd\s+\S*docs\/team\/evidence\b[\s\S]*(>|\btee\b|\bcp\b|\bmv\b|\brm\b|\btouch\b|\bln\b|\bsed\s+-i)/;
-    const viaVar = cmd.includes('docs/team/evidence') && /(^|[^0-9&])>>?\s*\$/.test(cmd);
-    if (into.test(cmd) || dest.test(cmd) || touch.test(cmd) || cdThere.test(cmd) || viaVar) refuse('write gate evidence by hand');
+    const src = String(input.command || '');
+    // Text checks that need no parse: a nested claude, or library entry points named outright.
+    const flat = src.replace(/["'\\]/g, '');
+    if (/(^|[;&|(`\n]|\$\()\s*(?:(?:env|exec|nohup|command|xargs|time|sudo)\s+)*(?:\S*\/)?(claude|claude-code)(\s|$)/.test(flat)
+      || /@anthropic-ai\/claude-code\b/.test(flat)) refuse('start a nested `claude` session (it would carry no agent_id past these checks)');
+    if (/\b(mintActorToken|mintToken|revokeActorToken|writeTestEvidence|writeEvidenceLog|writeAnchor)\b/.test(flat)
+      || (/\b(node|deno|bun)\b/.test(flat) && /\b(actor|evidence|events)\.mjs\b/.test(flat))) refuse('load the actor, evidence or events library into a program of its own');
+    if (/\.claude\/projects\b/.test(flat)) refuse('read Claude Code session transcripts under ~/.claude/projects');
+    if (/\.git\/+studio\b/.test(flat)) refuse('touch the board anchor under .git/studio/');
+
+    const vars = {};
+    let here = toSegs(cwd);
+    const expansion = /\$\(|`|\$\{?(?!CLAUDE_PLUGIN_ROOT\b)[A-Za-z_]/.test(src);
+    const queue = shellCommands(src);
+    while (queue.length) {
+      const raw = queue.shift();
+      const words = raw.map((w) => (w.op ? w : { ...w, v: wordValue(w, vars) }));
+      const args = words.filter((w) => !w.op);
+      // Assignments: `NAME=value` words before the command (or alone) bind for the rest of the line.
+      let k = 0;
+      for (; k < args.length; k++) {
+        const m = args[k].v.text.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+        if (!m || args[k].parts[0]?.t !== 'u') break;
+        const cut = m[0].length;
+        vars[m[1]] = { text: args[k].v.text.slice(cut), pat: args[k].v.pat.slice(cut) };
+      }
+      const cmdWords = args.slice(k);
+      if (!cmdWords.length) continue;
+      const texts = cmdWords.map((w) => w.v.text);
+      const name = basename(texts[0]);
+      // `sh -c "…"`, `bash -c`, `eval …` — read the inner command too.
+      if (/^(sh|bash|zsh|dash|ksh)$/.test(name)) { const i = texts.indexOf('-c'); if (i > 0 && texts[i + 1]) queue.push(...shellCommands(texts[i + 1])); }
+      if (name === 'eval') queue.push(...shellCommands(texts.slice(1).join(' ')));
+      if (name === 'cd' || name === 'pushd') {
+        const t = cmdWords[1];
+        if (!t) here = toSegs(homedir());
+        else if (t.v.text === '-') here = [ANY];
+        else here = patSegs(t.v.pat.includes(ANY) || /[\u0001\u0002]/.test(t.v.pat) ? t.v.pat : t.v.text, here);
+        continue;
+      }
+
+      const scriptIdx = texts.findIndex((t) => /(^|\/)(board|spawn-prompt)\.mjs$/.test(t));
+      const runsBoard = texts.some((t) => /(^|\/)board\.mjs$/.test(t));
+      const actorCmd = (runsBoard && texts.slice(texts.findIndex((t) => /(^|\/)board\.mjs$/.test(t)) + 1).includes('actor'))
+        || texts.some((t, i) => t === 'actor' && /^(mint|revoke)$/.test(texts[i + 1] || ''));
+      if (actorCmd) refuse('mint, revoke or list actor tokens (any `board.mjs actor` subcommand)');
+      const sp = texts.findIndex((t) => /(^|\/)spawn-prompt\.mjs$/.test(t));
+      if (sp >= 0 && texts.slice(sp + 1).includes('compose')) refuse('run `spawn-prompt.mjs compose` — composing a prompt MINTS its tokens; the orchestrator composes');
+      // C3G-2: a script name or subcommand built at runtime. A `*.mjs` word with a glob or an
+      // unresolved expansion in it, an interpreter whose script is one, or board.mjs / spawn-prompt.mjs
+      // on a line that expands anything other than ${CLAUDE_PLUGIN_ROOT}.
+      const dynamicMjs = cmdWords.some((w) => /\.m?js$/.test(w.v.text) && /[\u0001\u0002\u0003]/.test(w.v.pat));
+      const interp = INTERPRETERS.test(name) ? cmdWords.slice(1).find((w) => !w.v.text.startsWith('-')) : null;
+      const dynamicScript = interp && /^(node|deno|bun)$/.test(name) && /[\u0001\u0002\u0003]/.test(interp.v.pat);
+      if (dynamicMjs || dynamicScript || ((scriptIdx >= 0) && expansion)) {
+        refuse('run board.mjs, spawn-prompt.mjs or a plugin script whose name or arguments are built at runtime ($(…), backticks, $VAR, a glob). Spell the command literally, with only ${CLAUDE_PLUGIN_ROOT} expanded');
+      }
+
+      // Paths: any word naming the registry, the anchor or the transcripts; any WRITE into evidence or a control file.
+      for (const w of cmdWords) {
+        const { pat } = w.v;
+        if (hits(pat, here, G.transcripts)) refuse('read Claude Code session transcripts under ~/.claude/projects');
+        if (hits(pat, here, G.anchor)) refuse('touch the board anchor under <git dir>/studio/');
+        if (hits(pat, here, G.tokens)) refuse('read or write the actor token registry');
+      }
+      for (const w of writeTargets(words)) {
+        if (hits(w.v.pat, here, G.evidence)) refuse('write gate evidence by hand');
+        if (hits(w.v.pat, here, G.control)) refuse(`write a control file in the main tree (${CONTROL.join(', ')})`);
+      }
+      // A program written inline (`node -e`, a heredoc into python) that names a guarded file and writes.
+      if (INTERPRETERS.test(name)) {
+        const body = src.replace(/\/+(\.\/)*/g, '/');
+        const writes = /\b(writeFile|appendFile|createWriteStream|copyFile|rename|rmSync|unlink|truncate|write_text|write_bytes|shutil|open\s*\([^)]*['"][wa+])/.test(body);
+        if (writes && /team\/evidence\b/.test(body)) refuse('write gate evidence by hand');
+        if (writes && CONTROL.some((c) => body.includes(basename(c)))) refuse(`write a control file in the main tree (${CONTROL.join(', ')})`);
+        if (body.includes('actor-tokens.jsonl')) refuse('read or write the actor token registry');
+      }
+    }
     allow();
   }
-  const raw = String(input.file_path || input.notebook_path || input.path || '').replace(/\\/g, '/');
-  if (!raw) allow();
-  const abs = realish(isAbsolute(raw) ? raw : resolve(payload.cwd || process.cwd(), raw));
-  if (abs.startsWith(join(realish(homedir()), '.claude', 'projects') + '/') || raw.includes('/.claude/projects/')) {
-    refuse('read Claude Code session transcripts under ~/.claude/projects');
+
+  // Write/Edit/Read/Grep/Glob: the path (and, for Glob/Grep, path + pattern) as a glob over guarded paths.
+  const base = String(input.path || '') || cwd;
+  const candidates = [input.file_path, input.notebook_path, input.path,
+    input.pattern && payload.tool_name === 'Glob' ? join(base, String(input.pattern)) : '',
+    input.glob ? join(base, String(input.glob)) : ''].filter(Boolean).map((p) => String(p).replace(/\\/g, '/'));
+  if (!candidates.length) allow();
+  const asPat = (p) => {
+    const abs = p.startsWith('~') ? homedir() + p.slice(1) : isAbsolute(p) ? p : resolve(cwd, p);
+    const real = /[*?[]/.test(abs) ? abs : realish(abs);
+    return real.replace(/\[[^\]/]*\]/g, ONE).replace(/\*/g, STAR).replace(/\?/g, ONE);
+  };
+  for (const c of candidates) if (hits(asPat(c), [], G.transcripts)) refuse('read Claude Code session transcripts under ~/.claude/projects');
+  // A recursive search FROM an ancestor (`Grep path: ~/.claude`) walks into the transcripts too.
+  if (['Grep', 'Glob'].includes(payload.tool_name) && input.path) {
+    const dir = realish(resolve(cwd, String(input.path).replace(/^~/, homedir())));
+    if (G.transcripts.some((t) => t.startsWith(`${dir.replace(/\/$/, '')}/`))) refuse('search a directory that holds Claude Code session transcripts (~/.claude/projects)');
   }
   if (!['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(payload.tool_name)) allow();
-  if (/\/\.git\/studio\//.test(abs) || raw.includes('.git/studio/')) refuse('write the board anchor under .git/studio/');
-  const roots = [...new Set([root, payload.cwd || root].map((r) => realish(resolve(r))))];
-  if (raw.endsWith(TOKENS) || roots.some((r) => abs === join(r, TOKENS))) refuse('write the actor token registry');
-  if (raw.includes(`/${EVIDENCE}`) || raw.startsWith(EVIDENCE) || roots.some((r) => abs.startsWith(join(r, EVIDENCE)))) refuse('write gate evidence by hand');
+  const target = asPat(candidates[0]);
+  if (hits(target, [], G.anchor) || candidates[0].includes('.git/studio/')) refuse('write the board anchor under .git/studio/');
+  if (hits(target, [], G.tokens) || candidates[0].endsWith(TOKENS)) refuse('write the actor token registry');
+  if (hits(target, [], G.evidence)) refuse('write gate evidence by hand');
+  if (hits(target, [], G.control)) refuse(`write a control file in the main tree (${CONTROL.join(', ')})`);
   allow();
 }
 
