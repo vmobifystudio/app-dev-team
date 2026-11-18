@@ -128,7 +128,7 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    - **The register — every bug and every audit finding, with a status that is never blank.**
 
      ```bash
-     node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . import-bugs --by qa-engineer
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . import-bugs --by tech-manager
      node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . check
      ```
 
