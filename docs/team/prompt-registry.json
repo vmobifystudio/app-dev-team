@@ -100,13 +100,13 @@
     },
     {
       "id": "devops-engineer",
-      "version": "1.0.8",
+      "version": "1.0.10",
       "owner": "devops-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.7",
-      "content_hash": "5acbaa306153656d115b2dff97f324c3e39bdd0e9378773eb7dc605fdae73d0f"
+      "rollback_version": "1.0.9",
+      "content_hash": "87cd839dc1c48855684b984f8ca3275d5fbae10813aff7f5ed49f3c334957a64"
     },
     {
       "id": "ios-developer",

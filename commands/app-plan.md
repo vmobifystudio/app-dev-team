@@ -76,10 +76,10 @@ Focus (optional): $ARGUMENTS
 
    **`docs/team/project-profile.json` is scaffolded UNSTATED and nothing else fills it**, so
    `orchestrator round` returns CANNOT EVALUATE ("toolchain UNPROVEN") on round 1 of every new
-   project. Spawn `devops-engineer` to fill `platform`, `toolchain` (one `{tool, args, expect}` per
+   project. Spawn `devops-engineer` to work out `platform`, `toolchain` (one `{tool, args, expect}` per
    tool pinned in `docs/20-architecture.md` / `${CLAUDE_PLUGIN_ROOT}/knowledge/stack-defaults.md`) and `test.fast` /
-   `test.full` (until `test.fast` is declared no code ticket can reach `verified`), then confirm it
-   holds on this machine. **The test commands freeze at the first gate event**: the board snapshots
+   `test.full` (until `test.fast` is declared no code ticket can reach `verified`); it returns the JSON
+   and **you** write the file (the guard refuses a subagent writing it), then confirm it holds. **The test commands freeze at the first gate event**: the board snapshots
    `test.fast`/`test.full` and the profile's sha onto it, and every later `verified` must have run
    the frozen command. Changing them afterwards is an orchestrator decision, re-frozen with
    `board.mjs move <ID> corrected --by tech-manager --test-profile` plus the inline tech-manager

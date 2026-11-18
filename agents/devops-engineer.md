@@ -50,9 +50,10 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
    These are the only controls in the studio an agent cannot switch off, which is why they are
    written down separately from everything the plugin enforces internally.
 
-0b. **`docs/team/project-profile.json`** — `/app-plan` step 4b scaffolds it UNSTATED; you fill
-   `platform`, `toolchain` (one `{tool, args, expect}` per pinned tool) and `test.fast`/`test.full`,
-   then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check --root .`. Until it
+0b. **`docs/team/project-profile.json`** — `/app-plan` step 4b scaffolds it UNSTATED; you work out
+   `platform`, `toolchain` (one `{tool, args, expect}` per pinned tool) and `test.fast`/`test.full`
+   and **return the JSON in your report** — a subagent may not write this control file in the main
+   tree (the guard refuses it); the orchestrator writes it. Check your draft in your own slot first (`node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check --root <your slot>`). Until it
    passes, `orchestrator round` is CANNOT EVALUATE and no round can start. A tool missing on this
    machine is a blocker you report, never a version you edit to make the check pass. **Get the test
    commands right before the first gate**: the board freezes them (and the profile's sha) on the
