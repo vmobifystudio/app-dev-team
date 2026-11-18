@@ -4298,9 +4298,14 @@ grep -q 'green|failing|cannot-run) ;;' "$HERE/verify-done.sh" \
   && ok "...and verify-done treats any other classifier output as CANNOT EVALUATE, never green" \
   || bad "...and verify-done treats any other classifier output as CANNOT EVALUATE, never green"
 vd_zero() {  # <label> <test command>
+  # Declared first (FB3): an UNDECLARED command is CANNOT EVALUATE regardless, which made every
+  # assertion here pass with the zero-test classifier broken (M95 survived). The reason must be
+  # the classifier's own — a zero run, or no count — not "undeclared".
+  vdg_declare "$2"
   ( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "$2" ) >"$TMP/vdz.txt" 2>/dev/null
   RC=$?
-  [ "$RC" = 2 ] && head -1 "$TMP/vdz.txt" | grep -q "CANNOT EVALUATE" && ok "$1" || bad "$1" "exit $RC: $(head -3 "$TMP/vdz.txt")"
+  [ "$RC" = 2 ] && head -1 "$TMP/vdz.txt" | grep -q "CANNOT EVALUATE" \
+    && grep -qE "ZERO tests|a keyword is not a test count" "$TMP/vdz.txt" && ok "$1" || bad "$1" "exit $RC: $(head -3 "$TMP/vdz.txt")"
 }
 vd_zero "verify-done: 'Executed 0 tests' is never green (G-F5)" "echo 'Executed 0 tests, with 0 failures (0 unexpected) in 0.000 seconds'"
 vd_zero "verify-done: TAP '# tests 0' is never green (G-F5)" "printf '# tests 0\n# pass 0\n# fail 0\n'"
@@ -4310,7 +4315,7 @@ vd_zero "verify-done: pytest 'no tests ran' is never green (G-F5)" "echo '=== no
 vd_zero "verify-done: 'No tests found' is never green (G-F5)" "echo 'No tests found, exiting with code 0'"
 vd_zero "verify-done: a bare keyword ('test case') on exit 0 is never green (G-F5)" "echo 'test case'"
 assert_has "$TMP/vdz.txt" "a keyword is not a test count" "...and says why: a keyword is not a test count"
-( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "printf 'Tests:       0 total\n'" ) >"$TMP/vdz2.txt" 2>/dev/null
+vdg_declare "printf 'Tests:       0 total\n'"; ( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "printf 'Tests:       0 total\n'" ) >"$TMP/vdz2.txt" 2>/dev/null
 assert_has "$TMP/vdz2.txt" "ZERO tests" "...and a zero-test run is named as one, not as a missing toolchain"
 # The failing direction may still rest on a keyword: calling a broken run broken is the safe side.
 ( cd "$VDG" && sh "$HERE/verify-done.sh" feat/X main "printf 'Tests:       1 failed, 2 passed, 3 total\n'; exit 1" ) >/dev/null 2>&1
