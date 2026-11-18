@@ -153,7 +153,7 @@ Focus (optional): $ARGUMENTS
             Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
             settings.gradle settings.gradle.kts */build.gradle */build.gradle.kts gradle gradlew; do
      [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
-   done'   # sh, not zsh: zsh aborts the loop on an unmatched */ glob
+   done; true'   # sh, not zsh: zsh aborts on an unmatched */ glob; `true`: an absent last path is not a failure
    git diff --cached --name-only    # confirm only those landed
    git commit -m "docs: sprint plan and specs from /app-plan"
    git status --short               # anything left is a file nobody committed: commit it or say why

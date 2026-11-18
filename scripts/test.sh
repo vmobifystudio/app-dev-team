@@ -11771,6 +11771,17 @@ for Q1BAD in 'WAIVED: journey gate — founder (Q) — no browser on this machin
     || bad "Q1: an unversioned / stale-version / unsigned journey waiver still blocks: '$Q1BAD' (C5W-1)" "got $(q1_journey_state)"
 done
 ( cd "$Q1W" && git checkout -q docs/60-releases.md )
+# ·· C5W-4 / C5W-14: the loop's own bookkeeping never makes the tree DIRTY; the commit loops exit 0.
+printf 'x\n' > "$Q1W/docs/32-board-view.md"; printf '{}\n' > "$Q1W/docs/90-register.jsonl"; printf '# r\n' > "$Q1W/docs/90-register.md"
+printf '# m\n' > "$Q1W/docs/team/messages.md"
+[ "$(node --input-type=module -e "import { treeDirty } from '$HERE/lib/readiness.mjs'; process.stdout.write(String(treeDirty('$Q1W')))")" = false ] \
+  && ok "Q1: board view, register and rendered channel are operational — not DIRTY (C5W-4)" \
+  || bad "Q1: board view, register and rendered channel are operational — not DIRTY (C5W-4)" "$(cd "$Q1W" && git status --short)"
+Q1L=$(sed -n "/^   sh -c 'for f in \.gitignore CLAUDE\.md/,/done; true'/p" "$HERE/../commands/app-init.md" | sed -e 's/^   //' -e 's/   #.*$//')
+( cd "$Q1W" && sh -c "$(printf '%s' "$Q1L" | sed -e "s/^sh -c '//" -e "s/'\$//")" ) >/dev/null 2>&1 \
+  && grep -q "done; true'" "$HERE/../commands/app-plan.md" \
+  && ok "Q1: the app-init / app-plan commit loops exit 0 when the last listed path is absent (C5W-14)" \
+  || bad "Q1: the app-init / app-plan commit loops exit 0 when the last listed path is absent (C5W-14)" "$Q1L"
 
 # --- Sprint 5 track P2: the guard reads what RUNS, guards what is written, and passes honest commands ---
 # C4G-H1 (text fed to a bare shell), H2 (protected files vs dir writes / git / patch / tar / find),

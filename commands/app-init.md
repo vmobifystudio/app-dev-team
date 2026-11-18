@@ -88,7 +88,8 @@ You are starting a fresh app project. The user's one-liner (if any) is:
             docs/team/runs.jsonl docs/team/runtime-result.json docs/team/journey-result.json \
             docs/team/actors.json docs/team/actor-tokens.jsonl docs/team/reports/ \
             docs/53-reviews/ docs/54-evidence/ docs/33-rounds.jsonl docs/team/evidence/ \
-            docs/team/worktree-slots.json docs/team/ship-gate-verdict.json; do
+            docs/team/worktree-slots.json docs/team/ship-gate-verdict.json \
+            docs/32-board-view.md docs/team/messages.md; do
      grep -qxF "$p" .gitignore || printf '%s\n' "$p" >> .gitignore
    done
    ```
@@ -99,7 +100,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    review verdicts (`docs/53-reviews/`) and evidence records stay uncommitted in the main checkout,
    where the board and the gates read them. The rest of that file (`docs/daily/`, the channel,
    `schedule.json`, `memory.jsonl`, `incidents.jsonl`, `release-candidates.jsonl`,
-   `audit-anchor.json`) is tracked on purpose: dirty checks skip it, history keeps it. The
+   `audit-anchor.json`, the register `docs/90-register.*`) is tracked on purpose: dirty checks skip it, history keeps it. The
    board log and its rendering live in the main checkout only — a
    `git checkout` must not roll the board back, and ICs get their ticket through the spawn prompt,
    not from the board file. `docs/team/messages.jsonl` and the dispatch manifests stay
@@ -175,7 +176,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
             Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
             settings.gradle settings.gradle.kts */build.gradle */build.gradle.kts gradle gradlew; do
      [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
-   done'   # sh, not zsh: zsh aborts the loop on an unmatched */ glob
+   done; true'   # sh, not zsh: zsh aborts on an unmatched */ glob; `true`: an absent last path is not a failure
    git diff --cached --name-only    # confirm only those landed
    git commit -m "docs: project plan from /app-init"
    git status --short               # anything left is a file nobody committed: commit it or say why
