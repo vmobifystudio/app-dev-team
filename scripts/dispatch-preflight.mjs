@@ -6,7 +6,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
 const die = (code, message) => { process.stderr.write(`dispatch-preflight: ${message}\n`); process.exit(code); };
-const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root', 'context', 'schedule', 'capability', 'risk', 'role', 'operation', 'path', 'file', 'change', 'ticket']), die });
+const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root', 'context', 'schedule', 'capability', 'risk', 'role', 'operation', 'path', 'file', 'change', 'ticket']), die,
+  // C5W-3: repeated --file / --path accumulate (as board.mjs add does), never last-wins.
+  listFlags: { file: ',', path: ',' } });
 /**
  * ALL MISSING ARGUMENTS AT ONCE, AND A USAGE ERROR IS NOT A CANNOT-EVALUATE.
  *
@@ -52,7 +54,7 @@ if (!flags.path || !flags.file) {
     declared = (t?.meta?.files || []).map(String);
   } catch { declared = []; }
 }
-const paths = flags.path ? [String(flags.path)] : declared;
+const paths = flags.path ? String(flags.path).split(',').filter(Boolean) : declared;
 const fileArg = flags.file ? String(flags.file) : declared.join(',');
 const capability = paths.length
   ? paths.map((p) => run('capability-check.mjs', ['--manifest', resolve(root, String(flags.capability)), '--role', String(flags.role), '--operation', String(flags.operation), '--path', resolve(root, p)])).join('\n')

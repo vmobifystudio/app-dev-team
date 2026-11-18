@@ -11782,6 +11782,41 @@ Q1L=$(sed -n "/^   sh -c 'for f in \.gitignore CLAUDE\.md/,/done; true'/p" "$HER
   && grep -q "done; true'" "$HERE/../commands/app-plan.md" \
   && ok "Q1: the app-init / app-plan commit loops exit 0 when the last listed path is absent (C5W-14)" \
   || bad "Q1: the app-init / app-plan commit loops exit 0 when the last listed path is absent (C5W-14)" "$Q1L"
+# ·· C5W-2: re-QA after qa_failed cannot pass on the record QA just failed; compose offers the newest one.
+Q1Q=$(tc_proj q1-reqa)
+tcm "$Q1Q" move TC-1 verified --by tech-manager --evidence "$(tc_vd "$Q1Q" feat/TC-1-x)" >/dev/null 2>&1
+tcm "$Q1Q" move TC-1 review_requested --by ios-developer >/dev/null 2>&1
+mkdir -p "$Q1Q/docs/53-reviews"; printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\nsrc/A.swift read.\n\n## Not checked\nNothing.\n' > "$Q1Q/docs/53-reviews/v.md"
+tcm "$Q1Q" move TC-1 approved --by code-reviewer --verdict docs/53-reviews/v.md >/dev/null 2>&1
+tcm "$Q1Q" move TC-1 merged --by tech-manager >/dev/null 2>&1
+( cd "$Q1Q" && node "$BD" add QA-1-w1 --title qa --owner qa-engineer ) >/dev/null 2>&1
+q1qa() { ( cd "$Q1Q" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-1-w1 --role qa-engineer --tickets TC-1 ) 2>/dev/null | sed -n 's/^Evidence on record: //p'; }
+Q1E1=$(tc_vd "$Q1Q" feat/TC-1-x)
+tcm "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E1" >/dev/null 2>&1
+[ -n "$Q1E1" ] && [ "$(q1qa)" = "$Q1E1" ] && ok "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" \
+  || bad "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" "got '$(q1qa)' want '$Q1E1'"
+tcm "$Q1Q" move TC-1 qa_failed --by qa-engineer --detail BUG-001 >/dev/null 2>&1
+assert_exit 1 "Q1: qa_passed citing the record QA already failed is refused after qa_failed (C5W-2)" \
+  tcm "$Q1Q" move TC-1 qa_passed --by qa-engineer --evidence "$Q1E1"
+assert_has "$TMP/err" "last qa_failed" "Q1: ...naming the qa_failed it predates (C5W-2)"
+case "$(q1qa)" in "none newer than the merge and any qa_failed"*) ok "Q1: ...and compose no longer offers the failed build's record (C5W-2)" ;;
+  *) bad "Q1: ...and compose no longer offers the failed build's record (C5W-2)" "$(q1qa)" ;; esac
+Q1E2=$(tc_vd "$Q1Q" feat/TC-1-x)
+tcm "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E2" >/dev/null 2>&1
+[ -n "$Q1E2" ] && [ "$(q1qa)" = "$Q1E2" ] && ok "Q1: after the fix's run, compose offers that newer record (C5W-2)" \
+  || bad "Q1: after the fix's run, compose offers that newer record (C5W-2)" "got '$(q1qa)'"
+assert_exit 0 "Q1: ...and qa_passed on it is accepted (C5W-2)" tcm "$Q1Q" move TC-1 qa_passed --by qa-engineer --evidence "$Q1E2"
+# ·· C5W-3: repeated --file to dispatch-preflight accumulates — routing does not depend on flag order.
+Q1D="$TMP/q1-dpf"; rm -rf "$Q1D"; mkdir -p "$Q1D/docs"; echo "# PRD" > "$Q1D/docs/10-prd.md"
+( cd "$Q1D" && git init -q -b main . && echo x > a.txt && git add a.txt docs && q1g commit -qm base \
+  && node "$HERE/board.mjs" add APP-001 --title t --owner web-developer --by tech-manager --file src/auth/session.js --file src/convert.js \
+  && node "$HERE/team-bootstrap.mjs" --root "$Q1D" && printf '{}\n' > .studio-policy.json ) >/dev/null 2>&1
+q1dp() { ( cd "$Q1D" && node "$HERE/dispatch-preflight.mjs" --root "$Q1D" --ticket APP-001 --context docs/team/context-manifest.json \
+  --schedule docs/team/schedule.json --capability docs/team/capabilities.json --risk docs/team/risk-policy.json \
+  --role web-developer --operation write --file "$1" --file "$2" --change feature ) 2>&1 | grep -c '"risk": "high"'; }
+[ "$(q1dp src/auth/session.js src/convert.js)" -ge 1 ] && [ "$(q1dp src/convert.js src/auth/session.js)" -ge 1 ] \
+  && ok "Q1: dispatch-preflight routes every repeated --file, in either order (C5W-3)" \
+  || bad "Q1: dispatch-preflight routes every repeated --file, in either order (C5W-3)" "$(q1dp src/auth/session.js src/convert.js) / $(q1dp src/convert.js src/auth/session.js)"
 
 # --- Sprint 5 track P2: the guard reads what RUNS, guards what is written, and passes honest commands ---
 # C4G-H1 (text fed to a bare shell), H2 (protected files vs dir writes / git / patch / tar / find),

@@ -62,6 +62,7 @@ import { parseArgs } from './lib/args.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { contractFor, contractBlock, BLOCKED_BLOCK, GATE_HEADERS } from './lib/contract.mjs';
 import { matchesTicket } from './lib/integration.mjs';
+import { verifyQaEvidence } from './lib/evidence.mjs';
 import { ROLE_GATES } from './lib/capabilities.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -195,6 +196,29 @@ function ticketEvents(root, id) {
 }
 /** The evidence record the latest `verified`/`verified_static` cited, or ''. */
 const latestEvidence = (root, id) => ticketEvents(root, id).filter((e) => (e.event === 'verified' || e.event === 'verified_static') && e.detail?.evidence).pop()?.detail.evidence || '';
+
+/**
+ * C5W-2: the evidence a QA `qa_passed` should cite — the NEWEST `verified` record on the board (any
+ * ticket's: a later wave's run contains this ticket's merge too) that the board's own check accepts
+ * for THIS ticket. After a `qa_failed`, the record QA just failed is older than the failure and is
+ * never offered; '' when no run since then exists yet.
+ */
+function qaEvidence(root, id) {
+  let text = '';
+  try { text = readFileSync(join(root, 'docs', '31-board-events.jsonl'), 'utf8'); } catch { return ''; }
+  const all = text.split('\n').flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
+  const mine = all.filter((e) => String(e.ticket).toUpperCase() === id.toUpperCase());
+  const last = (name) => mine.filter((e) => e.event === name).pop();
+  const merged = last('merged');
+  const opts = { ticket: id, mergedTs: merged?.ts || '', mergedHead: merged?.detail?.merged_head || '', failedTs: last('qa_failed')?.ts || '', cwd: root };
+  const seen = new Set();
+  for (const e of all.filter((x) => x.event === 'verified' && x.detail?.evidence).reverse()) {
+    if (seen.has(e.detail.evidence)) continue;
+    seen.add(e.detail.evidence);
+    if (verifyQaEvidence(root, e.detail.evidence, opts).ok) return e.detail.evidence;
+  }
+  return '';
+}
 
 /** The ticket's one branch, by the shared matcher. `{branch, ambiguous}`. */
 function ticketBranch(root, id, allIds) {
@@ -376,11 +400,11 @@ function qaWave(ROOT, rows, self) {
     // `<ID>` template invited one token on every ticket, which the board refuses.
     ...wave.flatMap((r) => {
       const T = tokens.has(r.id) ? ` --token ${tokens.get(r.id)}` : '';
-      const ev = latestEvidence(ROOT, r.id);
+      const ev = qaEvidence(ROOT, r.id);
       return [
         `### ${r.id} — ${r.title || '—'}`,
         `Owner: ${r.owner || '—'} · Acceptance: ${r.acceptance || '—'}`,
-        `Evidence on record: ${ev || 'none — use docs/team/journey-result.json, or the post-merge verify-done record'}`,
+        `Evidence on record: ${ev || 'none newer than the merge and any qa_failed — a journey-gate PASS (docs/team/journey-result.json) or the next wave\'s run on the integration branch'}`,
         tokens.has(r.id) ? `Token for ${r.id}: ${tokens.get(r.id)}` : null,
         'Record its verdict with ONE of:',
         ...fence([

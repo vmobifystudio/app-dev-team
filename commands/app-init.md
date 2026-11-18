@@ -176,7 +176,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
             Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
             settings.gradle settings.gradle.kts */build.gradle */build.gradle.kts gradle gradlew; do
      [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
-   done; true'   # sh, not zsh: zsh aborts on an unmatched */ glob; `true`: an absent last path is not a failure
+   done; true'   # true: an absent last path is no failure. sh, not zsh: zsh aborts the loop on an unmatched */ glob
    git diff --cached --name-only    # confirm only those landed
    git commit -m "docs: project plan from /app-init"
    git status --short               # anything left is a file nobody committed: commit it or say why

@@ -969,7 +969,8 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
       ? verifyTestEvidence(root, flags.evidence, { ticket, staticOnly: true })
       : name === 'verified'
       ? verifyTestEvidence(root, flags.evidence, { ticket })
-      : verifyQaEvidence(root, flags.evidence, { ticket, mergedTs: events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'merged')?.ts || '', mergedHead: recordedMergeHead(events, ticket) });
+      : verifyQaEvidence(root, flags.evidence, { ticket, mergedTs: events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'merged')?.ts || '', mergedHead: recordedMergeHead(events, ticket),
+        failedTs: events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'qa_failed')?.ts || '' });
     if (!ev.ok) {
       process.stderr.write(`board: refused ${ticket} ${name} — ${ev.reason}\n` +
         (name === 'verified_static'

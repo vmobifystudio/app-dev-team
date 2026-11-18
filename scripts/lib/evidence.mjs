@@ -364,18 +364,32 @@ export function checkGateLog(root, v) {
  * Re-derive QA evidence for `ticket`: a journey-gate result (PASS, clean tree, log re-derives, run
  * on a tree containing the ticket's tip) or a test-evidence run recorded after the merge.
  */
-export function verifyQaEvidence(root, given, { ticket, mergedTs, mergedHead = '', cwd = process.cwd() } = {}) {
+// C5W-2: `failedTs` is the ticket's last `qa_failed`. A pass must cite evidence produced AFTER it —
+// the record QA just failed (or anything older) cannot pass the same ticket on re-QA.
+export function verifyQaEvidence(root, given, { ticket, mergedTs, mergedHead = '', failedTs = '', cwd = process.cwd() } = {}) {
+  const journey = (abs, rel) => {
+    const r = verifyJourney(root, abs, rel, { ticket, cwd });
+    if (!r.ok || !failedTs) return r;
+    let at = '';
+    try { at = JSON.parse(readFileSync(abs, 'utf8')).evaluated_at || ''; } catch { /* verifyJourney already read it */ }
+    return Date.parse(at) > Date.parse(failedTs) ? r
+      : { ok: false, code: 1, reason: `${rel}: evaluated at ${at || 'an unrecorded time'}, before ${ticket}'s last qa_failed (${failedTs}) — re-QA needs a journey run on the fixed build` };
+  };
   const loc = locate(root, given);
   if (!loc.ok) {
     // journey-gate writes docs/team/journey-result.json; accept it by its own path too.
     const jr = resolve(root, 'docs/team/journey-result.json');
     if (typeof given !== 'string' || (resolve(process.cwd(), given) !== jr && resolve(root, given) !== jr) || !existsSync(jr)) return loc;
-    return verifyJourney(root, jr, 'docs/team/journey-result.json', { ticket, cwd });
+    return journey(jr, 'docs/team/journey-result.json');
   }
   let rec;
   try { rec = JSON.parse(readFileSync(loc.abs, 'utf8')); } catch (e) { return { ok: false, code: 2, reason: `${loc.rel} is unreadable: ${e.message}` }; }
-  if (rec.schema === 'gate-result/v1') return verifyJourney(root, loc.abs, loc.rel, { ticket, cwd });
-  return verifyTestEvidence(root, given, { ticket, afterTs: mergedTs || '1970-01-01T00:00:00Z', mergedHead, cwd });
+  if (rec.schema === 'gate-result/v1') return journey(loc.abs, loc.rel);
+  const afterFail = failedTs && Date.parse(failedTs) > Date.parse(mergedTs || 0);
+  const r = verifyTestEvidence(root, given, { ticket, afterTs: (afterFail ? failedTs : mergedTs) || '1970-01-01T00:00:00Z', mergedHead, cwd });
+  return !r.ok && afterFail && r.reason.includes(`before ${ticket} merged`)
+    ? { ...r, reason: `${loc.rel}: recorded at ${rec.at}, before ${ticket}'s last qa_failed (${failedTs}) — re-QA cites the newest run on the integration branch, not the build QA failed` }
+    : r;
 }
 
 const DRIVERS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'drivers');
