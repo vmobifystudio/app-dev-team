@@ -2328,8 +2328,48 @@ newboard() {
 # The assertions that ARE about the contract deliberately bypass this helper and call `node "$BD"`
 # directly, because a probe that cannot see the requirement cannot prove the requirement exists —
 # and `mutate.sh` re-proves it by breaking the parser and watching those probes go red.
+# `verified` and `qa_passed` require --evidence (scripts/lib/evidence.mjs, G-F4): a record a SCRIPT
+# wrote, whose raw log the board re-hashes and re-classifies. When the caller passed none, this
+# helper PRODUCES one the honest way — it runs verify-done.sh on a real branch in a git repo inside
+# the scratch project (the ticket's own branch if exactly one is named for it, else a fixture branch
+# built with plumbing so no working tree moves). Nothing here writes a record by hand; the
+# assertions about the evidence contract itself call `node "$BD"` directly.
+bm_evidence() {  # <dir> <ticket>  -> prints the record path, or nothing
+  _ed=$1; _et=$2
+  ( cd "$_ed" || exit 1
+    _gi() { git -c user.name=t -c user.email=t@localhost "$@"; }
+    git rev-parse --git-dir >/dev/null 2>&1 || git init -q -b main
+    git rev-parse --verify -q HEAD >/dev/null 2>&1 || _gi commit -q --allow-empty -m base
+    _br=$(git branch --format='%(refname:short)' | grep -i -F -- "$_et" || true)
+    if [ -n "$_br" ] && [ "$(printf '%s\n' "$_br" | wc -l | tr -d ' ')" = 1 ]; then
+      _base=$(for b in develop main master; do git rev-parse --verify -q "$b" >/dev/null 2>&1 && { echo "$b"; break; }; done)
+      [ "$_base" = "$_br" ] && _base=''
+    else
+      _blob=$(printf 'evidence fixture for %s\n' "$_et" | git hash-object -w --stdin)
+      _tree=$(printf '100644 blob %s\tev-fixture.txt\n' "$_blob" | git mktree)
+      _c=$(_gi commit-tree "$_tree" -p HEAD -m "evidence fixture")
+      _br="evfixture-$(date +%s)-$$"
+      git update-ref "refs/heads/$_br" "$_c"
+      _base=$(git rev-parse HEAD)
+    fi
+    [ -n "$_base" ] || _base=$(git rev-parse "$_br^")
+    # A project whose profile declares test.fast must be verified WITH it (lib/evidence.mjs refuses a
+    # caller-chosen command there), so the fixture asks for the declared scope like a team would.
+    _cmd='echo "Executed 1 tests, with 0 failures"'
+    grep -q '"fast"' docs/team/project-profile.json 2>/dev/null && _cmd=fast
+    sh "$HERE/verify-done.sh" "$_br" "$_base" "$_cmd" 2>/dev/null \
+      | sed -n 's/^  Evidence: //p' )
+}
 bm() {
   d=$1; shift
+  if [ "${1:-}" = move ] && { [ "${3:-}" = verified ] || [ "${3:-}" = qa_passed ]; }; then
+    _has_ev=''
+    for _a in "$@"; do [ "$_a" = '--evidence' ] && _has_ev=1; done
+    if [ -z "$_has_ev" ]; then
+      _ev=$(bm_evidence "$d" "$2")
+      [ -n "$_ev" ] && set -- "$@" --evidence "$_ev"
+    fi
+  fi
   _needs_verdict=''
   for _a in "$@"; do
     [ "$_a" = 'approved' ] && _needs_verdict=APPROVE
@@ -2338,8 +2378,21 @@ bm() {
   done
   if [ -n "$_needs_verdict" ]; then
     _vp="$d/.test-verdict.md"
-    printf 'REVIEW VERDICT: %s\nScope: base..head\n\n## Not checked\nNothing — this is a test fixture.\n' \
-      "$_needs_verdict" > "$_vp"
+    # Under --bind the verdict's Scope must be the bound candidate (board.mjs, G-F4): name the range
+    # the approval will bind — --commit, else the one branch named for the ticket, else HEAD.
+    _scope='base..head'
+    if printf '%s\n' "$@" | grep -qx -- '--bind'; then
+      _sc=$(printf '%s\n' "$@" | awk 'p { print; exit } $0 == "--commit" { p = 1 }')
+      _sb=$(printf '%s\n' "$@" | awk 'p { print; exit } $0 == "--base" { p = 1 }')
+      _sc=$( cd "$d" && { [ -n "$_sc" ] && git rev-parse --verify -q "$_sc^{commit}"; } \
+        || { _b=$(git branch --format='%(refname:short)' | grep -i -F -- "$2"); [ "$(printf '%s\n' "$_b" | grep -c .)" = 1 ] && git rev-parse "$_b"; } \
+        || git rev-parse HEAD 2>/dev/null )
+      [ -n "$_sb" ] || _sb=$( cd "$d" && for r in main master; do m=$(git merge-base "$r" "$_sc" 2>/dev/null) && [ "$m" != "$_sc" ] && { echo "$m"; break; }; done )
+      [ -n "$_sb" ] || _sb=$( cd "$d" && git rev-parse "$_sc^" 2>/dev/null )
+      [ -n "$_sc" ] && [ -n "$_sb" ] && _scope="$_sb..$_sc"
+    fi
+    printf 'REVIEW VERDICT: %s\nScope: %s\n\n## Not checked\nNothing — this is a test fixture.\n' \
+      "$_needs_verdict" "$_scope" > "$_vp"
     ( cd "$d" && node "$BD" "$@" --verdict "$_vp" )
   else
     ( cd "$d" && node "$BD" "$@" )
@@ -4257,7 +4310,7 @@ printf 'SENTINEL\n' > "$INJ2/victim.md"
 ( cd "$INJ2" && node "$HERE/board.mjs" add T-001 --title t --owner ios-developer --by tech-manager
   node "$HERE/board.mjs" move T-001 claimed         --by ios-developer
   node "$HERE/board.mjs" move T-001 done_reported   --by ios-developer
-  node "$HERE/board.mjs" move T-001 verified        --by tech-manager
+  node "$HERE/board.mjs" move T-001 verified        --by tech-manager --evidence "$(bm_evidence "$PWD" T-001)"
   node "$HERE/board.mjs" move T-001 review_requested --by ios-developer ) >/dev/null 2>&1
 # A VALID VERDICT IS SUPPLIED ON PURPOSE. Without it the review-verdict contract refuses first and
 # this probe passes while testing nothing — which is exactly what happened when the contract landed:
@@ -4553,7 +4606,7 @@ MR="$TMP/merge-reconcile"; rm -rf "$MR"; mkdir -p "$MR/docs"
 ( cd "$MR" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
   && echo base > a.txt && git add -A && git commit -qm base \
   && git checkout -q -b feat/APP-001 && echo work >> a.txt && git add -A && git commit -qm work ) >/dev/null 2>&1
-MRB() { ( cd "$MR" && node "$BD" "$@" ) >/dev/null 2>&1; }
+MRB() { bm "$MR" "$@" >/dev/null 2>&1; }
 MRB add APP-001 --title t --owner ios-developer --by tech-manager
 for e in "claimed ios-developer" "done_reported ios-developer" "verified tech-manager" \
          "review_requested ios-developer" "started code-reviewer"; do
@@ -4625,9 +4678,9 @@ grep -q 'assertion-census' "$HERE/../.github/workflows/checks.yml" \
 MOV="$TMP/movement"; rm -rf "$MOV"; mkdir -p "$MOV/docs/team"
 ( cd "$MOV" && git init -q . && git config user.email t@t.com && git config user.name t \
   && echo x > a.txt && git add -A && git commit -qm one ) >/dev/null 2>&1
-printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo ok","full":"echo ok"}}\n' \
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo Executed 1 tests","full":"echo Executed 1 tests"}}\n' \
   > "$MOV/docs/team/project-profile.json"
-MB() { ( cd "$MOV" && node "$BD" "$@" ) >/dev/null 2>&1; }
+MB() { bm "$MOV" "$@" >/dev/null 2>&1; }
 for i in 1 2 3; do MB add APP-00$i --title "T$i" --owner ios-developer --by tech-manager; done
 
 ( cd "$MOV" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
@@ -4676,10 +4729,10 @@ grep -q 'never claimed' "$TMP/out" \
 MOVQ="$TMP/movement-qa"; rm -rf "$MOVQ"; mkdir -p "$MOVQ/docs/53-reviews" "$MOVQ/docs/team"
 ( cd "$MOVQ" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
   && echo x > a.txt && git add -A && git commit -qm b ) >/dev/null 2>&1
-printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo ok","full":"echo ok"}}\n' \
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo Executed 1 tests","full":"echo Executed 1 tests"}}\n' \
   > "$MOVQ/docs/team/project-profile.json"
 printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\n## Not checked\nNothing.\n' > "$MOVQ/docs/53-reviews/v.md"
-QB() { ( cd "$MOVQ" && node "$BD" "$@" ) >/dev/null 2>&1; }
+QB() { bm "$MOVQ" "$@" >/dev/null 2>&1; }
 QB add APP-001 --title t --owner ios-developer --by tech-manager
 QB move APP-001 claimed --by ios-developer
 QB move APP-001 done_reported --by ios-developer
@@ -4705,10 +4758,10 @@ grep -q 'STALLED APP-001 \[qa\]' "$TMP/out" \
 VSO="$TMP/verified-static-odometer"; rm -rf "$VSO"; mkdir -p "$VSO/docs/53-reviews" "$VSO/docs/team"
 ( cd "$VSO" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
   && echo x > a.txt && git add -A && git commit -qm b ) >/dev/null 2>&1
-printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo ok","full":"echo ok"}}\n' \
+printf '{"schema":"project-profile/v1","platform":"ios","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"echo Executed 1 tests","full":"echo Executed 1 tests"}}\n' \
   > "$VSO/docs/team/project-profile.json"
 printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\n## Not checked\nNothing.\n' > "$VSO/docs/53-reviews/v.md"
-VB() { ( cd "$VSO" && node "$BD" "$@" ) >/dev/null 2>&1; }
+VB() { bm "$VSO" "$@" >/dev/null 2>&1; }
 VB add APP-060 --title t --owner ios-developer --by tech-manager
 VB move APP-060 claimed --by ios-developer
 VB move APP-060 done_reported --by ios-developer
@@ -5184,7 +5237,7 @@ vd_reset() {
     node "$BD" add V-001 --title t --owner ios-developer --by tech-manager
     node "$BD" move V-001 claimed          --by ios-developer
     node "$BD" move V-001 done_reported    --by ios-developer
-    node "$BD" move V-001 verified         --by tech-manager
+    node "$BD" move V-001 verified         --by tech-manager --evidence "$(bm_evidence "$PWD" V-001)"
     node "$BD" move V-001 review_requested --by ios-developer ) >/dev/null 2>&1
 }
 
@@ -6009,6 +6062,9 @@ assert_exit 1 "...but verify still REPORTS the break rather than refusing to run
 #              nothing. Asserted separately above as exit 1 with the diagnostic.
 #   migrate  — reads `docs/31-board.md` (Markdown) and emits a fresh log. It never opens the event
 #              log, so there is no chain for it to check. Exempt by construction, not by decision.
+#   actor    — mints/revokes/lists per-spawn tokens in docs/team/actor-tokens.jsonl and never opens
+#              the event log. That registry carries its OWN link chain, and an edited registry is
+#              exit 2 — asserted in the Sprint 2 track C section. Exempt by construction.
 #
 # Anything not in the table below fails the sweep, so a NEW subcommand cannot be added without
 # someone classifying it. That is the property the original sweep had and the fix must not lose.
@@ -6023,7 +6079,7 @@ chain_args() {
   esac
 }
 CMDS=$(grep -oE "^    case '[a-z]+'" "$HERE/board.mjs" | grep -oE "'[a-z]+'" | tr -d "'" \
-        | grep -vE '^(verify|migrate)$')
+        | grep -vE '^(verify|migrate|actor)$')
 CHAIN_LEAKS=""; CHAIN_SWEPT=""
 for c in $CMDS; do
   args=$(chain_args "$c")
@@ -6042,7 +6098,7 @@ done
 if [ -n "$CHAIN_LEAKS" ]; then
   bad "every board.mjs subcommand refuses a rewritten log with exit 2" "not exit 2 + chain diagnostic:$CHAIN_LEAKS"
 else
-  ok "every board.mjs subcommand refuses a rewritten log with exit 2 (swept:$CHAIN_SWEPT · exempt: verify migrate)"
+  ok "every board.mjs subcommand refuses a rewritten log with exit 2 (swept:$CHAIN_SWEPT · exempt: verify migrate actor)"
 fi
 
 # Deleting a line is the same class and must not be quieter.
@@ -6829,7 +6885,7 @@ CRTESTED="$TMP/cr-readiness-tested"; mkdir -p "$CRTESTED"
 ( cd "$CRTESTED" && node "$HERE/board.mjs" add RD-003 --title "Really tested ticket" --owner ios-developer \
     && node "$HERE/board.mjs" move RD-003 claimed --by ios-developer \
     && node "$HERE/board.mjs" move RD-003 done_reported --by ios-developer \
-    && node "$HERE/board.mjs" move RD-003 verified --by tech-manager ) >/dev/null 2>&1
+    && node "$HERE/board.mjs" move RD-003 verified --by tech-manager --evidence "$(bm_evidence "$PWD" RD-003)" ) >/dev/null 2>&1
 [ "$(readiness_state "$CRTESTED" engineering)" = "tested" ] \
   && ok "engineering readiness is tested (not production-ready) with a real verification but no recorded CLEAR ship-gate verdict" \
   || bad "engineering readiness is tested (not production-ready) with a real verification but no recorded CLEAR ship-gate verdict" "got $(readiness_state "$CRTESTED" engineering)"
@@ -6884,7 +6940,7 @@ CRTESTED2="$TMP/cr-readiness-tested-mirror"; mkdir -p "$CRTESTED2"
 ( cd "$CRTESTED2" && node "$HERE/board.mjs" add RD-004 --title "Mirror ticket" --owner ios-developer \
     && node "$HERE/board.mjs" move RD-004 claimed --by ios-developer \
     && node "$HERE/board.mjs" move RD-004 done_reported --by ios-developer \
-    && node "$HERE/board.mjs" move RD-004 verified --by tech-manager ) >/dev/null 2>&1
+    && node "$HERE/board.mjs" move RD-004 verified --by tech-manager --evidence "$(bm_evidence "$PWD" RD-004)" ) >/dev/null 2>&1
 if [ "$(readiness_state "$CRTESTED2" engineering)" = "tested" ]; then
   bad "mirror test: dropping the ship-gate check should make an unrecorded gate read production-ready"
 else
@@ -8782,7 +8838,10 @@ assert_has "$TMP/wi1.txt" "NOT PUSHED" "...pushing nothing without --push: one p
 # a STATIC verification can be raised once the suite finally runs (lib/events.mjs legalEvents). That
 # path existed and nothing had ever walked it; this is what walks it, with no new event and no
 # schema change.
-( cd "$WI" && node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "wave 1 full suite green" ) >"$TMP/wi-up.txt" 2>&1
+# The evidence is the record the WAVE wrote (its raw suite log, sha256, the merged tree's head) — the
+# one wave-integrate printed — not one this test makes up.
+WI_EV=$(sed -n 's/.*move APP-001 verified .*--evidence \([^ ]*\).*/\1/p' "$TMP/wi1.txt" | head -1)
+( cd "$WI" && node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "wave 1 full suite green" --evidence "$WI_EV" ) >"$TMP/wi-up.txt" 2>&1
 [ $? = 0 ] && ok "the wave's green upgrades verified_static to a real verified (no new event needed)" \
   || bad "the wave's green upgrades verified_static to a real verified (no new event needed)" "$(cat "$TMP/wi-up.txt")"
 
@@ -9253,7 +9312,7 @@ DEPW="$TMP/dep-wave"; rm -rf "$DEPW"; mkdir -p "$DEPW/docs/53-reviews"
   || bad "a dependent is REFUSED while its dependency is merge-gated but not yet integrated" "$(cat "$TMP/dep1.txt")"
 assert_has "$TMP/dep1.txt" "awaiting the wave" "...and the refusal names the wave, not a merge that did happen"
 
-( cd "$DEPW" && node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "wave 1 green" ) >/dev/null 2>&1
+( cd "$DEPW" && node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "wave 1 green" --evidence "$(bm_evidence "$PWD" APP-001)" ) >/dev/null 2>&1
 ( cd "$DEPW" && node "$HERE/board.mjs" move APP-002 claimed --by ios-developer ) >"$TMP/dep2.txt" 2>&1
 [ $? = 0 ] \
   && ok "...and becomes claimable the moment the wave lands its dependency" \
@@ -9268,7 +9327,7 @@ DEPC="$TMP/dep-classic"; rm -rf "$DEPC"; mkdir -p "$DEPC/docs/53-reviews"
   node "$HERE/board.mjs" add APP-002 --title dependent --owner ios-developer --by tech-manager --depends APP-001
   node "$HERE/board.mjs" move APP-001 claimed --by ios-developer
   node "$HERE/board.mjs" move APP-001 done_reported --by ios-developer
-  node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "tests green"
+  node "$HERE/board.mjs" move APP-001 verified --by tech-manager --detail "tests green" --evidence "$(bm_evidence "$PWD" APP-001)"
   node "$HERE/board.mjs" move APP-001 review_requested --by ios-developer --detail "-> code-reviewer"
   printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-001\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-001-cycle-0.md
   node "$HERE/board.mjs" move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-0.md
@@ -9602,6 +9661,190 @@ CONFLICTED=$( { grep -rln '^<<<<<<< \|^>>>>>>> ' \
 [ -z "$CONFLICTED" ] \
   && ok "no unresolved merge-conflict markers in any shipped file" \
   || bad "no unresolved merge-conflict markers in any shipped file" "found in:$CONFLICTED"
+
+# --- Sprint 2 track C: evidence a script produced, from an actor who proved the role (G-F1/F4/F6/F7) ---
+# Every refusal below is asserted against `node "$BD"` directly (not the bm helper, which produces
+# honest evidence on its own), so mutate.sh can break each check and watch these go red.
+BD="$HERE/board.mjs"
+tcg() { git -c user.name=t -c user.email=t@localhost "$@"; }
+# tc_proj <name> -> a git project with ticket TC-1 claimed + done_reported on feat/TC-1-x (one src commit)
+tc_proj() {
+  _p="$TMP/tc-$1"; rm -rf "$_p"; mkdir -p "$_p/docs" "$_p/src"
+  ( cd "$_p" && git init -q -b main && tcg commit -q --allow-empty -m base \
+    && node "$BD" add TC-1 --title "t" --owner ios-developer >/dev/null \
+    && git checkout -q -b feat/TC-1-x && echo 'let a = 1' > src/A.swift && git add src/A.swift \
+    && tcg commit -q -m work && git checkout -q main \
+    && node "$BD" move TC-1 claimed --by ios-developer >/dev/null \
+    && node "$BD" move TC-1 done_reported --by ios-developer >/dev/null ) >/dev/null 2>&1
+  printf '%s' "$_p"
+}
+TC_GREEN='echo "Executed 3 tests, with 0 failures"'
+tc_vd() {  # tc_vd <proj> <branch> -> record path
+  ( cd "$1" && sh "$HERE/verify-done.sh" "$2" main "$TC_GREEN" 2>/dev/null | sed -n 's/^  Evidence: //p' )
+}
+tcm() { ( cd "$1" && shift && node "$BD" "$@" ); }
+
+# ·· G-F4: verified needs a re-derivable record
+E=$(tc_proj ev)
+assert_exit 1 "TC: verified with no --evidence is refused" tcm "$E" move TC-1 verified --by tech-manager
+assert_has "$TMP/err" "needs --evidence" "TC: ...and says verified needs the record verify-done printed"
+EV=$(tc_vd "$E" feat/TC-1-x)
+[ -n "$EV" ] && [ -f "$E/$EV" ] && ok "TC: verify-done writes a test-evidence record on VERIFIED and prints its path" \
+  || bad "TC: verify-done writes a test-evidence record on VERIFIED and prints its path" "got '$EV'"
+grep -q '"log_sha256"' "$E/$EV" 2>/dev/null && grep -q '"verdict": "green"' "$E/$EV" \
+  && ok "TC: ...carrying the raw log's sha256 and the classifier verdict" \
+  || bad "TC: ...carrying the raw log's sha256 and the classifier verdict" "$(cat "$E/$EV" 2>&1)"
+EVLOG="$E/$(node -e 'console.log(require(process.argv[1]).log)' "$E/$EV")"
+cp "$EVLOG" "$TMP/tc-log.bak"; echo "Executed 0 tests" > "$EVLOG"
+assert_exit 1 "TC: a record whose raw log was edited is refused" tcm "$E" move TC-1 verified --by tech-manager --evidence "$EV"
+assert_has "$TMP/err" "no longer hashes" "TC: ...because the log no longer hashes to the record"
+cp "$TMP/tc-log.bak" "$EVLOG"
+cp "$E/$EV" "$TMP/tc-rec.bak"
+node -e 'const f=process.argv[1],r=require(f);r.exit_code=1;require("fs").writeFileSync(f,JSON.stringify(r))' "$E/$EV"
+assert_exit 1 "TC: a record whose verdict its own log does not support is refused" tcm "$E" move TC-1 verified --by tech-manager --evidence "$EV"
+assert_has "$TMP/err" "re-classifying its own log" "TC: ...because the board re-runs the classifier over the log"
+cp "$TMP/tc-rec.bak" "$E/$EV"
+cp "$E/$EV" "$E/hand.json"
+assert_exit 1 "TC: a record outside docs/team/evidence/ is refused" tcm "$E" move TC-1 verified --by tech-manager --evidence hand.json
+assert_has "$TMP/err" "is not under docs/team/evidence" "TC: ...evidence is what the scripts wrote there"
+( cd "$E" && git checkout -q feat/TC-1-x && echo 'let b = 2' >> src/A.swift && tcg commit -qam more && git checkout -q main )
+assert_exit 1 "TC: a record for an older tip of the ticket branch is refused" tcm "$E" move TC-1 verified --by tech-manager --evidence "$EV"
+assert_has "$TMP/err" "does not contain" "TC: ...it is about older code than the ticket's tip"
+mkdir -p "$E/docs/team"; printf '{"schema":"project-profile/v1","test":{"fast":"npm test"}}\n' > "$E/docs/team/project-profile.json"
+EV2=$(tc_vd "$E" feat/TC-1-x)
+assert_exit 1 "TC: a caller-chosen test command is refused when the profile declares one" tcm "$E" move TC-1 verified --by tech-manager --evidence "$EV2"
+assert_has "$TMP/err" "not a test command the project profile declares" "TC: ...naming the declared commands"
+rm -f "$E/docs/team/project-profile.json"
+DOCEV=$( cd "$E" && sh "$HERE/verify-done.sh" --docs-only feat/TC-1-x main 2>/dev/null | sed -n 's/^  Evidence: //p' )
+assert_exit 1 "TC: a --docs-only record on a branch that changes source is refused" tcm "$E" move TC-1 verified --by tech-manager --evidence "$DOCEV"
+assert_has "$TMP/err" "non-document files" "TC: ...re-derived from git, not taken from the record"
+assert_exit 0 "TC: a current, re-derivable green record is accepted" tcm "$E" move TC-1 verified --by tech-manager --evidence "$EV2"
+grep '"event":"verified"' "$E/docs/31-board-events.jsonl" | grep -q '"evidence_verdict":"green"' \
+  && ok "TC: ...and the verified event records which evidence it rests on" \
+  || bad "TC: ...and the verified event records which evidence it rests on"
+
+# ·· G-F4: approved --bind compares the verdict's Scope with the bound commit
+tcm "$E" move TC-1 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
+printf 'x\n' > "$E/ev.txt"; printf 'x\n' > "$E/ctx.txt"
+printf 'REVIEW VERDICT: APPROVE\nScope: main..main\n\n## Not checked\nNothing\n' > "$E/v-bad.md"
+assert_exit 1 "TC: a bound approval whose verdict Scope is not the bound candidate is refused" \
+  tcm "$E" move TC-1 approved --by code-reviewer --bind --evidence ev.txt --context ctx.txt --verdict v-bad.md
+assert_has "$TMP/err" "the review read a different candidate" "TC: ...naming the commit the approval binds"
+printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/TC-1-x\n\n## Not checked\nNothing\n' > "$E/v-ok.md"
+assert_exit 0 "TC: ...and the verdict whose Scope ends at the bound tip is accepted" \
+  tcm "$E" move TC-1 approved --by code-reviewer --bind --evidence ev.txt --context ctx.txt --verdict v-ok.md
+
+# ·· G-F4: qa_passed needs post-merge evidence
+tcm "$E" move TC-1 merged --by tech-manager >/dev/null 2>&1
+assert_exit 1 "TC: qa_passed on the developer's pre-merge record is refused" tcm "$E" move TC-1 qa_passed --by qa-engineer --evidence "$EV2"
+assert_has "$TMP/err" "before TC-1 merged" "TC: ...QA evidence is a run on the merged tree"
+mkdir -p "$E/docs/team"
+printf '{"schema":"gate-result/v1","gate":"journey-gate","subject":{"head":"%s","dirty":false},"result":"PASS","journeys":[]}\n' \
+  "$(git -C "$E" rev-parse feat/TC-1-x)" > "$E/docs/team/journey-result.json"
+assert_exit 1 "TC: qa_passed on a hand-written journey-result.json is refused" tcm "$E" move TC-1 qa_passed --by qa-engineer --evidence docs/team/journey-result.json
+assert_has "$TMP/err" "raw log pointer" "TC: ...because it carries no raw log to re-derive from"
+EV3=$(tc_vd "$E" feat/TC-1-x)
+assert_exit 0 "TC: qa_passed on a run recorded after the merge is accepted" tcm "$E" move TC-1 qa_passed --by qa-engineer --evidence "$EV3"
+
+# ·· G-F6: readiness refuses a gate result that does not re-derive
+R=$(tc_proj ready)
+( cd "$R" && printf 'docs/team\ndocs/31-board*\n' > .gitignore && git add .gitignore && tcg commit -qm ignore ) >/dev/null 2>&1
+RH=$(git -C "$R" rev-parse HEAD)
+mkdir -p "$R/docs/team"
+printf '{"schema":"gate-result/v1","gate":"journey-gate","subject":{"head":"%s","dirty":false},"result":"PASS","journeys":[]}\n' "$RH" > "$R/docs/team/journey-result.json"
+rstate() { node -e 'import(process.argv[1]).then((m)=>{const g=m.reduceReadiness(process.argv[2]).gates.find((x)=>x.gate===process.argv[3]);process.stdout.write(g.state+" "+g.detail)})' "$HERE/lib/readiness.mjs" "$R" "$1"; }
+case "$(rstate journey)" in CANNOT_EVALUATE*re-derive*) ok "TC: readiness: a hand-written PASS gate-result is CANNOT_EVALUATE, not PASS" ;;
+  *) bad "TC: readiness: a hand-written PASS gate-result is CANNOT_EVALUATE, not PASS" "$(rstate journey)" ;; esac
+printf 'journey output\n' > "$TMP/tc-gl.txt"
+( cd "$R" && node "$HERE/lib/evidence.mjs" gate --gate journey-gate --result PASS --log "$TMP/tc-gl.txt" --out docs/team/journey-result.json --head "$RH" --dirty false )
+case "$(rstate journey)" in PASS*) ok "TC: readiness: a result written with its raw log re-derives and PASSes" ;;
+  *) bad "TC: readiness: a result written with its raw log re-derives and PASSes" "$(rstate journey)" ;; esac
+JL="$R/$(node -e 'console.log(require(process.argv[1]).log)' "$R/docs/team/journey-result.json")"
+node -e 'const f=process.argv[1],r=require(f);r.log_sha256=require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[2],"utf8").replace("RESULT: PASS","RESULT: FAIL")).digest("hex");require("fs").writeFileSync(f,JSON.stringify(r))' "$R/docs/team/journey-result.json" "$JL"
+sed -i.bak 's/RESULT: PASS/RESULT: FAIL/' "$JL"
+case "$(rstate journey)" in CANNOT_EVALUATE*RESULT*) ok "TC: readiness: a result whose own log reached a different verdict is not PASS" ;;
+  *) bad "TC: readiness: a result whose own log reached a different verdict is not PASS" "$(rstate journey)" ;; esac
+echo tampered >> "$JL"
+case "$(rstate journey)" in CANNOT_EVALUATE*no\ longer\ hashes*) ok "TC: readiness: a result whose log was edited is CANNOT_EVALUATE" ;;
+  *) bad "TC: readiness: a result whose log was edited is CANNOT_EVALUATE" "$(rstate journey)" ;; esac
+
+# ·· G-F1: per-spawn tokens
+K=$(tc_proj tok)
+printf '{"requireActorTokens": true}\n' > "$K/.studio-policy.json"
+EVK=$(tc_vd "$K" feat/TC-1-x)
+assert_exit 1 "TC: under requireActorTokens a gate event with --by alone is refused" tcm "$K" move TC-1 verified --by tech-manager --evidence "$EVK"
+assert_has "$TMP/err" "needs --token" "TC: ...and says a gate event needs the spawn's token"
+TDEV=$(tcm "$K" actor mint --role ios-developer --ticket TC-1 2>/dev/null)
+assert_exit 1 "TC: a token minted for another role cannot clear the gate" tcm "$K" move TC-1 verified --by tech-manager --evidence "$EVK" --token "$TDEV"
+assert_has "$TMP/err" "was minted for \"ios-developer\"" "TC: ...--by cannot change which role a token proves"
+TOTHER=$(tcm "$K" actor mint --role tech-manager --ticket TC-9 2>/dev/null)
+assert_exit 1 "TC: a token minted for another ticket is refused" tcm "$K" move TC-1 verified --by tech-manager --evidence "$EVK" --token "$TOTHER"
+assert_exit 1 "TC: a token that was never minted is refused" tcm "$K" move TC-1 verified --by tech-manager --evidence "$EVK" --token st_forged
+grep -q -- "$TDEV" "$K/docs/team/actor-tokens.jsonl" \
+  && bad "TC: the registry stores only token hashes, never the plaintext" \
+  || ok "TC: the registry stores only token hashes, never the plaintext"
+TREV=$(tcm "$K" actor mint --role tech-manager --ticket TC-1 2>/dev/null)
+TREVID=$(tcm "$K" actor list | awk '$2=="tech-manager" && $3=="TC-1" {print $1}' | head -1)
+tcm "$K" actor revoke --token-id "$TREVID" >/dev/null 2>&1
+assert_exit 1 "TC: a revoked token is refused" tcm "$K" move TC-1 verified --by tech-manager --evidence "$EVK" --token "$TREV"
+TL=$(tcm "$K" actor mint --role tech-lead --ticket TC-1 2>/dev/null)
+assert_exit 0 "TC: the token minted for this role on this ticket clears the gate" tcm "$K" move TC-1 verified --by tech-lead --evidence "$EVK" --token "$TL"
+grep '"event":"verified"' "$K/docs/31-board-events.jsonl" | grep -q '"mode":"token"' \
+  && ok "TC: ...and the event is stamped actor mode token with its token id" \
+  || bad "TC: ...and the event is stamped actor mode token with its token id"
+tcm "$K" move TC-1 review_requested --by ios-developer --detail "-> tech-lead" >/dev/null 2>&1
+printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/TC-1-x\n\n## Not checked\nNothing\n' > "$K/v.md"
+assert_exit 1 "TC: the token that verified a ticket may not also approve it" tcm "$K" move TC-1 approved --by tech-lead --verdict v.md --token "$TL"
+assert_has "$TMP/err" "already wrote \"verified\"" "TC: ...separation of duties is checked per token, not only per role name"
+cp "$K/docs/team/actor-tokens.jsonl" "$TMP/tc-reg.bak"
+sed -i.bak '1s/"tech-manager"/"code-reviewer"/; 1s/"ios-developer"/"code-reviewer"/' "$K/docs/team/actor-tokens.jsonl"
+assert_exit 2 "TC: an edited token registry is CANNOT EVALUATE, never a silent change" tcm "$K" move TC-1 approved --by code-reviewer --verdict v.md --token st_x
+cp "$TMP/tc-reg.bak" "$K/docs/team/actor-tokens.jsonl"
+TCR=$(tcm "$K" actor mint --role code-reviewer --ticket TC-1 2>/dev/null)
+assert_exit 0 "TC: a different spawn's code-reviewer token approves" tcm "$K" move TC-1 approved --by code-reviewer --verdict v.md --token "$TCR"
+printf '{}\n' > "$K/.studio-policy.json"
+assert_exit 2 "TC: dropping requireActorTokens after the board used it is refused (the ratchet)" tcm "$K" move TC-1 merged --by tech-manager
+assert_has "$TMP/err" "Restore \"requireActorTokens\": true" "TC: ...naming the downgrade"
+printf '{"requireActorTokens": true}\n' > "$K/.studio-policy.json"
+BT="$TMP/tc-boot"; rm -rf "$BT"; mkdir -p "$BT"; printf '{"owner":"founder"}\n' > "$BT/.studio-policy.json"
+node "$HERE/team-bootstrap.mjs" --root "$BT" >/dev/null 2>&1
+grep -q '"requireActorTokens": true' "$BT/.studio-policy.json" \
+  && ok "TC: team-bootstrap turns requireActorTokens on for a new project" \
+  || bad "TC: team-bootstrap turns requireActorTokens on for a new project" "$(cat "$BT/.studio-policy.json")"
+grep -q 'docs/team/actor-tokens.jsonl' "$BT/docs/team/capabilities.json" \
+  && ok "TC: ...and no role may write the token registry" || bad "TC: ...and no role may write the token registry"
+
+# ·· G-F7: risk from the diff, required_evidence at merged
+F=$(tc_proj risk)
+mkdir -p "$F/docs/team"
+cp "$BT/docs/team/risk-policy.json" "$F/docs/team/risk-policy.json"
+( cd "$F" && git checkout -q feat/TC-1-x && mkdir -p src/auth && echo 'login' > src/auth/Login.swift \
+  && git add src/auth/Login.swift && tcg commit -qm auth && git checkout -q main ) >/dev/null 2>&1
+EVF=$(tc_vd "$F" feat/TC-1-x)
+tcm "$F" move TC-1 verified --by tech-manager --evidence "$EVF" >/dev/null 2>&1
+tcm "$F" move TC-1 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
+printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/TC-1-x\n\n## Not checked\nNothing\n' > "$F/v.md"
+tcm "$F" move TC-1 approved --by code-reviewer --verdict v.md >/dev/null 2>&1
+assert_exit 1 "TC: a ticket planned without risk whose diff touches auth/ cannot merge on medium approvals" tcm "$F" move TC-1 merged --by tech-manager
+assert_has "$TMP/err" "escalated from unplanned" "TC: ...the tier comes from the diff"
+assert_has "$TMP/err" "approval by tech-lead" "TC: ...and the refusal lists the missing approval"
+assert_has "$TMP/err" "evidence \"runtime-gate\"" "TC: ...and the missing required_evidence"
+tcm "$F" move TC-1 approved --by tech-lead --verdict v.md >/dev/null 2>&1
+printf 'runtime output\n' > "$TMP/tc-rt.txt"
+( cd "$F" && node "$HERE/lib/evidence.mjs" gate --gate runtime-gate --result PASS --log "$TMP/tc-rt.txt" --out docs/team/runtime-result.json --head "$(git rev-parse feat/TC-1-x)" --dirty false )
+assert_exit 0 "TC: ...and merges once the higher tier's approvals and evidence exist" tcm "$F" move TC-1 merged --by tech-manager
+grep '"event":"merged"' "$F/docs/31-board-events.jsonl" | grep -q '"effective":"high"' \
+  && ok "TC: ...recording the effective risk on the merged event" || bad "TC: ...recording the effective risk on the merged event"
+U=$(tc_proj risk-unknown)
+mkdir -p "$U/docs/team"
+printf '{"schema":"risk-policy/v1","default":{"risk":"low","model":"m","approvals":[],"required_evidence":["threat-model"]},"rules":[]}\n' > "$U/docs/team/risk-policy.json"
+EVU=$(tc_vd "$U" feat/TC-1-x)
+tcm "$U" move TC-1 verified --by tech-manager --evidence "$EVU" >/dev/null 2>&1
+tcm "$U" move TC-1 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
+printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/TC-1-x\n\n## Not checked\nNothing\n' > "$U/v.md"
+tcm "$U" move TC-1 approved --by code-reviewer --verdict v.md >/dev/null 2>&1
+assert_exit 1 "TC: a required_evidence kind with no checker fails closed at merged" tcm "$U" move TC-1 merged --by tech-manager
+assert_has "$TMP/err" "no checker exists for this kind" "TC: ...and says the policy names an unknown kind"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

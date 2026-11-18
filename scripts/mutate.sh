@@ -215,6 +215,26 @@ M97@@scripts/wave-integrate.mjs@@const push = hasOrigin ? gitTry(['push', 'origi
 M98@@scripts/lib/readiness.mjs@@['status', '--porcelain', '--', ':(top)', ...excludes]@@['status', '--porcelain', '--', ':(top)']@@readiness: a tree dirty ONLY in the studio's operational files is clean (W3)@@W3 / G-F6
 M99@@scripts/runtime-gate.sh@@-e 's/^/:(exclude)/' "$OPS_PATHS")@@-e 's/^/:(exclude)/' /dev/null)@@runtime-gate --record: operational files do not record the tree as dirty (W3)@@W3 / G-F6
 M100@@scripts/ship-gate.sh@@-e 's/^/:(exclude)/' "$HERE/lib/operational-paths.txt")@@-e 's/^/:(exclude)/' /dev/null)@@ship-gate: operational files do not make approval binding UNKNOWN (G-F6)@@W3 / G-F6
+M101@@scripts/lib/evidence.mjs@@if (again.verdict !== rec.verdict) return fail(@@if (false) return fail(@@TC: ...because the board re-runs the classifier over the log@@Sprint 2 track C
+M102@@scripts/lib/evidence.mjs@@if (sha256(text) !== rec.log_sha256) return@@if (false) return@@TC: ...because the log no longer hashes to the record@@Sprint 2 track C
+M103@@scripts/lib/evidence.mjs@@if (tip.sha === head || isAncestor(git, tip.sha, head)) return { ok: true, tip: tip.sha };@@if (tip.sha) return { ok: true, tip: tip.sha };@@TC: a record for an older tip of the ticket branch is refused@@Sprint 2 track C
+M104@@scripts/lib/evidence.mjs@@if (declared.length && !declared.includes(rec.command)) {@@if (false) {@@TC: a caller-chosen test command is refused when the profile declares one@@Sprint 2 track C
+M105@@scripts/lib/evidence.mjs@@if (code.length) return fail(@@if (false) return fail(@@TC: a --docs-only record on a branch that changes source is refused@@Sprint 2 track C
+M106@@scripts/lib/evidence.mjs@@if (afterTs && !(Date.parse(rec.at) > Date.parse(afterTs)))@@if (false)@@TC: qa_passed on the developer's pre-merge record is refused@@Sprint 2 track C
+M107@@scripts/lib/readiness.mjs@@const derived = checkGateLog(root, v);@@const derived = { ok: true };@@TC: readiness: a hand-written PASS gate-result is CANNOT_EVALUATE, not PASS@@Sprint 2 track C
+M108@@scripts/lib/evidence.mjs@@if (last !== v.result) return@@if (false) return@@TC: readiness: a result whose own log reached a different verdict is not PASS@@Sprint 2 track C
+M109@@scripts/board.mjs@@const r = verifyActorToken({ root, token, role, ticket, required: true });@@const r = { ok: true, actor: { mode: 'token', required: true } };@@TC: under requireActorTokens a gate event with --by alone is refused@@Sprint 2 track C
+M110@@scripts/lib/actor.mjs@@if (rec.role !== role) return@@if (false) return@@TC: a token minted for another role cannot clear the gate@@Sprint 2 track C
+M111@@scripts/lib/actor.mjs@@if (rec.ticket !== String(ticket).toUpperCase()) return@@if (false) return@@TC: a token minted for another ticket is refused@@Sprint 2 track C
+M112@@scripts/lib/actor.mjs@@if (r.records.some((x) => x.kind === 'revoke' && x.token_id === rec.token_id)) return@@if (false) return@@TC: a revoked token is refused@@Sprint 2 track C
+M113@@scripts/lib/events.mjs@@const prior = (state?.events || []).find((e) => e.actor?.token_id === tokenId && e.event !== candidate.event);@@const prior = null;@@TC: the token that verified a ticket may not also approve it@@Sprint 2 track C
+M114@@scripts/board.mjs@@if (gate && tokenModeWasRequired(paths.log)) {@@if (false) {@@TC: dropping requireActorTokens after the board used it is refused (the ratchet)@@Sprint 2 track C
+M115@@scripts/board.mjs@@const escalated = Boolean(diff && RANK[diff.risk] > plannedRank);@@const escalated = false;@@TC: a ticket planned without risk whose diff touches auth/ cannot merge on medium approvals@@Sprint 2 track C
+M116@@scripts/board.mjs@@!(EVIDENCE_CHECKS[k] && EVIDENCE_CHECKS[k](state))@@!(!EVIDENCE_CHECKS[k] || EVIDENCE_CHECKS[k](state))@@TC: a required_evidence kind with no checker fails closed at merged@@Sprint 2 track C
+M117@@scripts/board.mjs@@: to !== bound.detail.commit@@: false@@TC: a bound approval whose verdict Scope is not the bound candidate is refused@@Sprint 2 track C
+M118@@scripts/lib/actor.mjs@@if (hash !== linkHash(prev, body)) return@@if (false) return@@TC: an edited token registry is CANNOT EVALUATE, never a silent change@@Sprint 2 track C
+M119@@scripts/lib/evidence.mjs@@if (!real.startsWith(dir)) return@@if (false) return@@TC: a record outside docs/team/evidence/ is refused@@Sprint 2 track C
+M120@@scripts/board.mjs@@? verifyTestEvidence(root, flags.evidence, { ticket })@@? { ok: true, detail: {} }@@TC: verified with no --evidence is refused@@Sprint 2 track C
 CATALOGUE
 }
 
