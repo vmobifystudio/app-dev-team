@@ -113,7 +113,7 @@ truth and the command documentation must be corrected.
 | Risk routing | `risk-router.mjs`, `docs/team/risk-policy.json` | Low-assurance routing for money, security, migration, or release work |
 | Incidents | `incident-ledger.mjs`, `docs/team/incidents.jsonl` | Operational failures disappearing into ordinary ticket history |
 | Failover | `manager-failover.mjs` | Two managers acting concurrently or a dead manager blocking recovery |
-| Dispatch composition | `dispatch-preflight.mjs` | One spawn gate composing context, scheduler, capability, and risk checks |
+| Dispatch composition | `dispatch-preflight.mjs` | One claim gate composing context, scheduler, capability, and risk checks |
 | Warm/cold contract | `manager-harness.mjs`, `eval/manager-scenario.json` | Persistent and respawned managers produce identical state |
 | Ticket contract | `board.mjs add --invariant/--rollback/--file`, `risk-router.mjs` | A high/critical-risk ticket (derived from `--file`, never hand-typed) reaching review with no recorded invariant |
 | Release health | `release-health.mjs` | Widening a staged rollout on a judgment call instead of a measured crash-free rate and open-P0 count |
@@ -626,6 +626,7 @@ retrying around it.
   `code-reviewer`, `tech-lead` (second approval), `security-reviewer` (per-ticket; required on
   `critical`), `verification-engineer`, `release-auditor` and `--mode design-qa`, and mints each
   agent's token for that ticket. Hooks decide by the verdict's first line, not only the role.
+  Gate roles lease no worktree slot: they read in the main checkout.
 - **Every gate event needs a token** under `requireActorTokens`. The orchestrator mints its own
   inline, inside the same command; nobody mints a `founder` token for the founder.
 - **QA**: one `QA-` ticket per wave, whose prompt lists every wave ticket and carries one token per
@@ -635,8 +636,25 @@ retrying around it.
 - **The reviewer's base is the integration branch**, never an assumed `main`.
 - **High/critical runtime evidence is checked at the wave**: the wave does not land them unless the
   runtime gate passes on the wave candidate.
-- **Utility tier**: no `QA-` ticket (QA records against the wave's test evidence), no separate
+- **Utility tier**: the same one `QA-<sprint>-w<n>` ticket per wave (branch `qa/QA-<sprint>-w<n>`,
+  merged inline, per-ticket verdicts and tokens — never a QA spawn per ticket), no separate
   design-QA spawn, and the reviewer may run at `sonnet` on floor/light tracks.
+
+**Sprint 4 decisions:**
+
+- **Subagents never compose or mint.** Only the orchestrator runs `spawn-prompt.mjs compose` and
+  `actor mint`; an agent that hits a token refusal returns `BLOCKED` and is re-spawned with a freshly
+  composed prompt.
+- **`dispatch-preflight` gates each claim**, not each spawn — a reviewer or a retry on a claimed
+  ticket gets none.
+- **The `QA-` fast path** (closes from `merged`, no approval) holds only while git proves the branch
+  changed docs alone, computed from the merge-base with the integration branch and re-checked at
+  `merged` and `closed`.
+- **Test commands freeze at the first gate event**; changing them is an orchestrator `corrected
+  --test-profile`. Tests run in a fresh detached worktree of the exact tip.
+- **Journeys run only through the plugin's `scripts/drivers/*`** (android, ios, web), with path and
+  sha recorded. The bounds all of this leaves open: Part 11, *What the gates prove and what they
+  don't*.
 - **No numbers for the parallelism cap in prose** — it is the scheduler's cap (`scheduler.mjs cap`).
 
 ---
@@ -715,7 +733,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `spawn-gate.sh` | Worktree isolation before any parallel spawn |
 | `hooks/require-spawn-contract.sh` | PreToolUse on `Task`/`Agent`: a spawn naming a board ticket must carry a `spawn-prompt.mjs compose` prompt (verify, spawn-gate, contention) — one spawn per ticket |
 | `hooks/persist-ic-report.sh` | SubagentStop for IC roles: saves the agent's report to `docs/team/reports/<ticket>-<UTC>.md`, which `report-check` and the reviewer prompt read |
-| `hooks/guard-gate-writes.sh` | PreToolUse: refuses a subagent running `board.mjs actor mint` or writing `docs/team/actor-tokens.jsonl` / `docs/team/evidence/` by hand |
+| `hooks/guard-gate-writes.sh` | PreToolUse: refuses a subagent running `board.mjs actor mint` or `spawn-prompt.mjs compose`, or writing `docs/team/actor-tokens.jsonl` / `docs/team/evidence/` by hand |
 | `hooks/require-review-verdict.sh` | SubagentStop: a `code-reviewer` cannot stop without a recorded verdict or `BLOCKED` |
 | `context-preflight.mjs` | Branch, dirty-tree, ticket, worktree, and source-document context |
 | `dependency-check.mjs` | Dependency declarations, lockfiles, and reproducible version constraints |
@@ -725,7 +743,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `context-manifest.mjs` | Source hashes, git revision, omissions, and context freshness |
 | `approval-check.mjs` | Binds approvals to commit, diff, context, and evidence — on by default for new projects (`--bind`), opt-in for onboarded ones |
 | `audit-anchor.mjs` | Digest and tip anchor for the board event log — composed into `dispatch-preflight.mjs`, not release-time-only |
-| `dispatch-preflight.mjs` | The gate before every spawn: composes context, scheduler, capability, risk, and (when enabled) audit-anchor/prompt-registry/eval-lab |
+| `dispatch-preflight.mjs` | The gate before every ticket claim (reviewers and retries on a claimed ticket skip it): composes context, scheduler, capability, risk, and (when enabled) audit-anchor/prompt-registry/eval-lab |
 | `memory-curator.mjs` | Append-only proposals, explicit reviewer decisions, and `retrieve` — the read path: live means promoted, unexpired, not superseded |
 | `prompt-registry.mjs` | Semantic versions, owners, evaluation suites, rollback metadata — `sync` populates real entries; `team-doctor.mjs` blocks on a missing or stale one |
 | `eval-lab.mjs` | Deterministic executable evaluation cases, plus static contract-clause checks over the agent files carrying this studio's hardest-won rules |
@@ -741,6 +759,35 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `test.sh` | The assertion suite over committed fixtures; it prints its own total |
 | `mutate.sh` | Breaks the code and reports which mutations the suite failed to notice |
 | CI | All of the above on every push |
+
+### What the gates prove and what they don't
+
+The one statement of the accepted bounds. Every gate above fails closed against an agent that
+makes a mistake or takes a shortcut; none of them is a security boundary against a determined actor
+with the same access, and nothing here claims to be.
+
+- **The same OS user can forge any record.** The event log, evidence records, `actors.json`, the
+  token ledger and the audit anchor are files the agents' own user can write. The audit anchor
+  detects a rewrite only relative to a digest kept on the same disk. Records are evidence of what
+  the loop did, not proof against someone rewriting the loop's files.
+- **The orchestrator can mint every role except `founder`.** Separation of duties holds *between
+  agents* (each gate event needs the token minted for that role and ticket, and a subagent cannot
+  mint or compose); the main session that composes every prompt can mint any agent role's token.
+  The control files it reads are tracked — an edited `risk-policy.json` (say, `approvals: []` for
+  `high`) lets `tech-lead` alone approve, so review that diff like code. QA tokens are scoped to
+  role and ticket, not to one event.
+- **The guard hook is a text match on the command.** `guard-gate-writes.sh` stops the cheap
+  evasions it lists (shell expansion around `board.mjs`, `actor mint`, compose, hand-writes to the
+  gate files); an interpreter or an encoding it does not parse gets past it. It is a backstop; the
+  board's own validation, tokens and re-derived evidence are the gate.
+- **A TTY can be faked.** The founder mint asks for an interactive terminal and the ticket typed
+  back; that proves a terminal, not a human — a pseudo-terminal satisfies it.
+- **Tests and journeys prove what they ran.** The suite runs in a fresh detached worktree of the
+  exact tip, with the test commands frozen at the first gate event; journeys run only through the
+  plugin's `scripts/drivers/*` (path and sha recorded). Neither proves more than the project's
+  tests and the declared journeys assert.
+- **A review verdict's `## Not checked` is the reviewer's word.** The binding proves which diff
+  and evidence the approval names, not that the reviewer read them.
 
 **Zero runtime dependencies.** Node stdlib and POSIX `sh` only — no `package.json`, no
 `node_modules` at the plugin root (the optional `control-room/` UI has its own). That is a security property as much as a portability one.
@@ -842,7 +889,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
   checklist with one checked item and two unchecked ones reported `1/1` done. (3) `/app-init`'s
   default `.studio-policy.json` turned on all five P0 trust controls, but three of them
   (`requireAuditAnchor`, `requirePromptRegistry`, `requireEvaluation`) are composed into
-  `dispatch-preflight.mjs`, which runs before every spawn, and each needs an artifact a fresh
+  `dispatch-preflight.mjs`, which runs before every ticket claim, and each needs an artifact a fresh
   project does not have yet (an event log with a first ticket, a prompt registry sync of an
   `agents/` directory a shipped project doesn't have, an eval corpus of its own) — every spawn after
   `/app-init` was silently blocked forever. Only `requireDurableRuns`/`requireApprovalBinding`

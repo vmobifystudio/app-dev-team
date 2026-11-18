@@ -110,7 +110,7 @@ return every one, in order. A field you omit is a gate that silently passes. Fie
 | memory-curator's ledger | `docs/team/memory.jsonl` |
 | Journey contract · one declared P0 journey | `docs/team/journeys/README.md` · `docs/team/journeys/<journey-id>.json` |
 | Platform, toolchain, test scopes · artifact-to-commit binding | `docs/team/project-profile.json` · `docs/team/release-candidates.jsonl` |
-| Run ledger (gitignored, main checkout only) · schema registry | `docs/team/runs.jsonl` · `docs/team/schema-registry.json` |
+| Run ledger · slot leases (gitignored) · schema registry | `docs/team/runs.jsonl` · `docs/team/worktree-slots.json` · `docs/team/schema-registry.json` |
 | Dispatch manifests | `docs/team/capabilities.json` · `docs/team/risk-policy.json` · `docs/team/schedule.json` · `docs/team/context-manifest.json` |
 | HMAC actor keys — `deny_all`, never writable by any role | `docs/team/actors.json` |
 | Per-spawn actor tokens — script-written only | `docs/team/actor-tokens.jsonl` |

@@ -104,20 +104,18 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    **The `GATE` lines in its output have a closed role list** — never route around them.
    `orchestrator explain <TICKET>` says why any transition is refused.
 
-1. **Read state.**
-   - `node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json`. Ready = `status` is `todo` and
-     every `dependsOn` ID is **merged** (`qa` **or** `done`).
+1. **Read state.** Step 0 printed the legal transitions and the `REGISTER` block. The one board
+   read is `board.mjs show --json`, which step 2's `parallel-orchestrator` picks ready tickets from
+   (`todo`, every `dependsOn` **merged**, `qa` or `done`) — run it once, there.
    - **The register — every bug and audit finding, with a status that is never blank.**
 
      ```bash
      node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . import-bugs --by tech-manager
-     node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . check
      ```
 
-     `import-bugs` folds `docs/51-bugs.md` into `docs/90-register.jsonl`; exit `2` before QA's first
-     pass just means `docs/51-bugs.md` does not exist yet — say so and continue. `check` exits 1
-     while anything owes an answer: mid-sprint a **report**, at ship a **refusal**. For every open
-     `S1`/`S2` with no ticket, cut a `BUG-NNN-fix` row (`board.mjs add ... --depends <the original
+     It folds `docs/51-bugs.md` into `docs/90-register.jsonl`; exit `2` before QA's first pass just
+     means `docs/51-bugs.md` does not exist yet. Open items are a mid-sprint **report**, a **refusal**
+     at ship. For every open `S1`/`S2` with no ticket, cut a `BUG-NNN-fix` row (`board.mjs add ... --depends <the original
      ticket>`) and link it:
 
      ```bash
@@ -212,8 +210,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      ```
 
      **If `integration-branch.sh` exits 2, STOP the round** and surface its message (`$BASE` holds
-     it) — do not run `verify-done.sh`, do not merge. Every base you might substitute is a guess, and
-     merging into the wrong branch is not recoverable. Resolve it the same way in every later Bash
+     it) — do not verify, do not merge: any substitute base is a guess, and a wrong-branch merge is
+     not recoverable. Resolve it the same way in every later Bash
      call (the variable does not survive between calls).
 
      **`--static` is the default per-ticket lane.** It verifies what a branch can answer — exists,
@@ -244,7 +242,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      one shape; re-spawn the loser with the winner named.
    - **Verify `Assumptions & open questions` against the ledger.** Every question the agent says it
      raised must have its record on `docs/team/messages.jsonl`. A missing record is a report defect:
-     file the question yourself and note in the standup that the agent claimed it and had not. `ASSUMED, NOT RAISED` just needs
+     file it yourself and say so in the standup. `ASSUMED, NOT RAISED` just needs
      routing (step 1a).
    - **Check the daily fragment exists** at `docs/daily/<today>-<role>-<ticket>.md` on the branch —
      that exact spelling (`team-protocol`'s canonical paths). Missing → ask that agent for it before
@@ -261,14 +259,13 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    - **The reviewer must not be the owner.** For a ticket owned by `code-reviewer` (or review of
      review work), route to `tech-lead`. The CLI refuses `approved` from the ticket's owner.
    - Spawn a `code-reviewer` for that branch immediately — do not wait for the other devs. Its
-     prompt is `spawn-prompt.mjs compose --root . --ticket APP-NNN --role code-reviewer --slot <its
-     leased slot>` (lease one as for any agent), verbatim:
-     it carries the saved DONE report, the branch tip, the base, the verdict contract, the `--bind`
+     prompt is `spawn-prompt.mjs compose --root . --ticket APP-NNN --role code-reviewer`, verbatim —
+     no `--slot`: reviewers lease none and stay in the main checkout. It carries the saved DONE report, the branch tip, the base, the verdict contract, the `--bind`
      evidence/context paths and that agent's minted `Token:` line; the hook refuses a reviewer
      prompt without them. On a floor/light track pass `model: sonnet` (the Agent tool's `model`
      parameter). The same compose rule holds for every gate role — `tech-lead`,
-     `security-reviewer`, `verification-engineer`, `qa-engineer`, `release-auditor`, and
-     `--mode design-qa`. Reviewers run in parallel with each other and with still-running
+     `security-reviewer`, `verification-engineer`, `release-auditor` and `--mode design-qa` lease
+     no slot either; `qa-engineer` commits a branch, so it does. Reviewers run in parallel with each other and with still-running
      developers. It appends `board.mjs move APP-NNN started --by code-reviewer` when it picks the
      ticket up.
 
@@ -415,8 +412,11 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
-     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh
+     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh, drivers/web.sh
    ```
+
+   A `web-app` uses `web.sh` on the built, running app — setup: `build-loop-branches.md` §Step 5 —
+   journey-gate drivers.
 
    - Exit `0` → a declared P0 journey completed with its assertions holding — the only signal that
      *the product does what it is for*. Name the evidence.
@@ -430,8 +430,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
        build as having had its journeys exercised**; the standup carries the line verbatim and
        `/app-ship` requires an explicit waiver.
 
-   Then run the QA pass **as a ticket**, not as an errand — skip this on the utility tier
-   (`build-loop-branches.md` §Step 4 — utility tier) and for a wave made only of `QA-` tickets:
+   Then run the QA pass **as a ticket**, not as an errand — on every tier, except a wave made only of
+   `QA-` tickets:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add QA-<sprint>-w<n> --title "QA pass — wave <n>" --owner qa-engineer
@@ -441,7 +441,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
    Spawn `qa-engineer` once, composed with `compose --ticket QA-<sprint>-w<n> --role qa-engineer`:
    the prompt lists every ticket of the wave with its acceptance criteria and carries one token per
-   listed ticket (`Token for APP-NNN: …`). QA exercises the criteria (driving the P0 journey per
+   listed ticket (`Token for APP-NNN: …`). QA works on branch `qa/QA-<sprint>-w<n>`, exercises the criteria (driving the P0 journey per
    `runtime-gate` where the toolchain is present), writes defects to `docs/51-bugs.md` (S1/S2 return
    via step 1), and **records its own verdict per ticket**:
 
@@ -484,13 +484,12 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    Surface what the channel still owes, and **escalate the founder's half to the founder**:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open
    node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --escalations
    ```
 
-   An unanswered `question` is a `tech-manager` action item. An **escalation** must be resolved or
-   passed to the user in the same round: exit `1` from the second command → **surface those to the
-   user verbatim in this round's report**; never carry them to the next round.
+   It lists open questions (each a `tech-manager` action item) and escalations. Exit `1` → an
+   escalation is open: **surface it to the user verbatim in this round's report**; never carry it to
+   the next round.
 
 6a. **Journal the round — one line, every round, before you loop** — to `docs/33-rounds.jsonl`,
    what happened to the loop (the event log records what happened to tickets).

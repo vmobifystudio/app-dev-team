@@ -102,8 +102,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_failed --by qa-en
   --token <Token for APP-NNN> --detail "BUG-NNN"
 ```
 
-`--evidence` is the journey-gate PASS record, or — no journey driver, or a `utility` wave with no QA
-ticket — the wave's test record from `verify-done.sh <integration branch> <base> full` run after the
+`--evidence` is the journey-gate PASS record, or — no journey driver could run — the wave's test record from `verify-done.sh <integration branch> <base> full` run after the
 merge (its `test-*.json` record in `docs/team/evidence/`). Never on a runtime `FAIL`. A refusal is a finding: report
 it, never route around it. Your own `QA-` ticket is docs-only; it closes from `merged` and is not on
 your list.
@@ -165,9 +164,9 @@ pass you did not get credit for. A field you cannot fill is written `unknown` an
 
 # Output
 
-**A QA pass is ticketed work on a branch** (`utility`: no QA ticket — record the verdicts and return
-the summary below). You have a ticket ID from the spawn prompt; none → ask before you write. Create
-the branch **before the first file**, commit, and return the output block your spawn prompt prints,
+**A QA pass is ticketed work on a branch** — one `QA-<sprint>-w<n>` ticket per wave on every tier,
+branch `qa/QA-<sprint>-w<n>` (the one your prompt prints). You have a ticket ID from the spawn
+prompt; none → ask before you write. Create the branch **before the first file**, commit, and return the output block your spawn prompt prints,
 `DONE:` first, every field filled. `Branch:` is required even on a docs-only ticket.
 `Shared surfaces touched:` names `docs/50-test-plan.md` and `docs/51-bugs.md`. Under it, one line
 per listed ticket: `APP-NNN qa_passed|qa_failed (exit <code>) — <evidence path or BUG-NNN>`.

@@ -68,7 +68,9 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      also writes `docs/20-architecture.md` + `docs/21-engineering-principles.md`, the technical pass
      `cto` would have run. Write only the impl specs for platforms the product type actually has:
      a `backend-service` gets `22-impl-spec-backend.md` and no iOS or Android spec; a `web-app` gets
-     `22-impl-spec-web.md` (what `web-developer` reads), plus `22-impl-spec-backend.md` only if a
+     `22-impl-spec-web.md` (what `web-developer` reads — it names the `build`, `start` and `test`
+     scripts; `devops-engineer`, or the first `web-developer` scaffold ticket, writes them into
+     `package.json`), plus `22-impl-spec-backend.md` only if a
      backend is in scope.
    - `devops-engineer` reads architecture, writes `docs/23-git-strategy.md`, a platform
      `.gitignore`, and the CI workflow — seeded from the House KB `git-workflow.md`.
@@ -84,14 +86,20 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    touch .gitignore
    for p in .agent-wt/ .studio-stop docs/31-board-events.jsonl docs/31-board.md \
             docs/team/runs.jsonl docs/team/runtime-result.json docs/team/journey-result.json \
-            docs/team/actors.json docs/team/actor-tokens.jsonl docs/team/reports/; do
+            docs/team/actors.json docs/team/actor-tokens.jsonl docs/team/reports/ \
+            docs/53-reviews/ docs/54-evidence/ docs/33-rounds.jsonl docs/team/evidence/ \
+            docs/team/worktree-slots.json docs/team/ship-gate-verdict.json; do
      grep -qxF "$p" .gitignore || printf '%s\n' "$p" >> .gitignore
    done
    ```
 
    That list is the studio's own operational state, appended to whatever platform `.gitignore`
    `devops-engineer` wrote (plus `docs/team/actors.json` and `docs/team/actor-tokens.jsonl`, which hold actor keys and
-   per-spawn tokens). The
+   per-spawn tokens). Every entry is in `${CLAUDE_PLUGIN_ROOT}/scripts/lib/operational-paths.txt`;
+   review verdicts (`docs/53-reviews/`) and evidence records stay uncommitted in the main checkout,
+   where the board and the gates read them. The rest of that file (`docs/daily/`, the channel,
+   `schedule.json`, `memory.jsonl`, `incidents.jsonl`, `release-candidates.jsonl`,
+   `audit-anchor.json`) is tracked on purpose: dirty checks skip it, history keeps it. The
    board log and its rendering live in the main checkout only — a
    `git checkout` must not roll the board back, and ICs get their ticket through the spawn prompt,
    not from the board file. `docs/team/messages.jsonl` and the dispatch manifests stay
@@ -139,7 +147,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 
      **Only these two default on.** Codex found (PR #15) that turning on all five here breaks the
      very first spawn: `requireAuditAnchor`, `requirePromptRegistry`, and `requireEvaluation` are all
-     composed into `dispatch-preflight.mjs`, which runs before *every* implementation spawn — and
+     composed into `dispatch-preflight.mjs`, which runs before *every* ticket claim — and
      each needs an artifact this step cannot produce yet. Reproduced directly against a fresh
      project directory: `audit-anchor.mjs verify` needs `docs/31-board-events.jsonl`, which does not
      exist until the first ticket is added (later, at planning); `prompt-registry.mjs sync` needs an
@@ -162,7 +170,10 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 
    ```bash
    for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent/ docs/team/messages.jsonl \
-            docs/*.md .github fastlane; do
+            docs/*.md .github fastlane \
+            package.json package-lock.json pnpm-lock.yaml yarn.lock .nvmrc */package.json \
+            Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
+            settings.gradle settings.gradle.kts */build.gradle */build.gradle.kts gradle gradlew; do
      [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
    done
    git diff --cached --name-only    # confirm only those landed
@@ -170,7 +181,9 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    git status --short               # anything left is a file nobody committed: commit it or say why
    ```
 
-   Uncommitted docs are invisible to every worktree `/app-build` leases, so an IC would build
+   The platform manifests are in the list because a worktree without `package.json` /
+   `Package.swift` / the Gradle files cannot build, and the wave's fresh test worktree sees only
+   what is committed. Uncommitted docs are invisible to every worktree `/app-build` leases, so an IC would build
    against no spec at all — and a dirty base makes the first wave push fail to fast-forward.
 
 6. **Print a summary**: list every doc produced, with one-line description each, and the suggested

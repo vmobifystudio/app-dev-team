@@ -71,7 +71,9 @@ measurement one — a spec saying 56dp is a claim about the **built UI**, not th
 
 Executing steps needs a platform driver: `scripts/drivers/android.sh`, `scripts/drivers/ios.sh`
 (partial — step execution needs XCUITest) and `scripts/drivers/web.sh` (the project's Playwright;
-app URL via `--url` or `STUDIO_WEB_URL`). With no `--driver`, every declared journey is CANNOT
+app URL via `--url` or `STUDIO_WEB_URL`). Web setup, once: `npm i -D playwright && npx playwright
+install chromium`; then build and start the app (`npm run start`, or any static server on the build
+dir) and export its URL as `STUDIO_WEB_URL` before running the gate. With no `--driver`, every declared journey is CANNOT
 EVALUATE and is listed by name — the honest state.
 
 A driver is any executable:

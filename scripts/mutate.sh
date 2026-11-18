@@ -317,6 +317,9 @@ MF23@@scripts/lib/events.mjs@@...(isQaDocs(state) ? ['merged'] : [])@@...[]@@F1:
 MF24@@scripts/board.mjs@@if (state && isQaDocs(state)) return '';@@if (false) return '';@@F1: ...and closes from merged without being on the integration branch (W2-6)@@Sprint 3 track F1
 MF25@@scripts/board.mjs@@const integration = integrationBase(gitAt(process.cwd()));@@const integration = 'main';@@F1: ...and the recorded base is develop's tip, not main's@@Sprint 3 track F1
 MF26@@scripts/verify-done.sh@@TOKFLAG=$(node "$EV" token-flag@@TOKFLAG=$(true "$EV" token-flag@@F1: verify-done prints the board command with the inline-mint --token under requireActorTokens (W2-10)@@Sprint 3 track F1
+MM01@@commands/app-init.md@@docs/53-reviews/ docs/54-evidence/@@docs/53-review/ docs/54-evidence/@@K3: every path /app-init gitignores is an operational path (C3W-12)@@Sprint 4 track K3
+MM02@@commands/app-ship.md@@waiver is the exception: android, ios and web drivers all ship.@@Drivers do not ship yet.@@K3: app-build and app-ship name the web driver and its setup (C3W-3)@@Sprint 4 track K3
+MM03@@commands/app-build.md@@on every tier, except a wave made only of@@skip it on the utility tier and a wave made only of@@K3: the utility lane runs one QA- ticket per wave, like flagship (C3W-2)@@Sprint 4 track K3
 CATALOGUE
 }
 

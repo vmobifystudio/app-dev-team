@@ -118,6 +118,9 @@ Never restate the agent's "all green" as if it were confirmed.
 
 ## Inspectable but not runnable
 
+(Orchestrator commands: the inline mint is the main session's. A subagent never runs it — it
+returns the command for the orchestrator to run.)
+
 A ticket whose *environment* is broken must not also lose its *code review* — four Definition-of-Done
 checks need only `git diff` and `grep`. `verified_static` is that state:
 

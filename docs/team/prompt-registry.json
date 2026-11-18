@@ -100,13 +100,13 @@
     },
     {
       "id": "devops-engineer",
-      "version": "1.0.7",
+      "version": "1.0.8",
       "owner": "devops-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.6",
-      "content_hash": "49b3cc82ea2c21ab3f3edfe178c3c4d02012b1df55ea2534979548f7acc6d998"
+      "rollback_version": "1.0.7",
+      "content_hash": "5acbaa306153656d115b2dff97f324c3e39bdd0e9378773eb7dc605fdae73d0f"
     },
     {
       "id": "ios-developer",
@@ -180,13 +180,13 @@
     },
     {
       "id": "qa-engineer",
-      "version": "1.0.9",
+      "version": "1.0.10",
       "owner": "qa-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.8",
-      "content_hash": "59de6516b2b17d6a6f4d16636e60b1f5c3ff257fc145c132e3e5599f4bbca658"
+      "rollback_version": "1.0.9",
+      "content_hash": "b55f17380ec1dad077f2e8914751b2e18d20319aa014346c95d7d4f1025cf441"
     },
     {
       "id": "red-team-agent",
