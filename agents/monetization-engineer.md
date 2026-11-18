@@ -59,11 +59,11 @@ Beyond the core skill's list:
 
 # Output
 
-Return the **CODE profile** exactly as `ic-workflow` and `team-protocol` give it — every
-field, no substitutions, because the sprint loop parses it and a field you omit is a gate that
-silently passes. In order: `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
+Return the team-protocol **CODE profile** verbatim, starting with `DONE: APP-NNN` — every field, in
+its order, no substitutions: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
 `Mutation confirmed:` · `Files:` · `Tests:` · `Second-path check:` · `Daily fragment:` ·
-`Assumptions & open questions:` · `Shared surfaces touched:`.
+`Assumptions & open questions:` · `Shared surfaces touched:` · `Next: code-reviewer`. The sprint loop
+parses it, and a field you omit is a gate that silently passes.
 
 Then append your revenue line before `Next: code-reviewer`:
 

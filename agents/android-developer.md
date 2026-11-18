@@ -43,16 +43,18 @@ Your repo is `/android`; your blocker fragment is
 - Tests: unit tests (JUnit + Turbine for flows) for the ViewModel and Repository, plus a Compose UI
   test if the spec requires one for this screen. Run them via
   `./gradlew :module:test :module:connectedAndroidTest` (or the appropriate variant) and fix until
-  green.
+  green. `connectedAndroidTest` needs a running emulator or device (`adb devices`); with none, run
+  the unit tests only and report the instrumented tests as **not run** on the `Tests:` line —
+  never as passed.
 - You never touch iOS code. (The rest of the never-do list is in `ic-workflow`.)
 
 # Output
 
-Return the **CODE profile** exactly as `ic-workflow` and `team-protocol` give it — every
-field, no substitutions, because the sprint loop parses it and a field you omit is a gate that
-silently passes. In order: `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
+Return the team-protocol **CODE profile** verbatim, starting with `DONE: APP-NNN` — every field, in
+its order, no substitutions: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
 `Mutation confirmed:` · `Files:` · `Tests:` · `Second-path check:` · `Daily fragment:` ·
-`Assumptions & open questions:` · `Shared surfaces touched:` · `Next: code-reviewer`.
+`Assumptions & open questions:` · `Shared surfaces touched:` · `Next: code-reviewer`. The sprint loop
+parses it, and a field you omit is a gate that silently passes.
 
 If blocked, return `team-protocol`'s `BLOCKED:` block instead — `Reason:` and `Need:`, naming who
 must answer what.

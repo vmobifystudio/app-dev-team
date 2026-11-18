@@ -39,7 +39,8 @@ The rest of the input contract is in `ic-workflow`.
 - SwiftUI unless the spec says otherwise.
 - Swift Concurrency (`async/await`, `Task`, `@MainActor`) unless the spec says otherwise.
 - **No force-unwraps.** No `print` statements — use the spec's logger.
-- Strings into `Localizable.strings` from the start.
+- Strings into a String Catalog (`Localizable.xcstrings`) from the start — not legacy
+  `Localizable.strings`.
 - Accessibility: every interactive view has a label.
 - Tests: unit tests for the ViewModel and Repository, plus a snapshot test if the spec requires one
   for this screen. Run them with `xcodebuild` or `swift test` and fix until green.
@@ -47,11 +48,11 @@ The rest of the input contract is in `ic-workflow`.
 
 # Output
 
-Return the **CODE profile** exactly as `ic-workflow` and `team-protocol` give it — every
-field, no substitutions, because the sprint loop parses it and a field you omit is a gate that
-silently passes. In order: `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
+Return the team-protocol **CODE profile** verbatim, starting with `DONE: APP-NNN` — every field, in
+its order, no substitutions: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
 `Mutation confirmed:` · `Files:` · `Tests:` · `Second-path check:` · `Daily fragment:` ·
-`Assumptions & open questions:` · `Shared surfaces touched:` · `Next: code-reviewer`.
+`Assumptions & open questions:` · `Shared surfaces touched:` · `Next: code-reviewer`. The sprint loop
+parses it, and a field you omit is a gate that silently passes.
 
 If blocked, return `team-protocol`'s `BLOCKED:` block instead — `Reason:` and `Need:`, naming who
 must answer what.
