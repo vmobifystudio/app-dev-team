@@ -236,7 +236,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      |---|---|---|
      | `VERIFIED` | 0 | `board.mjs move APP-NNN verified --by tech-manager --evidence <verify-done's "Evidence:" path> <TOKEN>` — refused without the record. `tests=unverified` → say so in `--detail` |
      | `REJECTED` | 1 | `board.mjs move APP-NNN rejected --by tech-manager --detail "<the blocking line>" <TOKEN>`, re-spawn the developer with the blocking lines verbatim. The row stays `in_progress`; a **developer** retry, not a review cycle — it does not count toward the cap |
-     | `CANNOT EVALUATE` | 2 | `board.mjs move APP-NNN verified_static --by tech-manager --detail "<the reason, verbatim>" <TOKEN>`. **Do not re-spawn the developer** — `build-loop-branches.md` §Step 3 for its two causes |
+     | `CANNOT EVALUATE` | 2 | `board.mjs move APP-NNN verified_static --by tech-manager --evidence <its --static record> <TOKEN>`. **Do not re-spawn the developer** — `build-loop-branches.md` §Step 3 for its two causes |
    - **Read `Shared surfaces touched`.** Two returning agents naming the same file, or both
      *creating* an abstraction for one concern → `tech-manager` **now**, before the merge gate, picks
      one shape; re-spawn the loser with the winner named.
@@ -337,10 +337,10 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
      `approval-check` exit `1` → the approval does not cover the branch as it stands (a later commit,
      or never bound): request a fresh review, do not merge. `merged` refuses without a non-owner
-     `approved` that satisfies the risk policy; on exit 0 the row is `qa`. Refused with
+     `approved` that satisfies the risk policy (no ticket-named branch → `--head <sha>`); exit 0 → row is
+     `qa`. Refused with
      `missing: tech-lead` or `missing: security-reviewer` → `build-loop-branches.md` §Step 4
-     (high/critical). **The gate does not run `git merge`** — the merges happen ONCE per wave, in
-     step 5.
+     (high/critical). **The gate does not `git merge`** — merges happen once per wave (step 5).
    - `REQUEST CHANGES` → `board.mjs move APP-NNN changes --by code-reviewer --verdict
      docs/53-reviews/APP-NNN-cycle-N.md` (the reviewer's own token), then re-spawn the original
      developer with `compose --role <owner> --retry <that file>` — not notes from your context. Cycles are the count of
@@ -459,7 +459,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN closed --by tech-manager \
      --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket APP-NNN)"
    ```
-   No branch named for the ticket → add `--head <approved sha>` (else refused).
+   `closed` checks the commit `merged` recorded; no `--head` needed.
 
    QA's legal `--evidence` is the journey-gate PASS record or a full-suite test-evidence record on
    the integration branch (`build-loop-branches.md` §Step 5 — the QA ticket). `closed` is refused
