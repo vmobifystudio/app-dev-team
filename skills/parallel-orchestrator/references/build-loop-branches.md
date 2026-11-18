@@ -69,8 +69,11 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN reopened --by founde
 ```
 
 It moves the ticket back to `in_progress` with exactly one more cycle; re-spawn the owner from there.
-Only the founder writes it: print the command for the human to run in their own terminal. **You
-never mint a `founder` token and never append it on your own judgement.**
+Only the founder writes it. Print both steps for the human: in their own terminal (it needs a TTY
+and the ticket id typed back; the token is single-use, 30 minutes)
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role founder --ticket APP-NNN`, then in
+Claude Code `! node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN reopened --by founder --token <it>`.
+**You never mint a `founder` token and never append it on your own judgement.**
 
 A `rejected` verify-done is not a cycle: the row stays `in_progress` and only `changes` counts.
 

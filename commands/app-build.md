@@ -459,6 +459,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN closed --by tech-manager \
      --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket APP-NNN)"
    ```
+   No branch named for the ticket → add `--head <approved sha>` (else refused).
 
    QA's legal `--evidence` is the journey-gate PASS record or a full-suite test-evidence record on
    the integration branch (`build-loop-branches.md` §Step 5 — the QA ticket). `closed` is refused

@@ -11151,6 +11151,17 @@ tail -n 1 "$F1P/docs/team/actor-tokens.jsonl" | grep -q '"session":"f1-session"'
 rm -rf "$F1M" "$F1E" "$F1A" "$F1S" "$F1B" "$F1N" "$F1W" "$F1QA" "$F1P"
 
 
+# --- Sprint 3 lead: the board anchor under .git/studio/ is off-limits to subagents (G2-10 backstop) ---
+echo
+SLA="$TMP/s3-anchor"; rm -rf "$SLA"; mkdir -p "$SLA/docs"; : > "$SLA/docs/31-board-events.jsonl"
+s3a() { node -e 'const [, t, k, v, c] = process.argv; process.stdout.write(JSON.stringify({ tool_name: t, agent_id: "a", cwd: c, tool_input: { [k]: v } }))' "$1" "$2" "$3" "$SLA" \
+  | sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>&1; }
+s3a Bash command "cat .git/studio/board-anchor-x.json"
+[ $? = 2 ] && ok "S3: guard refuses a subagent touching .git/studio/ (the board anchor)" || bad "S3: guard refuses a subagent touching .git/studio/ (the board anchor)"
+s3a Write file_path "$SLA/.git/studio/board-anchor-x.json"
+[ $? = 2 ] && ok "S3: ...and writing it with Write" || bad "S3: ...and writing it with Write"
+rm -rf "$SLA"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

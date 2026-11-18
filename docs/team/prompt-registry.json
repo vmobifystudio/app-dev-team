@@ -60,13 +60,13 @@
     },
     {
       "id": "code-reviewer",
-      "version": "1.0.12",
+      "version": "1.0.13",
       "owner": "code-reviewer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.11",
-      "content_hash": "0477af230a8622149f1896ed75e949589c592b0621b5e0ef75a269b89c7f6069"
+      "rollback_version": "1.0.12",
+      "content_hash": "ba6680a7ba6d3405e913b7b124f424915a557c1ca08439ad20388693f7eefa41"
     },
     {
       "id": "cpo",
@@ -240,13 +240,13 @@
     },
     {
       "id": "tech-lead",
-      "version": "1.0.7",
+      "version": "1.0.8",
       "owner": "tech-lead",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.6",
-      "content_hash": "38ebb97788deb5d1d85d0878fbe8383364b74365fba7a5ba8770dacef2d294b3"
+      "rollback_version": "1.0.7",
+      "content_hash": "0bad5f44c31a3f004c2bb3d5baac9257426ace9eb10ebb7027b2c76629350c3c"
     },
     {
       "id": "tech-manager",

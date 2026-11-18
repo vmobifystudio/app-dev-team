@@ -78,7 +78,8 @@ Focus (optional): $ARGUMENTS
    `orchestrator round` returns CANNOT EVALUATE ("toolchain UNPROVEN") on round 1 of every new
    project. Spawn `devops-engineer` to fill `platform`, `toolchain` (one `{tool, args, expect}` per
    tool pinned in `docs/20-architecture.md` / `${CLAUDE_PLUGIN_ROOT}/knowledge/stack-defaults.md`) and `test.fast` /
-   `test.full`, then confirm it holds on this machine:
+   `test.full` (until `test.fast` is declared no code ticket can reach `verified`), then confirm it
+   holds on this machine:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check --root .

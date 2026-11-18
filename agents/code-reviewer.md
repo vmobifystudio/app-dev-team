@@ -153,8 +153,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN changes  --by code-r
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by code-reviewer \
   --token <the token in your spawn prompt> --verdict docs/53-reviews/APP-NNN-cycle-N.md \
   --bind --commit <tip> --base <base> \
-  --evidence <path to the test/verify-done output you reviewed> \
-  --context <path to the context manifest or spec you reviewed>
+  --evidence <the Evidence: record in your prompt — verify-done's for exactly this tip> \
+  --context docs/team/context-manifest.json
 ```
 
 `<base>..<tip>` is your spawn prompt's `Range:` line (base = merge-base with the integration branch).

@@ -224,6 +224,7 @@ function guardGateWrites() {
     if (/(^|[;&|(`\n]|\$\()\s*(?:(?:env|exec|nohup|command|xargs|time|sudo)\s+)*(?:\S*\/)?(claude|claude-code)(\s|$)/.test(cmd)
       || /@anthropic-ai\/claude-code\b/.test(cmd)) refuse('start a nested `claude` session (it would carry no agent_id past these checks)');
     if (/\.claude\/projects\b/.test(cmd)) refuse('read Claude Code session transcripts under ~/.claude/projects');
+    if (/\.git\/studio\b/.test(cmd)) refuse('touch the board anchor under .git/studio/');
     const ev = /\S*docs\/team\/evidence\b\S*/;
     const into = new RegExp(`(>>?|\\btee\\s+(?:-a\\s+)?)\\s*${ev.source}`);
     const dest = new RegExp(`\\b(cp|mv|ln|install|rsync)\\b[^;&|\\n]*\\s${ev.source}\\s*($|[;&|\\n])`);
@@ -240,6 +241,7 @@ function guardGateWrites() {
     refuse('read Claude Code session transcripts under ~/.claude/projects');
   }
   if (!['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(payload.tool_name)) allow();
+  if (/\/\.git\/studio\//.test(abs) || raw.includes('.git/studio/')) refuse('write the board anchor under .git/studio/');
   const roots = [...new Set([root, payload.cwd || root].map((r) => realish(resolve(r))))];
   if (raw.endsWith(TOKENS) || roots.some((r) => abs === join(r, TOKENS))) refuse('write the actor token registry');
   if (raw.includes(`/${EVIDENCE}`) || raw.startsWith(EVIDENCE) || roots.some((r) => abs.startsWith(join(r, EVIDENCE)))) refuse('write gate evidence by hand');

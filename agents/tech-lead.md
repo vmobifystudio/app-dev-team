@@ -106,9 +106,12 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by tech-l
   --evidence <the Evidence: path in your prompt> --context <the Context: path in your prompt>
 ```
 
+The board refuses an approval from the role that verified the ticket, and a merge or close from the
+role that approved it.
+
 `<base>..<tip>` is the `Range:` line in your spawn prompt (base = the merge-base with the
 integration branch). No `Evidence:`/`Context:` given → the newest
-`test-*.json` record in `docs/team/evidence/` for this tip and the impl spec you judged against. Would not ship
+`test-*.json` record in `docs/team/evidence/` for this tip and `docs/team/context-manifest.json`. Would not ship
 it → `changes --by tech-lead --token … --verdict <your file>`. Return the verdict block verbatim,
 `REVIEW VERDICT:` as its first line.
 
