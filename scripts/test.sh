@@ -2408,6 +2408,27 @@ grep -q '"ticket":"L-002"' "$L2/docs/team/runs.jsonl" \
   && ok "...with a durable start record a run-doctor sweep can find" \
   || bad "...with a durable start record a run-doctor sweep can find"
 
+# --- C4: the lease `claimed` opens is CLOSED by the board. Nothing ever appended `complete`, so
+# run-doctor read every claim as an orphan 15 minutes later and /app-recover always stopped. Now
+# merged/closed/blocked/rejected complete it and any other move by the holder heartbeats it.
+LZ=$(newboard bd-lease-complete)
+bm "$LZ" add LZ-001 --title "Merges" --owner ios-developer >/dev/null 2>&1
+bm "$LZ" add LZ-002 --title "Still claimed" --owner ios-developer >/dev/null 2>&1
+drive "$LZ" LZ-001 ios-developer
+bm "$LZ" move LZ-002 claimed --by ios-developer >/dev/null 2>&1
+grep '"ticket":"LZ-001"' "$LZ/docs/team/runs.jsonl" | grep -q '"event":"heartbeat"' \
+  && ok "a move by the lease holder heartbeats the lease (C4)" \
+  || bad "a move by the lease holder heartbeats the lease (C4)"
+grep '"ticket":"LZ-001"' "$LZ/docs/team/runs.jsonl" | grep -q '"event":"complete"' \
+  && ok "...and merged appends the lease's complete record" \
+  || bad "...and merged appends the lease's complete record"
+LZ_LATER=$(node -e 'console.log(new Date(Date.now() + 2 * 3600e3).toISOString())')
+assert_exit 1 "control: a claim nobody finished is still an orphan two hours later" \
+  node "$HERE/run-doctor.mjs" --ledger "$LZ/docs/team/runs.jsonl" --now "$LZ_LATER"
+bm "$LZ" move LZ-002 blocked --by ios-developer --detail "waiting on design" >/dev/null 2>&1
+assert_exit 0 "...and once it is blocked too, run-doctor is CLEAR two hours past the 15-minute lease" \
+  node "$HERE/run-doctor.mjs" --ledger "$LZ/docs/team/runs.jsonl" --now "$LZ_LATER"
+
 # --- Global plugin enhancement plan (2026-08-03), P0.2's narrow first slice: `claimLease` ran
 # run-ledger.mjs start and kept only its exit code, so the `claimed` event on the board carried no
 # pointer back to the run/attempt that actually holds the lease — the two records existed side by
@@ -2591,6 +2612,61 @@ import("'"$HERE"'/lib/board.mjs").then(async (m) => {
   process.exit(checked === 2 && log.some((e) => e.event === "changes") ? 0 : 1);
 });' "$C" && ok "the rendered Cycles column equals the count of changes events, per ticket" \
            || bad "the rendered Cycles column equals the count of changes events, per ticket"
+
+# --- G-F8: `reopened`. The cycle cap's only exit used to be `approved`: blocked -> unblocked ->
+# review, where the next REQUEST CHANGES is refused again. The founder (and only the founder) can now
+# hand the ticket back to its developer with ONE more review cycle on top of the cap.
+RO=$(newboard bd-reopen)
+bm "$RO" add R-001 --title "Needs a third round" --owner ios-developer >/dev/null 2>&1
+ro_rework() {
+  bm "$RO" move R-001 done_reported    --by ios-developer >/dev/null 2>&1
+  bm "$RO" move R-001 verified         --by tech-manager  >/dev/null 2>&1
+  bm "$RO" move R-001 review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
+}
+bm "$RO" move R-001 claimed --by ios-developer >/dev/null 2>&1
+ro_rework; bm "$RO" move R-001 changes --by code-reviewer >/dev/null 2>&1
+ro_rework; bm "$RO" move R-001 changes --by code-reviewer >/dev/null 2>&1
+ro_rework; bm "$RO" move R-001 changes --by code-reviewer >/dev/null 2>&1   # the cap: forced to blocked
+assert_exit 1 "reopened is refused for an agent role, even tech-manager (G-F8)" \
+  bm "$RO" move R-001 reopened --by tech-manager
+assert_exit 0 "...and accepted from blocked for --by founder" bm "$RO" move R-001 reopened --by founder
+bm "$RO" show R-001 2>/dev/null | grep -q "in_progress" \
+  && ok "...which hands the ticket back to in_progress" || bad "...which hands the ticket back to in_progress"
+ro_rework
+assert_exit 0 "...and grants one more REQUEST CHANGES beyond the cap" bm "$RO" move R-001 changes --by code-reviewer
+ro_rework
+assert_exit 1 "...but only one: the next REQUEST CHANGES is refused again" bm "$RO" move R-001 changes --by code-reviewer
+assert_has "$TMP/err" "moved to blocked instead" "...and forced to blocked, as at the original cap"
+bm "$RO" move R-001 reopened --by founder >/dev/null 2>&1
+ro_rework
+assert_exit 0 "reopened is legal from review too" bm "$RO" move R-001 reopened --by founder
+( cd "$RO" && node "$BD" --help ) 2>&1 | grep -q "reopened --by founder" \
+  && ok "board.mjs --help shows reopened --by founder" || bad "board.mjs --help shows reopened --by founder"
+
+# --- W8/G-F11: a QA- ticket IS the QA. Routing it through the `qa` stage asked qa-engineer to
+# qa_passed its own ticket (refused: NOT_ON_OWN_TICKET) and told nobody else to, so it never closed.
+# And G-F1: tech-manager, which merges, no longer approves or certifies QA.
+QT=$(newboard bd-qa-ticket)
+bm "$QT" add QA-001 --title "Test plan" --owner qa-engineer >/dev/null 2>&1
+drive "$QT" QA-001 qa-engineer
+assert_exit 0 "a QA- ticket closes straight after merged, with no qa_passed (W8)" \
+  bm "$QT" move QA-001 closed --by tech-manager
+bm "$QT" add APP-020 --title "Feature" --owner ios-developer >/dev/null 2>&1
+bm "$QT" move APP-020 claimed --by ios-developer >/dev/null 2>&1
+bm "$QT" move APP-020 done_reported --by ios-developer >/dev/null 2>&1
+bm "$QT" move APP-020 verified --by tech-manager >/dev/null 2>&1
+bm "$QT" move APP-020 review_requested --by ios-developer >/dev/null 2>&1
+assert_exit 1 "tech-manager may no longer write approved (G-F1)" bm "$QT" move APP-020 approved --by tech-manager
+assert_has "$TMP/err" "may not write" "...refused by the capability matrix"
+bm "$QT" move APP-020 approved --by code-reviewer >/dev/null 2>&1
+bm "$QT" move APP-020 merged --by tech-manager >/dev/null 2>&1
+assert_exit 1 "...an ordinary ticket still owes qa_passed before closed" bm "$QT" move APP-020 closed --by tech-manager
+assert_exit 1 "tech-manager may no longer write qa_passed" bm "$QT" move APP-020 qa_passed --by tech-manager
+assert_exit 1 "...nor qa_failed" bm "$QT" move APP-020 qa_failed --by tech-manager
+bm "$QT" move APP-020 qa_failed --by qa-engineer >/dev/null 2>&1
+bm "$QT" add BUG-020-fix --title "Fix" --owner ios-developer --depends APP-020 >/dev/null 2>&1
+assert_exit 0 "a bug-fix ticket depending on a qa_failed original is claimable — merged satisfies it, not done (W16)" \
+  bm "$QT" move BUG-020-fix claimed --by ios-developer
 
 # --- migration. A hand-written board records review verdicts and nothing else, so most of what a
 # migrated log contains was never written down by anyone. Those events carry ts: null and
@@ -3867,6 +3943,22 @@ printf '{"hook_event_name":"SubagentStop","agent_type":"code-reviewer","transcri
            || bad "a reviewer in its own worktree finds the verdict it recorded in the MAIN tree's log"
 rm -rf "$RVW"
 
+# --- G-F9: an OLD cycle's verdict does not satisfy the hook. The verdict must be newer than the
+# reviewer's latest `started` on the ticket — a reviewer re-spawned for cycle 2 that records nothing
+# was let through by cycle 1's line.
+printf '%s\n%s\n' \
+  '{"ts":"t1","ticket":"APP-001","event":"changes","by":"code-reviewer","detail":{"verdict":"REQUEST CHANGES","verdict_path":"docs/53-reviews/APP-001-cycle-1.md"}}' \
+  '{"ts":"t2","ticket":"APP-001","event":"started","by":"code-reviewer","detail":""}' \
+  > "$RVT/docs/31-board-events.jsonl"
+rv_payload "$RVT/exploit.jsonl" "done with APP-001" | sh "$RVH" >/dev/null 2>&1
+[ $? = 2 ] && ok "a verdict OLDER than the reviewer's latest started (a previous cycle's) is BLOCKED (G-F9)" \
+           || bad "a verdict OLDER than the reviewer's latest started (a previous cycle's) is BLOCKED (G-F9)"
+printf '%s\n' '{"ts":"t3","ticket":"APP-001","event":"approved","by":"code-reviewer","detail":{"verdict":"APPROVE","verdict_path":"docs/53-reviews/APP-001-cycle-2.md"}}' \
+  >> "$RVT/docs/31-board-events.jsonl"
+rv_payload "$RVT/exploit.jsonl" "APPROVED: APP-001" | sh "$RVH" >/dev/null 2>&1
+[ $? = 0 ] && ok "...and this cycle's verdict, written after that started, is ALLOWED" \
+           || bad "...and this cycle's verdict, written after that started, is ALLOWED"
+
 # Belt-and-braces beyond hooks.json's own matcher: a role this hook was never meant to touch.
 rv_payload "$RVT/silent.jsonl" "done" | sed 's/"agent_type":"code-reviewer"/"agent_type":"android-developer"/' | sh "$RVH" >/dev/null 2>&1
 [ $? = 0 ] && ok "a non-code-reviewer agent_type is ALLOWED regardless of anything else in the payload" \
@@ -4332,6 +4424,30 @@ assert_has "$TMP/out" 'role is not declared' "...and an undeclared role is refus
 ( cd "$TBS" && node "$HERE/team-bootstrap.mjs" --root "$TBS" ) >/dev/null 2>&1
 [ $? = 1 ] && ok "re-running refuses to overwrite — an edited policy is not a bootstrap's to reset" \
            || bad "re-running refuses to overwrite — an edited policy is not a bootstrap's to reset"
+
+# --- W4 / W9: the bootstrap defaults must be reachable. The default risk tier asked for a
+# tech-manager approval nobody was told to give (and tech-manager may no longer approve at all), and
+# the capabilities refused package.json to web developers and docs/team/journeys/ to QA.
+TBX="$TMP/team-bootstrap-defaults"; rm -rf "$TBX"; mkdir -p "$TBX"
+node "$HERE/team-bootstrap.mjs" --root "$TBX" >"$TMP/tbx.out" 2>&1
+node --input-type=module -e '
+  const { ROLE_GATES } = await import(process.argv[1]);
+  const p = JSON.parse((await import("node:fs")).readFileSync(process.argv[2], "utf8"));
+  const tiers = [p.default, ...p.rules];
+  const unreachable = tiers.flatMap((t) => t.approvals).filter((r) => !ROLE_GATES.approved.includes(r));
+  if (JSON.stringify(p.default.approvals) !== JSON.stringify(["code-reviewer"]) || unreachable.length) {
+    process.stderr.write(`default ${JSON.stringify(p.default.approvals)}; cannot write approved: ${unreachable}\n`); process.exit(1);
+  }' "$HERE/lib/capabilities.mjs" "$TBX/docs/team/risk-policy.json" 2>"$TMP/err" \
+  && ok "bootstrap risk-policy: medium needs code-reviewer, and every tier names only roles that can write approved (W4)" \
+  || bad "bootstrap risk-policy: medium needs code-reviewer, and every tier names only roles that can write approved (W4)" "$(cat "$TMP/err")"
+CAPX() { ( cd "$TBX" && node "$HERE/capability-check.mjs" --manifest docs/team/capabilities.json --role "$1" --operation write --path "$2" ); }
+assert_exit 0 "bootstrap capabilities: a web developer may write package.json (W9)" CAPX web-developer package.json
+assert_exit 0 "...and an Android developer gradle/ files" CAPX android-developer gradle/libs.versions.toml
+assert_exit 0 "...and qa-engineer docs/team/journeys/" CAPX qa-engineer docs/team/journeys/onboarding.json
+assert_exit 1 "...but a designer still may not write package.json" CAPX product-designer package.json
+grep -q 'starts CLOSED' "$TMP/tbx.out" \
+  && bad "the bootstrap message no longer claims capabilities 'starts CLOSED' while granting fifteen roles" \
+  || ok "the bootstrap message no longer claims capabilities 'starts CLOSED' while granting fifteen roles"
 
 # ONE SPAWN PER RUN, EVER. The manifest hashed docs/31-board.md, which board.mjs rewrites on every
 # move, and pinned HEAD, which every wave merge moves; nothing refreshed it. So the first claim made
@@ -5092,6 +5208,21 @@ printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\n## Not checked\nNothing.\n' > "$
 ( cd "$VD" && node "$BD" move V-001 changes --by code-reviewer --verdict docs/53-reviews/v.md ) >/dev/null 2>&1
 [ $? = 1 ] && ok "...and an APPROVE document cannot be appended as changes either" \
            || bad "...and an APPROVE document cannot be appended as changes either"
+
+# --- W15/R1: the FAIL file a verification or design-QA FAIL is recorded with — verdict line first,
+# then Scope, then the FAIL detail, then `## Not checked` — is a valid `changes` verdict. And APPROVE
+# stays the only approve spelling: `APPROVED` is not a verdict.
+vd_reset
+printf 'REVIEW VERDICT: REQUEST CHANGES\nScope: main..feat/V-001-x\n\nVERIFICATION: FAIL\n- tests: 2 failed (LoginTests.testExpiry)\n\n## Not checked\nNothing.\n' \
+  > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 changes --by tech-manager --verdict docs/53-reviews/v.md ) >"$TMP/out" 2>&1
+[ $? = 0 ] && ok "a verification-FAIL file (verdict, Scope, FAIL detail, Not checked) is accepted as changes" \
+           || bad "a verification-FAIL file (verdict, Scope, FAIL detail, Not checked) is accepted as changes" "$(cat "$TMP/out")"
+vd_reset
+printf 'REVIEW VERDICT: APPROVED\nScope: a..b\n\n## Not checked\nNothing.\n' > "$VD/docs/53-reviews/v.md"
+( cd "$VD" && node "$BD" move V-001 approved --by code-reviewer --verdict docs/53-reviews/v.md ) >/dev/null 2>&1
+[ $? = 1 ] && ok "...and 'REVIEW VERDICT: APPROVED' is refused — APPROVE is the only approve spelling" \
+           || bad "...and 'REVIEW VERDICT: APPROVED' is refused — APPROVE is the only approve spelling"
 
 # ORDERING. A caller who may not write this event at all must hear THAT, not be sent to write a
 # document for a ticket they were never allowed to approve.
@@ -7042,6 +7173,58 @@ bm "$CB" add CB-002 --title "Bad commit ref" --owner ios-developer >/dev/null 2>
 drive_to_review "$CB" CB-002
 assert_exit 2 "--commit that does not resolve to a real commit is refused, not silently ignored" \
   bm "$CB" move CB-002 approved --by code-reviewer --bind --commit not-a-real-sha --evidence evidence.txt --context context.json
+
+# --- W5 / G-F2 / G-F3 / G-F10: the approval binds the TICKET'S branch tip, only the latest approval
+# per role counts, a commit added after approval is not clear, the board's own `merged` runs that
+# check, and `closed` refuses code that never reached the integration branch. Driven from the
+# project root on main — where the reviewer actually runs — on a real feature branch.
+AP="$TMP/approval-latest"; rm -rf "$AP"; mkdir -p "$AP/docs"
+( cd "$AP" && git init -q -b main . && git config user.email t@t.com && git config user.name t \
+  && printf 'context\n' > context.json && printf 'evidence\n' > evidence.txt \
+  && git add -A && git commit -q -m seed \
+  && git checkout -q -b feat/AP-001-x && echo one > f1.txt && git add f1.txt && git commit -q -m c1 \
+  && git checkout -q main )
+printf '{"requireApprovalBinding":true}\n' > "$AP/.studio-policy.json"
+bm "$AP" add AP-001 --title "Bound to the tip" --owner ios-developer >/dev/null 2>&1
+drive_to_review "$AP" AP-001
+AP_TIP1=$(cd "$AP" && git rev-parse feat/AP-001-x)
+bm "$AP" move AP-001 approved --by code-reviewer --bind --evidence evidence.txt --context context.json >/dev/null 2>&1
+AP_BOUND=$(node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").trim().split("\n");console.log(JSON.parse(l[l.length-1]).detail.commit||"")' "$AP/docs/31-board-events.jsonl")
+[ "$AP_BOUND" = "$AP_TIP1" ] \
+  && ok "approved --bind run on main binds the ticket's branch tip, not main's HEAD (W5)" \
+  || bad "approved --bind run on main binds the ticket's branch tip, not main's HEAD (W5)" "bound $AP_BOUND want $AP_TIP1"
+( cd "$AP" && git checkout -q feat/AP-001-x && echo two > f2.txt && git add f2.txt && git commit -q -m c2 && git checkout -q main )
+AP_TIP2=$(cd "$AP" && git rev-parse feat/AP-001-x)
+assert_exit 1 "approval-check --ticket --head: a commit added after the approval is NOT clear (G-F2)" \
+  bash -c "cd '$AP' && node '$HERE/approval-check.mjs' --ticket AP-001 --head $AP_TIP2"
+assert_has "$TMP/err" "re-review is needed" "...and says a re-review is needed"
+assert_exit 1 "merged under requireApprovalBinding runs the same check against the branch tip (G-F3)" \
+  bm "$AP" move AP-001 merged --by tech-manager
+assert_has "$TMP/err" "re-review is needed" "...refusing for the same reason"
+assert_exit 1 "...and a --head that is not the branch tip is refused, not trusted" \
+  bm "$AP" move AP-001 merged --by tech-manager --head "$AP_TIP1"
+bm "$AP" move AP-001 approved --by code-reviewer --bind --evidence evidence.txt --context context.json >/dev/null 2>&1
+assert_exit 0 "only the latest approval per role counts: the superseded one is ignored, not a failure (W5)" \
+  bash -c "cd '$AP' && node '$HERE/approval-check.mjs' --ticket AP-001 --head $AP_TIP2"
+assert_has "$TMP/out" "superseded" "...and the CLEAR line says one was superseded"
+assert_exit 0 "...and merged clears once the approval is bound to the tip" bm "$AP" move AP-001 merged --by tech-manager
+bm "$AP" move AP-001 qa_passed --by qa-engineer >/dev/null 2>&1
+assert_exit 1 "closed is refused while the ticket's branch is not in the integration branch (G-F10)" \
+  bm "$AP" move AP-001 closed --by tech-manager
+assert_has "$TMP/err" "is not merged into main" "...naming the branch and the integration branch"
+( cd "$AP" && git merge -q --no-ff feat/AP-001-x -m "merge AP-001" ) >/dev/null 2>&1
+assert_exit 0 "...and accepted once git says it is merged" bm "$AP" move AP-001 closed --by tech-manager
+assert_exit 0 "without --ticket (a release candidate) an approved commit IN the head still clears" \
+  bash -c "cd '$AP' && node '$HERE/approval-check.mjs' --head main"
+bm "$AP" add AP-002 --title "No branch" --owner ios-developer >/dev/null 2>&1
+drive_to_review "$AP" AP-002
+bm "$AP" move AP-002 approved --by code-reviewer >/dev/null 2>&1
+assert_exit 1 "merged with no branch named for the ticket needs an explicit --head" \
+  bm "$AP" move AP-002 merged --by tech-manager
+assert_has "$TMP/err" "Pass --head" "...and says so"
+assert_exit 1 "...and an approval with no binding does not clear the board's merge gate" \
+  bm "$AP" move AP-002 merged --by tech-manager --head main
+assert_has "$TMP/err" "missing detail.commit" "...because it binds nothing"
 
 MEMORY="$TMP/revamp-memory"; mkdir -p "$MEMORY"
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \

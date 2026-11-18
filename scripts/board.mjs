@@ -26,7 +26,10 @@
  *
  * Events: created · claimed · assigned · done_reported · verified · verified_static · rejected ·
  *         review_requested · started · approved · changes · merged · qa_passed · qa_failed ·
- *         blocked · unblocked · closed
+ *         blocked · unblocked · reopened · closed
+ *
+ * `reopened` is founder-only (`--by founder`): blocked/review -> in_progress with one more review
+ * cycle on top of the cap.
  *
  * `verified_static` is `verified`'s honest sibling: the branch, the commits and the changed files
  * check out and every non-executable check passed, but the test suite DID NOT RUN. It unlocks
@@ -64,6 +67,8 @@ import {
   deriveMetrics,
 } from './lib/events.mjs';
 import { VERDICT_EVENTS, readVerdict } from './lib/verdict.mjs';
+import { checkApprovals } from './lib/approval.mjs';
+import { gitAt, integrationBase, ticketBranches, ticketTip, isAncestor } from './lib/integration.mjs';
 
 const DEFAULT_LOG = 'docs/31-board-events.jsonl';
 const DEFAULT_BOARD = 'docs/31-board.md';
@@ -141,7 +146,7 @@ const VALUE_FLAGS = new Set([
   'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
   'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root', 'base', 'actor', 'actor-token',
-  'evidence', 'context', 'run', 'attempt', 'lease-seconds', 'verdict',
+  'evidence', 'context', 'run', 'attempt', 'lease-seconds', 'verdict', 'head',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
@@ -335,6 +340,27 @@ function stampActor(paths, flags, ticket, eventName) {
   // event into the real chain while attestation was on and the registry was intact. `root.mjs`
   // exists precisely to answer "which project is this, authoritatively" — and it was not on this
   // path at all.
+  const { root, policy } = studioPolicy();
+  const result = resolveActor({
+    root,
+    role: String(flags.by || ''),
+    ticket,
+    event: eventName,
+    ts: '',
+    token: typeof flags['actor-token'] === 'string' ? flags['actor-token'] : '',
+    actorId: typeof flags.actor === 'string' ? flags.actor : '',
+    requireAttested: policy.requireAttestedActors === true,
+  });
+  if (!result.ok) {
+    die(result.code, `refusing ${eventName} on ${ticket}: ${result.reason}\n` +
+      '  requireAttestedActors is on, so a role must be GRANTED to an actor in docs/team/actors.json\n' +
+      '  and proven with a token, not merely spelled correctly in --by.');
+  }
+  return result.actor;
+}
+
+/** The project root (from the resolver, never from --log) and its .studio-policy.json ({} if none). */
+function studioPolicy() {
   const resolved = resolveProjectRoot({});
   if (!resolved.ok) die(2, explainRootFailure(resolved));
   const root = resolved.root;
@@ -347,33 +373,16 @@ function stampActor(paths, flags, ticket, eventName) {
   // EVALUATE and refuses; actor.mjs argues for exactly that one layer down, about the registry.
   // The identity gate was the one place a corrupt config was a downgrade instead of a refusal.
   const policyPath = resolve(root, '.studio-policy.json');
-  let requireAttested = false;
+  let policy = {};
   if (existsSync(policyPath)) {
-    let policy;
-    try { policy = JSON.parse(readFileSync(policyPath, 'utf8')); }
+    try { policy = JSON.parse(readFileSync(policyPath, 'utf8')) || {}; }
     catch (e) {
       die(2, `.studio-policy.json exists but is unreadable (${e.message}).\n` +
              '  Refusing rather than assuming the permissive default: an unparseable policy must not\n' +
              '  be able to turn attestation off. Fix the file, or delete it deliberately.');
     }
-    requireAttested = policy.requireAttestedActors === true;
   }
-  const result = resolveActor({
-    root,
-    role: String(flags.by || ''),
-    ticket,
-    event: eventName,
-    ts: '',
-    token: typeof flags['actor-token'] === 'string' ? flags['actor-token'] : '',
-    actorId: typeof flags.actor === 'string' ? flags.actor : '',
-    requireAttested,
-  });
-  if (!result.ok) {
-    die(result.code, `refusing ${eventName} on ${ticket}: ${result.reason}\n` +
-      '  requireAttestedActors is on, so a role must be GRANTED to an actor in docs/team/actors.json\n' +
-      '  and proven with a token, not merely spelled correctly in --by.');
-  }
-  return result.actor;
+  return { root, policy };
 }
 
 function writeView(boardPath, tickets) {
@@ -601,15 +610,31 @@ function claimLease(ticket, flags, paths) {
  * commit can no longer be assumed from `cwd`. `--commit <sha>` makes it explicit instead of
  * ambient; omitting it keeps the old cwd-relative behavior for a caller that really is inside the
  * right worktree.
+ *
+ * W5: the reviewer runs from the project root, on main, and its prose never passed --commit — so
+ * every approval bound main's HEAD and the merge gate refused it forever. The default is now the
+ * TICKET'S BRANCH TIP (the one branch named for the ticket, lib/integration.mjs — the matcher
+ * merge-reconcile uses). HEAD is used only when no branch is named for the ticket at all (work
+ * committed straight onto the current branch), and the detail says which one was bound.
  */
-function bindApprovalEvidence(flags) {
+function bindApprovalEvidence(flags, ticket) {
   let commit;
+  let commitSource = 'explicit --commit';
   if (typeof flags.commit === 'string' && flags.commit) {
     try { commit = execFileSync('git', ['rev-parse', '--verify', `${flags.commit}^{commit}`], { encoding: 'utf8' }).trim(); }
     catch { return { ok: false, code: 2, reason: `--commit ${flags.commit} does not resolve to a real commit` }; }
   } else {
-    try { commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); }
-    catch { return { ok: false, code: 2, reason: 'cannot resolve HEAD — is this a git repository, and if not run from inside the reviewed worktree, pass --commit <sha>?' }; }
+    const tip = ticketTip(gitAt(process.cwd()), ticket);
+    if (tip.ambiguous.length) {
+      return { ok: false, code: 2, reason: `several branches are named for ${ticket} (${tip.ambiguous.join(', ')}) — pass --commit <sha> naming the one you reviewed` };
+    }
+    if (tip.sha) {
+      commit = tip.sha;
+      commitSource = `tip of ${tip.branch}`;
+    } else {
+      try { commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); commitSource = `HEAD (no branch is named for ${ticket})`; }
+      catch { return { ok: false, code: 2, reason: 'cannot resolve HEAD — is this a git repository, and if not run from inside the reviewed worktree, pass --commit <sha>?' }; }
+    }
   }
   // THE APPROVAL'S SUBJECT IS THE WHOLE CANDIDATE, NOT ONE COMMIT.
   //
@@ -664,6 +689,7 @@ function bindApprovalEvidence(flags) {
     ok: true,
     detail: {
       commit,
+      commit_source: commitSource,
       base,
       base_source: baseSource,
       files,
@@ -704,6 +730,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     if (result.force) {
       const forced = { ...event, event: result.force.event, detail: result.force.detail, by: flags.by || '' };
       append(paths.log, forced);
+      syncLease(ticket, forced, [...events, forced], flags, paths);
       const next = reduce([...events, forced]);
       writeView(paths.board, next.tickets);
       process.stderr.write(`  -> ${ticket} moved to blocked instead: ${result.force.detail}\n`);
@@ -745,7 +772,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
   }
 
   if (name === 'approved' && flags.bind) {
-    const bound = bindApprovalEvidence(flags);
+    const bound = bindApprovalEvidence(flags, ticket);
     if (!bound.ok) {
       process.stderr.write(`board: refused ${ticket} approved — ${bound.reason}\n`);
       process.exit(bound.code || 1);
@@ -755,7 +782,14 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
       : { note: event.detail || undefined, ...bound.detail };
   }
 
+  const gitBlock = gitRefusal(name, ticket, flags, events);
+  if (gitBlock) {
+    process.stderr.write(`board: refused ${ticket} ${name} — ${gitBlock}\n`);
+    process.exit(1);
+  }
+
   append(paths.log, event);
+  syncLease(ticket, event, [...events, event], flags, paths);
   const next = reduce([...events, event]);
   writeView(paths.board, next.tickets);
   const state = next.tickets.get(key(ticket));
@@ -767,6 +801,71 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     );
   }
   if (name === 'blocked') reportCascade(next.tickets, ticket);
+}
+
+/**
+ * The two gates that need git, so they live here and not in lib/events.mjs (which stays pure).
+ * Returns the refusal reason, or '' to proceed.
+ *
+ *   merged  (G-F3) under requireApprovalBinding the board runs approval-check's own logic
+ *           (lib/approval.mjs) against the ticket's branch tip: the approval must be bound to
+ *           EXACTLY that commit. The tip is resolved from the one branch named for the ticket;
+ *           `--head <sha>` is required only when there is no such branch (or several), and a
+ *           `--head` that disagrees with a resolvable tip is refused — the tip is what merges.
+ *   closed  (G-F10) when a branch is named for the ticket and an integration branch exists, one
+ *           of the ticket's branches must be an ancestor of it — merge-reconcile's question,
+ *           asked before `done` instead of a round after. No branch / no integration branch:
+ *           unknown, and unchanged.
+ */
+function gitRefusal(name, ticket, flags, events) {
+  if (name !== 'merged' && name !== 'closed') return '';
+  const git = gitAt(process.cwd());
+  if (name === 'closed') {
+    const mine = ticketBranches(git, ticket);
+    const base = mine.length ? integrationBase(git) : '';
+    if (base && !mine.some((b) => isAncestor(git, b, base))) {
+      return `${mine.join(', ')} is not merged into ${base} — "done" would claim integrated code that is not on the integration branch. Merge it (or land the wave) first.`;
+    }
+    return '';
+  }
+  if (studioPolicy().policy.requireApprovalBinding !== true) return '';
+  const tip = ticketTip(git, ticket);
+  const given = typeof flags.head === 'string' ? flags.head : '';
+  let head = tip.sha;
+  if (given) {
+    const sha = git(['rev-parse', '--verify', `${given}^{commit}`]);
+    if (!sha) return `--head ${given} does not resolve to a commit`;
+    if (tip.sha && sha !== tip.sha) return `--head ${given} is not the tip of ${tip.branch} (${tip.sha}) — the tip is what merges, so the approval is checked against it`;
+    head = sha;
+  }
+  if (!head) {
+    return `requireApprovalBinding is on and ${ticket}'s branch tip is unknown (${tip.ambiguous.length ? `several branches: ${tip.ambiguous.join(', ')}` : 'no branch is named for it'}). Pass --head <sha> of the commit being merged.`;
+  }
+  const { issues } = checkApprovals(events, { ticket, head, cwd: process.cwd() });
+  return issues.length ? `the approval is not bound to ${head}:\n  ${issues.join('\n  ')}` : '';
+}
+
+/**
+ * C4: keep the run-ledger lease `claimed` opened in step with the board. A lease nobody completed
+ * read as an orphan after 15 minutes, so run-doctor flagged every claim and /app-recover stopped.
+ * merged/closed/blocked/rejected end the attempt (`complete`); any other move by the lease holder
+ * is a `heartbeat`. Best effort: the board event is already appended, and a lease that is already
+ * terminal (or was never taken) is not an error here.
+ */
+const LEASE_ENDS = new Set(['merged', 'closed', 'blocked', 'rejected']);
+function syncLease(ticket, event, events, flags, paths) {
+  if (event.event === 'claimed') return;
+  const claim = events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'claimed');
+  const run = claim?.detail?.run_id;
+  const attempt = claim?.detail?.attempt_id;
+  if (!run || !attempt) return;
+  const ends = LEASE_ENDS.has(event.event);
+  if (!ends && event.by !== claim.by) return;
+  const args = [ends ? 'complete' : 'heartbeat', '--ledger', resolve(dirname(paths.log), 'team', 'runs.jsonl'),
+    '--run', String(run), '--attempt', String(attempt)];
+  if (ends) args.push('--detail', `board: ${event.event}`);
+  else if (flags['lease-seconds']) args.push('--lease-seconds', String(flags['lease-seconds']));
+  spawnSync(process.execPath, [RUN_LEDGER, ...args], { encoding: 'utf8' });
 }
 
 /** The derived status as a human reads it — `qa` alone hides that nothing was ever executed. */
@@ -1190,6 +1289,8 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
         `board: unknown command "${command ?? ''}"\n` +
           '  add <ID> --title T [--owner R] [--depends A,B] [--status todo|blocked] ...\n' +
           '  move <ID> <event> --by <role> [--detail "..."]\n' +
+          '  move <ID> merged --by <role> [--head <sha>]   --head only when no branch is named for <ID>\n' +
+          '  move <ID> reopened --by founder  blocked|review -> in_progress, +1 review cycle over the cap\n' +
           '  assign <ID> --to <role>\n' +
           '  show [ID] [--json]\n' +
           '  render\n' +

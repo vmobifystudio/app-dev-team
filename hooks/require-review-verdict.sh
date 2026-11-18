@@ -38,8 +38,8 @@
 #
 # RESIDUAL, STATED LIMITATION: correlating "this stop event" to "this review" still uses a ticket ID
 # extracted from the transcript, because the SubagentStop payload carries no ticket ID at all. A real
-# event for that ticket ID, from ANY point in the ticket's history (not provably from THIS session),
-# satisfies the check. This closes the demonstrated exploit (prose can never forge a real log entry)
+# event for that ticket ID written after the reviewer's latest `started` on it (not provably from THIS
+# session) satisfies the check. This closes the demonstrated exploit (prose can never forge a real log entry)
 # without claiming to prove which session wrote it — narrower and honest, over a wider claim this
 # script cannot actually back.
 #
@@ -150,7 +150,15 @@ for id in $CANDIDATES; do
   # piping grep -F/-E stages (each narrowing the SAME candidate lines further) requiring all four
   # substrings cannot be satisfied by unrelated lines or by separate events that merely share a
   # substring across different tickets.
-  LINE=$(grep -F "\"ticket\":\"$id\"" "$LOG" 2>/dev/null | grep -E '"event":"(approved|changes)"' | grep '"by":"code-reviewer"' | grep -F '"verdict_path"' | tail -1)
+  LINE=$(grep -nF "\"ticket\":\"$id\"" "$LOG" 2>/dev/null | grep -E '"event":"(approved|changes)"' | grep '"by":"code-reviewer"' | grep -F '"verdict_path"' | tail -1)
+  # G-F9: the verdict must be NEWER than the reviewer's latest `started` on this ticket. An old
+  # cycle's verdict is not this cycle's — without this, a reviewer re-spawned for cycle 2 could
+  # stop having recorded nothing, satisfied by cycle 1's line. `grep -n` gives log line numbers;
+  # the log is append-only, so a larger number is a later event.
+  STARTED=$(grep -nF "\"ticket\":\"$id\"" "$LOG" 2>/dev/null | grep '"event":"started"' | grep '"by":"code-reviewer"' | tail -1)
+  if [ -n "$LINE" ] && [ -n "$STARTED" ] && [ "${LINE%%:*}" -lt "${STARTED%%:*}" ]; then
+    LINE=""
+  fi
   if [ -n "$LINE" ]; then
     RECORDED=1
     MATCHED_TICKET="$id"
