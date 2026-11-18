@@ -21,7 +21,7 @@ There are two dashboards, permanently, and neither replaces the other.
 
 **Never make the only diagnostic tool depend on the stack it may need to diagnose.** That is why
 this one has no dependencies and why it is not going away. Both use the *same* action whitelist
-(`scripts/lib/actions.mjs`) and the *same* read layer (`scripts/lib/project.mjs`), so they cannot
+(`${CLAUDE_PLUGIN_ROOT}/scripts/lib/actions.mjs`) and the *same* read layer (`${CLAUDE_PLUGIN_ROOT}/scripts/lib/project.mjs`), so they cannot
 disagree about one board.
 
 ## Steps

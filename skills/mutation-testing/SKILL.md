@@ -1,6 +1,6 @@
 ---
 name: mutation-testing
-description: Use when adding or reviewing a gate, guard or test assertion — and whenever a green suite needs to prove it can go red. Used by code-reviewer and verification-engineer. mutate.sh covers this plugin's own scripts only; app projects revert the diff instead.
+description: On an app-dev-team project, use when adding or reviewing a gate, guard or test assertion — and whenever a green suite needs to prove it can go red. Used by verification-engineer and test-automation-engineer. mutate.sh covers this plugin's own scripts only; app projects revert the diff instead.
 ---
 
 # Mutation testing
@@ -23,7 +23,7 @@ green with the change reverted proves nothing about the change. Report it as
 ## Running it
 
 ```sh
-sh scripts/mutate.sh                # every catalogued mutation (85 today: --list | grep -c '^M[0-9]')
+sh scripts/mutate.sh                # every catalogued mutation (count them: --list | grep -c "^M")
 sh scripts/mutate.sh --list         # the catalogue, plus what it cannot test and why
 sh scripts/mutate.sh --only M04     # one mutation (or a list: --only M38,M39), while you iterate
 sh scripts/mutate.sh --sample 4     # what CI runs on every PR

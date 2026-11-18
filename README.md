@@ -547,9 +547,12 @@ generic checklist of what could go wrong anywhere. Its most valuable output is a
 The plugin is dependency-free, but gets dramatically better when these are installed (they're
 soft-routed — absent ones degrade gracefully to the House KB defaults):
 
-- **Axiom iOS** skills + auditor agents — the iOS team's primary toolkit and review gate.
-- **ui-design** (`mobile-android-design`, `mobile-ios-design`, …) and **ui-ux-pro-max**.
-- **aso-screenshots** and **admob-android-integration**.
+- The **axiom** plugin (`axiom:axiom-ios-ui`, `axiom:accessibility-auditor`, …) — the iOS team's
+  primary toolkit and review gate.
+- The **ui-design** plugin (`ui-design:mobile-android-design`, `ui-design:mobile-ios-design`, …) and
+  the **ui-ux-pro-max** plugin (`ui-ux-pro-max:ui-ux-pro-max`).
+- User-level skills, if you have them: `aso-screenshots`, `admob-android-integration`,
+  `xcodebuildmcp`. They are not part of this plugin and nothing requires them.
 
 ## File layout the team creates in your project
 

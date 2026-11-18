@@ -47,7 +47,8 @@ The script names which in its output; read it rather than assuming.
 
   ```bash
   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN verified_static \
-    --by tech-manager --detail "<the toolchain reason, verbatim from verify-done>"
+    --by tech-manager --detail "<the toolchain reason, verbatim from verify-done>" \
+    --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket APP-NNN)"
   ```
 
   The ticket can be reviewed, approved and merged, carries `qa (static only) — NOT RUN: the
@@ -63,39 +64,56 @@ that ticket and surface it to the user with the full reviewer + developer histor
 If the founder decides it is worth one more cycle, that answer is recorded as:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN reopened --by founder --detail "<the founder's reason>"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN reopened --by founder --detail "<the founder's reason>" \
+  --token "<a founder token>"
 ```
 
 It moves the ticket back to `in_progress` with exactly one more cycle; re-spawn the owner from there.
-Only the founder's answer writes it — never append it on your own judgement.
+Only the founder writes it: print the command for the human to run in their own terminal. **You
+never mint a `founder` token and never append it on your own judgement.**
+
+A `rejected` verify-done is not a cycle: the row stays `in_progress` and only `changes` counts.
 
 ## Step 4 — a `high`-risk merge needs a second approval
 
 The default risk policy needs only the `code-reviewer` approval. A `high` ticket (auth, privacy,
 credentials, migrations) also needs `tech-lead`'s: when `merged` refuses with `missing: tech-lead`,
-spawn `tech-lead` with the ticket, the branch and the reviewer's verdict file — its role file says
-how it records the second approval.
+spawn `tech-lead` with `spawn-prompt.mjs compose --ticket APP-NNN --role tech-lead` — it carries the
+branch, the reviewer's verdict file, the `--bind --evidence --context` paths and its own token. A
+`critical` ticket (billing, release) also needs `security-reviewer`'s per-ticket approval, composed
+the same way with `--role security-reviewer`. Runtime evidence for both tiers is checked at the
+wave, not before `merged`: `wave-integrate` refuses to land a `high`/`critical` ticket unless the
+runtime gate passes on the wave candidate.
 
 ## Step 4 — utility tier
 
-On a `utility` roster the same loop runs with less ceremony: `code-reviewer` also runs the design-QA
-pass (there is no `ux-architect`), its approval is the only one, and the wave's `QA-` ticket is
-closed straight from `merged`. `tech-manager` is spawned only for planning, the standup, an
-escalation, or a semantic conflict between two tickets; never per ticket.
+On a `utility` process tier the same loop runs with less ceremony:
+
+- **No separate design-QA spawn** — `code-reviewer` runs the design-QA checklist inside its review
+  (`ux-architect` stays on the roster for flows; it just is not spawned per ticket).
+- **No `QA-` ticket.** `qa-engineer` records `qa_passed` / `qa_failed` per ticket against the wave's
+  test evidence record (the `verify-done ... full` record `wave-integrate` printed).
+- **The reviewer may run at `model: sonnet`** on floor/light tracks (the Agent tool's `model`
+  parameter); a retry still climbs the ladder from there.
+- `APP-NNN-analytics` tickets are owned by the feature's IC when `data-analyst` is not active.
+- `tech-manager` is spawned only for planning, an escalation, or a semantic conflict between two
+  tickets; never per ticket, never for the standup.
 
 ## Step 5 — runtime gate on a product type the script does not detect
 
-`backend-service`, `web-app`, `cli` and `library` reach exit `2` structurally. Record
+`runtime-gate.sh` detects iOS, Android and `web-app` (build, the `test` script, then the e2e suite
+or the built site answering `GET /` with a body). `backend-service`, `cli` and `library` reach exit
+`2` structurally. Record
 `N/A: runtime gate — product type <type> is outside runtime-gate.sh's detection` and run the
-equivalent for the type — service starts and answers a health check, page renders, `--help` exits 0,
+equivalent for the type — service starts and answers a health check, `--help` exits 0,
 library builds and passes its suite — quoting the output. An N/A that replaces the check with
 nothing is a skip wearing a label.
 
 ## Step 5 — journey-gate drivers
 
 ```
-android  scripts/drivers/android.sh   drives adb + uiautomator; needs a device or emulator
-ios      scripts/drivers/ios.sh       launches and screenshots; step execution needs XCUITest
+android  drivers/android.sh   drives adb + uiautomator; needs a device or emulator
+ios      drivers/ios.sh       launches and screenshots; step execution needs XCUITest
 ```
 
 Always pass `--driver`: a gate invoked without one makes every declared journey CANNOT EVALUATE for a
@@ -103,11 +121,23 @@ reason nobody can see. With no device attached either driver returns CANNOT EVAL
 missing thing — the correct answer, not a pass. Exit `1` means the product is wrong, not the
 harness; do not re-spawn a developer against a broken driver.
 
+## Step 5 — runtime gate CANNOT EVALUATE
+
+The wave may advance on QA's verdict, but nothing records this build as launched: `/app-ship`
+re-runs the runtime gate on the release candidate and it must be evaluable there (or explicitly
+waived by the founder).
+
 ## Step 5 — the QA ticket
 
 The wave number is in the ID (`QA-<sprint>-w<n>`), not only the title: step 5 runs once per wave, so
 a fixed `QA-<sprint>` collides on the second wave — `add` refuses the duplicate and `claimed` is
-refused on the moved row, and QA falls back to an untracked errand.
+refused on the moved row, and QA falls back to an untracked errand. A wave made only of `QA-`
+tickets gets no new `QA-` ticket.
+
+**What QA may cite as `--evidence` for `qa_passed`:** the journey-gate PASS record
+(`docs/team/journey-result.json`), or the test-evidence record a full run on the integration branch
+wrote under `docs/team/evidence/` (`wave-integrate`'s, or `verify-done.sh <integration branch>
+<base> full` after the merge). Not a hand-written plan, not a screenshot, not a report.
 
 A QA return with no `Branch:`, or a branch `verify-done` cannot find, is **REJECTED** — re-spawn QA to
 redo the pass on a branch. Files appearing in the working tree are not evidence that a QA pass

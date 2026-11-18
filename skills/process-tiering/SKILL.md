@@ -1,6 +1,6 @@
 ---
 name: process-tiering
-description: Use when sizing a ticket at planning time and when deciding how much review ceremony a diff needs — maps the XS–XL estimate to the process a ticket carries. Used by sprint-planner, tech-lead and code-reviewer.
+description: On an app-dev-team project, use when sizing a ticket at planning time and when deciding how much review ceremony a diff needs — maps the XS–XL estimate to the process a ticket carries. Used by sprint-planner, tech-lead and code-reviewer.
 ---
 
 # Process tiering

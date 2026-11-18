@@ -1,6 +1,6 @@
 ---
 name: interaction-motion
-description: On an app-dev-team project, use when specifying or reviewing motion and interaction feel — transitions, gestures, feedback timing, loading and progress. Used by product-designer and any IC building an animated surface.
+description: On an app-dev-team project, use when specifying or reviewing motion and interaction feel — transitions, gestures, feedback timing, loading and progress. Used by product-designer.
 ---
 
 # Interaction and motion

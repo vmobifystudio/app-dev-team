@@ -601,13 +601,14 @@ release; the founder does the store upload). Everything between streams as stand
 1.  read state       — derived from the event log
 1a. route assumptions— last wave's ASSUMED, NOT RAISED become question rows
 1b. mid-sprint Q&A   — tech-lead answers them BEFORE this wave inherits them
-2.  spawn developers — one worktree each, serialised on file overlap
+2.  spawn developers — one spawn and one worktree slot (<owner>-<n>) per ticket, branched from the
+                       integration branch, serialised on file overlap
 2a. dependency gate — declarations, lockfiles, toolchain versions, and policy are checked when applicable
 3.  streaming review — verify each DONE, then review immediately; don't wait for the batch
 4.  verdicts         — approve → merge gate; changes → re-spawn one tier up
 4a. runtime gate     — build, launch, drive the P0 flow, capture evidence
-5.  QA               — as a ticket on a branch, not an errand
-6.  standup + journal— aggregate fragments, append the round record
+5.  wave + QA        — merge, test and push once per wave; runtime gate; QA as a ticket on a branch
+6.  standup + journal— concatenate fragments (a command, no spawn), append the round record
 7.  loop             — until the board is drained
 8.  exit check       — every non-done row named with its reason
 ```
@@ -618,6 +619,25 @@ conflicts on all 8 files.
 
 **A refusal is a finding.** When the CLI rejects a transition, the loop surfaces it rather than
 retrying around it.
+
+**Sprint 3 decisions, in one place** (the commands carry the detail):
+
+- **Gate roles are composed, never hand-prompted.** `spawn-prompt.mjs compose` has templates for
+  `code-reviewer`, `tech-lead` (second approval), `security-reviewer` (per-ticket; required on
+  `critical`), `verification-engineer`, `release-auditor` and `--mode design-qa`, and mints each
+  agent's token for that ticket. Hooks decide by the verdict's first line, not only the role.
+- **Every gate event needs a token** under `requireActorTokens`. The orchestrator mints its own
+  inline, inside the same command; nobody mints a `founder` token for the founder.
+- **QA**: one `QA-` ticket per wave, whose prompt lists every wave ticket and carries one token per
+  ticket; QA records `qa_passed` / `qa_failed` itself. The `QA-` ticket is docs-only, reviewed inline
+  and closed from `merged`.
+- **Ticket IDs match as whole tokens** — `APP-001` never matches `APP-001-analytics`.
+- **The reviewer's base is the integration branch**, never an assumed `main`.
+- **High/critical runtime evidence is checked at the wave**: the wave does not land them unless the
+  runtime gate passes on the wave candidate.
+- **Utility tier**: no `QA-` ticket (QA records against the wave's test evidence), no separate
+  design-QA spawn, and the reviewer may run at `sonnet` on floor/light tracks.
+- **No numbers for the parallelism cap in prose** — it is the scheduler's cap (`scheduler.mjs cap`).
 
 ---
 

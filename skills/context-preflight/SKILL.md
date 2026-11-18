@@ -1,6 +1,6 @@
 ---
 name: context-preflight
-description: Use before changing a repository, as a ticket's first step, to confirm branch, worktree, ticket row, dependencies, source-of-truth docs and open obligations. Used by ICs, code-reviewer, devops-engineer, tech-manager and /app-preflight.
+description: On an app-dev-team project, use before changing the repository, as a ticket's first step, to confirm branch, worktree, ticket row, dependencies, source-of-truth docs and open obligations. Used by ICs, code-reviewer, devops-engineer, tech-manager and /app-preflight.
 ---
 
 # Context preflight

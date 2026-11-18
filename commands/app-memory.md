@@ -6,6 +6,9 @@ allowed-tools: Read, Bash
 
 # /app-memory — govern durable memory
 
+Arguments: $ARGUMENTS — they fill the `<...>` placeholders below; a path argument replaces the
+default path shown.
+
 Agents may propose memory, but only a named reviewer can promote it:
 
 ```sh

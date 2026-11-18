@@ -1,7 +1,7 @@
 ---
 description: Adopt an EXISTING app — detect the stack, reverse-engineer the as-built architecture, and generate the baseline docs + CLAUDE.md so the team understands the codebase before auditing or extending it
 argument-hint: [path to the app, optional — defaults to current directory]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 ---
 
 # /app-onboard — Bring an existing app into the team

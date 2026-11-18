@@ -10265,6 +10265,68 @@ node -e 'process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "a",
 [ $? = 0 ] && ok "S2: guard-gate-writes is a no-op outside an app-dev-team project" || bad "S2: guard-gate-writes is a no-op outside an app-dev-team project"
 rm -rf "$SL"
 
+# --- Sprint 3 track H — skills + commands prose ---------------------------------------------------
+# Each assertion pins one sprint-3 design decision where the loop READS it. Prose that drifts back
+# (per-owner batching, a reused `T=$(mint)` variable, an IC told to spawn an auditor) is the bug.
+H3="$HERE/.."
+grep -q 'actor mint --role tech-manager --ticket APP-NNN)"' "$H3/commands/app-build.md" \
+  && ! grep -q -- '--token "\$T"' "$H3/commands/app-build.md" \
+  && ok "H3: /app-build mints the orchestrator's token inline, never a \$T that dies between Bash calls" \
+  || bad "H3: /app-build mints the orchestrator's token inline, never a \$T that dies between Bash calls"
+H3_MISS=""
+for e in verified verified_static rejected approved changes merged qa_passed qa_failed closed reopened; do
+  sed -n '/^\*\*Tokens\.\*\*/,/^```bash/p' "$H3/commands/app-build.md" | grep -q "\`$e\`" || H3_MISS="$H3_MISS $e"
+done
+[ -z "$H3_MISS" ] && ok "H3: ...and its token rule lists every GATE_EVENT" \
+                  || bad "H3: ...and its token rule lists every GATE_EVENT" "missing:$H3_MISS"
+grep -qi 'one agent invocation per owner\|batched: each owner gets' "$H3/skills/parallel-orchestrator/SKILL.md" \
+  && bad "H3: parallel-orchestrator spawns one agent per TICKET, never one batched prompt per owner" \
+  || ok "H3: parallel-orchestrator spawns one agent per TICKET, never one batched prompt per owner"
+grep -q '<owner>-<n>' "$H3/skills/parallel-orchestrator/SKILL.md" \
+  && grep -q 'checkout -b feat/APP-NNN-short-slug <integration branch>' "$H3/skills/ic-workflow/SKILL.md" \
+  && ok "H3: ...slots are <owner>-<n>, and the IC branches from the integration branch, not the slot's HEAD" \
+  || bad "H3: ...slots are <owner>-<n>, and the IC branches from the integration branch, not the slot's HEAD"
+grep -qiE 'spawn (it|the platform auditor) first' "$H3/skills/accessibility-gate/SKILL.md" "$H3/skills/performance-review/SKILL.md" \
+  && bad "H3: skills an IC loads never tell it to spawn an auditor (ICs have no Task/Agent tool)" \
+  || ok "H3: skills an IC loads never tell it to spawn an auditor (ICs have no Task/Agent tool)"
+H3_BOOT=$(grep -n 'team-bootstrap.mjs" --root \.$' "$H3/commands/app-plan.md" | head -1 | cut -d: -f1)
+H3_ADD=$(grep -n 'board.mjs" add' "$H3/commands/app-plan.md" | head -1 | cut -d: -f1)
+[ -n "$H3_BOOT" ] && [ -n "$H3_ADD" ] && [ "$H3_BOOT" -lt "$H3_ADD" ] \
+  && ok "H3: /app-plan writes the risk policy before the first ticket is added" \
+  || bad "H3: /app-plan writes the risk policy before the first ticket is added" "bootstrap@$H3_BOOT add@$H3_ADD"
+grep -q 'then \*\*`product-designer` once `ux-architect` has returned\*\*' "$H3/commands/app-init.md" \
+  && ok "H3: /app-init spawns product-designer after the flows it composes exist" \
+  || bad "H3: /app-init spawns product-designer after the flows it composes exist"
+grep -q 'trace.mjs" --project-root \.$' "$H3/commands/app-init.md" \
+  && bad "H3: Gate 1 runs only the trace sections that can evaluate before a board exists" \
+  || ok "H3: Gate 1 runs only the trace sections that can evaluate before a board exists"
+grep -q "APP-NNN-\[0-9\]" "$H3/commands/app-build.md" \
+  && ok "H3: /app-build's report lookup cannot pick up APP-NNN-analytics" \
+  || bad "H3: /app-build's report lookup cannot pick up APP-NNN-analytics"
+H3_BARE=$(grep -rnE '(^|[^/{}A-Za-z_.-])(scripts|knowledge)/[a-z]' "$H3/commands" "$H3/skills" \
+  | grep -v 'skills/mutation-testing/' | grep -v ':2:description:' | head -3)
+[ -z "$H3_BARE" ] && ok "H3: plugin paths in commands and skills are \${CLAUDE_PLUGIN_ROOT}-rooted" \
+                  || bad "H3: plugin paths in commands and skills are \${CLAUDE_PLUGIN_ROOT}-rooted" "$H3_BARE"
+H3_ARGS=""
+for f in "$H3"/commands/*.md; do
+  grep -q '^argument-hint:' "$f" && ! grep -q '\$ARGUMENTS' "$f" && H3_ARGS="$H3_ARGS $(basename "$f")"
+done
+[ -z "$H3_ARGS" ] && ok "H3: every command with an argument-hint reads \$ARGUMENTS" \
+                  || bad "H3: every command with an argument-hint reads \$ARGUMENTS" "missing:$H3_ARGS"
+H3_SCOPE=""
+for f in "$H3"/skills/*/SKILL.md; do
+  grep -m1 '^description:' "$f" | grep -qE 'app-dev-team|Mobify Studio' || H3_SCOPE="$H3_SCOPE $(basename "$(dirname "$f")")"
+done
+[ -z "$H3_SCOPE" ] && ok "H3: every skill description scopes itself to an app-dev-team project" \
+                   || bad "H3: every skill description scopes itself to an app-dev-team project" "unscoped:$H3_SCOPE"
+grep -q 'no `tech-manager` spawn for it' "$H3/commands/app-build.md" \
+  && ok "H3: the standup is concatenated by a command, not a tech-manager spawn per round" \
+  || bad "H3: the standup is concatenated by a command, not a tech-manager spawn per round"
+grep -q 'Product ambiguity goes to `tech-manager`' "$H3/skills/team-protocol/SKILL.md" \
+  && grep -q '| anyone | `tech-manager`, always |' "$H3/skills/team-protocol/SKILL.md" \
+  && ok "H3: team-protocol keeps the anyone→tech-manager row and the product-ambiguity route" \
+  || bad "H3: team-protocol keeps the anyone→tech-manager row and the product-ambiguity route"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

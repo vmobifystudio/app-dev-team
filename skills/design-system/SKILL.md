@@ -1,6 +1,6 @@
 ---
 name: design-system
-description: Use when defining or extending design tokens and the shared component library, or the moment a value would be hardcoded or a one-off component created. Used by product-designer, tech-lead and any IC adding a component.
+description: On an app-dev-team project, use when defining or extending docs/13-design-tokens.md and docs/14-components.md, or the moment a value would be hardcoded or a one-off component created. Used by product-designer, tech-lead and the /app-build design-QA pass.
 ---
 
 # Design system

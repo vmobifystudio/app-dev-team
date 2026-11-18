@@ -1,7 +1,7 @@
 ---
 description: Mostly-autonomous end-to-end run — idea → scope-lock → sprint loop → ship-readiness, surfacing only blockers and the two human gates (scope-lock, ship)
 argument-hint: [one-line idea, optional] [--yolo to skip scope-lock] [--utility for a utility-tier app]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 disable-model-invocation: true
 ---
 
@@ -23,6 +23,8 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 - **The board doctor gate is not skippable, including under `--yolo`.** `--yolo` skips *human*
   gates, never correctness gates. An autonomous run is exactly the situation where a silently
   stranded ticket goes unnoticed for the whole sprint.
+- **"Run `/app-X`" here means read `${CLAUDE_PLUGIN_ROOT}/commands/app-X.md` and follow it** — the
+  model-invocation-disabled commands (`/app-init`, `/app-ship`) are not callable as a tool.
 - **No `DONE` is believed unverified.** `verify-done.sh` runs on every developer return — `--static`
   by default, which checks the branch, the commits and the changed files and states plainly that the
   suite has not run. The suite runs once per wave on the merged tree (step 4). "Verified" here never
@@ -39,7 +41,7 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    in this file — read it, do not re-derive it. `off` roles are not spawned; their gates report
    `N/A` with the roster's reason, never silence.
    - **Empty / no app → greenfield:** run `/app-init` with the idea (requirements-intake → CEO
-     vision → parallel CPO/CTO → parallel ux-architect/product-designer/tech-lead/devops-engineer → project bootstrap
+     vision → parallel CPO/CTO → ux-architect/tech-lead/devops-engineer, then product-designer → project bootstrap
      incl. `CLAUDE.md` + git). `/app-init` ends with its own scope-lock gate — **this command owns
      that gate (step 2), so `/app-init` skips it here** and the user is asked once, not twice.
    - **Existing app → brownfield:** run `/app-onboard` (reverse-engineer the as-built baseline +
@@ -56,12 +58,14 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root .
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root .
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root . --only conflicts
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root . --only gates
    ```
 
-   The first proves the founder record has not been edited to match the plan; the second walks the
-   goal → outcome → requirement → criterion → ticket → test → analytics chain and reports every
-   break, every conflict it resolved by precedence, and every conditional founder gate that fired.
+   The first proves the founder record has not been edited to match the plan; the others report
+   every conflict resolved by precedence and every conditional founder gate that fired. The ticket
+   half of the chain (criterion → ticket → test → analytics) needs a board, so on greenfield it runs
+   after step 3: `trace.mjs --project-root . --only trace`, findings into the first standup.
    **All of it goes into the Gate 1 brief and none of it is resolved by an agent.** `--yolo` skips
    human gates, not this: it is the only check in the system that is not inside the loop it is
    checking. `trace.mjs` exit 2 is `CANNOT EVALUATE`, never a pass.
@@ -81,8 +85,9 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 
 3. **Plan.** Run `/app-plan` (tech-manager builds the parallel board via `sprint-planner`), which
    runs **non-interactively here** — scope was approved at Gate 1 and this command has no third
-   gate. Ensure every P0 feature has a paired `APP-NNN-analytics` ticket (data-analyst schema feeds
-   this).
+   gate. Ensure every P0 feature has a paired `APP-NNN-analytics` ticket, owned per the roster
+   (`data-analyst` where active; otherwise the feature's IC), and that it passes `dispatch-preflight`
+   for that owner like any other ticket.
 
    Brownfield reaches this step with a real backlog: `/app-onboard` writes `docs/11-backlog.md`
    (existing features as baseline rows) and `docs/00-vision.md`, and `/app-audit` has already put
@@ -100,11 +105,12 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      explained). **A wave that does not go green is a normal outcome an autonomous run survives**,
      not an escalation: re-spawn only the owners the failure names.
    - **Escalations are surfaced to the user in the round they are raised** (`/app-build` step 6).
-   - After each round, spawn `tech-manager` to write the standup at `docs/daily/<today>.md`
-     (`team-protocol`'s canonical path — not `standup-<today>.md`, which nothing else reads) and
-     print a 3-line summary: counts per status, what merged, blockers.
-   - Before each implementation spawn, run `scripts/dispatch-preflight.mjs`; no role launches until
-     context, scheduling, capabilities, and risk routing all clear.
+   - After each round, the standup at `docs/daily/<today>.md` is the concatenation `/app-build`
+     step 6 runs (no `tech-manager` spawn); print a 3-line summary: counts per status, what merged,
+     blockers.
+   - Before each spawn — `QA-` tickets included — run
+     `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-preflight.mjs`; no role launches until context,
+     scheduling, capabilities, and risk routing all clear.
    - Where named-agent persistence is available, run the warm/cold manager scenario and retain its
      digest; otherwise use the portable respawn model backed by the same files.
    - **The budget ceiling stops this loop and says why** (`/app-build` step 0). An unattended run
@@ -134,7 +140,8 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      not a pass: create the record before the next round rather than running rounds blind to the
      gates it exists to fire.
    - **Escalate to the user only** for: a blocker the team can't resolve, the 2-cycle review cap
-     being hit (the founder may answer with one more cycle: `board.mjs move <ID> reopened --by founder`),
+     being hit (the founder may answer with one more cycle by running `board.mjs move <ID> reopened --by founder`
+     with their own founder token — never minted by the studio),
      the budget ceiling, a fired founder gate, or a scope/architecture conflict. Surface
      verbatim with a proposed answer.
 
@@ -151,8 +158,9 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    "Drained" means the doctor is clean **and** every non-`done` row is named with its reason.
    A board with an open anomaly is not drained, however empty the `todo` column looks.
 
-6. **GATE 2 — ship (human).** Hand off to `/app-ship`, which summarizes readiness and asks for
-   explicit confirmation before any store upload. Never upload without it. `/app-ship`'s last step
+6. **GATE 2 — ship (human).** Hand off to `/app-ship`, which summarizes readiness and hands the
+   founder a signed, submission-ready build and checklist. Nothing in the studio uploads or submits:
+   that action is the founder's own. `/app-ship`'s last step
    harvests the run's `LEARNING:` lines into `docs/90-learnings.md` and folds them into the House KB
    via `/app-learn` — that is where an autonomous run pays its knowledge back.
 

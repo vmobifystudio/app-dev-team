@@ -1,6 +1,6 @@
 ---
 name: brownfield-onboarding
-description: Use when pointing the team at an EXISTING app instead of a blank project — detect the stack, reverse-engineer the as-built architecture, classify fixes as Safe or Risky. Used by /app-onboard, /app-audit and /app-run.
+description: On an app-dev-team project, use when pointing the team at an EXISTING app instead of a blank project — detect the stack, reverse-engineer the as-built architecture, classify fixes as Safe or Risky. Used by /app-onboard, /app-audit and /app-run.
 ---
 
 # Brownfield onboarding

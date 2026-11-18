@@ -1,6 +1,6 @@
 ---
 name: architecture-builder
-description: Use to produce the architecture doc and engineering principles for an app-dev-team project — "design the architecture", "pick the stack". Used by cto during /app-init.
+description: On an app-dev-team project, use to produce docs/20-architecture.md and the engineering principles during /app-init. Used by cto.
 ---
 
 # Architecture builder

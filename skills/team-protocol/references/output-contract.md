@@ -1,6 +1,6 @@
 # team-protocol — the output contract, every field
 
-Loaded from `team-protocol` SKILL.md when you need what a field means or which profile a role uses. `scripts/lib/contract.mjs` is canonical (`CODE_ROLES`, `ARTIFACT_ROLES`); `spawn-prompt.mjs` inlines the contract into every spawn prompt; this is the reference for what each field means.
+Loaded from `team-protocol` SKILL.md when you need what a field means or which profile a role uses. `${CLAUDE_PLUGIN_ROOT}/scripts/lib/contract.mjs` is canonical (`CODE_ROLES`, `ARTIFACT_ROLES`); `spawn-prompt.mjs` inlines the contract into every spawn prompt; this is the reference for what each field means.
 
 The sprint loop parses your closing block. It is not a summary for a human; it is the input to
 `verify-done.sh`, the merge gate, the collision check, and the standup. **A field you omit is a
@@ -63,7 +63,7 @@ neither profile list even when it owns a ticket: it returns its `VERIFICATION:` 
 line.
 
 **The dispatch manifests** — `dispatch-preflight` refuses to spawn any owner without them.
-`/app-plan` runs `scripts/team-bootstrap.mjs`, which writes them at the safe end of each contract
+`/app-plan` runs `${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs`, which writes them at the safe end of each contract
 for a project to then edit.
 
 Their paths are in the canonical paths table in `team-protocol` SKILL.md.

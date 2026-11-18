@@ -1,6 +1,6 @@
 ---
 name: spec-critic
-description: Use after the impl specs and board exist and before any developer is spawned, to file every question a developer would otherwise guess at as a ledger row. Run by tech-lead from /app-plan; used by product-manager.
+description: On an app-dev-team project, use after the impl specs and board exist and before any developer is spawned, to file every question a developer would otherwise guess at as a ledger row. Run by tech-lead from /app-plan; used by product-manager.
 ---
 
 # Spec critic
@@ -14,7 +14,7 @@ Run it **once per sprint**, after `docs/22-impl-spec-*.md` and `docs/31-board.md
 ## Why it exists
 
 An agent that can proceed will proceed, so ICs rarely use the live channel (`team-protocol`
-§ICs: declare, don't dispatch).
+§ICs (developers, reviewers, QA): declare, don't dispatch).
 
 "Declare, don't dispatch" catches the guess *after* it was made. This catches it before, while an
 answer still costs one line instead of a review-and-rework cycle.
@@ -96,4 +96,6 @@ unanswered-question rule in `team-protocol`.
 
 - Never file a question you can answer by re-reading the spec. Read it first.
 - Never file style preferences, naming opinions, or "consider also…". This is ambiguity only.
-- Never answer your own question in the ledger — you are the critic, not the decider.
+- Never skip filing a question because you already know the answer. File first (the critic pass),
+  then answer as the spec's owner (the `tech-lead` pass above) — the row is the record that the gap
+  existed, and the fold-back is the fix.

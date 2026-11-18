@@ -1,7 +1,7 @@
 ---
 description: Plan the next sprint — tech-manager turns backlog + impl specs into a parallelizable board
 argument-hint: [sprint number or feature focus, optional]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 ---
 
 # /app-plan — Plan the next sprint
@@ -46,41 +46,10 @@ Focus (optional): $ARGUMENTS
    backstop for that project exactly as it was before. Neither is an error state: a project with no
    board at all is the normal greenfield case, and step 2 creates its log from nothing.
 
-2. **Spawn the `tech-manager` agent** with the `sprint-planner` skill. It produces
-   `docs/30-sprint-plan.md`, and creates every ticket through the CLI — one call per ticket, never a
-   hand-written table row:
+1b. **Bootstrap the dispatch manifests — before the first ticket, or the sprint cannot start at all.**
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add APP-001 \
-     --title "..." --feature F-001 --owner ios-developer --depends APP-000 \
-     --estimate M --spec "prd#F-001" --acceptance "Given ..., When ..., Then ..." --by tech-manager
-   ```
-
-   Each `add` re-renders `docs/31-board.md`, so the board exists as a side effect of the tickets
-   existing. A duplicate ID is **refused** (exit 1) rather than silently written twice — read the
-   refusal, it is telling you the ticket is already planned.
-
-   On a project that fell through to the legacy path at step 1a, `tech-manager` writes the table by
-   hand as before and runs `board-doctor` after.
-
-3. **Spec-critic pass — remove the ambiguity before anyone builds on it.** Spawn `tech-lead` with
-   the `spec-critic` skill. It reads the board and the impl specs, files one `question` row per
-   ambiguous ticket in `docs/team/messages.jsonl`, and answers what it can in the same run — it wrote
-   the specs, so most answers are one line — folding each answer back into the impl spec.
-
-   Print the questions raised and the ones answered. Anything still open becomes a `tech-manager`
-   action item under the unanswered-question rule in `team-protocol`; it does not block the sprint.
-
-   This runs **after** the board exists and **before** `/app-build` spawns anyone. Measured across
-   ten agent-runs, no IC ever raised a spec question live — they guess and move on, and a wrong
-   guess costs a full review-and-rework cycle.
-
-4. **Print the sprint goal, the per-track assignment, and dependency edges.** Show what's parallel and what's serial.
-
-4b. **Bootstrap the dispatch manifests — without these the sprint cannot start at all.**
-
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs" --root .
    ```
 
    `/app-build` runs `dispatch-preflight` before spawning any owner, and four of its required inputs
@@ -90,10 +59,12 @@ Focus (optional): $ARGUMENTS
 
    That is not hypothetical. Measured 2026-08-06 across every recorded run: **11 of 19 tickets ended
    at `created`** — never claimed, never blocked, never refused. It was never agent diligence; the
-   loop was structurally unable to dispatch. It is FC-005 from `knowledge/failure-corpus.md`, "the
+   loop was structurally unable to dispatch. It is FC-005 from `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md`, "the
    check whose own input nobody writes", sitting under the most important gate in the loop.
 
-   It refuses to overwrite existing manifests — a project's edited policy is not something a
+   It runs **before step 2** because `board.mjs add` reads `docs/team/risk-policy.json` to set each
+   ticket's risk: a ticket added before the policy exists is planned with no risk tier, and its
+   high-risk second approval never fires. It refuses to overwrite existing manifests — a project's edited policy is not something a
    re-plan resets. `--force` for a deliberate reset.
 
    **Then read what it wrote, and edit it.** The defaults are the safe end of each contract, not
@@ -106,7 +77,7 @@ Focus (optional): $ARGUMENTS
    **`docs/team/project-profile.json` is scaffolded UNSTATED and nothing else fills it**, so
    `orchestrator round` returns CANNOT EVALUATE ("toolchain UNPROVEN") on round 1 of every new
    project. Spawn `devops-engineer` to fill `platform`, `toolchain` (one `{tool, args, expect}` per
-   tool pinned in `docs/20-architecture.md` / `knowledge/stack-defaults.md`) and `test.fast` /
+   tool pinned in `docs/20-architecture.md` / `${CLAUDE_PLUGIN_ROOT}/knowledge/stack-defaults.md`) and `test.fast` /
    `test.full`, then confirm it holds on this machine:
 
    ```bash
@@ -116,22 +87,64 @@ Focus (optional): $ARGUMENTS
    A tool that is genuinely not installed here is reported, not guessed around — that is a blocker
    for the user, stated before the sprint starts rather than discovered when the first build breaks.
 
-4c. **Commit what the pod will read — before anyone is spawned.** Every IC works in a leased git
-   worktree, and a worktree sees only committed files. Stage by explicit path, never a blanket add:
+2. **Spawn the `tech-manager` agent** with the `sprint-planner` skill. It produces
+   `docs/30-sprint-plan.md`, and creates every ticket through the CLI — one call per ticket, never a
+   hand-written table row:
 
    ```bash
-   for f in docs/30-sprint-plan.md docs/team/messages.jsonl docs/team/capabilities.json \
-            docs/team/risk-policy.json docs/team/schedule.json docs/team/context-manifest.json \
-            docs/team/project-profile.json docs/11-backlog.md docs/22-impl-spec-*.md; do
-     [ -e "$f" ] && git add -- "$f"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add APP-001 \
+     --title "..." --feature F-001 --owner ios-developer --depends APP-000 \
+     --estimate M --spec "prd#F-001" --acceptance "Given ..., When ..., Then ..." --by tech-manager
+   ```
+
+   Each `add` re-renders `docs/31-board.md`, so the board exists as a side effect of the tickets
+   existing. Every `APP-NNN-analytics` ticket is owned per the roster: `data-analyst` where it is
+   active, otherwise (utility) the feature's own IC — never an `off` role. A duplicate ID is **refused** (exit 1) rather than silently written twice — read the
+   refusal, it is telling you the ticket is already planned.
+
+   On a project that fell through to the legacy path at step 1a, `tech-manager` writes the table by
+   hand as before and runs `board-doctor` after.
+
+3. **Spec-critic pass — remove the ambiguity before anyone builds on it.** Spawn `tech-lead` with
+   the `spec-critic` skill. It reads the board and the impl specs, files one `question` row per
+   ambiguous ticket in `docs/team/messages.jsonl`, and answers what it can in the same run — it wrote
+   the specs, so most answers are one line — folding each answer back into the impl spec.
+
+   It files every question first and then answers as the spec's owner — filing is never skipped
+   because the answer is known. Print the questions raised and the ones answered. Anything still open becomes a `tech-manager`
+   action item under the unanswered-question rule in `team-protocol`; it does not block the sprint.
+
+   This runs **after** the board exists and **before** `/app-build` spawns anyone. Measured across
+   ten agent-runs, no IC ever raised a spec question live — they guess and move on, and a wrong
+   guess costs a full review-and-rework cycle.
+
+4. **Print the sprint goal, the per-track assignment, and dependency edges.** Show what's parallel and what's serial.
+
+4a. **Re-snapshot the context, then commit what the pod will read — before anyone is spawned.** The
+   plan and the spec-critic fold-back changed planning documents after step 1b's snapshot:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs" --root . --context-only
+   ```
+
+   Every IC works in a leased git worktree, and a worktree sees only committed files — and the wave
+   push fast-forwards only over a clean, committed base. Commit **every** planning document and
+   everything `devops-engineer` wrote, by explicit path, never a blanket add:
+
+   ```bash
+   for f in docs/*.md docs/team/messages.jsonl docs/team/capabilities.json docs/team/risk-policy.json \
+            docs/team/schedule.json docs/team/context-manifest.json docs/team/project-profile.json \
+            .gitignore CLAUDE.md .github fastlane; do
+     [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
    done
    git diff --cached --name-only    # confirm only those landed
    git commit -m "docs: sprint plan and specs from /app-plan"
+   git status --short               # anything left is a file nobody committed: commit it or say why
    ```
 
-   The board log and its rendering (`docs/31-board-events.jsonl`, `docs/31-board.md`) are
-   gitignored on purpose and stay in the main checkout; the spawn prompt carries each IC its ticket.
-   `docs/team/actors.json` holds plaintext actor keys and is never committed.
+   The board log and its rendering (`docs/31-board-events.jsonl`, `docs/31-board.md`) and
+   `docs/team/actors.json` are gitignored on purpose and stay in the main checkout (`check-ignore`
+   skips them); the spawn prompt carries each IC its ticket.
 
 5. **Hand off.** When a human invoked `/app-plan` directly, ask "ready to launch the pod with
    `/app-build`?" and do not auto-launch.
