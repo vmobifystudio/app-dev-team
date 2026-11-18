@@ -83,7 +83,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    touch .gitignore
    for p in .agent-wt/ .studio-stop docs/31-board-events.jsonl docs/31-board.md \
             docs/team/runs.jsonl docs/team/runtime-result.json docs/team/journey-result.json \
-            docs/team/actors.json; do
+            docs/team/actors.json docs/team/reports/; do
      grep -qxF "$p" .gitignore || printf '%s\n' "$p" >> .gitignore
    done
    ```

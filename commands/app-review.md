@@ -12,6 +12,6 @@ Target: $ARGUMENTS
 
 1. Resolve `$ARGUMENTS` to a branch name. If it looks like a ticket ID (`APP-NNN`), look up the matching branch in `docs/31-board.md`.
 
-2. Spawn the `code-reviewer` agent with the branch name and ticket ID.
+2. Compose the prompt with `node "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-prompt.mjs" compose --root . --ticket <ID> --role code-reviewer` and spawn `code-reviewer` with that output verbatim (the hook refuses a ticket review prompt without the verdict contract). A bare branch with no ticket is spawned with the branch name.
 
 3. Print the verdict verbatim. If `REQUEST CHANGES`, also print suggested next step (re-spawn the developer, or ask user how to proceed).

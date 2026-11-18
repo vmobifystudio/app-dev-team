@@ -76,13 +76,11 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    - Exit `2` → **CANNOT EVALUATE. Also not a pass.** Usually no board yet (`/app-plan` first), or
      no `docs/team/project-profile.json`. Supply what it names.
 
-   On a clear round, **re-snapshot the context this round's agents will be given** before the first
-   dispatch preflight — every wave merge moves HEAD, and a stale manifest makes `dispatch-preflight`
-   refuse every spawn:
-
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs" --root . --context-only
-   ```
+   The context manifest taken at `/app-plan` stays FRESH across merges: `context-manifest verify`
+   refuses only when a declared planning document changed. Preflight says `STALE: source changed` →
+   a spec moved under the plan: confirm the change with its owner, then run
+   `node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs" --root . --context-only` and recompose
+   the affected prompts.
 
    No event log but a hand-written `docs/31-board.md`? → `build-loop-branches.md` §Step 0.
 
@@ -145,8 +143,9 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 2. **Spawn developers in parallel — run the `parallel-orchestrator` skill.** It is the one copy of
    the launch procedure: claim each ticket, lease one slot per OWNER, check file overlap, compose
    each prompt with `spawn-prompt.mjs compose`, run `spawn-gate.sh <owners>` (also the `.studio-stop`
-   kill switch — you never clear it yourself), then launch every owner in a **single assistant
-   message**. A refusal at any of those steps means **spawn nobody** for what it names.
+   kill switch — you never clear it yourself), then launch in a **single assistant message** one spawn
+   per ticket — `compose` takes exactly one `--ticket`, and a PreToolUse hook re-checks each prompt.
+   An owner with several ready tickets works them one after another in its slot. A refusal at any of those steps means **spawn nobody** for what it names.
 
    **Spawn by the ticket's `Owner` column — never from a hardcoded list.** The authority is
    `board-doctor` and the `BUILD_SPAWNABLE_OWNERS` set in `scripts/lib/board.mjs`; `team-doctor.mjs`
@@ -165,11 +164,13 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    own a ticket (`owner_not_spawnable`).
 
 3. **Streaming review.** As each developer agent returns `DONE: APP-NNN`:
-   - **Check the report satisfies its contract BEFORE you believe any of it.** Save the returned
-     text and run:
+   - **Check the report satisfies its contract BEFORE you believe any of it.** The SubagentStop
+     hook has already saved it to `docs/team/reports/<ticket>-<UTC>.md` and sent an incomplete one
+     back once. Run report-check on the newest:
 
      ```bash
-     node "${CLAUDE_PLUGIN_ROOT}/scripts/report-check.mjs" --role <owner-role> --report <saved report> --root .
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/report-check.mjs" --role <owner-role> \
+       --report "$(ls docs/team/reports/APP-NNN-*.md | tail -1)" --root .
      ```
 
      Exit `1` → **the DONE is not actionable.** Re-spawn the agent asking for the missing fields.
@@ -240,7 +241,10 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      A refusal means no `verified` landed for the current `done_reported` — go back; do not route.
    - **The reviewer must not be the owner.** For a ticket owned by `code-reviewer` (or review of
      review work), route to `tech-lead`. The CLI refuses `approved` from the ticket's owner.
-   - Spawn a `code-reviewer` for that branch immediately — do not wait for the other devs. Reviewers
+   - Spawn a `code-reviewer` for that branch immediately — do not wait for the other devs. Its
+     prompt is `spawn-prompt.mjs compose --root . --ticket APP-NNN --role code-reviewer`, verbatim:
+     it carries the saved DONE report, the branch tip and the verdict contract, and the hook refuses
+     a reviewer prompt without them. Reviewers
      run in parallel with each other and with still-running developers. It appends
      `board.mjs move APP-NNN started --by code-reviewer` when it picks the ticket up.
 

@@ -66,7 +66,9 @@ For the isolation rules you enforce here, read `agent-isolation` and
    as the project root, and **the output contract inlined as literal text**. A prompt that *points
    at* the contract instead of containing it gets back reports missing every field — measured, same
    model and role. `spawn-prompt.mjs verify --role <owner> --prompt <file>` confirms the labels are
-   there.
+   there. The PreToolUse hook `require-spawn-contract.sh` runs that verify (plus spawn-gate and the
+   contention check) on every spawn naming a board ticket — a prompt it refuses was not composed.
+   One spawn per ticket; one owner's tickets run one after another in its slot.
 
 3a. **Run the isolation gate, last, and obey it.**
 

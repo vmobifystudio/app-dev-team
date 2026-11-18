@@ -24,6 +24,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/context-manifest.mjs" verify \
   --root <project> --manifest "$CONTEXT_MANIFEST"
 ```
 
-A changed source or git revision is `STALE` and must trigger recompilation and renewed review. The
+A changed source is `STALE` and must trigger recompilation and renewed review; a moved git HEAD
+alone is reported, not refused (`--strict-head` refuses it too). The
 layers are ordered constitutional → role → project → ticket → retrieved; lower-precedence material
 cannot silently override a higher-precedence rule.
