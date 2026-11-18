@@ -4390,7 +4390,8 @@ node "$HERE/spawn-prompt.mjs" verify --role ios-developer --prompt "$TMP/sp-comp
   || bad "...and CLEARS the composed prompt, which is the H5b shape" "$(cat "$TMP/sp-h5b-out.txt")"
 
 # --- one contract, three consumers: report-check, team-doctor, spawn-prompt agree on the roles too --
-node "$HERE/spawn-prompt.mjs" compose --root "$SPF" --ticket APP-001 --role code-reviewer >/dev/null 2>&1
+# (code-reviewer has its own template since Sprint 2 track B; tech-manager is a gate role with none.)
+node "$HERE/spawn-prompt.mjs" compose --root "$SPF" --ticket APP-001 --role tech-manager >/dev/null 2>&1
 [ $? = 2 ] && ok "spawn-prompt refuses to compose for a gate role, agreeing with report-check and team-doctor" \
   || bad "spawn-prompt refuses to compose for a gate role, agreeing with report-check and team-doctor"
 
@@ -9602,6 +9603,175 @@ CONFLICTED=$( { grep -rln '^<<<<<<< \|^>>>>>>> ' \
 [ -z "$CONFLICTED" ] \
   && ok "no unresolved merge-conflict markers in any shipped file" \
   || bad "no unresolved merge-conflict markers in any shipped file" "found in:$CONFLICTED"
+
+# --- Sprint 2 track B: contract hooks, spec excerpt, reviewer template, context budget -----------
+#
+# C10: spawn-prompt verify, report-check and the file-overlap check were steps a literal agent could
+# skip. They are hooks now (hooks/require-spawn-contract.sh, hooks/persist-ic-report.sh ->
+# hooks/contract-hooks.mjs). C6: IC reports are persisted. C7: IC prompts carry a spec excerpt, the
+# reviewer gets a template with the DONE report. C11: the manifest stops going STALE on every merge.
+S2B="$TMP/s2b"; rm -rf "$S2B"; mkdir -p "$S2B/docs"
+( cd "$S2B" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf 'Integration branch: main\n' > "$S2B/docs/23-git-strategy.md"
+printf '# PRD\n\n## F-001 Greeting\nThe app greets the user by name.\n\n## F-002 Settings\nUNRELATED-PRD-TEXT\n' > "$S2B/docs/10-prd.md"
+printf '# iOS impl spec\n\n## APP-001 greet\nUse GreetView for APP-001.\n\n## APP-0010 other\nUNRELATED-SPEC-TEXT\n' > "$S2B/docs/22-impl-spec-ios.md"
+( cd "$S2B" && node "$HERE/board.mjs" add APP-001 --title greet --owner ios-developer --feature F-001 \
+    --spec "docs/22-impl-spec-ios.md#APP-001" --acceptance "Given Ada, shows Hello Ada" --file Sources/Greet.swift --by tech-manager \
+  && node "$HERE/board.mjs" add APP-002 --title other --owner android-developer --file Sources/Greet.swift --by tech-manager \
+) >/dev/null 2>&1
+
+# C7a — the IC prompt carries the sections that name its ticket, bounded, with a pointer.
+( cd "$S2B" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role ios-developer ) >"$TMP/s2b-ic.txt" 2>"$TMP/s2b-ic.err"
+assert_has "$TMP/s2b-ic.txt" "Use GreetView for APP-001" "C7: an IC prompt inlines the impl-spec section that names its ticket"
+assert_has "$TMP/s2b-ic.txt" "greets the user by name" "C7: ...and the PRD section that names its feature"
+assert_has "$TMP/s2b-ic.txt" "full file: " "C7: ...with a pointer to the full file"
+grep -q UNRELATED "$TMP/s2b-ic.txt" && bad "C7: ...and no section that does not name the ticket (APP-0010 is not APP-001)" \
+  || ok "C7: ...and no section that does not name the ticket (APP-0010 is not APP-001)"
+assert_has "$TMP/s2b-ic.err" "(budget 4000" "C11: compose prints the composed prompt's word count against the IC budget"
+cp "$S2B/docs/22-impl-spec-ios.md" "$TMP/s2b-spec.bak"
+{ printf '# iOS\n\n## APP-001 huge\n'; awk 'BEGIN { for (i = 0; i < 3000; i++) printf "filler%d ", i }'; } > "$S2B/docs/22-impl-spec-ios.md"
+( cd "$S2B" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role ios-developer ) >"$TMP/s2b-big.txt" 2>/dev/null
+[ "$(wc -w < "$TMP/s2b-big.txt")" -lt 2400 ] && grep -q 'truncated]' "$TMP/s2b-big.txt" \
+  && ok "C7: a 3000-word spec section is cut to the excerpt budget, and says so" \
+  || bad "C7: a 3000-word spec section is cut to the excerpt budget, and says so" "$(wc -w < "$TMP/s2b-big.txt") words"
+cp "$TMP/s2b-spec.bak" "$S2B/docs/22-impl-spec-ios.md"
+
+# C7b — the reviewer template: the LATEST persisted DONE report, the branch tip, the verdict contract.
+mkdir -p "$S2B/docs/team/reports"
+printf 'DONE: APP-001\nBranch: feat/APP-001-greet\nOLD-REPORT\n' > "$S2B/docs/team/reports/APP-001-20261101T000000000Z.md"
+printf 'DONE: APP-001\nBranch: feat/APP-001-greet\nNEW-REPORT\n' > "$S2B/docs/team/reports/APP-001-20261118T000000000Z.md"
+( cd "$S2B" && git branch feat/APP-001-greet ) >/dev/null 2>&1
+S2BTIP=$(cd "$S2B" && git rev-parse HEAD)
+( cd "$S2B" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role code-reviewer ) >"$TMP/s2b-rv.txt" 2>"$TMP/s2b-rv.err"
+[ $? = 0 ] && ok "C7: compose --role code-reviewer has a template now" || bad "C7: compose --role code-reviewer has a template now" "$(cat "$TMP/s2b-rv.err")"
+assert_has "$TMP/s2b-rv.txt" "NEW-REPORT" "C7: the reviewer prompt carries the LATEST persisted DONE report for the ticket"
+grep -q OLD-REPORT "$TMP/s2b-rv.txt" && bad "C7: ...and not an older one" || ok "C7: ...and not an older one"
+assert_has "$TMP/s2b-rv.txt" "$S2BTIP" "C7: ...and the ticket branch tip"
+assert_has "$TMP/s2b-rv.txt" "## Not checked" "C7: ...and the verdict contract"
+assert_has "$TMP/s2b-rv.err" "(budget 8000" "C11: ...against the reviewer budget"
+assert_exit 0 "C7: verify clears the composed reviewer prompt" node "$HERE/spawn-prompt.mjs" verify --role code-reviewer --prompt "$TMP/s2b-rv.txt"
+printf 'Please review APP-001.\n' > "$TMP/s2b-rvptr.txt"
+assert_exit 1 "C7: verify refuses a reviewer prompt with no verdict contract" node "$HERE/spawn-prompt.mjs" verify --role code-reviewer --prompt "$TMP/s2b-rvptr.txt"
+awk 'BEGIN { print "DONE: APP-001"; for (i = 0; i < 6000; i++) printf "w%d ", i }' > "$S2B/docs/team/reports/APP-001-20261119T000000000Z.md"
+( cd "$S2B" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role code-reviewer ) >/dev/null 2>"$TMP/s2b-over.err"
+[ $? = 0 ] && grep -q 'OVER BUDGET' "$TMP/s2b-over.err" \
+  && ok "C11: a prompt over its role budget warns on stderr and still composes (non-fatal)" \
+  || bad "C11: a prompt over its role budget warns on stderr and still composes (non-fatal)" "$(cat "$TMP/s2b-over.err")"
+rm -f "$S2B/docs/team/reports/"APP-001-*.md
+
+# C10 — the PreToolUse hook on the subagent tool.
+S2BPRE="$HERE/../hooks/require-spawn-contract.sh"
+s2b_spawn() {  # <tool_name> <subagent_type> <prompt file> <cwd>
+  node -e 'const [, t, s, p, c] = process.argv; process.stdout.write(JSON.stringify({ hook_event_name: "PreToolUse", tool_name: t, cwd: c,
+    tool_input: { subagent_type: s, description: "x", prompt: require("fs").readFileSync(p, "utf8") } }))' "$1" "$2" "$3" "$4" | sh "$S2BPRE"
+}
+printf 'Work ticket APP-001.\nReturn the CODE profile defined in team-protocol.\n' > "$TMP/s2b-ptr.txt"
+printf 'Design the flows for the greeting feature.\n' > "$TMP/s2b-plan.txt"
+S2BNO="$TMP/s2b-unrelated"; mkdir -p "$S2BNO"
+s2b_spawn Agent app-dev-team:ios-developer "$TMP/s2b-ptr.txt" "$S2B" >/dev/null 2>"$TMP/s2b-pre.err"
+[ $? = 2 ] && ok "C10: the pre-spawn hook BLOCKS an IC prompt that only points at the contract" \
+  || bad "C10: the pre-spawn hook BLOCKS an IC prompt that only points at the contract"
+assert_has "$TMP/s2b-pre.err" "spawn-prompt.mjs\" compose" "C10: ...and its refusal names the compose command"
+s2b_spawn Task ios-developer "$TMP/s2b-ptr.txt" "$S2B" >/dev/null 2>&1
+[ $? = 2 ] && ok "C10: ...under the old Task tool name and a bare role name too" || bad "C10: ...under the old Task tool name and a bare role name too"
+s2b_spawn Agent app-dev-team:ios-developer "$TMP/s2b-ic.txt" "$S2B" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: a composed IC prompt is ALLOWED" || bad "C10: a composed IC prompt is ALLOWED"
+s2b_spawn Agent app-dev-team:code-reviewer "$TMP/s2b-rvptr.txt" "$S2B" >/dev/null 2>&1
+[ $? = 2 ] && ok "C10: a reviewer prompt with no verdict contract is BLOCKED" || bad "C10: a reviewer prompt with no verdict contract is BLOCKED"
+s2b_spawn Agent app-dev-team:code-reviewer "$TMP/s2b-rv.txt" "$S2B" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: ...and the composed reviewer prompt is ALLOWED" || bad "C10: ...and the composed reviewer prompt is ALLOWED"
+s2b_spawn Agent app-dev-team:ios-developer "$TMP/s2b-ptr.txt" "$S2BNO" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: the pre-spawn hook is a no-op in an unrelated repo (no board log)" || bad "C10: the pre-spawn hook is a no-op in an unrelated repo (no board log)"
+s2b_spawn Agent app-dev-team:ux-architect "$TMP/s2b-plan.txt" "$S2B" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: a spawn naming no board ticket (planning work) is not policed" || bad "C10: a spawn naming no board ticket (planning work) is not policed"
+s2b_spawn Agent axiom:ios-developer "$TMP/s2b-ptr.txt" "$S2B" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: another plugin's agent of the same short name is not policed" || bad "C10: another plugin's agent of the same short name is not policed"
+s2b_spawn Agent app-dev-team:tech-lead "$TMP/s2b-ptr.txt" "$S2B" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: a role with no contract (tech-lead) is not policed" || bad "C10: a role with no contract (tech-lead) is not policed"
+echo 'stop' > "$S2B/.studio-stop"
+s2b_spawn Agent app-dev-team:ios-developer "$TMP/s2b-ic.txt" "$S2B" >/dev/null 2>"$TMP/s2b-stop.err"
+[ $? = 2 ] && grep -q 'EMERGENCY STOP' "$TMP/s2b-stop.err" && ok "C10: the pre-spawn hook honours .studio-stop (spawn-gate)" \
+  || bad "C10: the pre-spawn hook honours .studio-stop (spawn-gate)" "$(cat "$TMP/s2b-stop.err")"
+rm -f "$S2B/.studio-stop"
+( cd "$S2B" && node "$HERE/board.mjs" move APP-002 claimed --by android-developer ) >/dev/null 2>&1
+s2b_spawn Agent app-dev-team:ios-developer "$TMP/s2b-ic.txt" "$S2B" >/dev/null 2>"$TMP/s2b-cont.err"
+[ $? = 2 ] && grep -q 'overlaps' "$TMP/s2b-cont.err" && ok "C10: the pre-spawn hook BLOCKS a ticket whose files overlap in-flight work" \
+  || bad "C10: the pre-spawn hook BLOCKS a ticket whose files overlap in-flight work" "$(cat "$TMP/s2b-cont.err")"
+echo 'not json' | sh "$S2BPRE" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: an unparseable pre-spawn payload fails open" || bad "C10: an unparseable pre-spawn payload fails open"
+node -e 'const h = require(process.argv[1]).hooks;
+  const pre = h.PreToolUse.find((e) => e.hooks.some((x) => x.command.includes("require-spawn-contract.sh")));
+  const r = new RegExp(pre.matcher);
+  process.exit(r.test("Task") && r.test("Agent") && !r.test("TaskStop") && !r.test("Bash") ? 0 : 1)' "$HERE/../hooks/hooks.json"
+[ $? = 0 ] && ok "C10: hooks.json routes both subagent tool names (Task, Agent) and nothing else to the pre-spawn hook" \
+  || bad "C10: hooks.json routes both subagent tool names (Task, Agent) and nothing else to the pre-spawn hook"
+S2BROLES=$(cd "$HERE" && node --input-type=module -e 'import { CODE_ROLES, ARTIFACT_ROLES } from "./lib/contract.mjs"; console.log([...CODE_ROLES, ...ARTIFACT_ROLES].join(" "))')
+node -e 'const [, f, roles] = process.argv; const h = require(f).hooks;
+  const e = h.SubagentStop.find((x) => x.hooks.some((y) => y.command.includes("persist-ic-report.sh")));
+  const r = new RegExp(e.matcher);
+  const all = roles.split(" ").every((x) => r.test(x) && r.test("app-dev-team:" + x));
+  process.exit(all && !r.test("code-reviewer") && !r.test("tech-lead") ? 0 : 1)' "$HERE/../hooks/hooks.json" "$S2BROLES"
+[ $? = 0 ] && ok "C6: the report hook's matcher covers every role lib/contract.mjs gives a contract, and no other" \
+  || bad "C6: the report hook's matcher covers every role lib/contract.mjs gives a contract, and no other"
+
+# C6/C10 — the SubagentStop hook: persist the report, report-check it, block once.
+S2BSTOP="$HERE/../hooks/persist-ic-report.sh"
+s2b_stop() {  # <agent_type> <agent_id> <message> <cwd> [stop_hook_active]
+  node -e 'const [, a, i, m, c, s] = process.argv; process.stdout.write(JSON.stringify({ hook_event_name: "SubagentStop", agent_type: a, agent_id: i,
+    cwd: c, transcript_path: "/nonexistent", stop_hook_active: s === "true", last_assistant_message: m }))' "$@" | sh "$S2BSTOP"
+}
+s2b_reports() { ls "$S2B/docs/team/reports/" 2>/dev/null | grep -c "^$1-" ; }
+S2BPART=$(printf 'DONE: APP-001\nWorktree: .agent-wt/ios-developer\nPARTIAL-MARKER')
+S2BFULL=$(printf 'DONE: APP-001\nWorktree: .agent-wt/ios-developer\nMutation confirmed: git diff --numstat -> 1 file, +3/-0\nDaily fragment: docs/daily/2026-11-18-ios-developer-APP-001.md\nAssumptions & open questions: none\nSecond-path check: none applicable\nShared surfaces touched: none\nFULL-MARKER')
+s2b_stop app-dev-team:ios-developer a1 "$S2BPART" "$S2B" >/dev/null 2>"$TMP/s2b-stop1.err"
+[ $? = 2 ] && ok "C10: an IC stopping with an incomplete DONE report is BLOCKED" || bad "C10: an IC stopping with an incomplete DONE report is BLOCKED"
+assert_has "$TMP/s2b-stop1.err" "MISSING  Mutation confirmed:" "C10: ...with the exact missing lines"
+grep -l PARTIAL-MARKER "$S2B/docs/team/reports/"APP-001-*.md >/dev/null 2>&1 \
+  && ok "C6: ...and the report is persisted to docs/team/reports/<ticket>-<UTC>.md" \
+  || bad "C6: ...and the report is persisted to docs/team/reports/<ticket>-<UTC>.md"
+s2b_stop app-dev-team:ios-developer a1 "$S2BPART" "$S2B" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: ...and a SECOND stop by the same subagent is let through (never blocks forever)" \
+  || bad "C10: ...and a SECOND stop by the same subagent is let through (never blocks forever)"
+s2b_stop app-dev-team:ios-developer a2 "$S2BPART" "$S2B" true >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: stop_hook_active (already continued once) is let through" || bad "C10: stop_hook_active (already continued once) is let through"
+s2b_stop app-dev-team:ios-developer a3 "$S2BFULL" "$S2B" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: a complete DONE report is ALLOWED" || bad "C10: a complete DONE report is ALLOWED"
+s2b_stop app-dev-team:ios-developer a4 "I finished APP-001, all good." "$S2B" >/dev/null 2>"$TMP/s2b-stop4.err"
+[ $? = 2 ] && grep -q 'MISSING  a first line' "$TMP/s2b-stop4.err" && ok "C10: prose about a board ticket with no DONE line is BLOCKED" \
+  || bad "C10: prose about a board ticket with no DONE line is BLOCKED" "$(cat "$TMP/s2b-stop4.err")"
+s2b_stop app-dev-team:ios-developer a5 "$(printf 'BLOCKED: APP-001\nReason: spec gap\nNeed: tech-lead')" "$S2B" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: a BLOCKED report is ALLOWED" || bad "C10: a BLOCKED report is ALLOWED"
+s2b_stop app-dev-team:ux-architect a6 "Flows written." "$S2B" >/dev/null 2>&1
+[ $? = 0 ] && [ "$(s2b_reports ux-architect)" -ge 1 ] && ok "C6: a stop naming no ticket is persisted under the role name and not blocked" \
+  || bad "C6: a stop naming no ticket is persisted under the role name and not blocked"
+s2b_stop app-dev-team:code-reviewer a7 "$S2BPART" "$S2B" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: the report hook leaves code-reviewer to its own hook" || bad "C10: the report hook leaves code-reviewer to its own hook"
+s2b_stop app-dev-team:ios-developer a8 "$S2BPART" "$S2BNO" >/dev/null 2>&1
+[ $? = 0 ] && [ ! -e "$S2BNO/docs" ] && ok "C10: the report hook is a no-op in an unrelated repo and writes nothing there" \
+  || bad "C10: the report hook is a no-op in an unrelated repo and writes nothing there"
+( cd "$S2B" && git worktree add -q .agent-wt/ios-developer -b wt-ios ) >/dev/null 2>&1
+s2b_stop app-dev-team:ios-developer a9 "$(printf '%s\nWT-MARKER' "$S2BFULL")" "$S2B/.agent-wt/ios-developer" >/dev/null 2>&1
+grep -l WT-MARKER "$S2B/docs/team/reports/"APP-001-*.md >/dev/null 2>&1 && [ ! -e "$S2B/.agent-wt/ios-developer/docs/team" ] \
+  && ok "C6: an IC stopping in its own worktree has its report saved in the MAIN tree" \
+  || bad "C6: an IC stopping in its own worktree has its report saved in the MAIN tree"
+echo 'not json' | sh "$S2BSTOP" >/dev/null 2>&1
+[ $? = 0 ] && ok "C10: an unparseable stop payload fails open" || bad "C10: an unparseable stop payload fails open"
+rm -rf "$S2B"
+
+# C11 — what the context manifest proves: planning documents unchanged. HEAD moving is not staleness.
+S2C="$TMP/s2b-ctx"; rm -rf "$S2C"; mkdir -p "$S2C"
+( cd "$S2C" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf 'prd v1\n' > "$S2C/prd.md"
+( cd "$TMP" && node "$HERE/context-manifest.mjs" create --root "$S2C" --manifest m.json --source project:prd.md ) >/dev/null 2>&1
+[ -f "$S2C/m.json" ] && ok "C11: create --root X --manifest Y writes under X, not the caller's cwd" \
+  || bad "C11: create --root X --manifest Y writes under X, not the caller's cwd"
+( cd "$S2C" && git commit -q --allow-empty -m wave ) >/dev/null 2>&1
+assert_exit 0 "C11: a merge moving HEAD alone does not make the context manifest STALE" node "$HERE/context-manifest.mjs" verify --root "$S2C" --manifest "$S2C/m.json"
+assert_exit 1 "C11: ...--strict-head still refuses it" node "$HERE/context-manifest.mjs" verify --root "$S2C" --manifest "$S2C/m.json" --strict-head
+printf 'prd v2\n' > "$S2C/prd.md"
+assert_exit 1 "C11: ...but a changed planning document is STALE" node "$HERE/context-manifest.mjs" verify --root "$S2C" --manifest "$S2C/m.json"
+rm -rf "$S2C"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

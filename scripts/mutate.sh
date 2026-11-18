@@ -215,6 +215,15 @@ M97@@scripts/wave-integrate.mjs@@const push = hasOrigin ? gitTry(['push', 'origi
 M98@@scripts/lib/readiness.mjs@@['status', '--porcelain', '--', ':(top)', ...excludes]@@['status', '--porcelain', '--', ':(top)']@@readiness: a tree dirty ONLY in the studio's operational files is clean (W3)@@W3 / G-F6
 M99@@scripts/runtime-gate.sh@@-e 's/^/:(exclude)/' "$OPS_PATHS")@@-e 's/^/:(exclude)/' /dev/null)@@runtime-gate --record: operational files do not record the tree as dirty (W3)@@W3 / G-F6
 M100@@scripts/ship-gate.sh@@-e 's/^/:(exclude)/' "$HERE/lib/operational-paths.txt")@@-e 's/^/:(exclude)/' /dev/null)@@ship-gate: operational files do not make approval binding UNKNOWN (G-F6)@@W3 / G-F6
+M120@@hooks/contract-hooks.mjs@@if (verify.status === 1) {@@if (false) {@@C10: the pre-spawn hook BLOCKS an IC prompt that only points at the contract@@Sprint 2 track B
+M121@@hooks/contract-hooks.mjs@@if (payload.stop_hook_active === true || existsSync(marker)) allow();@@if (false) allow();@@C10: ...and a SECOND stop by the same subagent is let through (never blocks forever)@@Sprint 2 track B
+M122@@hooks/contract-hooks.mjs@@existsSync(join(r, 'docs', '31-board-events.jsonl'))) || null;@@existsSync(join(r, 'docs', '31-board-events.jsonl'))) || dir;@@C10: the report hook is a no-op in an unrelated repo and writes nothing there@@Sprint 2 track B
+M123@@hooks/contract-hooks.mjs@@if (check.status !== 1 && !noDone) allow();@@allow();@@C10: an IC stopping with an incomplete DONE report is BLOCKED@@Sprint 2 track B
+M124@@hooks/contract-hooks.mjs@@if (c.status === 1) block(@@if (false) block(@@C10: the pre-spawn hook BLOCKS a ticket whose files overlap in-flight work@@Sprint 2 track B
+M125@@hooks/contract-hooks.mjs@@if (gate.status === 1) block(@@if (false) block(@@C10: the pre-spawn hook honours .studio-stop (spawn-gate)@@Sprint 2 track B
+M126@@scripts/spawn-prompt.mjs@@.filter((p) => res.some((r) => r.test(p)))@@.filter(() => false)@@C7: an IC prompt inlines the impl-spec section that names its ticket@@Sprint 2 track B
+M127@@scripts/spawn-prompt.mjs@@.sort().pop()@@.sort().shift()@@C7: the reviewer prompt carries the LATEST persisted DONE report for the ticket@@Sprint 2 track B
+M128@@scripts/context-manifest.mjs@@if (moved && flags['strict-head'])@@if (moved)@@C11: a merge moving HEAD alone does not make the context manifest STALE@@Sprint 2 track B
 CATALOGUE
 }
 
