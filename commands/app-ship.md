@@ -131,7 +131,9 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
       <reason>` — names the same waiver to a human and to the gate names nothing, so it stays red.
       `${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs --only gates` detects every `WAIVED:` line and stays red until that record
       exists — which is the point: the release record says a gate was skipped, and only the founder
-      record says a human chose it.
+      record says a human chose it. Then re-record it — `--write` adds a new `decisions.md` and keeps
+      an append, and still refuses an edit to any recorded line:
+      `node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root . --write`.
 
    Asking this is not a third human gate: `/app-ship` **is** Gate 2, and produce-or-waive is part of
    the ship conversation the user is already in. Under `--yolo` from `/app-run`, do not auto-waive —

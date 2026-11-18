@@ -11826,6 +11826,17 @@ assert_has "$TMP/out" "leased slot" "Q1: ...saying the slot is leased but has no
 mkdir -p "$Q1S/.agent-wt/web-developer-2"
 assert_exit 1 "Q1: ...and a .agent-wt/<slot> directory that is not a worktree (C5W-6)" sh -c 'cd "$1" && sh "$2/spawn-gate.sh" web-developer-2' sh "$Q1S" "$HERE"
 assert_exit 0 "Q1: ...while an unleased lone writer still serializes (C5W-6)" sh -c 'cd "$1" && sh "$2/spawn-gate.sh" web-developer-3' sh "$Q1S" "$HERE"
+# ·· C5W-7: app-ship 1a's waiver decision is re-recorded with --write; an edit to a recorded line still reads TAMPERED.
+Q1F="$TMP/q1-fi"; rm -rf "$Q1F"; mkdir -p "$Q1F/docs/00-founder-intent"; echo 'brief' > "$Q1F/docs/00-founder-intent/brief.md"
+node "$HERE/founder-intent.mjs" --project-root "$Q1F" --write >/dev/null 2>&1
+echo '2026-11-19 FOUNDER DECISION: waiver — journey gate — founder — no browser — v0.1.0 — Approved by founder.' > "$Q1F/docs/00-founder-intent/decisions.md"
+grep -q 'founder-intent.mjs" --project-root . --write`' "$HERE/../commands/app-ship.md" \
+  && node "$HERE/founder-intent.mjs" --project-root "$Q1F" --write >/dev/null 2>&1 \
+  && node "$HERE/founder-intent.mjs" --project-root "$Q1F" >/dev/null 2>&1 \
+  && ok "Q1: app-ship 1a re-records the waiver's founder decision, and the record reads INTACT (C5W-7)" \
+  || bad "Q1: app-ship 1a re-records the waiver's founder decision, and the record reads INTACT (C5W-7)"
+sed -i.bak 's/no browser/a browser/' "$Q1F/docs/00-founder-intent/decisions.md"; rm -f "$Q1F/docs/00-founder-intent/decisions.md.bak"
+assert_exit 1 "Q1: ...while editing that recorded decision line is still TAMPERED (C5W-7)" node "$HERE/founder-intent.mjs" --project-root "$Q1F"
 # ·· C5W-5 / C5W-13: the reviewer's template names the files (approved --bind needs one); routing a constant is not a rejection.
 Q1CR="$HERE/../agents/code-reviewer.md"
 grep -q '^Files reviewed: <every path in the diff' "$Q1CR" && grep -q "'Files reviewed: <every path in the Range above" "$HERE/spawn-prompt.mjs" \
