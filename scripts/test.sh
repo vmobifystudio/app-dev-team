@@ -8109,7 +8109,7 @@ FCP="$TMP/fc-policy"; rm -rf "$FCP"; mkdir -p "$FCP/docs/team"; ( cd "$FCP" && g
 cat > "$FCP/docs/team/risk-policy.json" <<'RP'
 {"schema":"risk-policy/v1","default":{"risk":"low","model":"sonnet","approvals":[],"required_evidence":[]},
  "rules":[{"match":{"path":"**/billing/**"},"risk":"critical","model":"opus",
-           "approvals":["code-reviewer","security-reviewer"],"required_evidence":["threat-model"]}]}
+           "approvals":["code-reviewer","security-reviewer"],"required_evidence":["security-review"]}]}
 RP
 bm "$FCP" add PAY-001 --title "billing change" --owner ios-developer \
   --file "src/billing/Checkout.swift" --invariant "totals never negative" >/dev/null 2>&1
@@ -9117,7 +9117,11 @@ mr_drive() {  # <id> <verify-event>
     node "$HERE/board.mjs" add "$1" --title t --owner ios-developer --by tech-manager
     node "$HERE/board.mjs" move "$1" claimed --by ios-developer
     node "$HERE/board.mjs" move "$1" done_reported --by ios-developer
-    node "$HERE/board.mjs" move "$1" "$2" --by tech-manager --detail d
+    if [ "$2" = verified ]; then
+      node "$HERE/board.mjs" move "$1" verified --by tech-manager --detail d --evidence "$(bm_evidence "$PWD" "$1")"
+    else
+      node "$HERE/board.mjs" move "$1" "$2" --by tech-manager --detail d
+    fi
     node "$HERE/board.mjs" move "$1" review_requested --by ios-developer --detail "-> code-reviewer"
     printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/%s\n\n## Not checked\nNothing.\n' "$1" > "docs/53-reviews/$1-cycle-0.md"
     node "$HERE/board.mjs" move "$1" approved --by code-reviewer --verdict "docs/53-reviews/$1-cycle-0.md"
