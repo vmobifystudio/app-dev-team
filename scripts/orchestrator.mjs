@@ -235,9 +235,14 @@ function cmdExplain() {
   // W2-10: under requireActorTokens every GATE line above needs a token minted in the SAME command.
   let tokens = false;
   try { tokens = JSON.parse(readFileSync(resolve(ROOT, '.studio-policy.json'), 'utf8')).requireActorTokens === true; } catch { /* no policy */ }
+  // C3W-8: a mint is printed for the orchestrator's own role only. An agent role's token is in its
+  // composed prompt; one that lacks it is re-spawned with a fresh compose, never handed a mint.
   if (tokens && options.some((o) => o.gated)) {
-    process.stdout.write(`\n  every GATE event above needs, in the same command:\n` +
-      `    --token "$(node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role <role> --ticket ${state.id})"\n`);
+    process.stdout.write('\n  every GATE event above needs a --token:\n' +
+      '    by tech-manager (you, the orchestrator) — minted in the same command:\n' +
+      `      --token "$(node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket ${state.id})"\n` +
+      '    by an agent role — the token in that agent\'s composed prompt. An agent without one is re-spawned\n' +
+      '      with a freshly composed prompt (spawn-prompt.mjs compose); never mint for it.\n');
   }
 
   // WHY SOMETHING IS *NOT* LEGAL IS THE MORE USEFUL HALF. An agent that knows the next step still
@@ -388,8 +393,16 @@ function cmdRound() {
     // file's own header argues against. Its headline rides along, so CLEAR never stands in for
     // CANNOT EVALUATE without saying which it was.
     const headline = (r.stdout || '').split('\n').find((l) => /^[A-Z ]+STATUS: /.test(l.trim()));
-    const carried = code === 0 && headline && !/: PASS\b/.test(headline) ? ` — ${headline.trim()} (advisory: this project has not armed it)` : '';
-    lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}` : code === 2 ? ` — ${s.unknown}` : carried}`);
+    // C3W-10: the step's OWN reason rides along — its first stderr line, else the first detail line
+    // after its headline (`gh run list failed: …`, `no integration branch declared`, the RESULT line).
+    // A generic "could not be asked" sent the operator re-running the step to learn what it said.
+    const out = (r.stdout || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    const detail = out.find((l) => /^RESULT: (BLOCKED|CANNOT EVALUATE)/.test(l))
+      || out.slice(headline ? out.indexOf(headline.trim()) + 1 : 0).find((l) => !/^(PASS|CLEAR)\b/.test(l));
+    const reason = (r.stderr || '').split('\n').map((l) => l.trim()).find(Boolean) || detail || '';
+    const why = reason ? ` [${reason.slice(0, 200)}]` : '';
+    const carried = code === 0 && headline && !/: PASS\b/.test(headline) ? ` — ${headline.trim()} (advisory: this project has not armed it)${why}` : '';
+    lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}${why}` : code === 2 ? ` — ${s.unknown}${why}` : carried}`);
   }
 
   process.stdout.write('ROUND PRECONDITIONS\n\n' + lines.join('\n') + '\n\n');

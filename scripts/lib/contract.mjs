@@ -101,14 +101,14 @@ export function contractFor(role) {
  * fill in; nothing here is templated with real values, because a value this script invented would
  * be a claim nobody made — the same rule `report-check.mjs` applies at the other end.
  */
-export function contractBlock(role, { ticket = 'APP-NNN' } = {}) {
+export function contractBlock(role, { ticket = 'APP-NNN', branch = `feat/${ticket}-short-slug` } = {}) {
   const c = contractFor(role);
   if (!c) return null;
   if (c.tier === 'code') {
     return [
       `DONE: ${ticket}`,
       'Worktree: <the path you were given, or "none — shared tree">',
-      'Branch: feat/' + ticket + '-short-slug        (created BEFORE any file was written)',
+      `Branch: ${branch}        (created BEFORE any file was written)`,
       'Staged (explicit paths): <list>',
       'Mutation confirmed: git diff --numstat -> <N files, +A/-B>',
       'Files: <list>',
@@ -124,7 +124,7 @@ export function contractBlock(role, { ticket = 'APP-NNN' } = {}) {
   return [
     `DONE: ${ticket}`,
     'Worktree: <the path you were given, or "none — shared tree">',
-    'Branch: feat/' + ticket + '-short-slug        (created BEFORE any file was written)',
+    `Branch: ${branch}        (created BEFORE any file was written)`,
     'Mutation confirmed: git diff --numstat -> <N files, +A/-B>',
     'Files: <list>',
     `Daily fragment: docs/daily/<today>-${role}-${ticket}.md`,

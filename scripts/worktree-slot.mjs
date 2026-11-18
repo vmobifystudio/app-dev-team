@@ -122,6 +122,12 @@ function cmdLease() {
   const owner = typeof flags.owner === 'string' ? flags.owner : '';
   if (!owner) die(2, 'lease needs --owner <role> — the slot is keyed by the WRITER, which is the unit of isolation.');
   if (!/^[a-z0-9][a-z0-9-]*$/.test(owner)) die(2, `--owner "${owner}" is not a role name.\n  It becomes a directory name under ${DIR}/, so it must be the plain role slug: ios-developer.`);
+  // C3W-6: a gate role judges someone else's branch; it never writes one, so it never holds a slot.
+  if (['code-reviewer', 'tech-lead', 'security-reviewer', 'privacy-reviewer', 'release-auditor', 'red-team-agent'].includes(owner)) {
+    die(1, `REFUSED: ${owner} is a gate role — it gets no slot. It reads the branch from the main checkout and runs or\n` +
+      '  edits only in a scratch `git worktree add --detach "$(mktemp -d)" <tip>` its composed prompt prints.\n' +
+      `  Spawn it with \`spawn-prompt.mjs compose --role ${owner}\` output as-is; lease nothing.`);
+  }
   const tickets = String(flags.tickets ?? '').split(',').map((t) => t.trim()).filter(Boolean);
   if (!tickets.length) die(2, 'lease needs --tickets APP-001 — a slot with no ticket is a tree nobody asked for.');
   // ONE SPAWN PER TICKET (design decision 8, W2-15): a batch of tickets in one tree is one agent

@@ -10650,8 +10650,8 @@ grep -q "50-test-plan" "$F2/sg.err" && bad "F2: ship-gate does not read docs/50-
   || ok "F2: ship-gate does not read docs/50-test-plan.md before checking it exists (G2-24)"
 printf '{"requireActorTokens":true}\n' > "$F2L/.studio-policy.json"
 sh "$HERE/ship-gate.sh" "$F2L" >"$F2/sg2.txt" 2>&1
-assert_has "$F2/sg2.txt" 'qa_passed --by qa-engineer --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role qa-engineer' \
-  "F2: ship-gate's printed qa_passed command mints its token inline under requireActorTokens (W2-10)"
+assert_has "$F2/sg2.txt" 'qa_passed --by qa-engineer --token "<the qa-engineer token for' \
+  "F2: ship-gate's printed qa_passed command carries the agent's prompt token, never a mint, under requireActorTokens (W2-10, C3W-8)"
 rm -f "$F2L/.studio-policy.json"
 
 # W2-20: orchestrator ship relays each failing sub-gate's own reasons
@@ -10779,7 +10779,7 @@ grep -qF 'feat/APP-001-greet` already exists' "$TMP/te-rt.txt" && grep -q RETRY-
   || bad "S3E: compose --retry names the existing branch, the verdict, and the model tier on stderr (C2-11)" "$(cat "$TMP/te-rt.err")"
 
 # C2-8 / R2-7 — the artifact contract owes Branch: and report-check checks it.
-grep -q '^Branch: feat/QA-1-w1' "$TMP/te-qa.txt" && grep -q '^Shared surfaces touched:' "$TMP/te-qa.txt" \
+grep -q '^Branch: qa/QA-1-w1' "$TMP/te-qa.txt" && grep -q '^Shared surfaces touched:' "$TMP/te-qa.txt" \
   && ok "S3E: the artifact contract carries Branch:, Mutation confirmed:, Shared surfaces touched: (R2-7)" \
   || bad "S3E: the artifact contract carries Branch:, Mutation confirmed:, Shared surfaces touched: (R2-7)"
 printf 'DONE: QA-1-w1\nWorktree: x\nMutation confirmed: x\nDaily fragment: x\nAssumptions & open questions: none\nShared surfaces touched: none\n' > "$TMP/te-nobranch.txt"
@@ -11187,6 +11187,120 @@ grep -q 'drivers/web.sh' "$K3B" && grep -q 'drivers/web.sh' "$K3S" && grep -q 'n
 grep -q 'on every tier, except a wave made only of' "$K3B" && ! grep -q 'No `QA-` ticket' "$K3L" \
   && ok "K3: the utility lane runs one QA- ticket per wave, like flagship (C3W-2)" \
   || bad "K3: the utility lane runs one QA- ticket per wave, like flagship (C3W-2)"
+
+# --- Sprint 4 track K2: the guard reads shell words; QA composes on its QA- ticket; no mint for an agent role ---
+# C3G-1/2/3/11/12/17 evasions are refused; FB2's honest commands are NOT (both sides tested); design A
+# (QA branch qa/QA-…, per-ticket commands), C3W-6 (gate roles get no slot), C3W-8 (no mint printed for an
+# agent role), C3W-10 (round lines carry the step's own reason), C3W-11 (the missing build script named),
+# C3W-3 (web driver executable, and says how to serve the app).
+echo
+K2="$TMP/s4k2"; rm -rf "$K2"; mkdir -p "$K2/docs/team"; : > "$K2/docs/31-board-events.jsonl"
+k2g() {  # <want> <tool> <key> <value> — the guard, as a subagent, in $K2
+  _w=$1; shift
+  node -e 'const [, t, k, v, c] = process.argv; process.stdout.write(JSON.stringify({ tool_name: t, agent_id: "k2", cwd: c, tool_input: { [k]: v } }))' "$1" "$2" "$3" "$K2" \
+    | sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>"$TMP/k2g.err"
+  _g=$?
+  [ "$_g" = "$_w" ] && ok "K2: guard exit $_w for $1: $3" || bad "K2: guard exit $_w for $1: $3" "got $_g: $(head -c 300 "$TMP/k2g.err")"
+}
+# FB2 — sentences that merely MENTION the words pass.
+k2g 0 Bash command 'node scripts/board.mjs move APP-001 blocked --by ios-developer --detail "the actor field is wrong"'
+k2g 0 Bash command 'git commit -m "docs: explain actor mint"'
+k2g 0 Bash command 'grep -rn "actor-tokens.jsonl" src/'
+k2g 0 Bash command 'echo summary > docs/team/evidence-summary.md'
+k2g 0 Bash command 'node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 started --by code-reviewer'
+k2g 0 Bash command 'T=$(mktemp -d) && git worktree add --detach "$T" abc123'
+k2g 0 Bash command 'cat docs/team/project-profile.json'
+k2g 0 Bash command "$(printf 'git commit -F - <<EOF\ndocs: explain actor mint and cp x docs/team/evidence/\nEOF')"
+# C3G-1 — a subagent never composes (composing mints).
+k2g 2 Bash command 'node "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-prompt.mjs" compose --ticket APP-001 --role qa-engineer'
+# C3G-2 — names and subcommands built at runtime.
+k2g 2 Bash command 'A=act; node scripts/board.mjs ${A}or mint --role x'
+k2g 2 Bash command 'node scripts/board.mjs $(echo actor) mint --role code-reviewer --ticket APP-001'
+k2g 2 Bash command 'B=board; node scripts/$B.mjs actor mint --role x'
+k2g 2 Bash command 'node scripts/b?ard.mjs `echo act`or mint'
+# C3G-3 — control files in the main tree.
+k2g 2 Bash command 'echo {} > docs/team/project-profile.json'
+k2g 2 Bash command 'cp x docs/team/risk-policy.json'
+k2g 2 Bash command "sed -i '' s/a/b/ .studio-policy.json"
+k2g 2 Bash command "node -e \"require('fs').writeFileSync('docs/team/capabilities.json','{}')\""
+k2g 2 Write file_path "$K2/docs/team/project-profile.json"
+k2g 0 Write file_path "$K2/.agent-wt/devops-engineer-1/docs/team/project-profile.json"
+# C3G-11 — transcripts: the dir itself, and globs.
+k2g 2 Grep path "$HOME/.claude/projects"
+k2g 2 Glob path "$HOME/.claude"
+k2g 2 Bash command 'ls ~/.claude/proj*/'
+# C3G-12 — the anchor library and spelled-around anchor paths.
+k2g 2 Bash command "node -e \"import('./scripts/lib/events.mjs')\""
+k2g 2 Bash command 'cat .gi?/studio/anchor'
+k2g 2 Bash command 'D=.git; cat $D/studio/anchor'
+# C3G-17 — path evasions into the evidence dir.
+k2g 2 Bash command 'cp -t docs/team/evidence x.json'
+k2g 2 Bash command 'dd if=x.json of=docs/team/evidence/test-1.json'
+k2g 2 Bash command 'perl -pi -e s/a/b/ docs/team/evidence/test-1.json'
+k2g 2 Bash command 'echo {} > docs//team/evidence/test-1.json'
+k2g 2 Bash command 'echo {} > docs/team/./evidence/test-1.json'
+k2g 2 Bash command 'cp x.json docs/team/evidenc?/'
+k2g 2 Bash command 'cd docs/team && cp x.json evidence/'
+k2g 2 Bash command 'bash -c "cp x docs/team/evidence/"'
+
+# C3G-1 / design D — a SUBAGENT's pre-spawn refusal says the orchestrator composes; it prints no compose.
+printf '{"ticket":"APP-001","event":"created","by":"tech-manager"}\n' > "$K2/docs/31-board-events.jsonl"
+node -e 'process.stdout.write(JSON.stringify({ tool_name: "Agent", agent_id: "k2", cwd: process.argv[1], tool_input: { subagent_type: "ios-developer", prompt: "Work ticket APP-001.\nReturn the CODE profile." } }))' "$K2" \
+  | sh "$HERE/../hooks/require-spawn-contract.sh" >/dev/null 2>"$TMP/k2pre.err"
+[ $? = 2 ] && grep -q 'orchestrator composes' "$TMP/k2pre.err" && ! grep -q 'compose --root' "$TMP/k2pre.err" \
+  && ok "K2: a subagent's refused spawn is told the orchestrator composes — no compose command (C3G-1)" \
+  || bad "K2: a subagent's refused spawn is told the orchestrator composes — no compose command (C3G-1)" "$(cat "$TMP/k2pre.err")"
+rm -rf "$K2"
+
+# Design A / C3W-1 — QA on its QA- ticket: branch qa/QA-…, no feat/APP- line, per-ticket commands.
+K2Q="$TMP/s4k2q"; rm -rf "$K2Q"; mkdir -p "$K2Q/docs/team"
+( cd "$K2Q" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m init \
+  && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
+  && node "$HERE/board.mjs" add APP-001 --title greet --owner ios-developer --acceptance "Given Ada" --by tech-manager \
+  && node "$HERE/board.mjs" add QA-1-w1 --title "QA pass — wave 1" --owner qa-engineer --by tech-manager \
+  && node "$HERE/board.mjs" add APP-002 --title other --owner ios-developer --by tech-manager \
+  && node "$HERE/board.mjs" move APP-002 claimed --by ios-developer && node "$HERE/board.mjs" move APP-002 done_reported --by ios-developer ) >/dev/null 2>&1
+printf '{"requireActorTokens": true}\n' > "$K2Q/.studio-policy.json"
+( cd "$K2Q" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-1-w1 --role qa-engineer --tickets APP-001 ) >"$TMP/k2qa.txt" 2>/dev/null
+grep -qF 'git checkout -b qa/QA-1-w1 main' "$TMP/k2qa.txt" && grep -qF 'Branch: qa/QA-1-w1' "$TMP/k2qa.txt" && ! grep -q 'feat/APP-' "$TMP/k2qa.txt" \
+  && grep -qE "move APP-001 qa_passed --by qa-engineer --token st_" "$TMP/k2qa.txt" && grep -qE "move APP-001 qa_failed --by qa-engineer --token st_" "$TMP/k2qa.txt" \
+  && ok "K2: QA composes on branch qa/QA-<sprint>-w<n>, no feat/APP- line, qa_passed/qa_failed spelled per ticket (C3W-1, design A)" \
+  || bad "K2: QA composes on branch qa/QA-<sprint>-w<n>, no feat/APP- line, qa_passed/qa_failed spelled per ticket (C3W-1, design A)" "$(head -c 900 "$TMP/k2qa.txt")"
+( cd "$K2Q" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role qa-engineer ) >/dev/null 2>"$TMP/k2qa2.err"
+[ $? = 2 ] && grep -q 'QA-<sprint>-w<n>' "$TMP/k2qa2.err" \
+  && ok "K2: qa-engineer composed on an app ticket it does not own is refused, naming the QA- ticket (design A)" \
+  || bad "K2: qa-engineer composed on an app ticket it does not own is refused, naming the QA- ticket (design A)" "$(cat "$TMP/k2qa2.err")"
+# C3W-6 — a gate role gets no slot.
+( cd "$K2Q" && node "$HERE/worktree-slot.mjs" lease --owner code-reviewer --tickets APP-001 ) >"$TMP/k2slot.txt" 2>&1
+[ $? = 1 ] && grep -q 'gate role' "$TMP/k2slot.txt" && ok "K2: worktree-slot refuses a gate role a slot (C3W-6)" \
+  || bad "K2: worktree-slot refuses a gate role a slot (C3W-6)" "$(cat "$TMP/k2slot.txt")"
+# C3W-8 — explain prints a mint for tech-manager only.
+( cd "$K2Q" && node "$HERE/orchestrator.mjs" explain APP-002 ) >"$TMP/k2ex.txt" 2>&1
+grep -q 'actor mint --role tech-manager' "$TMP/k2ex.txt" && ! grep -q 'actor mint --role <role>' "$TMP/k2ex.txt" \
+  && ok "K2: orchestrator explain mints for the orchestrator's own role only (C3W-8)" \
+  || bad "K2: orchestrator explain mints for the orchestrator's own role only (C3W-8)" "$(cat "$TMP/k2ex.txt")"
+# C3W-10 — each round line carries the step's own reason.
+( cd "$K2Q" && node "$HERE/orchestrator.mjs" round ) >"$TMP/k2round.txt" 2>&1
+grep -E '^  CANNOT EVALUATE  toolchain .*\[project-profile: ' "$TMP/k2round.txt" >/dev/null \
+  && ok "K2: orchestrator round carries the failing step's own reason into its line (C3W-10)" \
+  || bad "K2: orchestrator round carries the failing step's own reason into its line (C3W-10)" "$(cat "$TMP/k2round.txt")"
+# C3W-11 — a web profile with no package.json says exactly that, not "declared tools absent".
+printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{}}\n' > "$K2Q/docs/team/project-profile.json"
+node "$HERE/project-profile.mjs" check --root "$K2Q" >"$TMP/k2pp.txt" 2>&1
+[ $? = 2 ] && grep -q 'no package.json at' "$TMP/k2pp.txt" && grep -q 'web build script missing' "$TMP/k2pp.txt" && ! grep -q 'declared tool(s) are absent' "$TMP/k2pp.txt" \
+  && ok "K2: project-profile names the missing package.json / build script precisely (C3W-11)" \
+  || bad "K2: project-profile names the missing package.json / build script precisely (C3W-11)" "$(cat "$TMP/k2pp.txt")"
+rm -rf "$K2Q"
+# C3W-3 — the web driver is executable in git, and its no-URL refusal says how to serve the app.
+# (a copy with no git — mutate.sh's work tree — cannot say what git records; it checks the file bit.)
+_k2m=$( cd "$HERE/.." && git ls-files -s scripts/drivers/web.sh 2>/dev/null )
+if [ -n "$_k2m" ]; then case "$_k2m" in 100755*) _k2x=1 ;; *) _k2x=0 ;; esac; else [ -x "$HERE/drivers/web.sh" ] && _k2x=1 || _k2x=0; fi
+[ "$_k2x" = 1 ] && ok "K2: scripts/drivers/web.sh is mode 100755 in git (C3W-3)" || bad "K2: scripts/drivers/web.sh is mode 100755 in git (C3W-3)" "$_k2m"
+printf '{"id":"j1","steps":[]}\n' > "$TMP/k2j.json"
+STUDIO_WEB_URL= sh "$HERE/drivers/web.sh" --journey "$TMP/k2j.json" >"$TMP/k2web.txt" 2>&1
+[ $? = 2 ] && grep -q 'npx vite preview' "$TMP/k2web.txt" && grep -q 'STUDIO_WEB_URL=http://localhost' "$TMP/k2web.txt" \
+  && ok "K2: the web driver with no URL says how to start the app and set STUDIO_WEB_URL (C3W-3)" \
+  || bad "K2: the web driver with no URL says how to start the app and set STUDIO_WEB_URL (C3W-3)" "$(cat "$TMP/k2web.txt")"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
