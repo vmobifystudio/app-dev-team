@@ -11817,6 +11817,15 @@ q1dp() { ( cd "$Q1D" && node "$HERE/dispatch-preflight.mjs" --root "$Q1D" --tick
 [ "$(q1dp src/auth/session.js src/convert.js)" -ge 1 ] && [ "$(q1dp src/convert.js src/auth/session.js)" -ge 1 ] \
   && ok "Q1: dispatch-preflight routes every repeated --file, in either order (C5W-3)" \
   || bad "Q1: dispatch-preflight routes every repeated --file, in either order (C5W-3)" "$(q1dp src/auth/session.js src/convert.js) / $(q1dp src/convert.js src/auth/session.js)"
+# ·· C5W-6: a lone writer named by a LEASED slot (or a $DIR/<slot> path) with no worktree is refused, not SERIALIZED.
+Q1S="$TMP/q1-sg"; rm -rf "$Q1S"; mkdir -p "$Q1S/docs/team"
+( cd "$Q1S" && git init -q -b main . && q1g commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf '{"schema":"worktree-slots/v1","pool":3,"slots":{"web-developer-1":{"tickets":["APP-001"]}}}\n' > "$Q1S/docs/team/worktree-slots.json"
+assert_exit 1 "Q1: spawn-gate refuses a leased slot whose worktree does not exist (C5W-6)" sh -c 'cd "$1" && sh "$2/spawn-gate.sh" web-developer-1' sh "$Q1S" "$HERE"
+assert_has "$TMP/out" "leased slot" "Q1: ...saying the slot is leased but has no worktree (C5W-6)"
+mkdir -p "$Q1S/.agent-wt/web-developer-2"
+assert_exit 1 "Q1: ...and a .agent-wt/<slot> directory that is not a worktree (C5W-6)" sh -c 'cd "$1" && sh "$2/spawn-gate.sh" web-developer-2' sh "$Q1S" "$HERE"
+assert_exit 0 "Q1: ...while an unleased lone writer still serializes (C5W-6)" sh -c 'cd "$1" && sh "$2/spawn-gate.sh" web-developer-3' sh "$Q1S" "$HERE"
 # ·· C5W-5 / C5W-13: the reviewer's template names the files (approved --bind needs one); routing a constant is not a rejection.
 Q1CR="$HERE/../agents/code-reviewer.md"
 grep -q '^Files reviewed: <every path in the diff' "$Q1CR" && grep -q "'Files reviewed: <every path in the Range above" "$HERE/spawn-prompt.mjs" \
