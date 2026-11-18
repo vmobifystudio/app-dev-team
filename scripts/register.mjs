@@ -288,7 +288,8 @@ function cmdImportBugs() {
       const reason = cells.slice(3).find((c) => c.length >= 10 && /wont|won't|not|dupl|invalid|by design|cannot/i.test(c));
       const ticket = b.ticket || existing.ticket;
       const refusal = terminalRefusal(status, { reason, ticket });
-      if (refusal) { downgraded.push(`${b.id}: ${status} -> stays ${existing.status} (${refusal.split('.')[0]})`); continue; }
+      if (refusal) {
+        downgraded.push(`${b.id}: ${status} -> stays ${existing.status} (${refusal.split('.')[0]})`); continue; }
       append({ schema: 'studio-register/v1', v: 1, ts: now(), action: 'status', id: existing.id, status, by: flags.by,
         ...(status === 'WONTFIX' && reason ? { reason } : {}), ...(ticket ? { ticket: String(ticket) } : {}) });
       updated += 1;
