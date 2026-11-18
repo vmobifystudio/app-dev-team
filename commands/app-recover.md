@@ -102,7 +102,9 @@ git branch -D integration/wave-<N>   # only once you know what it holds
 
 Re-running the same wave number is **refused**, on purpose: merging on top of a previous run's result
 and reporting it as a fresh integration is how a half-landed wave becomes an invisible one. Either
-delete the branch knowingly or use the next number.
+delete the branch knowingly or use the next number. The one exception is `--wave <N> --push`: it lands an existing wave branch
+whose tip is still the commit that run recorded green (`refs/studio/wave-green/<N>`) — and refuses
+one that has moved since.
 
 ## 5. Restart from a known state
 

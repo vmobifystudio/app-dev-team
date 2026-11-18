@@ -128,7 +128,7 @@ M01@@scripts/spawn-gate.sh@@exit 1@@exit 0@@REFUSES two writing agents when neit
 M02@@scripts/ship-gate.sh@@[ "${OPEN:-0}" -gt 0 ] && block@@[ "${OPEN:-0}" -lt 0 ] && block@@counts open S1/S2 bugs correctly
 M03@@scripts/ship-gate.sh@@grep -nE '(\|\|[[:space:]]*(true|:)([[:space:]]|$))|continue-on-error:[[:space:]]*true'@@grep -nE 'zzzz-this-pattern-matches-nothing'@@a generated workflow that masks an exit code blocks the release
 M04@@scripts/board-doctor.mjs@@(reviewChecksBlock ? anomalies : warnings).push(item)@@warnings.push(item)@@emits done_without_review
-M05@@scripts/board-doctor.mjs@@effectiveCycles > MAX_REVIEW_CYCLES && ACTIVE_STATUS.has(row.status)@@effectiveCycles >= MAX_REVIEW_CYCLES && ACTIVE_STATUS.has(row.status)@@Cycles = 2 in review is the budget spent, not a breach
+M05@@scripts/board-doctor.mjs@@effectiveCycles > cap && ACTIVE_STATUS.has(row.status)@@effectiveCycles >= cap && ACTIVE_STATUS.has(row.status)@@Cycles = 2 in review is the budget spent, not a breach
 M06@@scripts/lib/board.mjs@@/[A-Za-z]+-\d+(?:-[A-Za-z]+)?/g@@/[A-Za-z]+-\d+/g@@suffixed ticket ids parse whole (BUG-NNN-fix)
 M07@@scripts/lib/events.mjs@@if (by && workers.has(by)) {@@if (false) {@@a role approving work it did is refused
 M08@@scripts/lib/events.mjs@@if (!external.length) {@@if (false) {@@a merge with no approval at all is refused

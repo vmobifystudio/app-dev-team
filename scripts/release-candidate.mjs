@@ -26,6 +26,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, relative, resolve } from 'node:path';
 
 import { parseArgs } from './lib/args.mjs';
+import { treeDirty } from './lib/readiness.mjs';
 import { withFileLock } from './lib/atomic.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { DOSSIER_PATH, hashFile, readDossier } from './lib/dossier.mjs';
@@ -90,7 +91,6 @@ function cmdRecord() {
 
   const head = git(['rev-parse', 'HEAD']);
   if (!head) die(2, 'cannot resolve HEAD — a candidate that names no commit binds nothing');
-  const status = git(['status', '--porcelain']);
 
   const platform = typeof flags.platform === 'string' ? flags.platform : null;
   const record = {
@@ -100,7 +100,7 @@ function cmdRecord() {
     branch: git(['rev-parse', '--abbrev-ref', 'HEAD']) || null,
     // Recorded, never normalised away. An artifact built from an uncommitted tree cannot be
     // reproduced from the commit it names, and readiness reads this as STALE rather than PASS.
-    dirty: status.length > 0,
+    dirty: treeDirty(ROOT), // studio operational files are not dirt (lib/operational-paths.txt)
     // Stored relative to the project root so the record survives being read from another checkout.
     artifact: relative(ROOT, artifactPath) || flags.artifact,
     sha256: hashFile(artifactPath),

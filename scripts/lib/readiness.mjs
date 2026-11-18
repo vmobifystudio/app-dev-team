@@ -52,7 +52,7 @@ function candidate(root) {
  * ship-gate.sh read)? Counting them made every honest gate result STALE (W3 / G-F6). A git error
  * is dirty, never clean.
  */
-function treeDirty(root) {
+export function treeDirty(root) {
   const excludes = readFileSync(new URL('./operational-paths.txt', import.meta.url), 'utf8')
     .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((p) => `:(exclude)${p}`);
   try {

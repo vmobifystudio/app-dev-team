@@ -4,7 +4,7 @@
 first and nothing else until you have.*
 
 **Last updated:** 2026-11-17 · **Branch:** `fix/e2e-review-sweep` (on top of `main` at `3bedced`, #44)
-**Suite:** 1551 passed, 0 failed · **Mutation sample:** all caught · **Eval lab:** passes · **Invariants:** 12/12 · **Version:** 3.1.0
+**Suite:** 1633 passed, 0 failed · **Mutation sample:** all caught · **Eval lab:** passes · **Invariants:** 12/12 · **Version:** 3.1.0
 
 ## 2026-11-17 — the end-to-end review (`fix/e2e-review-sweep`)
 
@@ -34,6 +34,20 @@ scratch project before it was fixed. What it found, plainly:
   switch is seen from worktrees and subdirectories; `decisions.md` is append-only rather than
   immutable; brownfield gets a founder record; `qa-engineer` declares the P0 journeys; audit
   findings reach the register `ship-gate` reads; `security-reviewer` has its utility privacy mode.
+- **2026-11-18 five-lens expert review** (`docs/reviews/2026-11-18-expert-review.md`, every
+  finding): a literal agent still could not reach Gate 2. Fixed in Phase 1 — Jest/Vitest/pytest/go/
+  Gradle now count as a suite that ran and zero tests never pass; app-init creates the repo, ignores
+  the studio's operational files and commits the planning docs; dirty checks ignore those files;
+  approvals bind the ticket branch tip, only the latest per role counts, a later commit needs a
+  re-review, and `merged` enforces it itself; the default risk policy needs only code-reviewer;
+  `QA-` tickets close from `merged`; founder `reopened` past the cycle cap; `closed` needs the code
+  on main; leases complete; the review hook wants this cycle's verdict; the orchestrator runs the
+  merge gate inline (no tech-manager spawn); tech-manager/code-reviewer cut ~35%; skill
+  descriptions <=255 chars; all commands have frontmatter.
+  **Phase 2 (not started, needs a go-ahead):** split the big shared skills into short cores (IC
+  spawn ~15k -> ~4k words); hooks that enforce the spawn/report contracts and persist reports;
+  machine-produced gate evidence + signed actors; spec excerpts and a reviewer template in
+  spawn-prompt; risk from the actual diff; renumber colliding doc numbers (16/17/72/73).
 - **Still open:** the new destructive-git tokenizer was only exercised under macOS awk — CI on
   ubuntu is its first mawk run. And everything here was proven by driving the CLI and the hooks,
   not by an agent following the commands end to end; that still needs a real spawned run.

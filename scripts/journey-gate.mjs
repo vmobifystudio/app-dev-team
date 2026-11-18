@@ -49,6 +49,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
+import { treeDirty } from './lib/readiness.mjs';
 
 const die = (code, message) => { process.stderr.write(`journey-gate: ${message}\n`); process.exit(code); };
 const { flags } = parseArgs(process.argv.slice(2), {
@@ -316,7 +317,7 @@ function writeResultFile() {
   let head = '';
   let dirty = null;
   try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* not a repo */ }
-  try { dirty = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0; } catch { /* not a repo */ }
+  if (head) dirty = treeDirty(root); // studio operational files are not dirt (lib/operational-paths.txt)
   const payload = {
     schema: 'gate-result/v1',
     gate: 'journey-gate',

@@ -2634,6 +2634,10 @@ bm "$RO" show R-001 2>/dev/null | grep -q "in_progress" \
   && ok "...which hands the ticket back to in_progress" || bad "...which hands the ticket back to in_progress"
 ro_rework
 assert_exit 0 "...and grants one more REQUEST CHANGES beyond the cap" bm "$RO" move R-001 changes --by code-reviewer
+node "$HERE/board-doctor.mjs" "$RO/docs/31-board.md" >"$TMP/ro-doc.txt" 2>&1
+grep -q cycle_cap_breached "$TMP/ro-doc.txt" \
+  && bad "board-doctor honours the founder's extra cycle: Cycles=3 after reopened is not a breach" "$(grep -A2 cycle_cap "$TMP/ro-doc.txt")" \
+  || ok "board-doctor honours the founder's extra cycle: Cycles=3 after reopened is not a breach"
 ro_rework
 assert_exit 1 "...but only one: the next REQUEST CHANGES is refused again" bm "$RO" move R-001 changes --by code-reviewer
 assert_has "$TMP/err" "moved to blocked instead" "...and forced to blocked, as at the original cap"
@@ -8120,6 +8124,16 @@ sh "$HERE/ship-gate.sh" "$OPD" >"$TMP/opd-sg.txt" 2>&1
 grep -q "working tree is DIRTY" "$TMP/opd-sg.txt" \
   && bad "ship-gate: operational files do not make approval binding UNKNOWN (G-F6)" "$(grep -A3 DIRTY "$TMP/opd-sg.txt")" \
   || ok "ship-gate: operational files do not make approval binding UNKNOWN (G-F6)"
+# The artifact and journey gates stamp their own `dirty`; they must read the same list, or
+# readiness shows them STALE on a tree dirty only in studio files.
+echo bin > "$OPD/docs/team/app.ipa"
+( cd "$OPD" && node "$HERE/release-candidate.mjs" record --artifact docs/team/app.ipa --platform ios --by release-manager --root . ) >/dev/null 2>&1
+grep -q '"dirty":false' "$OPD/docs/team/release-candidates.jsonl" 2>/dev/null \
+  && ok "release-candidate: operational files do not record the candidate as dirty (W3)" \
+  || bad "release-candidate: operational files do not record the candidate as dirty (W3)" "$(cat "$OPD/docs/team/release-candidates.jsonl" 2>&1 | head -3)"
+grep -q "treeDirty(root)" "$HERE/journey-gate.mjs" \
+  && ok "journey-gate stamps dirty with the shared operational-path exclusion (W3)" \
+  || bad "journey-gate stamps dirty with the shared operational-path exclusion (W3)" "plain git status --porcelain"
 # ...and a real change still counts, tracked or untracked, everywhere.
 echo src > "$OPD/docs/notes.md"
 [ "$(op_dirty)" = true ] && ok "readiness: an untracked non-operational file still makes the tree dirty" \

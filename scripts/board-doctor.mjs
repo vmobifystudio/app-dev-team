@@ -506,10 +506,11 @@ function diagnose(board, ledger, capabilities, messages = []) {
       // Only while the ticket is still being worked. `status !== 'blocked'` meant a ticket that
       // legitimately used its two review cycles and then merged stayed a BLOCKING anomaly for the
       // life of the board, so the pre-spawn gate went permanently red on any real sprint.
-      if (effectiveCycles > MAX_REVIEW_CYCLES && ACTIVE_STATUS.has(row.status)) {
+      const cap = MAX_REVIEW_CYCLES + (capabilities.extraCycles?.get(String(normalizeId(row.id)).toUpperCase()) || 0);
+      if (effectiveCycles > cap && ACTIVE_STATUS.has(row.status)) {
         push(
           'cycle_cap_breached',
-          `Cycles = ${effectiveCycles} (cap is ${MAX_REVIEW_CYCLES}, breached above it) but status is "${row.status}", not blocked.`,
+          `Cycles = ${effectiveCycles} (cap is ${cap}, breached above it) but status is "${row.status}", not blocked.`,
           'Stop the loop for this ticket, set it blocked, and surface the full reviewer + developer history.'
         );
       }
@@ -710,6 +711,15 @@ function main() {
   // A finding the final exit discards is not a finding; it is a log line.
   const diverged = reportViewDivergence(boardPath, board);
 
+  // Review cycles the founder granted with `reopened` raise this ticket's cap; only the log knows them.
+  const extraCycles = new Map();
+  try {
+    const logPath = join(dirname(boardPath), '31-board-events.jsonl');
+    if (existsSync(logPath)) {
+      for (const [id, t] of reduceEvents(parseEventLog(readFileSync(logPath, 'utf8')).events).tickets) if (t.extraCycles) extraCycles.set(id, t.extraCycles);
+    }
+  } catch { /* an unreadable log is loadLog's problem */ }
+  capabilities.extraCycles = extraCycles;
   const result = diagnose(board, ledger, capabilities, channel.messages);
   if (!options.quiet || result.anomalies.length > 0) report(result, board, capabilities, options);
   if (diverged && !result.anomalies.length) {

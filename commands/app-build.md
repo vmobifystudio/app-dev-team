@@ -483,7 +483,9 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      without a non-owner `approved` that satisfies the risk policy, and under
      `requireApprovalBinding` the board re-runs the binding check itself; on exit 0 the row is `qa`.
      The default risk policy needs only the `code-reviewer` approval — nobody else is waiting to
-     sign.
+     sign. A `high` ticket (auth, privacy, credentials, migrations) also needs `tech-lead`'s: when
+     `merged` refuses with `missing: tech-lead`, spawn `tech-lead` with the ticket, the branch and
+     the reviewer's verdict file — its role file says how it records the second approval.
 
      **The gate does not run `git merge`.** It passes or refuses per ticket. The git merges happen
      ONCE, for the whole wave, in step 5 — `wave-integrate.mjs`, which this loop owns, conflicts
@@ -563,7 +565,8 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    a workflow yourself. With no `origin` remote the push is skipped and it still exits `0`; say
    `NOT PUSHED: no origin` in the standup. An exit `1` from **this** call is a push failure, not a
    code failure: the wave is already integrated locally, so re-spawn nobody — report the push error
-   verbatim.
+   verbatim. Exit `2` from this call means the branch was never recorded green, or moved after it was:
+   re-run the wave, do not push it.
 
    A non-green wave is a normal outcome, not a stuck loop — `merge-reconcile` reports those tickets
    as `AWAITING INTEGRATION`, never as a lying board.
