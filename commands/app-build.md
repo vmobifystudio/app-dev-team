@@ -328,8 +328,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      with its own token — plus `--bind --evidence <path> --context <path>` when `.studio-policy.json`
      sets `requireApprovalBinding` (the `/app-init` default). The append is refused if the verdict
      file is missing, lacks `REVIEW VERDICT:`, contradicts the event, or lacks `Scope:` or
-     `## Not checked` — have the reviewer finish the document; it commits the verdict file by
-     explicit path. **Then run the merge gate yourself,
+     `## Not checked` — have the reviewer finish the document (it stays in the main checkout,
+     uncommitted — `docs/53-reviews/` is an operational path). **Then run the merge gate yourself,
      inline — do not spawn `tech-manager` for it:**
 
      ```bash
@@ -346,11 +346,11 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      step 5.
    - `REQUEST CHANGES` → `board.mjs move APP-NNN changes --by code-reviewer --verdict
      docs/53-reviews/APP-NNN-cycle-N.md` (the reviewer's own token), then re-spawn the original
-     developer **pointed at that file**, not at notes in your context. Cycles are the count of
+     developer with `compose --role <owner> --retry <that file>` — not notes from your context. Cycles are the count of
      `changes` events; nobody edits a column.
 
-     **Re-spawn one model tier up** — the one copy of the ladder: `haiku → sonnet → opus`, capped
-     at opus, starting from the agent file's `model:`. Pass it as the subagent tool's `model`
+     **Re-spawn one model tier up** (`--retry` prints it): `haiku → sonnet → opus`, capped at opus,
+     from the agent file's `model:`. Pass it as the subagent tool's `model`
      parameter and name the tier in the standup. A `rejected` verify-done retry does **not**
      escalate.
    - **Cap: 2 review cycles, enforced at write time** — the 3rd `changes` is refused and becomes

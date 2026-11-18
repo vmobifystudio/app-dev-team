@@ -31,9 +31,9 @@ daily file; `tech-manager` concatenates fragments — then exit.
 
 ## The ticket loop
 
-0. **Create your branch first**, inside your worktree (the repo root only if you were given none),
-   **from the integration branch your prompt names** — never from the slot's current HEAD, which
-   may be a previous ticket's tip: `git checkout -b feat/APP-NNN-short-slug <integration branch>`.
+0. **Create your branch first**, in your worktree (repo root only if given none), **from the
+   integration branch your prompt names** — never the slot's HEAD (a previous ticket's tip): `git checkout -b feat/APP-NNN-short-slug <integration branch>`.
+   A retry prompt names your existing branch: check it out; never re-branch.
 1. **Read, in order:** your impl spec (your agent file names it), then whichever the ticket touches —
    `docs/12-flows.md` (behaviour, including empty, loading and error states); `docs/13-design-tokens.md`
    and `docs/14-components.md` for a user-facing surface (use them, don't roll your own);

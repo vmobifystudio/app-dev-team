@@ -142,7 +142,6 @@ for (const [list, fields, tier] of [
 
 // Every spawnable owner must be in exactly one tier, or a new role slips through uncovered.
 for (const owner of BUILD_SPAWNABLE_OWNERS) {
-  if (owner === 'verification-engineer') continue; // returns a VERIFICATION verdict, not a DONE
   if (!CODE_ROLES.includes(owner) && !ARTIFACT_ROLES.includes(owner)) {
     add(findings, 'contract_tier_missing', 'scripts/team-doctor.mjs',
       `"${owner}" can own a ticket but belongs to neither contract tier, so nothing checks what it reports.`,
