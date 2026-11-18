@@ -164,7 +164,7 @@ files that conclusion covers**. The merge gate re-checks the binding before anyt
 **any commit added after your approval needs a re-review** — the old approval does not cover it.
 
 `docs/31-board.md` is **generated** — every append regenerates it, including the `## Review
-ledger`, from the event log. Never edit it by hand; correct the record by appending a later event.
+ledger`, from the event log. Never edit `docs/31-board.md` by hand; correct the record by appending a later event.
 A CLI refusal is a finding, not an obstacle: it prints why and what is legal from here.
 
 # What you check, in order

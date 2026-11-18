@@ -59,7 +59,7 @@ backlog the pipeline cannot consume. `agents/cpo.md` remains the authority on wh
 mean; a founder pass is an economy of agents, not of rigour.
 
 Say in the vision doc that the PRD was written in the founder pass, so a later reader knows the
-product depth had one author and not two. On `flagship` both roles run, you delegate as above, and
+product depth had one author and not two. On `flagship` both roles run (the command spawns them), and
 this section does not apply.
 
 # Decision style

@@ -2842,9 +2842,12 @@ grep -q "refusal is a finding" "$HERE/../commands/app-build.md" \
 
 # The merge gate's mechanics moved into the CLI. The hand-written grep guard must be GONE, not
 # merely deprecated alongside it — two guards disagreeing is worse than either being wrong.
-grep -q 'board.mjs" move APP-NNN merged' "$HERE/../agents/tech-manager.md" \
-  && ok "tech-manager's merge gate is the CLI call" \
-  || bad "tech-manager's merge gate is the CLI call"
+# The merge gate moved inline into the /app-build orchestrator (2026-11-18 review, R20/R25):
+# tech-manager is no longer spawned per ticket for it and must not claim to run `git merge`.
+grep -q 'board.mjs move APP-NNN merged' "$HERE/../agents/tech-manager.md" \
+  && grep -q 'never run `git merge`' "$HERE/../agents/tech-manager.md" \
+  && ok "tech-manager names the orchestrator's CLI merge gate and never runs git merge itself" \
+  || bad "tech-manager names the orchestrator's CLI merge gate and never runs git merge itself"
 grep -q 'grep -qv "| \$OWNER"' "$HERE/../agents/tech-manager.md" \
   && bad "...and the superseded hand-written approval grep is gone" \
   || ok "...and the superseded hand-written approval grep is gone"
@@ -6970,9 +6973,11 @@ grep -q 'approved --by code-reviewer \\' "$HERE/../agents/code-reviewer.md" \
   && grep -q -- '--bind' "$HERE/../agents/code-reviewer.md" \
   && ok "code-reviewer.md documents --bind as the approval path when binding is required" \
   || bad "code-reviewer.md documents --bind as the approval path when binding is required"
-grep -q 'approval-check.mjs' "$HERE/../agents/tech-manager.md" \
-  && ok "tech-manager.md's merge gate re-checks approval binding before git merge, not just at ship-gate" \
-  || bad "tech-manager.md's merge gate re-checks approval binding before git merge, not just at ship-gate"
+# The merge gate is the orchestrator's now (R20/R25); the re-check lives in /app-build.
+grep -q 'approval-check' "$HERE/../commands/app-build.md" \
+  && grep -q 'approval-check' "$HERE/../agents/tech-manager.md" \
+  && ok "the merge gate re-checks approval binding before merge (/app-build), and tech-manager says so" \
+  || bad "the merge gate re-checks approval binding before merge (/app-build), and tech-manager says so"
 
 # --- Dry run 3 (tap-counter, 2026-08-02), DR-TC-P0-001: `docs/31-board-events.jsonl` is never git
 # tracked, so `git worktree add` never populates it into a linked worktree. Before the fix, `board.mjs`
