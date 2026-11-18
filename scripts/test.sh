@@ -10614,7 +10614,7 @@ f2web >"$F2/w3.txt" 2>&1
 [ $? = 2 ] && grep -q 'STUDIO_WEB_URL' "$F2/w3.txt" && ok "F2: web driver with no app URL is CANNOT EVALUATE, naming the fix" \
   || bad "F2: web driver with no app URL is CANNOT EVALUATE, naming the fix" "$(cat "$F2/w3.txt")"
 rm -rf "$F2W/node_modules"; f2web --url http://127.0.0.1:1 >"$F2/w4.txt" 2>&1
-[ $? = 2 ] && grep -q 'npm i -D playwright && npx playwright install chromium' "$F2/w4.txt" \
+[ $? = 2 ] && grep -q 'npm ci && npx playwright install chromium' "$F2/w4.txt" \
   && ok "F2: web driver without Playwright is CANNOT EVALUATE with the exact install line (G2-21)" \
   || bad "F2: web driver without Playwright is CANNOT EVALUATE with the exact install line (G2-21)" "$(cat "$F2/w4.txt")"
 

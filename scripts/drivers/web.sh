@@ -50,7 +50,7 @@ if (!url) cannot(`no app URL — this driver drives a RUNNING app. Start it ${SE
 
 let pw;
 try { pw = createRequire(join(resolve(root), 'package.json'))('playwright'); }
-catch { cannot('Playwright is not installed in this project — run: npm i -D playwright && npx playwright install chromium'); }
+catch { cannot('Playwright is not installed in this project — add playwright as a committed devDependency (with its lockfile) via a ticket, then: npm ci && npx playwright install chromium'); }
 
 (async () => {
   let browser;
