@@ -79,7 +79,7 @@ Focus (optional): $ARGUMENTS
    project. Spawn `devops-engineer` to work out `platform`, `toolchain` (one `{tool, args, expect}` per
    tool pinned in `docs/20-architecture.md` / `${CLAUDE_PLUGIN_ROOT}/knowledge/stack-defaults.md`) and `test.fast` /
    `test.full` (until `test.fast` is declared no code ticket can reach `verified`); it returns the JSON
-   and **you** write the file (the guard refuses a subagent writing it), then confirm it holds. **The test commands freeze at the first gate event**: the board snapshots
+   and **you** write the file (the guard refuses a subagent writing it), commit it (step 4a's loop — the board freezes the committed profile), then confirm it holds. A web profile's test commands install from the lockfile (`npm ci && npm test`): each run is a fresh worktree with no `node_modules`. **The test commands freeze at the first gate event**: the board snapshots
    `test.fast`/`test.full` and the profile's sha onto it, and every later `verified` must have run
    the frozen command. Changing them afterwards is an orchestrator decision, re-frozen with
    `board.mjs move <ID> corrected --by tech-manager --test-profile` plus the inline tech-manager
@@ -146,14 +146,14 @@ Focus (optional): $ARGUMENTS
    everything `devops-engineer` wrote, by explicit path, never a blanket add:
 
    ```bash
-   for f in docs/*.md docs/team/messages.jsonl docs/team/capabilities.json docs/team/risk-policy.json \
+   sh -c 'for f in docs/*.md docs/team/messages.jsonl docs/team/capabilities.json docs/team/risk-policy.json \
             docs/team/schedule.json docs/team/context-manifest.json docs/team/project-profile.json \
             .gitignore CLAUDE.md .github fastlane \
             package.json package-lock.json pnpm-lock.yaml yarn.lock .nvmrc */package.json \
             Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
             settings.gradle settings.gradle.kts */build.gradle */build.gradle.kts gradle gradlew; do
      [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
-   done
+   done'   # sh, not zsh: zsh aborts the loop on an unmatched */ glob
    git diff --cached --name-only    # confirm only those landed
    git commit -m "docs: sprint plan and specs from /app-plan"
    git status --short               # anything left is a file nobody committed: commit it or say why

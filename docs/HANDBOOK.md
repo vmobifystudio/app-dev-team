@@ -733,7 +733,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `spawn-gate.sh` | Worktree isolation before any parallel spawn |
 | `hooks/require-spawn-contract.sh` | PreToolUse on `Task`/`Agent`: a spawn naming a board ticket must carry a `spawn-prompt.mjs compose` prompt (verify, spawn-gate, contention) — one spawn per ticket |
 | `hooks/persist-ic-report.sh` | SubagentStop for IC roles: saves the agent's report to `docs/team/reports/<ticket>-<UTC>.md`, which `report-check` and the reviewer prompt read |
-| `hooks/guard-gate-writes.sh` | PreToolUse: refuses a subagent running `board.mjs actor mint` or `spawn-prompt.mjs compose`, or writing `docs/team/actor-tokens.jsonl` / `docs/team/evidence/` by hand |
+| `hooks/guard-gate-writes.sh` | PreToolUse: refuses a subagent running `board.mjs actor`, `spawn-prompt.mjs compose` or `audit-anchor.mjs create`, or writing (or sweeping, restoring, patching, untarring over) the token registry, `docs/team/evidence/`, the board log, `docs/team/*-result.json` or a control file by hand |
 | `hooks/require-review-verdict.sh` | SubagentStop: a `code-reviewer` cannot stop without a recorded verdict or `BLOCKED` |
 | `context-preflight.mjs` | Branch, dirty-tree, ticket, worktree, and source-document context |
 | `dependency-check.mjs` | Dependency declarations, lockfiles, and reproducible version constraints |
@@ -776,9 +776,10 @@ with the same access, and nothing here claims to be.
   The control files it reads are tracked — an edited `risk-policy.json` (say, `approvals: []` for
   `high`) lets `tech-lead` alone approve, so review that diff like code. QA tokens are scoped to
   role and ticket, not to one event.
-- **The guard hook is a text match on the command.** `guard-gate-writes.sh` stops the cheap
-  evasions it lists (shell expansion around `board.mjs`, `actor mint`, compose, hand-writes to the
-  gate files); an interpreter or an encoding it does not parse gets past it. It is a backstop; the
+- **The guard hook is a reading of the command, not a sandbox.** `guard-gate-writes.sh` parses shell
+  words (and re-reads `$(…)`, `sh -c`, heredocs fed to a shell) and stops the cheap evasions it
+  lists; a script written in an earlier call, a path computed at runtime, or a name built inside an
+  interpreter gets past it (its header states the bound). It is a backstop; the
   board's own validation, tokens and re-derived evidence are the gate.
 - **A TTY can be faked.** The founder mint asks for an interactive terminal and the ticket typed
   back; that proves a terminal, not a human — a pseudo-terminal satisfies it.

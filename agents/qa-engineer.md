@@ -168,6 +168,8 @@ pass you did not get credit for. A field you cannot fill is written `unknown` an
 branch `qa/QA-<sprint>-w<n>` (the one your prompt prints). You have a ticket ID from the spawn
 prompt; none → ask before you write. Create the branch **before the first file**, commit, and return the output block your spawn prompt prints,
 `DONE:` first, every field filled. `Branch:` is required even on a docs-only ticket.
+Only `docs/` files outside `docs/team/`, plus `docs/team/journeys/<journey-id>.json`, keep the QA ticket on the
+inline fast path — anything else on the branch sends it through review.
 `Shared surfaces touched:` names `docs/50-test-plan.md` and `docs/51-bugs.md`. Under it, one line
 per listed ticket: `APP-NNN qa_passed|qa_failed (exit <code>) — <evidence path or BUG-NNN>`.
 Its labels, for reference: `DONE:` · `Worktree:` · `Branch:` · `Files:` · `Mutation confirmed:` ·

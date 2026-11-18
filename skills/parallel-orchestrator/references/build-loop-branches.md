@@ -126,10 +126,14 @@ web      drivers/web.sh       drives Chromium through the PROJECT's Playwright; 
 
 **A `web-app` journey, end to end** — Playwright is the project's devDependency, never the
 plugin's. `22-impl-spec-web.md` (`tech-lead`) names the build and start scripts; `devops-engineer`
-(or the scaffolding `web-developer` ticket) writes them into `package.json`:
+(or the scaffolding `web-developer` ticket) writes them into `package.json`. **That same ticket
+commits `playwright` as a devDependency, with the lockfile**, before the first journey gate. The
+orchestrator never runs `npm i -D playwright` on the integration tree: the dirty `package.json`
+makes `qa_passed` refuse and readiness read STALE. Missing at the gate → add a ticket for it.
+
 
 ```bash
-npm i -D playwright && npx playwright install chromium     # once per project / machine
+npm ci && npx playwright install chromium                  # browsers live outside the repo
 npm run build && (npm run start >/tmp/web.log 2>&1 &)      # or serve the build dir statically:
 #   (python3 -m http.server 4173 --directory dist >/tmp/web.log 2>&1 &)
 STUDIO_WEB_URL=http://localhost:3000 node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
@@ -161,6 +165,13 @@ tickets gets no new `QA-` ticket.
 (`docs/team/journey-result.json`), or the test-evidence record a full run on the integration branch
 wrote under `docs/team/evidence/` (`wave-integrate`'s, or `verify-done.sh <integration branch>
 <base> full` after the merge). Not a hand-written plan, not a screenshot, not a report.
+
+**`qa_failed` → the fix.** The rejected ticket stays in `qa`. Add
+`BUG-NNN-fix --owner <platform dev> --depends APP-NNN` (branch `feat/BUG-NNN-fix-<slug>`): a
+dependency at `qa` counts as satisfied, so it is ready at once and takes the normal code path
+(verified → review → approved → merged). The next wave's `QA-` ticket lists both; QA records
+`qa_passed` on APP-NNN (legal from `qa` after a `qa_failed`) and on BUG-NNN-fix, and each is
+`closed`. Nothing else clears a `qa_failed`.
 
 A QA return with no `Branch:`, or a branch `verify-done` cannot find, is **REJECTED** — re-spawn QA to
 redo the pass on a branch. Files appearing in the working tree are not evidence that a QA pass
