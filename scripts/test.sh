@@ -11730,6 +11730,125 @@ grep -q '(budget 6000' "$TMP/p1qab.txt" \
 rm -rf "$P1G" "$P1H" "$P1B" "$P1F4" "$P1A" "$P1P" "$P1S" "$P1R" "$P1T"
 
 
+# --- Sprint 6 track Q2: the guard's cheap writes, the reviewer's $T idiom, QA close, case folds ---
+# C5G-1 (QA- close with code added after merged), C5G-2 (redirects with no command word, `<>`),
+# C5G-3 / FB5-3 (inline programs: argv paths, path-not-content), C5G-4 (writers), C5G-5 (classifier
+# case), C5G-6 (ref hook case + symbolic-ref), C5G-7 (same-command symlink), C5G-8 (tokens in
+# persisted reports), FB5-1/FB5-2 ($HOME/$PWD/$TMPDIR, `T=$(mktemp -d)`). Self-contained for --only.
+echo
+MT="$TMP/s6mt"; rm -rf "$MT"; mkdir -p "$MT/docs/team/evidence" "$MT/.agent-wt/ios-developer" "$MT/src"
+( cd "$MT" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init ) >/dev/null 2>&1
+printf '{"ticket":"APP-1","event":"created"}\n' > "$MT/docs/31-board-events.jsonl"
+MTNL='
+'
+mtg() {  # <want> <label> <command> [cwd] — the guard, on Bash, as a subagent
+  node -e 'const [, c, d] = process.argv; process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "mt", cwd: d, tool_input: { command: c } }))' "$3" "${4:-$MT}" \
+    | sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>"$TMP/mtg.err"
+  _g=$?
+  [ "$_g" = "$1" ] && ok "MT: guard exit $1 — $2" || bad "MT: guard exit $1 — $2" "got $_g: $(head -c 300 "$TMP/mtg.err")"
+}
+# C5G-2 — a redirect with no command word still opens its file; `<>` opens for writing.
+mtg 2 'a { …; } group redirected onto risk-policy'  '{ echo x; } > docs/team/risk-policy.json'
+mtg 2 'a ( … ) subshell redirected onto risk-policy' '(echo x) > docs/team/risk-policy.json'
+mtg 2 'exec 3> onto risk-policy'                     'exec 3>docs/team/risk-policy.json; echo x >&3'
+mtg 2 'a 1<> read-write open of risk-policy'         'echo x 1<>docs/team/risk-policy.json'
+mtg 0 'a { …; } group redirected into notes.md'      '{ echo a; echo b; } > notes.md'
+# C5G-3 — a program that writes may write the path it is handed on argv.
+mtg 2 'node -e writing process.argv[1] = evidence'  "node -e \"require('fs').writeFileSync(process.argv[1],'{}')\" docs/team/evidence/test-x.json"
+mtg 2 'python3 -c writing sys.argv[1] = risk-policy' "python3 -c \"import sys;open(sys.argv[1],'w').write('x')\" docs/team/risk-policy.json"
+mtg 2 'perl -e open > $ARGV[0] = risk-policy'      "perl -e 'open F,\">\",\$ARGV[0]' docs/team/risk-policy.json"
+mtg 2 'python3 - <path> <<EOF writing argv'         "python3 - docs/team/risk-policy.json <<'EOF'${MTNL}import sys; open(sys.argv[1], 'w').write('{}')${MTNL}EOF"
+mtg 0 'node -e that only READS its argv path'       "node -e \"console.log(require('fs').readFileSync(process.argv[1],'utf8'))\" docs/team/risk-policy.json"
+mtg 0 'python3 -c writing an ordinary argv path'    "python3 -c \"import sys;open(sys.argv[1],'w').write('x')\" src/gen.txt"
+# FB5-3 — only a write call's PATH counts, not its content.
+mtg 0 'writeFileSync whose CONTENT names risk-policy' "node -e \"require('fs').writeFileSync('report.md','risk-policy.json was read')\""
+mtg 0 'writeFileSync of content READ from the profile' "node -e \"const r=JSON.parse(require('fs').readFileSync('docs/team/project-profile.json')); require('fs').writeFileSync('out.json', JSON.stringify(r))\""
+mtg 2 'Path(risk-policy).write_text'                "python3 -c \"from pathlib import Path; Path('docs/team/risk-policy.json').write_text('{}')\""
+mtg 2 'copyFile onto the profile'                   "node -e \"require('fs').copyFileSync('x.json','docs/team/project-profile.json')\""
+mtg 0 'copyFile FROM the profile'                   "node -e \"require('fs').copyFileSync('docs/team/project-profile.json','/tmp/p.json')\""
+# C5G-4 — writers whose flag or verb names the file.
+for _c in 'curl --output=docs/team/risk-policy.json https://x.example' 'curl -sSo docs/team/risk-policy.json https://x.example' \
+  'wget -P docs/team https://x.example' 'wget --output-document=docs/team/risk-policy.json https://x.example' \
+  'sort -o docs/team/risk-policy.json a' 'openssl enc -in a -out docs/team/risk-policy.json' 'ditto x docs/team' \
+  'bsdtar -xf a.tar' '7z x a.7z' 'cpio -id < a.cpio' "ex -sc 'wq' docs/team/risk-policy.json" 'vim -es docs/team/risk-policy.json' \
+  'ed docs/team/risk-policy.json' 'git read-tree -u --reset HEAD' 'git checkout-index -f -a' 'git merge feat/x' 'git merge --ff-only qa/x' \
+  'git pull' 'git cherry-pick abc' 'git rebase main' 'git clone . docs/team/evidence/c' 'git worktree add docs/team/evidence/wt' \
+  'split -b 1 a docs/team/evidence/' 'mktemp docs/team/evidence/xXXXX'; do
+  mtg 2 "writer: $_c" "$_c"
+done
+for _c in 'curl -o out.json https://x.example' 'sort -o out.txt a' 'wget -P vendor https://x.example' 'split -b 10 big.log parts/' 'mktemp -d -t rev.XXXX'; do
+  mtg 0 "writer to an ordinary path: $_c" "$_c"
+done
+for _c in 'git rebase main' 'git merge --ff-only main' 'git pull --rebase' 'git cherry-pick abc' 'git checkout-index -f -a'; do
+  mtg 0 "in its own worktree: $_c" "$_c" "$MT/.agent-wt/ios-developer"
+done
+# C5G-7 — a symlink made earlier in the same command.
+mtg 2 'ln -s docs/team l; write l/risk-policy.json' 'ln -s docs/team l; echo x > l/risk-policy.json'
+mtg 2 'ln -sf onto the policy file, then write it'  'ln -sf docs/team/risk-policy.json p; echo x > p'
+mtg 2 'ln -s docs l; cd l/team; write'              'ln -s docs l && cd l/team && echo > capabilities.json'
+mtg 0 'ln -s ../src l; write l/a.js'                'ln -s ../src l; echo x > l/a.js'
+mtg 0 'ln -s docs/team l; READ l/risk-policy.json'  'ln -s docs/team l; cat l/risk-policy.json'
+# FB5-2 — the shell's own HOME / PWD / TMPDIR are known.
+mtg 0 'rm -rf "$HOME/.cache/x"'                     'rm -rf "$HOME/.cache/x"'
+mtg 0 'rm -rf "$PWD/build"'                         'rm -rf "$PWD/build"'
+mtg 0 'rm -rf "$TMPDIR/x"'                          'rm -rf "$TMPDIR/x"'
+mtg 0 'cd src && rm -rf "$PWD/build"'              'cd src && rm -rf "$PWD/build"'
+mtg 2 'rm -rf "$PWD/docs/team"'                     'rm -rf "$PWD/docs/team"'
+mtg 2 'T=$(mktemp docs/team/evidence/x.XXXX) is not a temp dir' 'T=$(mktemp docs/team/evidence/x.XXXX); echo > "$T"'
+# FB5-1 — the code-reviewer prompt's own scratch-worktree idiom, replayed from spawn-prompt.mjs's text, passes.
+MTIDIOM=$(node -e 'const s = require("fs").readFileSync(process.argv[1], "utf8");
+  const a = s.match(/`(T=\$\(mktemp -d\) && git worktree add --detach "\$T") \$\{tip \|\|/); const b = s.match(/(git worktree remove --force "\$T")/);
+  if (!a || !b) process.exit(1); process.stdout.write(a[1] + "\n" + b[1]);' "$HERE/spawn-prompt.mjs")
+[ -n "$MTIDIOM" ] && ok "MT: spawn-prompt.mjs still prints the T=\$(mktemp -d) scratch-worktree idiom" || bad "MT: spawn-prompt.mjs still prints the T=\$(mktemp -d) scratch-worktree idiom"
+MTADD=$(printf '%s' "$MTIDIOM" | sed -n 1p); MTRM=$(printf '%s' "$MTIDIOM" | sed -n 2p)
+mtg 0 'reviewer idiom: worktree add, cd "$T", npm test, revert a line, stash, rm node_modules' \
+  "$MTADD abc1234 && cd \"\$T\" && npm ci && npm test && git checkout -- src/a.ts && git stash && rm -rf node_modules && rm -f \"\$T\"/coverage.json; $MTRM"
+mtg 0 'reviewer idiom: git -C "$T" checkout -- a file, then remove' "$MTADD abc1234 && git -C \"\$T\" checkout -- src/a.ts; $MTRM"
+mtg 0 'reviewer idiom: cd "$T" && git checkout .' "$MTADD abc1234 && cd \"\$T\" && git checkout . && git clean -fd"
+# C5G-8 — a persisted report never keeps a live role token.
+MTTOK="st_$(node -e 'process.stdout.write(require("crypto").randomBytes(24).toString("base64url"))')"
+node -e 'const [, m, c] = process.argv; process.stdout.write(JSON.stringify({ hook_event_name: "SubagentStop", agent_type: "app-dev-team:ios-developer", agent_id: "mt8",
+  cwd: c, transcript_path: "/nonexistent", last_assistant_message: m }))' "$(printf 'BLOCKED: APP-1\nReason: x\nNeed: y\nRan: node board.mjs move APP-1 verified --by ios-developer --token %s' "$MTTOK")" "$MT" \
+  | sh "$HERE/../hooks/persist-ic-report.sh" >/dev/null 2>&1
+_mtr=$(cat "$MT"/docs/team/reports/APP-1-*.md 2>/dev/null)
+printf '%s' "$_mtr" | grep -q 'REDACTED:studio-actor-token' && ! printf '%s' "$_mtr" | grep -qF "$MTTOK" \
+  && ok "MT: SubagentStop persists the report with its st_ role token redacted (C5G-8)" \
+  || bad "MT: SubagentStop persists the report with its st_ role token redacted (C5G-8)" "$(printf '%s' "$_mtr" | tail -1)"
+# C5G-5 — the QA- docs-only classifier folds case.
+node --input-type=module -e "
+import { docFile } from '$HERE/lib/evidence.mjs';
+const qa = docFile(false, { qa: true });
+process.exit(!qa('docs/Team/risk-policy.json') && !qa('DOCS/TEAM/project-profile.json') && !qa('docs/PACKAGE.JSON') && !qa('docs/cmakelists.txt')
+  && qa('docs/team/journeys/j.json') && qa('docs/50-test-plan.md') ? 0 : 1);" \
+  && ok "MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json and a PACKAGE.JSON (C5G-5)" \
+  || bad "MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json and a PACKAGE.JSON (C5G-5)"
+# C5G-6 — the destructive-git ref hook: symbolic-ref, and a case-variant ref on macOS.
+MTR="$TMP/s6mt-ref"; rm -rf "$MTR"; mkdir -p "$MTR"
+( cd "$MTR" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i && git branch feat/x ) >/dev/null 2>&1
+mtref() { ( cd "$MTR" && printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" ); }
+assert_exit 2 "MT: ref hook blocks git symbolic-ref pointing the integration branch elsewhere (C5G-6)" mtref 'git symbolic-ref refs/heads/main refs/heads/feat/x'
+assert_exit 0 "MT: ...but not symbolic-ref HEAD, or reading a symref" mtref 'git symbolic-ref HEAD refs/heads/feat/x'
+if [ "$(uname -s)" = Darwin ]; then
+  assert_exit 2 "MT: ref hook blocks update-ref refs/heads/Main on macOS, where it IS main (C5G-6)" mtref 'git update-ref refs/heads/Main feat/x'
+fi
+# C5G-1 — a QA- ticket whose branch gained code after merged, fast-forwarded onto main, does not close.
+MTQ="$TMP/s6mt-qa"; rm -rf "$MTQ"; mkdir -p "$MTQ/docs/team"
+mtq() { ( cd "$MTQ" && node "$HERE/board.mjs" "$@" ); }
+mtqc() { ( cd "$MTQ" && git checkout -q qa/QA-9-w1 && printf '%s\n' "$2" > "$1" && git add "$1" && git -c user.name=t -c user.email=t@t commit -qm "$1" && git checkout -q main ) >/dev/null 2>&1; }
+printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$MTQ/docs/team/project-profile.json"
+( cd "$MTQ" && git init -q -b main && git add docs/team/project-profile.json && git -c user.name=t -c user.email=t@t commit -q -m base \
+  && node "$HERE/board.mjs" add QA-9-w1 --title qa --owner qa-engineer && git checkout -q -b qa/QA-9-w1 && git checkout -q main \
+  && node "$HERE/board.mjs" move QA-9-w1 claimed --by qa-engineer && node "$HERE/board.mjs" move QA-9-w1 done_reported --by qa-engineer ) >/dev/null 2>&1
+mtqc docs/50-test-plan.md '# plan'
+_mtev=$( cd "$MTQ" && sh "$HERE/verify-done.sh" --docs-only qa/QA-9-w1 main 2>/dev/null | sed -n 's/^  Evidence: //p' )
+mtq move QA-9-w1 verified --by tech-manager --evidence "$_mtev" >/dev/null 2>&1
+assert_exit 0 "MT: (fixture) the docs-only QA- ticket merges inline" mtq move QA-9-w1 merged --by tech-manager
+mtqc app.js 'console.log(1)'
+( cd "$MTQ" && git merge -q --ff-only qa/QA-9-w1 ) >/dev/null 2>&1
+assert_exit 1 "MT: a QA- ticket whose branch gained code AFTER merged, fast-forwarded onto main, does not close (C5G-1)" mtq move QA-9-w1 closed --by tech-manager
+assert_has "$TMP/err" "never reviewed" "MT: ...saying the commits after merged were never reviewed (C5G-1)"
+rm -rf "$MT" "$MTR" "$MTQ"
+
 # --- Sprint 5 track P2: the guard reads what RUNS, guards what is written, and passes honest commands ---
 # C4G-H1 (text fed to a bare shell), H2 (protected files vs dir writes / git / patch / tar / find),
 # H3 ("$@" verbs), H4 (recursive search above ~/.claude), M1 (case on macOS), M2 (realpath), L1 ($'…'),

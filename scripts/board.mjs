@@ -1124,7 +1124,11 @@ function gitRefusal(name, ticket, flags, events, state) {
     const subj = recorded ? { sha: recorded } : mergeSubject(git, ticket, flags);
     if (subj.error) return `${subj.error} — the QA- docs-only fast path must know which commit it is about.`;
     const d = docsOnlyDiff(git, subj.sha, { qa: true, base: name === 'closed' ? recordedMergeBase(events, ticket) : '' });
-    return d.ok ? '' : `${ticket} is on the QA- docs-only fast path, but ${d.reason}. A QA ticket that changes code takes the normal path (review_requested -> approved -> merged).`;
+    if (!d.ok) return `${ticket} is on the QA- docs-only fast path, but ${d.reason}. A QA ticket that changes code takes the normal path (review_requested -> approved -> merged).`;
+    // C5G-1: the docs-only proof is about the commit recorded at merged — a code commit added AFTER it and
+    // fast-forwarded onto the integration branch rode in unreviewed, exactly as on the normal path.
+    const base = name === 'closed' && recorded ? integrationBase(git) : '';
+    return base ? landedAfterMerge(git, ticket, recorded, base) : '';
   }
   const binding = studioPolicy().policy.requireApprovalBinding === true;
   if (name === 'closed') {
@@ -1140,12 +1144,8 @@ function gitRefusal(name, ticket, flags, events, state) {
     // C3G-8: commits added to the ticket's branch AFTER `merged` must not be on the integration
     // branch — they rode in unreviewed. BOUND: checkable only while the branch still exists; once it
     // is deleted, a commit on the integration branch cannot be attributed to the ticket.
-    const tip = ticketTip(git, ticket, boardIds());
-    if (recorded && tip.sha && tip.sha !== recorded) {
-      const beyond = (git(['rev-list', tip.sha, `^${recorded}`]) || '').split('\n').filter(Boolean);
-      const landed = beyond.filter((c) => isAncestor(git, c, base));
-      if (landed.length) return `${tip.branch} gained ${landed.length} commit(s) after ${ticket} merged (${landed.slice(0, 3).map((c) => c.slice(0, 12)).join(', ')}), and they are on ${base} — they were never reviewed. Revert them, or reopen the ticket and review them.`;
-    }
+    const landed = recorded ? landedAfterMerge(git, ticket, recorded, base) : '';
+    if (landed) return landed;
     // G2-9: what merged must be WHAT WAS APPROVED. Ancestry alone let commits pushed after the
     // `merged` event ride into `done` unreviewed.
     if (binding) {
@@ -1160,6 +1160,18 @@ function gitRefusal(name, ticket, flags, events, state) {
   if (subj.error) return `requireApprovalBinding is on and ${ticket}'s branch tip is unknown: ${subj.error}`;
   const { issues } = checkApprovals(events, { ticket, head: subj.sha, cwd: process.cwd() });
   return issues.length ? `the approval is not bound to ${subj.sha}:\n  ${issues.join('\n  ')}` : '';
+}
+
+/**
+ * C3G-8 / C5G-1: commits added to the ticket's branch AFTER `merged` recorded `recorded` that are now on
+ * `base` rode in unreviewed — the refusal, or ''. BOUND: checkable only while the branch still exists.
+ */
+function landedAfterMerge(git, ticket, recorded, base) {
+  const tip = ticketTip(git, ticket, boardIds());
+  if (!tip.sha || tip.sha === recorded) return '';
+  const beyond = (git(['rev-list', tip.sha, `^${recorded}`]) || '').split('\n').filter(Boolean);
+  const landed = beyond.filter((c) => isAncestor(git, c, base));
+  return landed.length ? `${tip.branch} gained ${landed.length} commit(s) after ${ticket} merged (${landed.slice(0, 3).map((c) => c.slice(0, 12)).join(', ')}), and they are on ${base} — they were never reviewed. Revert them, or reopen the ticket and review them.` : '';
 }
 
 /** C4G-G2: the merge-base the last `merged` of a docs-only QA- ticket recorded ('' when none). */
