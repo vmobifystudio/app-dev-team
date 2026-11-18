@@ -9719,7 +9719,7 @@ TDA="$TMP/td-audit"; rm -rf "$TDA"; mkdir -p "$TDA"; ( cd "$TDA" && git init -q 
 ( cd "$TDA" && node "$HERE/board.mjs" add AUDIT-001 --title risky --owner ios-developer --notes "rule: r · Risky · plan: p" \
     --status blocked --reason "needs-approval: Risky change" --by tech-manager \
   && node "$HERE/board.mjs" add AUDIT-002 --title safe --owner ios-developer --notes "rule: r · Safe" --by tech-manager ) >/dev/null 2>&1
-TDA_JS=$(awk '/board.mjs" show --json \| node -e/{f=1;next} f&&/```/{exit} f' "$HERE/../commands/app-audit.md" | sed "s/'$//")
+TDA_JS=$(awk '/board.mjs" show --json [|] node -e/{f=1;next} f&&/```/{exit} f' "$HERE/../commands/app-audit.md" | sed "s/'$//")
 TDA_OUT=$( cd "$TDA" && node "$HERE/board.mjs" show --json | node -e "$TDA_JS" 2>&1)
 [ "$TDA_OUT" = "DEFERRED (needs-approval): AUDIT-001 risky" ] \
   && ok "app-audit --yolo: the deferred set is listed from the board log — Risky in, Safe out (W19)" \

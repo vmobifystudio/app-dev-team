@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 3.1.0 (`main`) · **Date:** 2026-11-17
-**Scale:** 30 roles · 32 skills · 27 commands · 74 top-level scripts (+21 shared libs) · 9 knowledge packs · 1485 assertions
+**Scale:** 30 roles · 32 skills · 27 commands · 75 top-level scripts (+22 shared libs) · 9 knowledge packs · 1485 assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
 drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
@@ -687,7 +687,7 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `team-doctor.mjs` | The **team definition**: unreachable roles, missing skills, contract drift, doc-graph, path spellings, corpus recurrence |
 | `verify-done.sh` | A DONE claim against git and the test command |
 | `ship-gate.sh` | Release preconditions, dependency/version/policy tripwires, generated-CI rules and waivers |
-| `runtime-gate.sh` | Does the app build, launch, and stay up |
+| `runtime-gate.sh` | Does the app build, launch, and stay up (iOS, Android, web — web via `npm run build`, tests, e2e or `web-smoke.mjs`) |
 | `spawn-gate.sh` | Worktree isolation before any parallel spawn |
 | `context-preflight.mjs` | Branch, dirty-tree, ticket, worktree, and source-document context |
 | `dependency-check.mjs` | Dependency declarations, lockfiles, and reproducible version constraints |
