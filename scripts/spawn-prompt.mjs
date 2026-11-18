@@ -85,7 +85,10 @@ const VERIFY_FIELDS = ['VERIFICATION:', 'Ticket:', '## Not checked'];
 const AUDIT_FIELDS = ['RELEASE AUDIT:', 'docs/76-release-audit.md'];
 // C4W-13: a QA- prompt carries every ticket of the wave and one token each, so its floor is over the
 // IC line by design (role ~1650 + skills ~3220 + ~100 per ticket) — it gets its own line.
-const BUDGET = { ic: 4000, qa: 6000, reviewer: 8000 };
+// C5W-12: verification-engineer is a GATE role (it certifies, like the reviewers) whose two rulebooks —
+// defect-hunting and mutation-testing — are its instruments; role + those + isolation + conventions is
+// ~4430 words before the prompt, so it gets its own line rather than a warning on every spawn.
+const BUDGET = { ic: 4000, qa: 6000, verifier: 5000, reviewer: 8000 };
 const EXCERPT_WORDS = 1500;
 const PLATFORM_SPEC = {
   'ios-developer': 'docs/22-impl-spec-ios.md', 'android-developer': 'docs/22-impl-spec-android.md',
@@ -100,12 +103,14 @@ const GATE_WRITERS = new Set(Object.values(ROLE_GATES).flat());
  * minus anything "routed by what the ticket needs"), closed over SKILL_DEPS. A static map: when a
  * role file's mandatory list changes, change it here. ponytail: hand-kept, no parser of role prose.
  */
-const SKILL_DEPS = { 'ic-workflow': ['agent-isolation', 'defect-hunting'] };
+// C5W-12: ic-workflow inlines defect-hunting §1 and says "do not load that skill for it", so it is not
+// in the IC closure; VE reads runtime-result.json by the command its role file gives, not the skill.
+const SKILL_DEPS = { 'ic-workflow': ['agent-isolation'] };
 const MANDATORY_SKILLS = {
   code: ['ic-workflow', 'house-conventions'],
   artifact: ['agent-isolation', 'house-conventions'],
   'qa-engineer': ['agent-isolation', 'house-conventions', 'runtime-gate', 'defect-hunting'],
-  'verification-engineer': ['agent-isolation', 'house-conventions', 'defect-hunting', 'mutation-testing', 'runtime-gate'],
+  'verification-engineer': ['agent-isolation', 'house-conventions', 'defect-hunting', 'mutation-testing'],
   'code-reviewer': ['defect-hunting', 'house-conventions'],
   'tech-lead': ['house-conventions', 'process-tiering'],
   'security-reviewer': ['house-conventions', 'team-protocol'],
@@ -155,7 +160,8 @@ function reportBudget(role, ticket, text, skillKey) {
   const skillWords = [...skills].reduce((n, s) => n + fileWords(resolve(HERE, '..', 'skills', s, 'SKILL.md')), 0);
   const total = words(text) + roleWords + skillWords;
   const budget = REVIEW_ROLES.has(role) || role === 'release-auditor' || skillKey === 'design-qa' ? BUDGET.reviewer
-    : role === 'qa-engineer' && /^QA-/i.test(String(ticket)) ? BUDGET.qa : BUDGET.ic;
+    : role === 'qa-engineer' && /^QA-/i.test(String(ticket)) ? BUDGET.qa
+    : role === 'verification-engineer' ? BUDGET.verifier : BUDGET.ic;
   process.stderr.write(`spawn-prompt: ${role} ${ticket}: prompt ${words(text)} + role file ${roleWords} + mandatory skills ${skillWords} (${[...skills].join(', ') || 'none'}) = ${total} words (budget ${budget}; references and skills loaded on demand not counted)\n`);
   if (total > budget) process.stderr.write(`spawn-prompt: WARNING — OVER BUDGET by ${total - budget} words. Not a refusal; trim the role file, its mandatory skills, or the specs this ticket pulls in.\n`);
 }

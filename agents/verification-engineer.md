@@ -29,7 +29,7 @@ are wrong, every other role is confidently wrong downstream and nobody can tell.
   FC-006 is your standing instruction: **replay the originating incident against the new rule in its
   actual configuration** and watch it fire. Cite the class ID in your verdict.
 - `house-conventions` — the relevant pack, so you certify against the studio's rules.
-- `runtime-gate` — **the orchestrator runs it once per wave; you read its result.** Open
+- **The runtime result** — the orchestrator runs `runtime-gate` once per wave; **you read its result**, not the skill. Open
   `docs/team/runtime-result.json`: its `head` must equal the commit you certify and `dirty` must be
   `false`. Re-run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record`
   only when it is missing or stale, and confirm any evidence artifact it names exists.

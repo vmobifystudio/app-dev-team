@@ -11870,6 +11870,16 @@ Q1C="$TMP/q1-ci"; rm -rf "$Q1C"; mkdir -p "$Q1C/docs"; echo "Integration branch:
 grep ' ci — ' "$TMP/q1ci.txt" | grep -q 'could not be resolved: .*Create the branch, or fix the doc' \
   && ok "Q1: the round's ci row shows the unresolved-branch reason through to its remedy (C5W-11)" \
   || bad "Q1: the round's ci row shows the unresolved-branch reason through to its remedy (C5W-11)" "$(grep ' ci' "$TMP/q1ci.txt")"
+# ·· C5W-12: developer and verification-engineer composes fit their budgets — no OVER BUDGET on every spawn.
+( cd "$Q1A" && node "$HERE/board.mjs" add APP-009 --title t --owner web-developer --acceptance converts ) >/dev/null 2>&1
+Q1BO=""
+for _r in web-developer ios-developer android-developer backend-developer verification-engineer; do
+  ( cd "$Q1A" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-009 --role "$_r" ) >/dev/null 2>"$TMP/q1bud.err"
+  grep -q 'OVER BUDGET' "$TMP/q1bud.err" && Q1BO="$Q1BO $(grep -o '= [0-9]* words (budget [0-9]*' "$TMP/q1bud.err") [$_r]"
+  grep -q ' words (budget ' "$TMP/q1bud.err" || Q1BO="$Q1BO no-budget-line[$_r]"
+done
+[ -z "$Q1BO" ] && ok "Q1: developer and verification-engineer composes are within their word budgets (C5W-12)" \
+  || bad "Q1: developer and verification-engineer composes are within their word budgets (C5W-12)" "$Q1BO"
 # ·· C5W-5 / C5W-13: the reviewer's template names the files (approved --bind needs one); routing a constant is not a rejection.
 Q1CR="$HERE/../agents/code-reviewer.md"
 grep -q '^Files reviewed: <every path in the diff' "$Q1CR" && grep -q "'Files reviewed: <every path in the Range above" "$HERE/spawn-prompt.mjs" \
