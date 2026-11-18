@@ -10535,8 +10535,8 @@ assert_has "$TMP/err" "is not merged into main" "F1: ...because it is not on the
 
 # ·· W2-5 / R2-3: the bind base is the integration branch (develop)
 F1W=$(f1_proj develop '{"requireApprovalBinding": true}')
-( cd "$F1W" && git branch develop main && git checkout -q develop && echo d > src/D.swift && git add src/D.swift && f1g commit -qm dev \
-  && git checkout -q feat/F-1-x && git rebase -q develop && git checkout -q main ) >/dev/null 2>&1
+( cd "$F1W" && git branch develop main && git checkout -q develop && echo d > D.swift && git add D.swift && f1g commit -qm dev \
+  && git checkout -q feat/F-1-x && f1g rebase -q develop && git checkout -q main ) >/dev/null 2>&1
 F1WEV=$(f1_vd "$F1W" feat/F-1-x develop)
 f1m "$F1W" move F-1 verified --by tech-lead --evidence "$F1WEV" >/dev/null 2>&1
 f1m "$F1W" move F-1 review_requested --by ios-developer >/dev/null 2>&1
@@ -10547,6 +10547,9 @@ assert_exit 1 "F1: the role that verified a ticket may not approve it (G2-13)" \
 assert_has "$TMP/err" "certified the run" "F1: ...verify, approve and merge are no longer one role's three signatures"
 assert_exit 0 "F1: on a develop-model project the bind base is the merge-base with develop, matching the reviewer's Scope (W2-5)" \
   f1m "$F1W" move F-1 approved --by code-reviewer --verdict v.md --bind --evidence "$F1WEV" --context docs/team/context-manifest.json
+tail -n 1 "$F1W/docs/31-board-events.jsonl" | grep -q "\"base\":\"$( cd "$F1W" && git rev-parse develop )\"" \
+  && ok "F1: ...and the recorded base is develop's tip, not main's" \
+  || bad "F1: ...and the recorded base is develop's tip, not main's" "$(tail -n 1 "$F1W/docs/31-board-events.jsonl" | grep -o '"base_source":"[^"]*"')"
 
 # ·· design decision 1 / W2-6: a docs-only QA- ticket closes from merged, no approval, no integration
 F1QA=$(f1_proj qa)

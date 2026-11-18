@@ -281,7 +281,7 @@ MF21@@scripts/lib/actor.mjs@@session: pick('STUDIO_SESSION_ID') || pick('CLAUDE_
 MF22@@scripts/verify-done.sh@@if [ "$TESTS_STATUS" = green ] && [ "$(_ef census.assert_nothing)" = true ]; then@@if false; then@@F1: verify-done downgrades a green run whose changed tests assert nothing to CANNOT EVALUATE (G2-22)@@Sprint 3 track F1
 MF23@@scripts/lib/events.mjs@@...(isQaDocs(state) ? ['merged'] : [])@@...[]@@F1: a docs-only QA- ticket merges straight from verified, reviewed inline (decision 1)@@Sprint 3 track F1
 MF24@@scripts/board.mjs@@if (state && isQaDocs(state)) return '';@@if (false) return '';@@F1: ...and closes from merged without being on the integration branch (W2-6)@@Sprint 3 track F1
-MF25@@scripts/board.mjs@@const integration = integrationBase(gitAt(process.cwd()));@@const integration = 'main';@@F1: on a develop-model project the bind base is the merge-base with develop, matching the reviewer's Scope (W2-5)@@Sprint 3 track F1
+MF25@@scripts/board.mjs@@const integration = integrationBase(gitAt(process.cwd()));@@const integration = 'main';@@F1: ...and the recorded base is develop's tip, not main's@@Sprint 3 track F1
 MF26@@scripts/verify-done.sh@@TOKFLAG=$(node "$EV" token-flag@@TOKFLAG=$(true "$EV" token-flag@@F1: verify-done prints the board command with the inline-mint --token under requireActorTokens (W2-10)@@Sprint 3 track F1
 CATALOGUE
 }
