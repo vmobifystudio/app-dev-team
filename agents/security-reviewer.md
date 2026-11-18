@@ -69,7 +69,7 @@ Need: the orchestrator to pass the candidate's SHA
 `N/A: <reason>`, or `CANNOT EVALUATE: <what was missing>` — never a guessed `PASS`.
 
 ## Repository controls
-0. The server-side controls in `docs/24-repository-controls.md` are set. Verify, do not assume:
+0. The server-side controls in `docs/26-repository-controls.md` are set. Verify, do not assume:
    `sh "${CLAUDE_PLUGIN_ROOT}/scripts/repo-controls.sh" --check`. Exit `2` is **CANNOT EVALUATE**
    and is recorded as UNKNOWN — never as `PASS`. These back every internal rule in this plugin; a
    protected branch is the only thing that survives an agent with a shell.

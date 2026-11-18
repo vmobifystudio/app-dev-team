@@ -575,7 +575,7 @@ const DOC_WRITERS = new Map([
   // The server-side controls. Written by devops, read by security-reviewer before ship — the one
   // artifact in the set whose contents nothing in this plugin can enforce, which is why a role has
   // to go and look.
-  ['docs/24-repository-controls.md',    ['agents/devops-engineer.md']],
+  ['docs/26-repository-controls.md',    ['agents/devops-engineer.md']],
   ['docs/24-adr/',                      ['agents/cto.md']],
   // The assumption register. An assumption carries an owner, a confidence and a validation date;
   // one past its date is reported by board-doctor, because a belief with a timestamp is not a fact.
@@ -626,7 +626,7 @@ const DOC_WRITERS = new Map([
   ['docs/73-incidents/',                ['agents/release-manager.md']],
   ['docs/80-audit.md',                  ['commands/app-audit.md']],
   ['docs/81-findings.md',               ['commands/app-audit.md']],
-  ['docs/90-learnings.md',              ['commands/app-ship.md', 'commands/app-run.md']],
+  ['docs/92-learnings.md',              ['commands/app-ship.md', 'commands/app-run.md']],
 ]);
 
 // A generated projection of a file that already has readers. It exists to be LOOKED at by a human,

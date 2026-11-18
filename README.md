@@ -572,7 +572,7 @@ docs/
   60-releases · 70-security-review · 71-verification · 72-waivers/ · 73-incidents/
   74-red-team · 75-reliability-review · 76-release-audit · 77-privacy-review
   80-audit · 81-findings      (brownfield: gap report and findings register)
-  90-learnings
+  92-learnings
   daily/                       standups and per-agent fragments
   team/                        messages.jsonl → messages.md, project-profile.json, policy,
                                schedule, gate results (runtime-result.json, ship-gate-verdict.json)

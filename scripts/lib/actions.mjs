@@ -84,7 +84,7 @@ const ACTIONS = {
       // The form was asking the operator for exactly the right thing and then throwing away the
       // part that mattered — the label said "name the artifact" and the value went somewhere the
       // rule does not read. Reported by codex on PR #8.
-      { name: 'artifact', label: 'Artifact it was folded into (e.g. docs/21-impl-spec-ios.md, ADR-012)', required: true },
+      { name: 'artifact', label: 'Artifact it was folded into (e.g. docs/22-impl-spec-ios.md, ADR-012)', required: true },
       { name: 'body', label: 'Detail', required: true, long: true },
     ],
     validate: (p) =>

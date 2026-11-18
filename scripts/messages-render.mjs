@@ -28,7 +28,7 @@
  *
  * Usage:
  *   node scripts/messages-render.mjs [path/to/messages.md|.jsonl] [--board docs/31-board.md]
- *                                    [--out docs/33-messages-view.md] [--no-color]
+ *                                    [--out docs/35-messages-view.md] [--no-color]
  *
  * Exit codes: 0 rendered · 2 channel missing, damaged, or carrying no messages
  */

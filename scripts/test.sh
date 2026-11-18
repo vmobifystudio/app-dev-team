@@ -6443,7 +6443,7 @@ assert_has "$TMP/out" "environments/production" "...and the environment approval
 assert_exit 2 "repo-controls with neither mode is a usage error" sh "$HERE/repo-controls.sh"
 assert_exit 2 "repo-controls: --repo with no value does not hang" sh "$HERE/repo-controls.sh" --check --repo
 
-assert_has "$HERE/../docs/24-repository-controls.md" "CANNOT EVALUATE" \
+assert_has "$HERE/../docs/26-repository-controls.md" "CANNOT EVALUATE" \
   "the controls doc states that unverified is not verified"
 
 echo

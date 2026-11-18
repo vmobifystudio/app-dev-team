@@ -33,9 +33,9 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
 
 # Deliverables
 
-0. **`docs/24-repository-controls.md`** — the server-side controls (protected branch, required
+0. **`docs/26-repository-controls.md`** — the server-side controls (protected branch, required
    status checks, required non-self review, production environment approval, secret push
-   protection). Copy the plugin's `docs/24-repository-controls.md` into the project and record which
+   protection). Copy the plugin's `docs/26-repository-controls.md` into the project and record which
    controls are actually set, verified by running:
 
    ```bash

@@ -7,6 +7,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed — Sprint 2 (2026-11-18 expert review, Phase 2)
 
+- **Remaining doc-number collisions (sprint 3):** `24-repository-controls.md` → `26-repository-controls.md`,
+  `33-messages-view.md` → `35-messages-view.md`, `90-learnings.md` → `92-learnings.md`; the phantom
+  `11-srs.md` dropped from the context candidates. Existing projects: `git mv` those that exist.
 - **Doc numbers no longer collide (R15).** `16-intent-validation.md` → `04-intent-validation.md`,
   `16-pdr/` → `18-pdr/`, `17-ddr/` → `19-ddr/`, `72-release-audit.md` → `76-release-audit.md`,
   `73-privacy-review.md` → `77-privacy-review.md`. Existing projects: `git mv` the five paths.

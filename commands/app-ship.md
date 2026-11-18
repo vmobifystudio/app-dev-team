@@ -351,7 +351,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
    ```bash
    { echo; echo "## Harvested $(date +%F) — <version>";
-     grep -r 'LEARNING:' docs/daily/ 2>/dev/null | sort -u; } >> docs/90-learnings.md
+     grep -r 'LEARNING:' docs/daily/ 2>/dev/null | sort -u; } >> docs/92-learnings.md
    ```
 
    Keep the `path:line` prefix `grep -r` emits — a learning with no source fragment cannot be

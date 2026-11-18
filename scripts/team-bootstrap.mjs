@@ -230,7 +230,7 @@ if (existsSync(ctx) && !flags.force && !flags['context-only']) {
   // is correct: a manifest that guessed its own sources would certify a freshness claim about files
   // nobody named. So they are discovered from what the project has, and their absence is reported
   // as "this project has not been planned yet" rather than papered over.
-  const candidates = ['docs/00-vision.md', 'docs/10-prd.md', 'docs/11-backlog.md', 'docs/20-architecture.md', 'docs/11-srs.md', 'docs/12-flows.md',
+  const candidates = ['docs/00-vision.md', 'docs/10-prd.md', 'docs/11-backlog.md', 'docs/20-architecture.md', 'docs/12-flows.md',
     'docs/21-engineering-principles.md'];
   // NOT docs/31-board.md: it is a generated view that board.mjs rewrites on EVERY move, so hashing
   // it made preflight STALE the moment the first ticket was claimed — one spawn per round, ever.

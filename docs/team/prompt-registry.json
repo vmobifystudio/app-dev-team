@@ -100,13 +100,13 @@
     },
     {
       "id": "devops-engineer",
-      "version": "1.0.6",
+      "version": "1.0.7",
       "owner": "devops-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.5",
-      "content_hash": "2b4c4382be6b54e0256e458d8b048f7d679b2630bd14c1445df51a65b2ec5f4b"
+      "rollback_version": "1.0.6",
+      "content_hash": "49b3cc82ea2c21ab3f3edfe178c3c4d02012b1df55ea2534979548f7acc6d998"
     },
     {
       "id": "ios-developer",
@@ -230,13 +230,13 @@
     },
     {
       "id": "security-reviewer",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "owner": "security-reviewer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.4",
-      "content_hash": "89c06c5aa7365654443a93b518103b6f9ebcb8552b1f393912f1d2974a885342"
+      "rollback_version": "1.0.5",
+      "content_hash": "cf382bd25f1c6c1795df7e964998a9825a21fb62ed9b17dabe440140b6b3ca1a"
     },
     {
       "id": "tech-lead",

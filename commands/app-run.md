@@ -161,7 +161,7 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 6. **GATE 2 — ship (human).** Hand off to `/app-ship`, which summarizes readiness and hands the
    founder a signed, submission-ready build and checklist. Nothing in the studio uploads or submits:
    that action is the founder's own. `/app-ship`'s last step
-   harvests the run's `LEARNING:` lines into `docs/90-learnings.md` and folds them into the House KB
+   harvests the run's `LEARNING:` lines into `docs/92-learnings.md` and folds them into the House KB
    via `/app-learn` — that is where an autonomous run pays its knowledge back.
 
 ## Output
