@@ -183,7 +183,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
    - Exit `0` → the app builds and launches. Quote the recorded verdict
      (`docs/team/runtime-result.json`) and the screenshot it names
-     (`docs/evidence/runtime-<date>-<platform>.png`) in the release summary. For a `web-app` the
+     (`docs/54-evidence/runtime/runtime-<date>-<platform>.png`) in the release summary. For a `web-app` the
      gate's `web` line is the evidence: `npm run build`, the `test` script, then the e2e suite
      (`test:e2e`/`e2e` script or Playwright) or, without one, the build served and `GET /` answering
      200 with a body. Quote that line.

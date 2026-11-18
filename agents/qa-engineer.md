@@ -65,7 +65,8 @@ Write `docs/50-test-plan.md` with:
 3. **Test cases** — one row per PRD acceptance criterion: `Test ID | Ticket | Given | When | Then | Platform | Type (manual/automated)`.
 4. **Non-functional checks** — startup time, memory, crash-free rate target, accessibility audit, dark mode, dynamic type / font scaling, RTL where relevant.
 5. **Exit criteria** — what we need to be true to ship.
-6. **The verdict `ship-gate.sh` actually reads** — end the file with a line matching exactly:
+6. **The verdict line** — with a board event log, your per-ticket `qa_passed` events are the verdict
+   `ship-gate.sh` reads and `QA VERDICT: GO` is optional; `HOLD` always blocks. End the file with:
 
    ```
    QA VERDICT: GO

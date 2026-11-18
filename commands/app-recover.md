@@ -77,7 +77,7 @@ deliberately. Only then:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
-node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner <role>   # per stale lease
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner <owner>-<n>   # per stale lease (the slot name)
 ```
 
 Never `git worktree remove --force` by hand. One `git stash` in a shared tree already cost 22 files

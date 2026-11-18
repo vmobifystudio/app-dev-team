@@ -69,9 +69,10 @@ measurement one — a spec saying 56dp is a claim about the **built UI**, not th
 
 ## Drivers
 
-Executing steps against a device needs a platform driver. **None ship yet.** With no `--driver`,
-every declared journey is CANNOT EVALUATE and is listed by name — the honest state, and the reason
-this gate cannot currently be mistaken for proof.
+Executing steps needs a platform driver: `scripts/drivers/android.sh`, `scripts/drivers/ios.sh`
+(partial — step execution needs XCUITest) and `scripts/drivers/web.sh` (the project's Playwright;
+app URL via `--url` or `STUDIO_WEB_URL`). With no `--driver`, every declared journey is CANNOT
+EVALUATE and is listed by name — the honest state.
 
 A driver is any executable:
 
@@ -88,7 +89,7 @@ It emits **one** `journey-result/v1` JSON object on stdout:
   "journey_id": "record-a-reading",
   "failed_step": null,
   "detail": "10 steps, all assertions held",
-  "evidence": ["docs/evidence/journey-record-a-reading-2026-08-04.png"]
+  "evidence": ["docs/54-evidence/journeys/journey-record-a-reading-2026-08-04.png"]
 }
 ```
 

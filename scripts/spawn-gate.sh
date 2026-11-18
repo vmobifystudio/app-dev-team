@@ -161,7 +161,7 @@ echo "parallel-orchestrator's 'one agent invocation per owner, batched' and 'eac
 echo "names ITS worktree path' both true at once — they could not both be true per ticket (OPS-005)."
 echo
 for id in $missing; do
-  echo "  node scripts/worktree-slot.mjs lease --owner $id --tickets APP-NNN,APP-NNN"
+  echo "  node \"\${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs\" lease --owner <role> --tickets APP-NNN   (one ticket per lease; slot names are <owner>-<n>)"
 done
 echo
 echo "For a project still keyed by ticket, the old shape still works and this gate still checks it:"

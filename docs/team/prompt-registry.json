@@ -180,13 +180,13 @@
     },
     {
       "id": "qa-engineer",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "owner": "qa-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.7",
-      "content_hash": "019a044b0ba2e4e23800d0b8168cda150d6c6cc319dcbb9ff1d7bca07643b804"
+      "rollback_version": "1.0.8",
+      "content_hash": "59de6516b2b17d6a6f4d16636e60b1f5c3ff257fc145c132e3e5599f4bbca658"
     },
     {
       "id": "red-team-agent",

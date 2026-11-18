@@ -80,8 +80,8 @@ A journey that cannot be driven is stated as not driven, with the reason.
 
 ## Evidence discipline
 
-The script writes `docs/evidence/runtime-<date>-<platform>.png` on a successful launch. Anything
-you drive beyond that writes its own artifact to `docs/evidence/` too — a screenshot, or a log
+The script writes `docs/54-evidence/runtime/runtime-<date>-<platform>.png` on a successful launch. Anything
+you drive beyond that writes its own artifact to `docs/54-evidence/runtime/` too — a screenshot, or a log
 excerpt for a step with nothing visual to show.
 
 **Reference the artifact by path in the DONE report, the QA verdict, or the ship summary.** A claim

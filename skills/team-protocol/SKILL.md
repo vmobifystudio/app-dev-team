@@ -106,7 +106,7 @@ return every one, in order. A field you omit is a gate that silently passes. Fie
 | Second / specialist verdicts | `docs/53-reviews/APP-NNN-cycle-N-tech-lead.md` · `docs/53-reviews/APP-NNN-cycle-N-security.md` · `docs/53-reviews/APP-NNN-cycle-N-verification.md` |
 | Incident ledger | `docs/team/incidents.jsonl` |
 | ship-gate · journey-gate · runtime-gate recorded verdicts | `docs/team/ship-gate-verdict.json` · `docs/team/journey-result.json` · `docs/team/runtime-result.json` |
-| Evidence, three dirs by writer: runtime screenshots · human evidence bundles · script-written gate records | `docs/evidence/` · `docs/54-evidence/` · `docs/team/evidence/` |
+| Evidence, two dirs by writer: screenshots + human bundles · script-written gate records | `docs/54-evidence/` · `docs/team/evidence/` |
 | memory-curator's ledger | `docs/team/memory.jsonl` |
 | Journey contract · one declared P0 journey | `docs/team/journeys/README.md` · `docs/team/journeys/<journey-id>.json` |
 | Platform, toolchain, test scopes · artifact-to-commit binding | `docs/team/project-profile.json` · `docs/team/release-candidates.jsonl` |

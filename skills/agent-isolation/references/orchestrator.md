@@ -25,7 +25,7 @@ Cleanup — on **every** terminal outcome (`rejected`, a cap-converted `blocked`
 a crashed round), not only after a merge; a merge-only rule leaks a tree per failure:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer   # or the slot name lease printed
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer-1   # the slot name lease printed
 node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
 ```
 
@@ -60,7 +60,7 @@ committing before the next starts — and the daily fragment says so and why.
 Before the launch message:
 
 ```bash
-sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" ios-developer android-developer
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" ios-developer-1 android-developer-1
 ```
 
 It takes the **slot names** you leased (`ios-developer-1 android-developer-1`), because the slot is
@@ -73,7 +73,7 @@ step 3a.
 
 Before a parallel launch:
 
-- [ ] `spawn-gate.sh <the owners>` exits 0 — the gate said so, not your belief
+- [ ] `spawn-gate.sh <the slot names>` exits 0 — the gate said so, not your belief
 - [ ] Each writing agent has its own leased worktree (`.agent-wt/<owner>-<n>`)
 - [ ] Each agent's prompt names **its worktree path** as the project root, not the repo root
 - [ ] No two agents are assigned the same file (if unavoidable, serialize those tickets)
