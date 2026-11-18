@@ -11837,6 +11837,21 @@ grep -q 'founder-intent.mjs" --project-root . --write`' "$HERE/../commands/app-s
   || bad "Q1: app-ship 1a re-records the waiver's founder decision, and the record reads INTACT (C5W-7)"
 sed -i.bak 's/no browser/a browser/' "$Q1F/docs/00-founder-intent/decisions.md"; rm -f "$Q1F/docs/00-founder-intent/decisions.md.bak"
 assert_exit 1 "Q1: ...while editing that recorded decision line is still TAMPERED (C5W-7)" node "$HERE/founder-intent.mjs" --project-root "$Q1F"
+# ·· C5W-8: a re-import moves an OPEN item whose row's Resolution became FIXED (ticket from its link).
+Q1R="$TMP/q1-reg"; rm -rf "$Q1R"; mkdir -p "$Q1R/docs"; printf '{}\n' > "$Q1R/.studio-policy.json"
+printf '| BUG-001 |  | **S2** | web | Enter spaces and convert | Enter a number | NaN | 0.1 |  |\n' > "$Q1R/docs/51-bugs.md"
+q1reg() { ( cd "$Q1R" && node "$HERE/register.mjs" --root . "$@" ); }
+q1reg import-bugs --by tech-manager >/dev/null 2>&1; q1reg link BUG-001 --ticket BUG-001-fix --by tech-manager >/dev/null 2>&1
+printf '| BUG-001 |  | **S2** | web | Enter spaces and convert | Enter a number | NaN | 0.1 | FIXED |\n' > "$Q1R/docs/51-bugs.md"
+q1reg import-bugs --by tech-manager >"$TMP/q1reg.txt" 2>&1
+q1reg show --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const i=JSON.parse(s).items.find(x=>x.id==="BUG-001");process.exit(i&&i.status==="FIXED"&&i.ticket==="BUG-001-fix"?0:1)})' \
+  && ok "Q1: import-bugs moves an OPEN register item to FIXED when its row's Resolution says so (C5W-8)" \
+  || bad "Q1: import-bugs moves an OPEN register item to FIXED when its row's Resolution says so (C5W-8)" "$(cat "$TMP/q1reg.txt")"
+printf '| BUG-002 |  | **S2** | web | x y z | a | b | 0.1 |  |\n' > "$Q1R/docs/51-bugs.md"; q1reg import-bugs --by tech-manager >/dev/null 2>&1
+printf '| BUG-002 |  | **S2** | web | x y z | a | b | 0.1 | FIXED |\n' > "$Q1R/docs/51-bugs.md"; q1reg import-bugs --by tech-manager >/dev/null 2>&1
+q1reg show --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.exit(JSON.parse(s).items.find(x=>x.id==="BUG-002").status==="OPEN"?0:1))' \
+  && ok "Q1: ...but not without a ticket — FIXED is still held to the register's rule (C5W-8)" \
+  || bad "Q1: ...but not without a ticket — FIXED is still held to the register's rule (C5W-8)"
 # ·· C5W-5 / C5W-13: the reviewer's template names the files (approved --bind needs one); routing a constant is not a rejection.
 Q1CR="$HERE/../agents/code-reviewer.md"
 grep -q '^Files reviewed: <every path in the diff' "$Q1CR" && grep -q "'Files reviewed: <every path in the Range above" "$HERE/spawn-prompt.mjs" \

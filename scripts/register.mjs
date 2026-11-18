@@ -275,9 +275,25 @@ function cmdImportBugs() {
   const { items } = load({ required: false });
 
   let added = 0;
+  let updated = 0;
   const downgraded = [];
   for (const b of parsed.bugs) {
-    if (items.has(key(b.id))) continue;
+    // C5W-8: a row already on the register whose Resolution became terminal moves the register too —
+    // held to the same terminalRefusal rule, with the ticket `link` recorded when the row names none.
+    const existing = items.get(key(b.id));
+    if (existing) {
+      if (!b.closed || !OPEN_STATUSES.has(existing.status)) continue;
+      const cells = b.line.split('|').map((c) => c.replace(/\*\*/g, '').trim()).filter(Boolean);
+      const status = /\bWONTFIX\b/i.test(b.line) ? 'WONTFIX' : 'FIXED';
+      const reason = cells.slice(3).find((c) => c.length >= 10 && /wont|won't|not|dupl|invalid|by design|cannot/i.test(c));
+      const ticket = b.ticket || existing.ticket;
+      const refusal = terminalRefusal(status, { reason, ticket });
+      if (refusal) { downgraded.push(`${b.id}: ${status} -> stays ${existing.status} (${refusal.split('.')[0]})`); continue; }
+      append({ schema: 'studio-register/v1', v: 1, ts: now(), action: 'status', id: existing.id, status, by: flags.by,
+        ...(status === 'WONTFIX' && reason ? { reason } : {}), ...(ticket ? { ticket: String(ticket) } : {}) });
+      updated += 1;
+      continue;
+    }
 
     // THE DESCRIPTION CELL, and not by position. `qa-engineer.md`'s canonical row is nine columns
     // (id | ticket | severity | platform | steps | expected | actual | build | resolution) but real
@@ -313,7 +329,7 @@ function cmdImportBugs() {
     });
     added += 1;
   }
-  process.stdout.write(`register: imported ${added} bug(s) from ${bugsPath} (${parsed.bugs.length} row(s) seen, ${parsed.bugs.length - added} already present)\n`);
+  process.stdout.write(`register: imported ${added} bug(s) from ${bugsPath} (${parsed.bugs.length} row(s) seen, ${parsed.bugs.length - added} already present${updated ? `, ${updated} moved to the Resolution their row now states` : ''})\n`);
   if (downgraded.length) {
     process.stdout.write(
       `register: ${downgraded.length} row(s) claimed a terminal status the register's own rule refuses, and were imported OPEN:\n` +
@@ -321,7 +337,7 @@ function cmdImportBugs() {
       '  Give each a real decision: register.mjs status <ID> <STATUS> --by <role> --reason "..." [--ticket <ID>]\n'
     );
   }
-  if (added) render();
+  if (added || updated) render();
 }
 
 /**
