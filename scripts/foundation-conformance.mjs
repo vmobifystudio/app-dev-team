@@ -109,12 +109,15 @@ const board = (args, cwd) => {
     const path = join(cwd, '.conformance-verdict.md');
     // Under --bind the Scope must be the bound candidate (board.mjs, G-F4), so name it.
     let scope = 'base..head';
+    let read = '';
     if (args.includes('--bind')) {
       const head = run('git', ['rev-parse', 'HEAD'], cwd).out.trim();
       const base = run('git', ['merge-base', 'main', head], cwd).out.trim();
       scope = `${base}..${head}`;
+      // C3G-13: a bound APPROVE names at least one file of the bound diff.
+      read = run('git', ['diff', '--name-only', base, head], cwd).out.trim().split('\n').join(', ');
     }
-    writeFileSync(path, `REVIEW VERDICT: ${word}\nScope: ${scope}\n\n## Not checked\nNothing — conformance fixture.\n`);
+    writeFileSync(path, `REVIEW VERDICT: ${word}\nScope: ${scope}\n\nRead: ${read}\n\n## Not checked\nNothing — conformance fixture.\n`);
     args = [...args, '--verdict', path];
   }
   return run('node', [join(ROOT, 'scripts/board.mjs'), ...args], cwd);

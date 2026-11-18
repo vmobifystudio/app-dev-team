@@ -28,7 +28,9 @@
  *
  *   - a CONFUSED agent cannot assert a role by spelling it, which is the common failure;
  *   - every event records whether its role was proven or merely asserted, so history stays readable;
- *   - a token is scoped to one (actor, role, ticket, event), so a captured one is not universal.
+ *   - an HMAC token is scoped to one (actor, role, ticket, event, ts), so a captured one is not
+ *     universal. (This is the HMAC mode only. The per-spawn tokens below are scoped to ROLE + TICKET,
+ *     not to an event — see C3G-16 there.)
  *
  * The earlier version of this comment bounded itself against "enterprise identity" and never
  * against "the caller can read the key" — which is the bound that decides whether the mechanism is
@@ -88,6 +90,19 @@
  *     carries agent_id) — Track B's hook, not this file. Without that hook this mode stops a
  *     CONFUSED or LITERAL agent cold and makes a hostile one take a deliberate, logged step
  *     (every mint is a line with its session) — it does not stop the hostile one.
+ *   - C3G-16: A PER-SPAWN TOKEN IS SCOPED TO (role, ticket), NOT TO AN EVENT. QA's token for APP-7
+ *     can write qa_passed OR qa_failed on APP-7 (and any other gate event capabilities.mjs lets
+ *     qa-engineer write); a reviewer's can write approved OR changes. The bound is the role's
+ *     capability row on that one ticket, for the token's lifetime — not the single event the spawn
+ *     was for. Event-scoping would need one token per possible outcome in each prompt.
+ *   - C3G-15: the main session (the orchestrator) mints for every role, so it can clear every gate
+ *     of a ticket by itself; separation of duties binds ROLES and TOKENS, not the session. And the
+ *     required-approval roster comes from docs/team/risk-policy.json, a file in the tree: editing a
+ *     rule to `approvals: []` before a ticket is planned drops the specialist requirement (board.mjs
+ *     refuses a DELETED policy, not an edited one — the edit is in git and reviewable).
+ *   - Nothing in the environment tells a subagent from the main session (both see the same
+ *     AI_AGENT / CLAUDE_CODE_CHILD_SESSION), so the session marker below is recorded, never enforced;
+ *     only the PreToolUse hook's agent_id can tell them apart.
  *   - Work events (claimed, done_reported, review_requested…) need no token; a token passed on
  *     one is verified and stamped, which is what lets token-level separation see the author.
  *   - Once any event on a board was written with tokens required, a later policy that no longer
@@ -110,7 +125,7 @@
  * and the agent markers the harness exports (AI_AGENT, CLAUDE_CODE_CHILD_SESSION), when present.
  * Recorded, not enforced: what those values mean for a subagent is the harness's, not ours to assume.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync } from 'node:fs';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 
@@ -316,7 +331,31 @@ function mintContext() {
 }
 
 /** A human at a terminal types the ticket id back. `{ok}` or `{ok:false, reason}`. */
-function founderConfirms(ticket, { stdin = process.stdin, read = readSync } = {}) {
+/**
+ * Read one line from `fd`, blocking. EAGAIN (a non-blocking fd with nothing typed yet) waits 50 ms
+ * and retries instead of failing; EOF ends the line.
+ */
+function readLineBlocking(fd, read = readSync, { maxWaitMs = 10 * 60000 } = {}) {
+  const buf = Buffer.alloc(256);
+  const nap = new Int32Array(new SharedArrayBuffer(4));
+  let line = '';
+  let waited = 0;
+  for (;;) {
+    let n;
+    try { n = read(fd, buf, 0, buf.length, null); } catch (e) {
+      if (e.code !== 'EAGAIN' || waited >= maxWaitMs) throw e;
+      Atomics.wait(nap, 0, 0, 50);
+      waited += 50;
+      continue;
+    }
+    if (n <= 0) break;
+    line += buf.subarray(0, n).toString('utf8');
+    if (line.includes('\n')) break;
+  }
+  return line;
+}
+
+function founderConfirms(ticket, { stdin = process.stdin, read = readSync, openTty = () => openSync('/dev/tty', 'r') } = {}) {
   if (!stdin.isTTY) {
     return { ok: false, reason: 'a founder token is minted only by the human founder at a terminal (stdin is not a TTY here, and an agent Bash call never has one).\n' +
       '  Founder: in your own terminal run\n' +
@@ -324,16 +363,14 @@ function founderConfirms(ticket, { stdin = process.stdin, read = readSync } = {}
       `  then in Claude Code:  ! node "<plugin>/scripts/board.mjs" move ${ticket} reopened --by founder --token <the token>` };
   }
   process.stderr.write(`Founder override for ${ticket}. Type the ticket id to mint a single-use founder token: `);
-  const buf = Buffer.alloc(256);
-  let line = '';
-  try {
-    for (;;) {
-      const n = read(0, buf, 0, buf.length, null);
-      if (n <= 0) break;
-      line += buf.subarray(0, n).toString('utf8');
-      if (line.includes('\n')) break;
-    }
-  } catch (e) { return { ok: false, reason: `could not read the confirmation: ${e.message}` }; }
+  // C3G-10: read the CONTROLLING TERMINAL, opened fresh and blocking. fd 0 of a node process on a
+  // real pty is non-blocking, so readSync(0) threw EAGAIN the instant before the founder typed —
+  // the mint only ever worked when input was already queued. `openTty` is injectable for tests.
+  let fd;
+  try { fd = openTty(); } catch (e) { return { ok: false, reason: `could not open the terminal for the confirmation: ${e.message}` }; }
+  let line;
+  try { line = readLineBlocking(fd, read); } catch (e) { return { ok: false, reason: `could not read the confirmation: ${e.message}` }; }
+  finally { try { if (fd !== 0) closeSync(fd); } catch { /* already closed */ } }
   if (line.trim().toUpperCase() !== String(ticket).toUpperCase()) return { ok: false, reason: `confirmation "${line.trim()}" is not ${ticket} — nothing minted` };
   return { ok: true };
 }
@@ -408,4 +445,4 @@ function inlineTokenFlag(root, role, ticket) {
   return ` --token "$(node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role ${role} --ticket ${ticket || '<ID>'})"`;
 }
 
-export { inlineTokenFlag, founderConfirms, resolveActor, mintToken, REGISTRY, TOKEN_REGISTRY, mintActorToken, revokeActorToken, listActorTokens, verifyActorToken };
+export { inlineTokenFlag, founderConfirms, readLineBlocking, resolveActor, mintToken, REGISTRY, TOKEN_REGISTRY, mintActorToken, revokeActorToken, listActorTokens, verifyActorToken };
