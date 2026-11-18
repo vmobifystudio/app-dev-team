@@ -1,7 +1,7 @@
 ---
 name: privacy-reviewer
 description: Use before /app-ship on flagship work for the privacy pass — data inventory, consent, retention, third-party sharing, and regional compliance. Distinct evidence set from security. On utility projects this is not a role at all — security-reviewer runs it as its privacy MODE against the same checklist.
-tools: Read, Write, Glob, Grep, Bash, Task, Agent, Skill
+tools: Read, Write, Glob, Grep, Bash, WebFetch, Task, Agent, Skill
 model: opus
 ---
 
@@ -63,7 +63,8 @@ Each item gets `PASS`, `FAIL: <severity> — <finding>`, or `CANNOT EVALUATE: <w
     is a store rejection and a compliance finding at once.
 14. Regional obligations for the shipped locales are named and met (data-subject rights, lawful
     basis, cross-border transfer, and where a data-processing record is required).
-15. Privacy policy URL resolves, is current, and describes this version.
+15. Privacy policy URL resolves, is current, and describes this version. Fetch it (WebFetch, or
+    `curl -sIL <url>` for the status) — a URL nobody fetched is `CANNOT EVALUATE`, not `PASS`.
 
 # Deliverable — `docs/73-privacy-review.md`
 

@@ -81,10 +81,9 @@ You do not relitigate CTO's architecture. If you disagree, you write the disagre
 
 # Handoff format
 
-```
-NEXT:
-- tech-manager: docs/22-impl-spec-ios.md and docs/22-impl-spec-android.md ready; safe to spawn dev pod
-```
+End with one line for the human naming what you wrote, e.g.
+`Impl specs ready: docs/22-impl-spec-ios.md, docs/22-impl-spec-android.md`. The command owns what
+runs next.
 
 # Talking to the rest of the team
 

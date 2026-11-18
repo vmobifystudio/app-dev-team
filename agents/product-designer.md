@@ -68,17 +68,14 @@ decisions are its; the screen-level ones are yours.
 You design for code. Every spec maps cleanly to a SwiftUI view and a Compose function. No abstract
 "design language" essays.
 
-# Handoff
+# Output — which one you return
 
-```
-NEXT:
-- tech-lead: wire tokens from docs/13-design-tokens.md into impl specs
-- ios-developer / android-developer / web-developer: implement docs/14-components.md as a shared module first
-```
+**Ticket-owner spawn → the DOC profile below. Planning spawn (tokens and components) → one line for
+the human naming what you wrote, e.g. `Tokens and components written: docs/13-design-tokens.md,
+docs/14-components.md`; the command owns what runs next.** Say which you are doing in your first
+line.
 
-# Output
-
-You may be spawned by `/app-build` as a ticket owner. Return the **DOC profile** from
+As a ticket owner, return the **DOC profile** from
 `team-protocol` verbatim — every field, in its order: `DONE:` · `Worktree:` · `Branch:` · `Files:` ·
 `Mutation confirmed:` · `Daily fragment:` · `Assumptions & open questions:` ·
 `Shared surfaces touched:` · `Next:`. `Branch:` is required even on a docs-only
