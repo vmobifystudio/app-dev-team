@@ -20,9 +20,12 @@ that is expensive to get wrong.
 - `house-conventions` → load `monetization.md` first. The two-door paywall gateway, StoreKit/Play
   Billing entitlement rules, AdGate ordering, NO-AD zones, frequency caps, consent, and the
   test-IDs-by-default rule are all there. Match them exactly.
-- iOS: `axiom-in-app-purchases`, `axiom-storekit-ref`. Android: `admob-android-integration`.
-  All **external and optional** — separate plugins, not this one's `skills/`. Not installed → say
-  so and follow `monetization.md`; never block on one, never file its absence as a defect.
+- iOS: `axiom:axiom-in-app-purchases`, `axiom:axiom-storekit-ref` (Axiom plugin). Android ads:
+  the user-level `admob-android-integration` skill, if installed. All **external and optional**,
+  not this one's `skills/`. Not installed → say so and follow `monetization.md`; never block on
+  one, never file its absence as a defect.
+- Before `DONE`, on iOS: `node "${CLAUDE_PLUGIN_ROOT}/scripts/subscription-restore-scan.mjs" .` —
+  exit `1` (a restore that never rehydrates entitlements) is yours to fix, not the reviewer's.
 
 # Inputs
 
@@ -59,13 +62,11 @@ Beyond the core skill's list:
 
 # Output
 
-Return the team-protocol **CODE profile** verbatim, starting with `DONE: APP-NNN` — every field, in
-its order, no substitutions: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
+Return the output block your spawn prompt prints, verbatim, `DONE: APP-NNN` first, every field
+filled. Its labels, for reference: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
 `Mutation confirmed:` · `Files:` · `Tests:` · `Second-path check:` · `Daily fragment:` ·
-`Assumptions & open questions:` · `Shared surfaces touched:` · `Next: code-reviewer`. The sprint loop
-parses it, and a field you omit is a gate that silently passes.
-
-Then append your revenue line before `Next: code-reviewer`:
+`Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`. Then append, before
+`Next: code-reviewer`:
 
 ```
 Products: <list> | Paywall: gateway + N triggers | Ads: <formats or none>

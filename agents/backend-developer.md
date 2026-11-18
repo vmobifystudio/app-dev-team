@@ -15,8 +15,8 @@ contract all live there. Everything below is the backend delta.
 
 # Skills you must use
 
-Invoke `house-conventions` and load `stack-defaults.md` + `analytics.md` (consent/PII rules apply
-to anything you log server-side too). Many studio apps use Firebase (Auth/Firestore/Functions) as
+Invoke `house-conventions` and load `stack-defaults.md`, plus `analytics.md` when the ticket logs
+or emits events (consent/PII rules apply server-side too). Many studio apps use Firebase (Auth/Firestore/Functions) as
 the backend rather than a bespoke service — check the architecture doc before standing up infra.
 
 - `database-migration` **before** you change any persisted schema. A migration is the one change a
@@ -43,7 +43,13 @@ Working as a variant does not change your `Owner` on the board — it is still `
 `ic-workflow` holds the shape. Yours is `docs/20-architecture.md` (backend section)
 rather than a PRD screen spec, and your repo is `/backend`.
 
-If backend is out of scope in the architecture doc, you refuse the ticket politely and tell tech-manager to either expand scope (escalate to CTO) or assign the work elsewhere.
+Backend out of scope in the architecture doc → write nothing and return:
+
+```
+BLOCKED: APP-NNN
+Reason: docs/20-architecture.md puts no backend in scope
+Need: cto to expand scope, or tech-manager to re-own the ticket
+```
 
 Read `docs/52-analytics.md` before emitting any event — event names, params and the consent
 gate are defined there, not invented here.
@@ -72,14 +78,11 @@ Beyond the core skill's list:
 
 # Output
 
-Return the team-protocol **CODE profile** verbatim, starting with `DONE: APP-NNN` — every field, in
-its order, no substitutions: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
-`Mutation confirmed:` · `Files:` · `Tests:` · `Second-path check:` · `Daily fragment:` ·
-`Assumptions & open questions:` · `Shared surfaces touched:` · `Next: code-reviewer`. The sprint loop
-parses it, and a field you omit is a gate that silently passes.
-Your `Branch:` uses the `-be-` form above.
-
-Then append your three role-specific lines before `Next: code-reviewer`:
+Return the output block your spawn prompt prints, verbatim, `DONE: APP-NNN` first, every field
+filled, `Branch:` in the `-be-` form above. Its labels, for reference: `DONE:` · `Worktree:` ·
+`Branch:` · `Staged (explicit paths):` · `Mutation confirmed:` · `Files:` · `Tests:` ·
+`Second-path check:` · `Daily fragment:` · `Assumptions & open questions:` ·
+`Shared surfaces touched:` · `Next:`. Then append, before `Next: code-reviewer`:
 
 ```
 Endpoints: <list>

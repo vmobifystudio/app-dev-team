@@ -26,7 +26,7 @@ The rule above is correct and, resolved from memory, unverifiable — which move
 the rule, where a reviewer caught it, into agent knowledge, where nothing does.
 
 So: route the question to whatever iOS reference this install actually has — an `axiom-*` skill
-(`axiom-apple-docs`, `axiom-ios-build`) if one is present, otherwise Apple's published list of
+(`axiom:axiom-apple-docs`, `axiom:axiom-ios-build`) if one is present, otherwise Apple's published list of
 released iOS majors. Those are **external and optional** — other plugins; if none is installed, say so
 and resolve against Apple's published list directly. Never answer it from recollection.
 

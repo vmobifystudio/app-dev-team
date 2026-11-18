@@ -10265,6 +10265,106 @@ node -e 'process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "a",
 [ $? = 0 ] && ok "S2: guard-gate-writes is a no-op outside an app-dev-team project" || bad "S2: guard-gate-writes is a no-op outside an app-dev-team project"
 rm -rf "$SL"
 
+# --- Sprint 3 track G: role prompts — gate writes carry tokens/binding, one owner per gap, lean loads ---
+AGD="$HERE/../agents"
+# Every board.mjs gate-event command an agent file hands out carries --token (brief decision 3).
+G_NOTOK=$(awk '
+  /board\.mjs" move [A-Z]+-[A-Za-z0-9]+ (approved|changes|qa_passed|qa_failed|verified|verified_static|rejected|merged|closed|reopened)( |$)/ {
+    cmd = $0; cont = ($0 ~ /\\$/)
+    while (cont && (getline nxt) > 0) { cmd = cmd nxt; cont = (nxt ~ /\\$/) }
+    if (cmd !~ /--token/) print FILENAME
+  }' "$AGD"/*.md | sort -u | tr '\n' ' ')
+[ -z "$G_NOTOK" ] && ok "G: every gate-event command in a role file passes --token" \
+                  || bad "G: every gate-event command in a role file passes --token" "$G_NOTOK"
+# R2-2/R2-9: tech-lead's second approval binds with evidence + context, from its OWN verdict file.
+G_TL=$(sed -n '/Second approval on high-risk/,/^# How you operate/p' "$AGD/tech-lead.md" | tr '\n' ' ')
+G_MISS=""
+for _n in 'approved --by tech-lead' '--token' '--bind' '--evidence' '--context' '--base' 'APP-NNN-cycle-N-tech-lead.md'; do
+  printf '%s' "$G_TL" | grep -qF -- "$_n" || G_MISS="$G_MISS [$_n]"
+done
+[ -z "$G_MISS" ] && ok "G: tech-lead's second approval is bound (evidence, context, base) and writes its own verdict file" \
+                 || bad "G: tech-lead's second approval is bound (evidence, context, base) and writes its own verdict file" "missing:$G_MISS"
+# R2-5: security-reviewer has a per-ticket review mode that can satisfy the critical tier.
+G_SR=$(sed -n '/^# Two modes/,/^# Checklist/p' "$AGD/security-reviewer.md" | tr '\n' ' ')
+G_MISS=""
+for _n in 'approved --by security-reviewer' '--token' '--verdict' '--bind' '--evidence' '--context' 'APP-NNN-cycle-N-security.md' 'REVIEW VERDICT:'; do
+  printf '%s' "$G_SR" | grep -qF -- "$_n" || G_MISS="$G_MISS [$_n]"
+done
+[ -z "$G_MISS" ] && ok "G: security-reviewer has a bound per-ticket review mode (critical tier)" \
+                 || bad "G: security-reviewer has a bound per-ticket review mode (critical tier)" "missing:$G_MISS"
+# R2-24 / decision 1: QA records its own verdicts, one token per listed ticket.
+grep -qF 'Token for APP-NNN' "$AGD/qa-engineer.md" && grep -qF 'qa_failed --by qa-engineer' "$AGD/qa-engineer.md" \
+  && ok "G: qa-engineer records qa_passed/qa_failed itself with each ticket's own token" \
+  || bad "G: qa-engineer records qa_passed/qa_failed itself with each ticket's own token"
+# R2-16: the orchestrator runs the runtime gate; QA and VE read its record and re-run only when stale.
+for _r in qa-engineer verification-engineer; do
+  grep -q 'docs/team/runtime-result.json' "$AGD/$_r.md" && grep -q 'stale' "$AGD/$_r.md" \
+    && ok "G: $_r reads runtime-result.json and re-runs the gate only when stale" \
+    || bad "G: $_r reads runtime-result.json and re-runs the gate only when stale"
+done
+# R2-15: no role runs the plugin's own mutation suite inside an app.
+grep -q 'sh scripts/mutate.sh\|sh "${CLAUDE_PLUGIN_ROOT}/scripts/mutate.sh"' "$AGD"/*.md \
+  && bad "G: no role file runs the plugin's mutate.sh in an app project" \
+  || ok "G: no role file runs the plugin's mutate.sh in an app project"
+# R2-14: incident-commander's open-incident query actually lists the open set (executed, not read).
+G_IC=$(mktemp -d); mkdir -p "$G_IC/docs/team"
+printf '%s\n' '{"event":"opened","incident_id":"INC-1","severity":"sev1","title":"a"}' \
+  '{"event":"opened","incident_id":"INC-2","severity":"sev2","title":"b"}' \
+  '{"event":"resolved","incident_id":"INC-1"}' > "$G_IC/docs/team/incidents.jsonl"
+G_Q=$(sed -n "s/^node -e '\(.*incidents.jsonl.*\)'\$/\1/p" "$AGD/incident-commander.md")
+G_OUT=$( cd "$G_IC" && node -e "$G_Q" 2>&1 )
+[ -n "$G_Q" ] && [ "$G_OUT" = "INC-2 sev2 b" ] \
+  && ok "G: incident-commander's open-incident query prints exactly the unresolved incident" \
+  || bad "G: incident-commander's open-incident query prints exactly the unresolved incident" "got: $G_OUT"
+rm -rf "$G_IC"
+# R2-18 / decision 10: plugin paths in role files are ${CLAUDE_PLUGIN_ROOT}-rooted.
+G_BARE=$(grep -nE '(^|[ `(])(scripts|knowledge)/[a-zA-Z]' "$AGD"/*.md | grep -v 'CLAUDE_PLUGIN_ROOT' | cut -d: -f1 | sort -u | tr '\n' ' ')
+[ -z "$G_BARE" ] && ok "G: no role file names a bare scripts/ or knowledge/ plugin path" \
+                 || bad "G: no role file names a bare scripts/ or knowledge/ plugin path" "$G_BARE"
+# S2-16: Axiom skills are namespaced everywhere a role or pack names them.
+G_UNQ=$(grep -lE '`axiom-[a-z0-9-]+`' "$AGD"/*.md "$HERE"/../knowledge/*.md | tr '\n' ' ')
+[ -z "$G_UNQ" ] && ok "G: every Axiom skill reference is namespaced (axiom:axiom-*)" \
+                || bad "G: every Axiom skill reference is namespaced (axiom:axiom-*)" "$G_UNQ"
+# C2-14/C2-15/R2-10: lean, platform-true loads.
+grep -q 'axiom-swiftui-26-ref`* only when' "$AGD/ios-developer.md" \
+  && ok "G: ios-developer loads the iOS 26 reference only when the spec names an iOS 26 API" \
+  || bad "G: ios-developer loads the iOS 26 reference only when the spec names an iOS 26 API"
+[ -f "$HERE/../knowledge/web-conventions.md" ] && grep -q 'web-conventions.md' "$AGD/web-developer.md" \
+  && ! grep -q 'stack-defaults.md' "$AGD/web-developer.md" \
+  && ok "G: web-developer loads the web pack, not the mobile stack defaults" \
+  || bad "G: web-developer loads the web pack, not the mobile stack defaults"
+grep -q '22-impl-spec-web.md' "$AGD/tech-lead.md" && grep -q '`start`' "$AGD/tech-lead.md" \
+  && grep -q '"start"\|`start`' "$HERE/../knowledge/web-conventions.md" \
+  && ok "G: tech-lead's web impl spec names the package.json scripts the runtime gate runs" \
+  || bad "G: tech-lead's web impl spec names the package.json scripts the runtime gate runs"
+grep -qF "awk '/^##/{p=(\$2==\"FC-002\"||\$2==\"FC-006\")} p'" "$AGD/verification-engineer.md" \
+  && [ "$(awk '/^##/{p=($2=="FC-002"||$2=="FC-006")} p' "$HERE/../knowledge/failure-corpus.md" | grep -c '^### FC-00[26]')" = 2 ] \
+  && ok "G: verification-engineer excerpts exactly FC-002 and FC-006 from the corpus" \
+  || bad "G: verification-engineer excerpts exactly FC-002 and FC-006 from the corpus"
+# R2-13: release-manager checks exportOptions cannot upload; R2-42: it does not tag before the audit.
+grep -q "Print :destination" "$AGD/release-manager.md" && grep -q '\*\*Do not tag.\*\*' "$AGD/release-manager.md" \
+  && ok "G: release-manager refuses an upload-destination export and leaves tagging to the founder's last row" \
+  || bad "G: release-manager refuses an upload-destination export and leaves tagging to the founder's last row"
+# R2-23: release-auditor runs the scriptable checks instead of reading summaries.
+G_MISS=""
+for _n in 'board.mjs" verify' 'release-candidate.mjs" verify' 'approval-check.mjs'; do
+  grep -qF "$_n" "$AGD/release-auditor.md" || G_MISS="$G_MISS [$_n]"
+done
+[ -z "$G_MISS" ] && ok "G: release-auditor runs board verify, release-candidate verify and approval-check" \
+                 || bad "G: release-auditor runs board verify, release-candidate verify and approval-check" "missing:$G_MISS"
+# Responsibilities no role owned (reaudit-R): each now has a named owner file.
+G_MISS=""
+for _pair in "aso-specialist:App Privacy" "product-designer:App icon" "aso-specialist:category" \
+             "release-manager:demo account" "release-manager:account deletion" "cto:**Push**" \
+             "devops-engineer:Production observability and backups" "devops-engineer:Web hosting" \
+             "devops-engineer:Founder setup checklist" "release-manager:Platform deadlines" \
+             "ux-architect:Translation production" "cpo:Privacy policy and terms" \
+             "release-auditor:kill switch" "aso-specialist:Support and ratings"; do
+  grep -qF -- "${_pair#*:}" "$AGD/${_pair%%:*}.md" || G_MISS="$G_MISS [$_pair]"
+done
+[ -z "$G_MISS" ] && ok "G: every responsibility the role audit found unowned has an owner file" \
+                 || bad "G: every responsibility the role audit found unowned has an owner file" "missing:$G_MISS"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

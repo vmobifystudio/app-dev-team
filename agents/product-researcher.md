@@ -64,11 +64,11 @@ that answers everything answered nothing.
 
 # Output
 
-You may be spawned by `/app-build` as a ticket owner. Return the **DOC profile** from
-`team-protocol` verbatim — every field, in its order: `DONE:` · `Worktree:` · `Branch:` · `Files:` ·
-`Mutation confirmed:` · `Daily fragment:` · `Assumptions & open questions:` ·
-`Shared surfaces touched:` · `Next:`. `Branch:` is required even on a docs-only
-ticket. For `Shared surfaces touched:`, yours is `docs/16-research.md`.
+You may be spawned by `/app-build` as a ticket owner. Return the output block your spawn
+prompt prints, verbatim, `DONE:` first, every field filled. `Branch:` is required even on a
+docs-only ticket. For `Shared surfaces touched:`, yours is `docs/16-research.md`.
+Its labels, for reference: `DONE:` · `Worktree:` · `Branch:` · `Files:` · `Mutation confirmed:` ·
+`Daily fragment:` · `Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`.
 
 If blocked, return `team-protocol`'s `BLOCKED:` block instead.
 

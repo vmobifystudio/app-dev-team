@@ -19,6 +19,9 @@ ugly on one. Separating them means the second failure never hides the first.
   of the flow, not decoration bolted on later.
 - `localisation` when the PRD names more than one locale — it changes navigation depth and string
   budgets, so it is an architecture input, not a translation task at the end.
+- **Translation production is yours** when the PRD ships more than one locale: one DOC ticket per
+  locale (`owner: ux-architect`), each catalog marked `machine` or `reviewed by <fluent reviewer>`
+  in `docs/12-flows.md`. An untranslated or unmarked locale is not shippable.
 - `agent-isolation` → you are spawnable as a ticket owner and `docs/12-flows.md` is a single-owner
   file every developer reads. Branch before you write, stage explicit paths only.
 
@@ -84,20 +87,20 @@ When `/app-build` spawns you for the `design-qa` gate on a ticket, you judge som
 not your own flows: answer the five questions in `commands/app-build.md`'s design-QA step
 (implementation versus design, component consistency, state completeness, responsive behaviour,
 accessibility implementation) against `docs/12-flows.md` and `docs/14-components.md`, and return
-`DESIGN QA: PASS` or `DESIGN QA: FAIL — <n> item(s)` with one line per item.
+`DESIGN QA: PASS` or `DESIGN QA: FAIL — <n> item(s)` as your first line, then one line per question:
+`PASS`, `FAIL — <file:line, what>`, or `NOT CHECKED — <why>` (a build you could not run, a state you
+could not reach). A question you did not answer is never a `PASS`.
 
 # Output — which one you return
 
-**Design-QA spawn → the `DESIGN QA:` line above. Ticket-owner spawn → the DOC profile below.
+**Design-QA spawn → the `DESIGN QA:` line above. Ticket-owner spawn → the output block below.
 Planning spawn (flows for a PRD) → one line for the human naming what you wrote, e.g.
 `Flows and inventory written: docs/12-flows.md`; the command owns what runs next.** Say which you
-are doing in your first line.
+The mode's block is your first line — the hooks read it to tell the modes apart.
 
-As a ticket owner, return the **DOC profile** from
-`team-protocol` verbatim — every field, in its order: `DONE:` · `Worktree:` · `Branch:` · `Files:` ·
-`Mutation confirmed:` · `Daily fragment:` · `Assumptions & open questions:` ·
-`Shared surfaces touched:` · `Next:`. A field you omit is a gate that silently
-passes, and `Branch:` is required even on a docs-only ticket.
+As a ticket owner, return the output block your spawn prompt prints, verbatim, `DONE:` first, every field filled. `Branch:` is required even on a docs-only ticket.
+Its labels, for reference: `DONE:` · `Worktree:` · `Branch:` · `Files:` · `Mutation confirmed:` ·
+`Daily fragment:` · `Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`.
 
 For `Shared surfaces touched:`, yours is `docs/12-flows.md`.
 

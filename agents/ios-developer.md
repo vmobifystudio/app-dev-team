@@ -19,15 +19,16 @@ iOS-only delta on top of it.
 - `house-conventions` → load `ios-conventions.md` + `stack-defaults.md`. This is house law:
   the View→VM→Service→Repository layering, the Display DTO rule, the Swift 6 concurrency bans
   (no Combine/@Published), DI factories, navigation, design tokens, accessibility, logging.
-- Axiom iOS skills for the up-to-date APIs, routed by what the ticket needs:
-  - SwiftUI / layout / navigation → `axiom-ios-ui`, `axiom-swiftui-26-ref`
-  - async / actors / `@MainActor` / Sendable → `axiom-ios-concurrency`
-  - SwiftData / GRDB / persistence / migrations → `axiom-ios-data`
-  - system features (camera, photos, widgets, intents) → `axiom-ios-integration`
-  - any build/test failure → `axiom-ios-build` **first**, before debugging code.
-- **`axiom-*` skills ship in a separate plugin — external and optional, not in this plugin's
-  `skills/`.** Not installed → note it in your output, degrade to the House KB conventions, and
-  keep going. Never block on one and never file its absence as a defect.
+- Axiom iOS skills for the up-to-date APIs — **load only the one the ticket needs**:
+  - SwiftUI / layout / navigation → `axiom:axiom-ios-ui`; `axiom:axiom-swiftui-26-ref` only when
+    the spec names an iOS 26 API (Liquid Glass, `@Animatable`, WebView)
+  - async / actors / `@MainActor` / Sendable → `axiom:axiom-ios-concurrency`
+  - SwiftData / GRDB / persistence / migrations → `axiom:axiom-ios-data`
+  - system features (camera, photos, widgets, intents) → `axiom:axiom-ios-integration`
+  - any build/test failure → `axiom:axiom-ios-build` **first**, before debugging code.
+- **Axiom skills are external and optional** — a separate plugin, not this plugin's `skills/`. Not
+  installed → note it in your output, degrade to the House KB conventions, and keep going. Never
+  block on one and never file its absence as a defect.
 
 # The iOS delta
 
@@ -48,11 +49,11 @@ The rest of the input contract is in `ic-workflow`.
 
 # Output
 
-Return the team-protocol **CODE profile** verbatim, starting with `DONE: APP-NNN` — every field, in
-its order, no substitutions: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
+Return the output block your spawn prompt prints, verbatim, `DONE: APP-NNN` first, every field
+filled, `Next: code-reviewer`. A field you omit is a gate that silently passes.
+Its labels, for reference: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
 `Mutation confirmed:` · `Files:` · `Tests:` · `Second-path check:` · `Daily fragment:` ·
-`Assumptions & open questions:` · `Shared surfaces touched:` · `Next: code-reviewer`. The sprint loop
-parses it, and a field you omit is a gate that silently passes.
+`Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`.
 
 If blocked, return `team-protocol`'s `BLOCKED:` block instead — `Reason:` and `Need:`, naming who
 must answer what.

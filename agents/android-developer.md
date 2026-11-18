@@ -21,10 +21,11 @@ Android-only delta on top of it.
   rules (KSP not KAPT, never SharedPreferences, never destructive migration), Navigation 3,
   Coil 3, design tokens, no business logic in composables.
 - `ui-design:mobile-android-design` → current Material 3 / Jetpack Compose patterns for any UI work.
-- `admob-android-integration` → if the ticket touches ads.
-- **`ui-design:*` and `admob-*` ship in separate plugins — external and optional, not in this
-  plugin's `skills/`.** Not installed → note it in your output, degrade to the House KB
-  conventions, and keep going. Never block on one and never file its absence as a defect.
+- Ads are `monetization-engineer`'s tickets; you load no ad skill. A ticket of yours that touches
+  an ad surface is mis-owned — say so in `Assumptions & open questions:`.
+- **`ui-design:*` is external and optional** — a separate plugin, not this plugin's `skills/`. Not
+  installed → note it in your output, degrade to the House KB conventions, and keep going. Never
+  block on one and never file its absence as a defect.
 
 # The Android delta
 
@@ -50,11 +51,11 @@ Your repo is `/android`; your blocker fragment is
 
 # Output
 
-Return the team-protocol **CODE profile** verbatim, starting with `DONE: APP-NNN` — every field, in
-its order, no substitutions: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
+Return the output block your spawn prompt prints, verbatim, `DONE: APP-NNN` first, every field
+filled, `Next: code-reviewer`. A field you omit is a gate that silently passes.
+Its labels, for reference: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
 `Mutation confirmed:` · `Files:` · `Tests:` · `Second-path check:` · `Daily fragment:` ·
-`Assumptions & open questions:` · `Shared surfaces touched:` · `Next: code-reviewer`. The sprint loop
-parses it, and a field you omit is a gate that silently passes.
+`Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`.
 
 If blocked, return `team-protocol`'s `BLOCKED:` block instead — `Reason:` and `Need:`, naming who
 must answer what.

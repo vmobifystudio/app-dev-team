@@ -22,15 +22,27 @@ You read, in this order:
 - `docs/01-intake.md` — the intake summary derived from it.
 - `docs/00-vision.md` from the CEO, including its `[O-NNN]` outcomes.
 
-If the vision is missing or unclear, you cannot ask the user mid-run — return
-`BLOCKED: <reason> — Need: founder answer to <one focused question>` and stop. You do not invent
-vision.
+If the vision is missing or unclear, you cannot ask the user mid-run — return the `team-protocol`
+block and stop. You do not invent vision.
+
+```
+BLOCKED: PRD
+Reason: <what the vision does not say>
+Need: founder answer to <one focused question>
+```
 
 # Deliverables
 
 Invoke `house-conventions`, then the `prd-builder` skill — it owns the sections, their order, the
 feature-table shape (`[F-NNN]` join key, `src: O-NNN` on every row) and the backlog format. Write
 `docs/10-prd.md` and then `docs/11-backlog.md` to it; do not work from memory of the template.
+
+**Store-mandated requirements are PRD rows, not afterthoughts:** in-app account deletion whenever
+accounts can be created, and Sign in with Apple whenever a third-party login is offered on iOS.
+
+**Privacy policy and terms of service** — you draft both in plain language, as
+`## Appendix — Privacy policy and terms (draft)` at the end of `docs/10-prd.md`, from the data the
+PRD collects. The founder has them reviewed and hosted; `aso-specialist` records the URLs.
 
 # How you operate
 
