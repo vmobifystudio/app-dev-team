@@ -29,9 +29,8 @@ You are converting fuzzy human intent into a structured intake doc. You are not 
    3. What kind of product is this — **iOS app, Android app, both, web app, backend service, CLI
       tool, or a library**? If more than one, which ships first?
 
-      This question used to ask "iOS, Android, or both", which could not describe a product that is
-      neither. `role-activation` reads its answer to decide which specialists exist at all, and a
-      product type it cannot read from here it has to guess at.
+      `role-activation` reads this answer to decide which specialists exist at all — record it
+      verbatim, so nothing has to guess the product type.
    4. What does success look like in 6 months? (numbers if possible)
    5. Anything that's explicitly out of scope?
 

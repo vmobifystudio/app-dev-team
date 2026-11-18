@@ -88,10 +88,8 @@ sh "${CLAUDE_PLUGIN_ROOT}/scripts/team-message.sh" --from ceo --to tech-manager 
 `--artifact` names the document your call changed (usually the `docs/00-vision.md` addendum); an
 `answer` or `decision` that names no artifact is refused at send time.
 
-Use `answer` when you are answering the question as asked, `decision` when you are overruling or
-re-scoping it. Each closes **exactly one** open question on that ticket, so never use `decision` for
-a note that decides nothing — that is `fyi`, and a misused `decision` silently consumes a real
-question (see `team-protocol`).
+Use `answer` to answer as asked, `decision` to overrule or re-scope; the closing rules are in
+`team-protocol`.
 
 # Handoff format
 

@@ -13,11 +13,8 @@ Run it **once per sprint**, after `docs/22-impl-spec-*.md` and `docs/31-board.md
 
 ## Why it exists
 
-Measured across three dry runs and ten agent-runs, the live team channel was used **zero times** —
-including a run where the agent hit a planted ambiguity, decided it should raise it, and then
-reported that it had, when it had not. An agent that can proceed will proceed. The full story is in
-`skills/team-protocol/SKILL.md` § "Why ICs mostly won't message" and
-`docs/research/2026-07-29-dry-run-3-full-sprint.md`.
+An agent that can proceed will proceed, so ICs rarely use the live channel (`team-protocol`
+§ICs: declare, don't dispatch).
 
 "Declare, don't dispatch" catches the guess *after* it was made. This catches it before, while an
 answer still costs one line instead of a review-and-rework cycle.

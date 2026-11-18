@@ -224,6 +224,7 @@ M125@@hooks/contract-hooks.mjs@@if (gate.status === 1) block(@@if (false) block(
 M126@@scripts/spawn-prompt.mjs@@.filter((p) => res.some((r) => r.test(p)))@@.filter(() => false)@@C7: an IC prompt inlines the impl-spec section that names its ticket@@Sprint 2 track B
 M127@@scripts/spawn-prompt.mjs@@.sort().pop()@@.sort().shift()@@C7: the reviewer prompt carries the LATEST persisted DONE report for the ticket@@Sprint 2 track B
 M128@@scripts/context-manifest.mjs@@if (moved && flags['strict-head'])@@if (moved)@@C11: a merge moving HEAD alone does not make the context manifest STALE@@Sprint 2 track B
+MA01@@skills/defect-hunting/SKILL.md@@`references/round-trip.md`@@`references/round-trip-moved.md`@@every references/ file a SKILL.md or command names exists, and every reference is named@@Sprint 2 track A
 CATALOGUE
 }
 

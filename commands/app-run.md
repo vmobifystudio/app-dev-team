@@ -94,20 +94,11 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      (never a list named here — an out-of-date copy is how `AUDIT-NNN` tickets stopped being picked
      up) → **static** `DONE` verification → streaming `code-reviewer` (Axiom audit gate on iOS) →
      merge **gate** (run inline by this session, no `tech-manager` spawn) → **wave integration** → `qa-engineer` → bug loop.
-   - **The merge gate no longer merges, and that is the shape of the loop now.** It grants
-     permission per ticket; `wave-integrate.mjs` merges the whole wave once, runs the full suite
-     once on the merged tree, and pushes once — so there is one CI run per wave and
-     `ci-status.mjs` reads it at the top of the next round. Per-ticket verification is
-     `verify-done.sh --static`, which exits 2 by design: the suite genuinely has not run, the ticket
-     records `verified_static`, and the wave's green is what earns the real `verified`. See
-     `/app-build` steps 3 and 5.
-   - **A wave that does not go green does not advance the wave**, and that is a normal outcome an
-     autonomous run must survive rather than escalate: the tickets keep their `verified_static`,
-     `ship-gate.sh` keeps blocking, and `merge-reconcile` reports them as `AWAITING INTEGRATION`
-     rather than as a board that is lying. Re-spawn only the owners the failure names.
-   - **Escalations are surfaced to the user in the round they are raised** (`/app-build` step 6,
-     `messages.mjs open --escalations`). They are not blockers — the ticket that raised one keeps
-     moving — so without this step they would sit in the ledger unread for the whole run.
+   - The merge gate grants permission per ticket; the wave pass merges, tests and pushes once
+     (`/app-build` steps 3–5, where per-ticket `--static` verification and `verified_static` are
+     explained). **A wave that does not go green is a normal outcome an autonomous run survives**,
+     not an escalation: re-spawn only the owners the failure names.
+   - **Escalations are surfaced to the user in the round they are raised** (`/app-build` step 6).
    - After each round, spawn `tech-manager` to write the standup at `docs/daily/<today>.md`
      (`team-protocol`'s canonical path — not `standup-<today>.md`, which nothing else reads) and
      print a 3-line summary: counts per status, what merged, blockers.

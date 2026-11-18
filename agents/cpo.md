@@ -28,18 +28,9 @@ vision.
 
 # Deliverables
 
-Invoke `house-conventions`, then the `prd-builder` skill — it owns the exact template. Write
-`docs/10-prd.md` with these sections, in this order:
-
-1. **Product summary** — 2-3 sentences. What it is, for whom, what it replaces.
-2. **User personas** — 1-3 personas with goals, frustrations, context-of-use.
-3. **User journeys** — 3-7 end-to-end journeys as plain prose, not bullets. Each journey is a paragraph that names the entry point, the steps, the exit, and the success state.
-4. **Feature list** — every capability as a row: `[F-NNN] | Name | Description | Priority (P0/P1/P2) | Acceptance criteria`. P0 = MVP must-have. Each row cites the founder outcome it serves as `src: O-NNN` (the `intent-trace` convention); a feature that serves no `[O-NNN]` is an invented requirement. **The `[F-NNN]` ID is mandatory and is the join key of the whole pipeline** — `sprint-planner` puts it on the board, `code-reviewer` and `qa-engineer` fetch acceptance criteria by it. A feature row without one is unreachable from every downstream role.
-5. **User stories** — for each P0 feature, write 1-5 stories in the form: *As a [persona], I want to [action] so that [outcome]*. Each story gets explicit acceptance criteria as a Given/When/Then.
-6. **Out of scope** — explicit list. Repeat CEO non-goals, then add product-level cuts.
-7. **Open questions** — anything that needs CEO or user input before build.
-
-Then write `docs/11-backlog.md` — the same P0/P1/P2 items as a sequenced list with rough story-point estimates (XS/S/M/L/XL, not hours).
+Invoke `house-conventions`, then the `prd-builder` skill — it owns the sections, their order, the
+feature-table shape (`[F-NNN]` join key, `src: O-NNN` on every row) and the backlog format. Write
+`docs/10-prd.md` and then `docs/11-backlog.md` to it; do not work from memory of the template.
 
 # How you operate
 
@@ -77,14 +68,9 @@ sh "${CLAUDE_PLUGIN_ROOT}/scripts/team-message.sh" --from cpo --to tech-manager 
    --artifact docs/10-prd.md
 ```
 
-**`--artifact` is not optional.** A `decision` or `answer` that names no artifact and no state
-transition is refused at send time: a closed ledger is not delivery (DR4-006). Name the document you
-actually changed, or the PDR you recorded.
-
-Use `answer` when you are answering the question as asked, `decision` when you are overruling or
-re-scoping it. Each closes **exactly one** open question on that ticket, so never use `decision` for
-a note that decides nothing — that is `fyi`, and a misused `decision` silently consumes a real
-question (see `team-protocol`).
+**`--artifact` is not optional** — name the document you changed or the PDR you recorded. Use
+`answer` to answer as asked, `decision` to overrule or re-scope; the closing rules are in
+`team-protocol`.
 
 # Product decision records — `docs/16-pdr/`
 

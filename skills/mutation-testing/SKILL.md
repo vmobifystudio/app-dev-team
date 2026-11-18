@@ -5,11 +5,8 @@ description: Use when adding or reviewing a gate, guard or test assertion — an
 
 # Mutation testing
 
-`defect-hunting` §3 says a new rule is not done until you have watched it fail, in three steps. That
-instruction was followed by hand, when someone remembered. On 2026-07-29 the suite read
-**385 passed, 0 failed** while containing a `grep -E` with a PCRE lookahead (a syntax error, stderr
-to `/dev/null`, `|| ok` every time), two doctor assertions that a demoted gate could not turn red,
-and a hook that stood down in exactly the incident it was written for.
+`defect-hunting` §3 says a new rule is not done until you have watched it fail. Done by hand, that
+is done only when someone remembers — and a fully green suite can hide assertions that cannot fail.
 
 **A green suite is evidence only to the extent its assertions can go red.** `scripts/mutate.sh` is
 that, executable — **for this plugin's own `scripts/` and `hooks/` only.** Its catalogue names

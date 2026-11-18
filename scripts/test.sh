@@ -2934,9 +2934,16 @@ grep -q 'grep -qv "| \$OWNER"' "$HERE/../agents/tech-manager.md" \
 
 # Backwards compatibility is not optional: a project with a hand-written board and no event log
 # must keep working. Both entry points migrate once, announce it, and fall through on failure.
+# /app-build keeps the procedure in its rare-branch reference (Sprint 2 track A) and must name it at
+# step 0, so both halves are asserted: the pointer in the command and the procedure where it points.
+LEGACY_REF="$HERE/../skills/parallel-orchestrator/references/build-loop-branches.md"
 for c in app-plan app-build; do
-  if grep -q 'board.mjs" migrate' "$HERE/../commands/$c.md" \
-     && grep -q "LEGACY BOARD" "$HERE/../commands/$c.md"; then
+  _src="$HERE/../commands/$c.md"
+  if [ "$c" = app-build ]; then
+    grep -q 'build-loop-branches.md` §Step 0' "$_src" && _src="$LEGACY_REF" || _src=/dev/null
+  fi
+  if grep -q 'board.mjs" migrate' "$_src" \
+     && grep -q "LEGACY BOARD" "$_src"; then
     ok "/$c migrates a legacy board once and falls through if it cannot"
   else
     bad "/$c migrates a legacy board once and falls through if it cannot"
@@ -9772,6 +9779,76 @@ assert_exit 1 "C11: ...--strict-head still refuses it" node "$HERE/context-manif
 printf 'prd v2\n' > "$S2C/prd.md"
 assert_exit 1 "C11: ...but a changed planning document is STALE" node "$HERE/context-manifest.mjs" verify --root "$S2C" --manifest "$S2C/m.json"
 rm -rf "$S2C"
+
+# --- Sprint 2 track A: progressive disclosure holds together ---------------------------------------
+# The 2026-11-18 review (S13–S17, C1, C2, W13) cut what an agent loads at spawn by moving rare
+# material out of SKILL.md bodies into skills/<name>/references/*.md, loaded only when the core says
+# so. That design has two silent failure modes: a core that names a reference which no longer exists
+# (the agent is told "read X" and X is gone), and a reference no core names (a rule nobody is ever
+# sent to read). And one slow one: the cores growing back. All three are checked here.
+echo
+echo "Sprint 2 track A — progressive disclosure"
+
+# Prints one line per dangling reference pointer and per orphaned reference file under root $1.
+refs_check() {
+  _root="$1"
+  for _skill in "$_root"/skills/*/SKILL.md; do
+    _dir=$(dirname "$_skill")
+    # Own-skill pointers only: a `skills/<other>/references/...` path is checked by the loop below.
+    for _ref in $(grep -o '\(skills/[a-z-]*/\)\{0,1\}references/[A-Za-z0-9._-]*\.md' "$_skill" \
+                  | grep -v '^skills/' | sort -u); do
+      [ -f "$_dir/$_ref" ] || echo "dangling: ${_skill#"$_root"/} names $_ref"
+    done
+    [ -d "$_dir/references" ] || continue
+    for _f in "$_dir"/references/*.md; do
+      grep -q "references/$(basename "$_f")" "$_skill" || echo "orphan: ${_f#"$_root"/} is named by no SKILL.md line"
+    done
+  done
+  # Cross-file pointers written as a full plugin path (commands and agents use this form).
+  for _ptr in $(cat "$_root"/agents/*.md "$_root"/commands/*.md "$_root"/skills/*/SKILL.md \
+                | grep -o 'skills/[a-z-]*/references/[A-Za-z0-9._-]*\.md' | sort -u); do
+    [ -f "$_root/$_ptr" ] || echo "dangling: a role or command names $_ptr"
+  done
+}
+
+REFS_BAD=$(refs_check "$HERE/..")
+[ -z "$REFS_BAD" ] \
+  && ok "every references/ file a SKILL.md or command names exists, and every reference is named" \
+  || bad "every references/ file a SKILL.md or command names exists, and every reference is named" "$REFS_BAD"
+
+# Mirror: break one pointer in a copy and prove the check sees it.
+RFX="$TMP/refs-mirror"; rm -rf "$RFX"; mkdir -p "$RFX"
+cp -R "$HERE/../agents" "$HERE/../commands" "$HERE/../skills" "$RFX/"
+mv "$RFX/skills/defect-hunting/references/round-trip.md" "$RFX/skills/defect-hunting/references/moved.md"
+REFS_MIRROR=$(refs_check "$RFX")
+printf '%s' "$REFS_MIRROR" | grep -q "dangling: skills/defect-hunting/SKILL.md names references/round-trip.md" \
+  && printf '%s' "$REFS_MIRROR" | grep -q "orphan: skills/defect-hunting/references/moved.md" \
+  && ok "mirror: a moved reference file is reported both as a dangling pointer and as an orphan" \
+  || bad "mirror: a moved reference file is reported both as a dangling pointer and as an orphan" "$REFS_MIRROR"
+
+# Budgets. These are the review's targets turned into ceilings, so the cores cannot quietly regrow.
+# Raise one only with the reason in the same change — a ceiling raised silently is no ceiling.
+OVER=""
+for _pair in "skills/ic-workflow/SKILL.md 1000" "skills/agent-isolation/SKILL.md 800" \
+             "skills/defect-hunting/SKILL.md 900" "skills/team-protocol/SKILL.md 1200" \
+             "skills/parallel-orchestrator/SKILL.md 1300" "commands/app-build.md 4500" \
+             "agents/code-reviewer.md 2300" "agents/tech-manager.md 2000"; do
+  _file=${_pair% *}; _max=${_pair##* }
+  _n=$(wc -w < "$HERE/../$_file" | tr -d ' ')
+  [ "$_n" -le "$_max" ] || OVER="$OVER $_file=$_n>$_max"
+done
+[ -z "$OVER" ] && ok "spawn-loaded cores stay within their word budgets" \
+               || bad "spawn-loaded cores stay within their word budgets" "over:$OVER"
+
+# code-reviewer loads the failure corpus's Tells, not the whole file (C2). The extraction command in
+# its role file must still yield one Tell per class, or the reviewer silently runs fewer classes.
+CR_TELLS=$(sed -n '/^### FC-/p;/^\*\*Tell:/,/^$/p' "$HERE/../knowledge/failure-corpus.md")
+_classes=$(printf '%s\n' "$CR_TELLS" | grep -c '^### FC-')
+_tells=$(printf '%s\n' "$CR_TELLS" | grep -c '^\*\*Tell:')
+grep -qF "sed -n '/^### FC-/p;/^\*\*Tell:/,/^\$/p'" "$HERE/../agents/code-reviewer.md" \
+  && [ "$_classes" -gt 0 ] && [ "$_classes" = "$_tells" ] \
+  && ok "code-reviewer's Tell extraction yields one Tell per failure-corpus class ($_classes)" \
+  || bad "code-reviewer's Tell extraction yields one Tell per failure-corpus class ($_classes)" "classes=$_classes tells=$_tells"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

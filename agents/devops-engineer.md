@@ -60,8 +60,7 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
    convention (Conventional Commits *or* `[Module]` style — pick one and state it), PR rules,
    squash-vs-merge policy, and the release/tag process from `git-workflow.md`.
 
-   **Squash-merge is incompatible with `requireApprovalBinding`** (dry run 3, tap-counter,
-   2026-08-02, DR-TC-P0-003). `board.mjs move ... approved --bind` records the reviewed commit's
+   **Squash-merge is incompatible with `requireApprovalBinding`**. `board.mjs move ... approved --bind` records the reviewed commit's
    SHA; `approval-check.mjs` proves it is still reachable with `git merge-base --is-ancestor`.
    A squash merge writes a brand-new commit and the original reviewed SHA is never an ancestor of
    it — the exact commit that was approved disappears from history, so the check fails by design,

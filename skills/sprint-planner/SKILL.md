@@ -81,8 +81,8 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    blocked · unblocked · reopened · closed`
 
    `verified_static` is the lane for work that is inspectable but not runnable (verify-done exit 2).
-   Omitting it from this list is how DR4-002 stayed the documented rule: it unlocks review on a
-   ticket whose toolchain is broken, refuses `closed`, and holds the release gate.
+   It unlocks review on a ticket whose toolchain is broken, refuses `closed`, and holds the release
+   gate.
 
    The state machine, enforced **before** the append — an illegal transition exits 1 and names what
    is legal from here, so these states are unrepresentable rather than detectable afterwards:
@@ -191,10 +191,8 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 ## Parallelism rules
 
 **Judge parallelism on files, not features.** Two tickets can be perfectly independent as features
-and still be the same handful of files. A dry run of "add a todo" and "complete a todo" — planned
-as independent, different features, no shared acceptance criteria — produced add/add conflicts on
-**all 8 files**, including both test files. See
-`docs/research/2026-07-29-dry-run-parallel-agent-collision.md`.
+and still be the same handful of files — "add a todo" and "complete a todo" collide on every file,
+tests included.
 
 For every ticket, write a **Touches** note: the files or packages it will most likely modify, taken
 from the impl spec. Then:
@@ -214,11 +212,8 @@ foundation ticket is cheaper than three parallel tickets and a merge.
 ### Name the shared surfaces, or they get built twice
 
 File overlap does not catch duplication, because two agents solving the same cross-cutting concern
-create **different** files. Observed in a dry run: two parallel tickets each needed to emit an
-analytics event, and independently invented incompatible abstractions —
-`domain/AnalyticsLogger.kt` + `data/ConsentGatedAnalyticsLogger.kt` on one branch,
-`analytics/TodoAnalytics.kt` on the other. Both were good code. Both read the same schema. Neither
-was wrong. The sprint still produced two analytics layers.
+create **different** files — two parallel tickets that each emit an analytics event will invent two
+incompatible logger abstractions, both correct, and the sprint ships two analytics layers.
 
 So: before sequencing, list the **cross-cutting concerns** this sprint touches — analytics logging,
 error mapping, DI wiring, the design-system component set, navigation, persistence access,
