@@ -7,7 +7,7 @@
  * starts mattering.
  *
  * Usage:
- *   release-candidate.mjs record --artifact <path> [--platform ios|android|web] [--variant release]
+ *   release-candidate.mjs record --artifact <path> --platform ios|android|web [--variant release]
  *                                [--by <role>] [--root <dir>]
  *   release-candidate.mjs show [--json]
  *   release-candidate.mjs verify
@@ -100,6 +100,13 @@ function cmdRecord() {
   if (isDir && platform !== 'web') die(2, `${flags.artifact} is a directory — only --platform web ships a build output dir; ios/android bind the .ipa/.aab/.apk file`);
   if (!isDir && !statSync(artifactPath).isFile()) die(2, `${flags.artifact} is not a file`);
   if (isDir && artifactSize(artifactPath) === 0) die(2, `${flags.artifact} is empty — a web build that produced no files is nothing to bind`);
+  // G2-23: the artifact must be the platform's BUILD OUTPUT, not any file that happens to exist.
+  // ponytail: shape check only (extension / directory); a zip-magic or build-log binding is the upgrade.
+  const SHAPE = { ios: /\.ipa$/i, android: /\.(aab|apk)$/i };
+  if (!['ios', 'android', 'web'].includes(platform)) die(1, 'record needs --platform ios|android|web — the platform decides what a build output looks like');
+  if (SHAPE[platform] && !SHAPE[platform].test(artifactPath)) die(1, `${flags.artifact} is not a ${platform} build output (${platform === 'ios' ? '.ipa' : '.aab or .apk'})`);
+  // A web build dir is generated, so git tracks none of it; a dir of committed files is source (src/, public/).
+  if (isDir && git(['ls-files', '--', relative(ROOT, artifactPath) || '.'])) die(1, `${flags.artifact} holds git-tracked files — that is source, not a build output (bind the dir \`npm run build\` writes)`);
 
   const head = git(['rev-parse', 'HEAD']);
   if (!head) die(2, 'cannot resolve HEAD — a candidate that names no commit binds nothing');

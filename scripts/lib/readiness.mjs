@@ -71,7 +71,7 @@ function readJson(path) {
  * The staleness comparison lives HERE rather than in each gate, because a gate cannot know it has
  * gone stale — it stopped running before the thing that invalidated it happened.
  */
-function gateEntry(root, name, relPath, cand) {
+function gateEntry(root, name, relPath, cand, gateName) {
   const abs = resolve(root, relPath);
   if (!existsSync(abs)) {
     return { gate: name, state: 'CANNOT_EVALUATE', detail: `no ${relPath} — this gate has not run for this project`, subject: null };
@@ -81,8 +81,15 @@ function gateEntry(root, name, relPath, cand) {
     return { gate: name, state: 'CANNOT_EVALUATE', detail: `${relPath} is not a readable gate-result/v1`, subject: null };
   }
   const recorded = v.subject?.head || null;
-  if (v.subject?.dirty === true) {
-    return { gate: name, state: 'STALE', detail: 'recorded against a dirty working tree, so the state it examined was never committed', subject: recorded };
+  // G2-11: the file must be the gate it is filed as — a journey result copied over runtime-result.json
+  // is not a runtime verdict.
+  if (v.gate !== gateName) {
+    return { gate: name, state: 'CANNOT_EVALUATE', detail: `${relPath} names gate '${v.gate}', expected '${gateName}'`, subject: recorded };
+  }
+  // Only `dirty === false` is clean. `null` means git could not say, and "could not tell" never
+  // supports a release (G2-11).
+  if (v.subject?.dirty !== false) {
+    return { gate: name, state: 'STALE', detail: v.subject?.dirty === true ? 'recorded against a dirty working tree, so the state it examined was never committed' : 'does not record that the working tree was clean', subject: recorded };
   }
   if (recorded && cand.head && recorded !== cand.head) {
     return { gate: name, state: 'STALE', detail: `recorded for ${recorded.slice(0, 12)}, candidate is ${cand.head.slice(0, 12)}`, subject: recorded };
@@ -111,8 +118,8 @@ function gateEntry(root, name, relPath, cand) {
 function reduceReadiness(root) {
   const cand = candidate(root);
   const gates = [
-    gateEntry(root, 'journey', 'docs/team/journey-result.json', cand),
-    gateEntry(root, 'runtime', 'docs/team/runtime-result.json', cand),
+    gateEntry(root, 'journey', 'docs/team/journey-result.json', cand, 'journey-gate'),
+    gateEntry(root, 'runtime', 'docs/team/runtime-result.json', cand, 'runtime-gate'),
     // THE ARTIFACT IS A GATE, NOT A FOOTNOTE. Every gate above is about a COMMIT; this one is about
     // the file that would actually be uploaded. Without it, "readiness: PASS" is a true statement
     // about source and silent about the binary — so an .ipa built from a different commit than the
@@ -126,10 +133,13 @@ function reduceReadiness(root) {
   // inputs. BLOCKED outranks STALE outranks CANNOT_EVALUATE: the worst honest answer wins, and
   // "not ready" is never softened by an adjacent green.
   const has = (s) => gates.some((g) => g.state === s);
-  const verdict = has('BLOCKED') ? 'BLOCKED'
+  let verdict = has('BLOCKED') ? 'BLOCKED'
     : has('STALE') ? 'STALE'
       : has('CANNOT_EVALUATE') ? 'CANNOT_EVALUATE'
         : gates.length ? 'PASS' : 'CANNOT_EVALUATE';
+  // G2-11: the candidate itself has uncommitted (non-operational) changes, or git could not say.
+  // Every gate above examined the commit, not this tree — so PASS would describe a different thing.
+  if (verdict === 'PASS' && cand.dirty !== false) verdict = 'STALE';
 
   return {
     schema: 'readiness/v1',

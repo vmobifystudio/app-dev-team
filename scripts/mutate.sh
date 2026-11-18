@@ -186,7 +186,7 @@ M60@@scripts/lib/board.mjs@@  return !(row.staticOnly === true || row.verifiedSt
 M61@@scripts/messages.mjs@@if (m.kind === 'decision' && pending.length) pending.shift();@@if (m.kind === 'decision') { const j = pending.findIndex((x) => x.kind === 'escalation'); if (j >= 0) pending.splice(j, 1); }@@a decision that answered a QUESTION does not also close an escalation@@N5: one decision
 M62@@scripts/messages.mjs@@if (options.count) { process.stdout.write(`${open.length}\n`); return 0; }@@if (false) { process.stdout.write(`${open.length}\n`); return 0; }@@...and that line is a bare number the runbook can use without a regex@@N8: --count
 M63@@scripts/wave-integrate.mjs@@  if (outstanding.length > 1) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }@@  if (false) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }@@a ticket with two unintegrated branches is REPORTED, not picked between@@N2: ambiguity
-M64@@scripts/wave-integrate.mjs@@  const after = branch[i + String(id).length];@@  const after = undefined;@@...and APP-1 does not match the branch of APP-12@@N2: ambiguity
+M64@@scripts/wave-integrate.mjs@@`(^|/)${escRe(id)}(-[a-z]|$)`@@`(^|/)${escRe(id)}`@@...and APP-1 does not match the branch of APP-12@@N2: ambiguity
 M65@@scripts/worktree-reap.mjs@@  if (/^integration-wave-/.test(name)) {@@  if (false) {@@...and --apply never reaps it, because a kept wave tree is CLEAN and the dirty check would not save it@@N3: the kept
 M66@@scripts/register.mjs@@  if (!ROLES.has(String(value))) {@@  if (false) {@@a role this studio does not have is REFUSED — an item authored by nobody answers to nobody@@N4/N6/N7
 M67@@scripts/register.mjs@@  if (!ID_SHAPE.test(subject)) die(1,@@  if (false) die(1,@@...and so is an id the board could never match, which makes every --ticket link uncheckable@@N4/N6/N7
@@ -257,6 +257,26 @@ MD09@@scripts/scheduler.mjs@@export const MAX_PARALLEL = 3;@@export const MAX_PA
 MD10@@scripts/ship-gate.sh@@echo "        LIMIT: the scanners only replay KNOWN defect classes; unknown defects are covered by"@@:@@ship-gate and /app-ship state the scanners only replay known defects (G-F13)@@Sprint 2 track D
 MS01@@hooks/contract-hooks.mjs@@if (/\bactor\s+(mint|revoke)\b/.test(cmd)) refuse@@if (false) refuse@@S2: guard-gate-writes refuses a subagent minting an actor token@@Sprint 2 lead
 MS02@@scripts/spawn-prompt.mjs@@if (policy.requireActorTokens !== true) return [];@@return [];@@S2: compose mints the reviewer's token under requireActorTokens; the registry holds only its hash@@Sprint 2 lead
+MG01@@scripts/lib/readiness.mjs@@if (v.subject?.dirty !== false) {@@if (v.subject?.dirty === true) {@@F2: readiness: a gate result whose dirty is null (unknown) is STALE (G2-11)@@Sprint 3 track F2
+MG02@@scripts/lib/readiness.mjs@@if (verdict === 'PASS' && cand.dirty !== false) verdict = 'STALE';@@if (false) verdict = 'STALE';@@F2: readiness: a candidate with uncommitted source is STALE, never PASS (G2-11)@@Sprint 3 track F2
+MG03@@scripts/lib/readiness.mjs@@if (v.gate !== gateName) {@@if (false) {@@F2: readiness: a journey result filed as runtime-result.json is not a runtime verdict (G2-11)@@Sprint 3 track F2
+MG04@@scripts/lib/operational-paths.txt@@docs/team/runs.jsonl@@docs/team@@F2: an edited docs/team/risk-policy.json is a real change, not studio bookkeeping (G2-18)@@Sprint 3 track F2
+MG05@@scripts/release-candidate.mjs@@if (SHAPE[platform] && !SHAPE[platform].test(artifactPath)) die(1@@if (false) die(1@@F2: release-candidate refuses an ios artifact that is not an .ipa (G2-23)@@Sprint 3 track F2
+MG06@@scripts/ship-gate.sh@@if (!e) out.push(@@if (false) out.push(@@F2: ship-gate blocks a merged ticket with no qa_passed EVENT, whatever the markdown says (G2-19)@@Sprint 3 track F2
+MG07@@scripts/wave-integrate.mjs@@if (rg.status !== 0) {@@if (false) {@@F2: wave-integrate will not land a high-risk ticket (routed from its diff) until runtime passes on the wave (W2-3)@@Sprint 3 track F2
+MG08@@scripts/wave-integrate.mjs@@(TOKENS ? @@(false ? @@F2: wave-integrate's printed verified command mints its token inline under requireActorTokens (W2-10)@@Sprint 3 track F2
+MG09@@scripts/worktree-slot.mjs@@while (state.slots?.[`${owner}-${n}`]) n += 1;@@;@@...as ios-developer-2@@worktree-slot: one tree per WRITER
+MG10@@scripts/trace.mjs@@} else if (!boardDoc && INTENT) {@@} else if (false) {@@F2: trace --intent evaluates the intent chain at Gate 1 instead of CANNOT EVALUATE for a missing board (W2-19)@@Sprint 3 track F2
+MG11@@scripts/integration-branch.sh@@| head -n 1 | sed -E 's/[./]+$//'@@| head -n 1@@F2: integration-branch reads 'Integration branch: main.' as main (W2-22)@@Sprint 3 track F2
+MG12@@scripts/drivers/web.sh@@if (!(await text()).includes(String(s.value))) failStep(@@if (false) failStep(@@F2: web driver FAILs the step whose assertion did not hold (G2-21)@@Sprint 3 track F2
+MG13@@scripts/orchestrator.mjs@@for (const l of why) lines.push(@@for (const l of []) lines.push(@@F2: orchestrator ship relays the sub-gate's own reason lines, not just its name (W2-20)@@Sprint 3 track F2
+MG14@@scripts/project-profile.mjs@@if (/\bweb\b/.test(String(p.platform || ''))) {@@if (false) {@@F2: project-profile check: a web project with no build script is CANNOT EVALUATE (W2-13)@@Sprint 3 track F2
+MG15@@scripts/wave-integrate.mjs@@if (/untracked working tree files would be overwritten/i.test(l))@@if (false)@@F2: wave-integrate names untracked-file collisions instead of 'something landed' (W2-9)@@Sprint 3 track F2
+MG16@@scripts/dispatch-preflight.mjs@@'role', 'operation', 'ticket'];@@'role', 'operation', 'path', 'file', 'ticket'];@@F2: dispatch-preflight needs no --path/--file for a ticket that declares no files, and says it checked none (C2-28)@@Sprint 3 track F2
+MG17@@scripts/orchestrator.mjs@@if (unrouted.length) {@@if (false) {@@F2: orchestrator round names tickets created before risk-policy.json existed (W2-14)@@Sprint 3 track F2
+MG18@@scripts/ship-gate.sh@@grep -q '"requireActorTokens"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null || return 0@@return 0@@F2: ship-gate's printed qa_passed command mints its token inline under requireActorTokens (W2-10)@@Sprint 3 track F2
+MG19@@scripts/drivers/web.sh@@catch { cannot('Playwright is not installed in this project@@catch { out('PASS', 'Playwright is not installed in this project@@F2: web driver without Playwright is CANNOT EVALUATE with the exact install line (G2-21)@@Sprint 3 track F2
+MG20@@scripts/worktree-slot.mjs@@if (tickets.length > 1) die(1@@if (false) die(1@@a batch of tickets in one lease is REFUSED — one spawn per ticket@@worktree-slot: one tree per WRITER
 CATALOGUE
 }
 

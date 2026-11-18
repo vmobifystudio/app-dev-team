@@ -250,9 +250,34 @@ if (existsSync(ctx) && !flags.force && !flags['context-only']) {
   }
 }
 
+// W2-13: a web app's runtime gate and release artifact both start from `npm run build`. Say so now,
+// not at the first wave, when a missing build script is a CANNOT EVALUATE nobody planned for.
+let webNote = '';
+if (existsSync(join(ROOT, 'package.json'))) {
+  let scripts = null;
+  try { scripts = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scripts || {}; } catch { /* unreadable: project-profile check says so */ }
+  if (scripts && !scripts.build) {
+    webNote = '\n  package.json has NO "build" script. A web-app needs one: runtime-gate builds with `npm run build`\n' +
+      '  and release-candidate binds its output dir. Until it exists both are CANNOT EVALUATE.\n';
+  }
+}
+// W2-14: tickets created before risk-policy.json existed carry `risk: null`; nothing re-derives it.
+let riskNote = '';
+if (written.includes('risk-policy.json') && existsSync(join(ROOT, 'docs/31-board-events.jsonl'))) {
+  try {
+    const { parseEventLog, reduce } = await import('./lib/events.mjs');
+    const unrouted = [...reduce(parseEventLog(readFileSync(join(ROOT, 'docs/31-board-events.jsonl'), 'utf8')).events).tickets.values()]
+      .filter((t) => t.status !== 'done' && !t.meta?.risk).map((t) => t.id);
+    if (unrouted.length) {
+      riskNote = `\n  ${unrouted.length} ticket(s) predate this risk policy and carry no risk: ${unrouted.slice(0, 10).join(', ')}${unrouted.length > 10 ? ' …' : ''}\n` +
+        '  `orchestrator.mjs round` lists the tier each would route to; the merge routes the real diff regardless.\n';
+    }
+  } catch { /* an unreadable log is board-doctor's finding */ }
+}
+
 process.stdout.write(
   `TEAM BOOTSTRAP — wrote ${written.length} manifest(s) to docs/team/\n` +
-  written.map((w) => `  ${w}`).join('\n') + `\n  ${ctxNote}\n` + tokenNote +
+  written.map((w) => `  ${w}`).join('\n') + `\n  ${ctxNote}\n` + tokenNote + webNote + riskNote +
   '\n  These are the four inputs `dispatch-preflight` requires before any owner may be spawned.\n' +
   '  Without them a planned project cannot dispatch AT ALL — which is why 11 of 19 tickets in the\n' +
   '  recorded runs never left `created`.\n' +

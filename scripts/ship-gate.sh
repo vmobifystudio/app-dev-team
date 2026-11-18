@@ -38,6 +38,12 @@ BUGS="$ROOT/docs/51-bugs.md"
 PLAN="$ROOT/docs/50-test-plan.md"
 RELEASES="$ROOT/docs/60-releases.md"
 HERE=$(cd "$(dirname "$0")" && pwd)
+# W2-10: a printed next-step board command carries the inline-mint --token when the project
+# requires tokens — a shell variable minted in one Bash call does not survive to the next.
+token_for() {  # <role> <ticket>
+  grep -q '"requireActorTokens"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null || return 0
+  printf ' --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role %s --ticket %s)"' "$1" "$2"
+}
 
 BLOCKERS=""
 NOTES=""
@@ -117,7 +123,9 @@ waiver_for() {
 # unknown_unless_waived <artifact> <unknown-message> — the missing input still gets named either
 # way. A waived gate must never look like a skipped one, so a waiver is REPORTED, not silent.
 unknown_unless_waived() {
-  W=$(waiver_for "$1") && { note "WAIVED: $1 by $W"; return 0; }
+  # G2-19: a waiver is a FOUNDER decision. The <who> field is reported, not authenticated here;
+  # trace.mjs --only gates (run by /app-ship) refuses a WAIVED: line with no founder decision record.
+  W=$(waiver_for "$1") && { note "WAIVED: $1 by $W — founder-only: trace.mjs --only gates must find the founder's decision record"; return 0; }
   if [ -f "$RELEASES" ] && grep -q "WAIVED:.*$1" "$RELEASES" 2>/dev/null; then
     CANON=$(canonical_version 2>/dev/null || true)
     if [ -n "$CANON" ]; then
@@ -289,8 +297,8 @@ if [ -f "$ROOT/.studio-policy.json" ]; then
       # point turned back on the person who wrote it.
       unknown "requireApprovalBinding is on and HEAD is $SHIP_HEAD, but the working tree is DIRTY —
            uncommitted or untracked changes mean the tree being released is not the commit any
-           approval was bound to. Approval binding is UNKNOWN, not clear. Commit or stash the
-           changes (\`git -C $ROOT status\` lists them) and re-run."
+           approval was bound to. Approval binding is UNKNOWN, not clear. Commit (or delete) the
+           changes — never stash, a stash hides them from every gate — (\`git -C $ROOT status\` lists them) and re-run."
     else
       run_detector "approval-check" node "$HERE/approval-check.mjs" --log "$ROOT/docs/31-board-events.jsonl" \
         --policy "$ROOT/.studio-policy.json" --head "$SHIP_HEAD"
@@ -360,7 +368,7 @@ else
     else
       block "$TID is verified_static — its test suite has NEVER RUN, so 'tests green' is unproven.
            Run the suite and append the real verdict:
-             board.mjs move $TID verified --by <role> --detail \"<what ran>\"
+             board.mjs move $TID verified --by <role> --detail \"<what ran>\"$(token_for "<role>" "$TID")
            Or waive it deliberately in docs/60-releases.md:
              WAIVED: $TID — <who waived it> — <reason>"
     fi
@@ -452,12 +460,53 @@ fi
 # MARKDOWN EMPHASIS IS STRIPPED FIRST. `QA VERDICT: **HOLD**` and `**QA VERDICT:** HOLD` missed the
 # HOLD pattern, so an earlier cycle's plain `QA VERDICT: GO` in the same plan won and the gate
 # passed a release QA had held. Any HOLD line, however it is emphasised, outranks every GO.
-QAV=$(tr -d '*_' < "$PLAN" 2>/dev/null | grep -iE '^[[:space:]]*QA VERDICT:' || true)
+# G2-19: WITH AN EVENT LOG, THE GO COMES FROM THE BOARD, NOT FROM MARKDOWN. A hand-typed
+# `QA VERDICT: GO` is a sentence anyone can write; a `qa_passed` event is appended by qa-engineer
+# through the board's gate (and, under requireActorTokens, carries a token minted for that spawn).
+# So every merged/done non-QA ticket's LATEST QA event must be a qa_passed by qa-engineer — token-
+# stamped when tokens are required. A markdown HOLD still blocks: QA may hold a whole sprint.
+QA_EVENTS=""
+if [ -f "$LOG" ]; then
+  QA_EVENTS=$(node -e '
+const [lib, log, policy] = process.argv.slice(1);
+const fs = require("node:fs");
+let tokens = false; try { tokens = JSON.parse(fs.readFileSync(policy, "utf8")).requireActorTokens === true; } catch {}
+import(lib).then(({ parseEventLog }) => {
+  const { events } = parseEventLog(fs.readFileSync(log, "utf8"));
+  const last = new Map(); const landed = new Set();
+  for (const e of events) {
+    if (/^QA-/i.test(e.ticket)) continue;
+    if (e.event === "merged" || e.event === "closed") landed.add(e.ticket);
+    if (e.event === "qa_passed" || e.event === "qa_failed") last.set(e.ticket, e);
+    if (e.event === "reopened") { last.delete(e.ticket); landed.delete(e.ticket); }
+  }
+  const out = [];
+  for (const t of landed) {
+    const e = last.get(t);
+    if (!e) out.push(`${t} has no qa_passed event — QA never recorded exercising it`);
+    else if (e.event === "qa_failed") out.push(`${t}: its latest QA event is qa_failed`);
+    else if (e.by !== "qa-engineer") out.push(`${t}: qa_passed was recorded by ${e.by || "nobody"}, not qa-engineer`);
+    else if (tokens && e.actor?.mode !== "token") out.push(`${t}: qa_passed carries no actor token, and requireActorTokens is on`);
+  }
+  process.stdout.write(out.join("\n"));
+}).catch((err) => { process.stdout.write(`UNREADABLE ${err.message}`); });' \
+    "$HERE/lib/events.mjs" "$LOG" "$ROOT/.studio-policy.json" 2>/dev/null)
+  case "$QA_EVENTS" in
+    UNREADABLE*) unknown "the QA events in $LOG could not be read (${QA_EVENTS#UNREADABLE }) — QA's verdict is UNKNOWN." ;;
+    ?*) block "QA has not passed every landed ticket on the board:
+$(printf '%s\n' "$QA_EVENTS" | sed 's/^/             /')
+           qa-engineer records each with: board.mjs move <ID> qa_passed --by qa-engineer$(token_for qa-engineer "<ID>")" ;;
+  esac
+fi
 if [ -f "$PLAN" ]; then
+  # G2-24: the plan is read only once it is known to exist.
+  QAV=$(tr -d '*_' < "$PLAN" | grep -iE '^[[:space:]]*QA VERDICT:' || true)
   if printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD\b'; then
     block "$(printf '%s\n' "$QAV" | grep -iE 'QA VERDICT:[[:space:]]*HOLD\b' | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
   elif printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*GO\b'; then
     :
+  elif [ -f "$LOG" ]; then
+    : # the board's qa_passed events above ARE the verdict; a missing GO line is not a gap
   else
     unknown_unless_waived "qa-verdict" \
       "docs/50-test-plan.md has no 'QA VERDICT: GO' or 'QA VERDICT: HOLD — <reason>' line — whether qa-engineer is willing to ship is UNKNOWN, not clear. Have qa-engineer add the verdict line, then re-run."

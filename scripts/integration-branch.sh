@@ -60,7 +60,7 @@ fi
 read_declared() {
   [ -f "$1" ] || return 1
   sed -nE 's/.*[Ii]ntegration branch[[:space:]]*(:|=|—|–|-|\||is)[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\2/p' "$1" \
-    | head -n 1
+    | head -n 1 | sed -E 's/[./]+$//'   # W2-22: "Integration branch: main." — a branch cannot end in . or /
 }
 
 DECLARED=""

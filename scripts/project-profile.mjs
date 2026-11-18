@@ -124,6 +124,15 @@ function cmdCheck() {
     process.stdout.write(`  PASS             ${t.tool}${t.expect ? ` (${t.expect})` : ''}\n`);
   }
 
+  // W2-13: a web project's runtime gate and release artifact both start from `npm run build`.
+  // With no build script there is no build output to gate or bind — UNPROVEN, not "nothing to build".
+  if (/\bweb\b/.test(String(p.platform || ''))) {
+    let scripts = null;
+    try { scripts = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).scripts || {}; } catch { /* no package.json */ }
+    if (scripts?.build) process.stdout.write(`  PASS             package.json build script (${scripts.build})\n`);
+    else { process.stdout.write('  CANNOT EVALUATE  package.json has no "build" script — add the command that writes the deployable output (dist/)\n'); unevaluable += 1; }
+  }
+
   const test = p.test || {};
   process.stdout.write(`\n  test.fast  ${test.fast || 'UNSTATED — every ticket will pay for the full suite'}\n`);
   process.stdout.write(`  test.full  ${test.full || 'UNSTATED — nothing states what must pass before merge'}\n`);

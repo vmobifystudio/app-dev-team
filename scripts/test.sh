@@ -2171,8 +2171,8 @@ cp "$TMP/out" "$TMP/rg-pass.txt"
 assert_has "$TMP/rg-pass.txt" "^RESULT: PASS" "...and says PASS on the line an agent reads"
 assert_has "$TMP/rg-pass.txt" "still running after 3s" "...and states the liveness check it based that on"
 assert_has "$TMP/rg-pass.txt" "com.example.app" "...naming the package it actually launched"
-assert_has "$TMP/rg-pass.txt" "docs/evidence/runtime-" "...and the evidence artifact it captured"
-[ -s "$RGP/docs/evidence/runtime-$(date +%F)-android.png" ] \
+assert_has "$TMP/rg-pass.txt" "docs/54-evidence/runtime/runtime-" "...and the evidence artifact it captured"
+[ -s "$RGP/docs/54-evidence/runtime/runtime-$(date +%F)-android.png" ] \
   && ok "...which exists on disk, rather than being a path in a sentence" \
   || bad "...which exists on disk, rather than being a path in a sentence"
 
@@ -2206,7 +2206,7 @@ case "$*" in
 esac
 EOF
 chmod +x "$NOSHOTSTUB/adb"; cp "$ASTUB/aapt2" "$NOSHOTSTUB/aapt2"
-rm -rf "$RGP/docs/evidence"
+rm -rf "$RGP/docs/54-evidence/runtime"
 assert_exit 2 "a live app whose screenshot could not be captured is CANNOT EVALUATE, never PASS" \
   env PATH="$NOSHOTSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP"
 cp "$TMP/out" "$TMP/rg-noshot.txt"
@@ -8174,11 +8174,11 @@ else bad "the CLI and the shared reducer report the same verdict" "cli=$RD_CLI l
 # One list (scripts/lib/operational-paths.txt) excludes exactly those; a source change still counts.
 OPD="$TMP/ops-dirty"; rm -rf "$OPD"; mkdir -p "$OPD/docs/team"
 ( cd "$OPD" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
-  && echo a > a.txt && echo '{}' > docs/team/keep.json && echo b > docs/31-board.md && git add -A && git commit -qm init ) >/dev/null 2>&1
+  && echo a > a.txt && echo '{}' > docs/team/runs.jsonl && echo b > docs/31-board.md && git add -A && git commit -qm init ) >/dev/null 2>&1
 ( cd "$OPD" && node "$HERE/board.mjs" add OP-001 --title t --owner ios-developer --by tech-manager ) >/dev/null 2>&1
 mkdir -p "$OPD/docs/53-reviews" "$OPD/docs/daily" "$OPD/.agent-wt/OP-001"
 echo r > "$OPD/docs/53-reviews/r.md"; echo d > "$OPD/docs/daily/d.md"; echo w > "$OPD/.agent-wt/OP-001/f"
-echo x >> "$OPD/docs/31-board.md"; echo '{"x":1}' > "$OPD/docs/team/keep.json"; : > "$OPD/.studio-stop"
+echo x >> "$OPD/docs/31-board.md"; echo '{"x":1}' > "$OPD/docs/team/runs.jsonl"; : > "$OPD/.studio-stop"
 op_dirty() { node -e "import('$HERE/lib/readiness.mjs').then(m=>process.stdout.write(String(m.reduceReadiness('$OPD').candidate.dirty)))" 2>/dev/null; }
 [ "$(op_dirty)" = false ] && ok "readiness: a tree dirty ONLY in the studio's operational files is clean (W3)" \
   || bad "readiness: a tree dirty ONLY in the studio's operational files is clean (W3)" "dirty=$(op_dirty); $(cd "$OPD" && git status --porcelain)"
@@ -8194,8 +8194,8 @@ grep -q "working tree is DIRTY" "$TMP/opd-sg.txt" \
   || ok "ship-gate: operational files do not make approval binding UNKNOWN (G-F6)"
 # The artifact and journey gates stamp their own `dirty`; they must read the same list, or
 # readiness shows them STALE on a tree dirty only in studio files.
-echo bin > "$OPD/docs/team/app.ipa"
-( cd "$OPD" && node "$HERE/release-candidate.mjs" record --artifact docs/team/app.ipa --platform ios --by release-manager --root . ) >/dev/null 2>&1
+mkdir -p "$OPD/docs/54-evidence"; echo bin > "$OPD/docs/54-evidence/app.ipa"   # an operational dir (G2-18 narrowed docs/team)
+( cd "$OPD" && node "$HERE/release-candidate.mjs" record --artifact docs/54-evidence/app.ipa --platform ios --by release-manager --root . ) >/dev/null 2>&1
 grep -q '"dirty":false' "$OPD/docs/team/release-candidates.jsonl" 2>/dev/null \
   && ok "release-candidate: operational files do not record the candidate as dirty (W3)" \
   || bad "release-candidate: operational files do not record the candidate as dirty (W3)" "$(cat "$OPD/docs/team/release-candidates.jsonl" 2>&1 | head -3)"
@@ -8748,28 +8748,36 @@ WS="$TMP/wslot"; rm -rf "$WS"; mkdir -p "$WS/docs"
 printf 'Integration branch: main\n' > "$WS/docs/23-git-strategy.md"
 ws_() { ( cd "$WS" && node "$HERE/worktree-slot.mjs" --root . "$@" ); }
 
-ws_ lease --owner ios-developer --tickets APP-001,APP-002 >"$TMP/ws1.txt" 2>&1
-[ -d "$WS/.agent-wt/ios-developer" ] \
-  && ok "a slot is leased per OWNER and holds all of that owner's tickets" \
-  || bad "a slot is leased per OWNER and holds all of that owner's tickets" "$(cat "$TMP/ws1.txt")"
-assert_has "$TMP/ws1.txt" "spawn-gate.sh ios-developer" "...and tells the caller to gate on OWNERS, which is what now has a tree each"
+ws_ lease --owner ios-developer --tickets APP-001 >"$TMP/ws1.txt" 2>&1
+[ -d "$WS/.agent-wt/ios-developer-1" ] \
+  && ok "a slot is leased per TICKET, keyed <owner>-<n> (C2-6)" \
+  || bad "a slot is leased per TICKET, keyed <owner>-<n> (C2-6)" "$(cat "$TMP/ws1.txt")"
+assert_has "$TMP/ws1.txt" 'spawn-gate.sh" ios-developer-1' "...and tells the caller to gate on the SLOTS, by the plugin path (W2-26)"
+assert_has "$TMP/ws1.txt" "Spawn ONE ios-developer for APP-001" "...one spawn per ticket (W2-15)"
 
-# spawn-gate needs no change at all: it asks whether <dir>/<name> is a real worktree, and an owner
+# spawn-gate needs no change at all: it asks whether <dir>/<name> is a real worktree, and a slot
 # name is a name. That the existing gate accepts the new shape unmodified is the assertion.
 assert_exit 0 "spawn-gate accepts an owner-keyed slot with no modification to the gate itself" \
-  sh -c 'cd "$1" && sh "$2/spawn-gate.sh" ios-developer' sh "$WS" "$HERE"
+  sh -c 'cd "$1" && sh "$2/spawn-gate.sh" ios-developer-1' sh "$WS" "$HERE"
 
-assert_exit 1 "a second wave into a slot still holding the first is REFUSED" \
+assert_exit 0 "a second ticket for the same owner gets its OWN slot — one platform runs several ICs (C2-6)" \
   ws_ lease --owner ios-developer --tickets APP-009
+[ -d "$WS/.agent-wt/ios-developer-2" ] && ok "...as ios-developer-2" || bad "...as ios-developer-2" "$(ls "$WS/.agent-wt")"
+assert_exit 1 "a batch of tickets in one lease is REFUSED — one spawn per ticket" \
+  ws_ lease --owner ios-developer --tickets APP-010,APP-011
+assert_exit 1 "a ticket already leased to one slot is REFUSED to another writer" \
+  ws_ lease --owner android-developer --tickets APP-009
 assert_exit 1 "leasing past the pool size is REFUSED — that is the parallelism cap doing its job" \
   ws_ lease --owner android-developer --tickets APP-003 --pool 1
-ws_ release --owner ios-developer >/dev/null 2>&1
+assert_exit 1 "release --owner with two slots refuses to guess which" ws_ release --owner ios-developer
+ws_ release --owner ios-developer-1 >/dev/null 2>&1
+ws_ release --owner ios-developer --tickets APP-009 >/dev/null 2>&1
 assert_exit 0 "...and releasing frees the slot for the next owner" \
   ws_ lease --owner android-developer --tickets APP-003 --pool 1
 
 # A released lease leaves the TREE, and the reaper is what reclaims it — with its dirty check intact.
 ( cd "$WS" && node "$HERE/worktree-reap.mjs" --root . ) >"$TMP/ws2.txt" 2>&1
-assert_has "$TMP/ws2.txt" "ios-developer" "a released slot's tree becomes the reaper's problem, not a silent leak"
+assert_has "$TMP/ws2.txt" "ios-developer-1" "a released slot's tree becomes the reaper's problem, not a silent leak"
 
 # --- worktree-slot: a dirty base tree is warned about, not silently forgotten (H9, 2026-08-09) -----
 #
@@ -9418,8 +9426,10 @@ SLOTF="$TMP/slot-force"; rm -rf "$SLOTF"; mkdir -p "$SLOTF/docs"
 ( cd "$SLOTF" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
   && git commit -q --allow-empty -m init && printf 'Integration branch: main\n' > docs/23-git-strategy.md
   node "$HERE/worktree-slot.mjs" --root . lease --owner ios-developer --tickets APP-001 ) >/dev/null 2>&1
-assert_exit 1 "--force no longer buys a second lease past the guard its own header calls the one that matters" \
-  sh -c 'cd "$1" && node "$2/worktree-slot.mjs" --root . lease --owner ios-developer --tickets APP-009 --force' sh "$SLOTF" "$HERE"
+assert_exit 0 "--force no longer buys a second lease past the guard its own header calls the one that matters" \
+  sh -c 'cd "$1" && node "$2/worktree-slot.mjs" --root . lease --owner ios-developer --tickets APP-001 --force' sh "$SLOTF" "$HERE"
+[ -d "$SLOTF/.agent-wt/ios-developer-2" ] && bad "...and no second slot for the same ticket" "ios-developer-2 exists" \
+  || ok "...and no second slot for the same ticket"
 
 
 # --- N1/N9: one predicate for "has this shipped", swept across every reader ------------------------
@@ -10264,6 +10274,175 @@ slg Bash agent-1 command "tail docs/team/actor-tokens.jsonl"
 node -e 'process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "a", cwd: process.argv[1], tool_input: { command: "node board.mjs actor mint" } }))' "$TMP" | sh "$SLG" >/dev/null 2>&1
 [ $? = 0 ] && ok "S2: guard-gate-writes is a no-op outside an app-dev-team project" || bad "S2: guard-gate-writes is a no-op outside an app-dev-team project"
 rm -rf "$SL"
+
+# --- Sprint 3 track F2: gate & loop scripts ------------------------------------------------------
+# G2-11/18/19/21/23/24, W2-3/9/10/12-15/19/20/22/26, C2-6/28, S2-25 (sprint3 brief).
+F2="$TMP/f2"; rm -rf "$F2"; mkdir -p "$F2"
+f2git() { git -c user.email=t@t.t -c user.name=T "$@"; }
+
+# ·· G2-11: readiness — a dirty tree is never PASS, and a result must be the gate it is filed as
+F2R="$F2/ready"; mkdir -p "$F2R/build"
+( cd "$F2R" && git init -q -b main . && printf 'BIN' > build/app.ipa && echo a > a.txt && mkdir -p web-src && echo '<p>' > web-src/index.html \
+  && mkdir -p docs/team && echo '{}' > docs/team/risk-policy.json && git add -A && f2git commit -qm init ) >/dev/null 2>&1
+F2H=$(git -C "$F2R" rev-parse HEAD)
+printf 'ran\n' > "$F2/gl.txt"
+f2gate() {  # <gate> <out> [dirty] — no dirty argument records null ("could not tell")
+  ( cd "$F2R" && node "$HERE/lib/evidence.mjs" gate --gate "$1" --result PASS --log "$F2/gl.txt" --out "$2" --head "$F2H" ${3:+--dirty "$3"} ) >/dev/null 2>&1; }
+f2gate journey-gate docs/team/journey-result.json false
+f2gate runtime-gate docs/team/runtime-result.json false
+( cd "$F2R" && node "$HERE/release-candidate.mjs" record --artifact build/app.ipa --platform ios --root . ) >/dev/null 2>&1
+f2verdict() { node -e 'import(process.argv[1]).then((m)=>process.stdout.write(m.reduceReadiness(process.argv[2]).verdict))' "$HERE/lib/readiness.mjs" "$F2R"; }
+f2gstate() { node -e 'import(process.argv[1]).then((m)=>{const g=m.reduceReadiness(process.argv[2]).gates.find((x)=>x.gate===process.argv[3]);process.stdout.write(g.state+" "+g.detail)})' "$HERE/lib/readiness.mjs" "$F2R" "$1"; }
+[ "$(f2verdict)" = PASS ] && ok "F2: readiness PASSes a clean candidate whose every gate re-derives (control)" \
+  || bad "F2: readiness PASSes a clean candidate whose every gate re-derives (control)" "$(node "$HERE/readiness.mjs" --root "$F2R")"
+echo b >> "$F2R/a.txt"
+[ "$(f2verdict)" = STALE ] && ok "F2: readiness: a candidate with uncommitted source is STALE, never PASS (G2-11)" \
+  || bad "F2: readiness: a candidate with uncommitted source is STALE, never PASS (G2-11)" "$(f2verdict)"
+( cd "$F2R" && git checkout -q -- a.txt )
+echo '{"rules":[]}' > "$F2R/docs/team/risk-policy.json"
+[ "$(f2verdict)" = STALE ] && ok "F2: an edited docs/team/risk-policy.json is a real change, not studio bookkeeping (G2-18)" \
+  || bad "F2: an edited docs/team/risk-policy.json is a real change, not studio bookkeeping (G2-18)" "$(f2verdict)"
+( cd "$F2R" && git checkout -q -- docs/team/risk-policy.json && echo x >> docs/team/runs.jsonl )
+[ "$(f2verdict)" = PASS ] && ok "F2: ...while the loop's own docs/team/runs.jsonl still is (G2-18)" \
+  || bad "F2: ...while the loop's own docs/team/runs.jsonl still is (G2-18)" "$(f2verdict)"
+f2gate runtime-gate docs/team/runtime-result.json
+case "$(f2gstate runtime)" in STALE*clean*) ok "F2: readiness: a gate result whose dirty is null (unknown) is STALE (G2-11)" ;;
+  *) bad "F2: readiness: a gate result whose dirty is null (unknown) is STALE (G2-11)" "$(f2gstate runtime)" ;; esac
+f2gate journey-gate docs/team/runtime-result.json false
+case "$(f2gstate runtime)" in CANNOT_EVALUATE*expected*) ok "F2: readiness: a journey result filed as runtime-result.json is not a runtime verdict (G2-11)" ;;
+  *) bad "F2: readiness: a journey result filed as runtime-result.json is not a runtime verdict (G2-11)" "$(f2gstate runtime)" ;; esac
+
+# ·· G2-23: the release artifact is the platform's build output
+assert_exit 1 "F2: release-candidate refuses a record with no --platform (G2-23)" \
+  node "$HERE/release-candidate.mjs" record --artifact build/app.ipa --root "$F2R"
+cp "$F2R/build/app.ipa" "$F2R/build/notes.txt"
+assert_exit 1 "F2: release-candidate refuses an ios artifact that is not an .ipa (G2-23)" \
+  node "$HERE/release-candidate.mjs" record --artifact build/notes.txt --platform ios --root "$F2R"
+assert_exit 1 "F2: release-candidate refuses a web dir of git-tracked files — that is source (G2-23)" \
+  node "$HERE/release-candidate.mjs" record --artifact web-src --platform web --root "$F2R"
+
+# ·· G2-21: the web journey driver — Playwright from the project, never a fake PASS
+F2W="$F2/web"; mkdir -p "$F2W/node_modules/playwright"; echo '{}' > "$F2W/package.json"
+cat > "$F2W/node_modules/playwright/index.js" <<'JS'
+const fs = require('fs'); const BODY = process.env.FAKE_BODY || 'saved 137';
+const loc = () => ({ first() { return this; }, async waitFor() {}, async click() {}, async fill() {}, async evaluate() { return '137'; },
+  async boundingBox() { return { width: 60, height: 60 }; }, async innerText() { return BODY; } });
+exports.chromium = { async launch() { return { async newPage() { return { async goto() {}, locator: loc, async goBack() {},
+  async screenshot({ path }) { fs.writeFileSync(path, 'png'); } }; }, async close() {} }; } };
+JS
+printf '{"schema":"journey/v1","id":"wj","steps":[{"action":"launch"},{"action":"enter","id":"n","value":"137"},{"assert":"text_visible","value":"137"}]}\n' > "$F2W/j.json"
+f2web() { ( cd "$F2W" && sh "$HERE/drivers/web.sh" --root . --journey j.json "$@" ); }
+f2web --url http://127.0.0.1:1 >"$F2/w1.txt" 2>&1
+[ $? = 0 ] && grep -q '"result":"PASS"' "$F2/w1.txt" && [ -s "$F2W/docs/54-evidence/journeys/wj.png" ] \
+  && ok "F2: web driver PASSes a journey whose steps held, with a screenshot in docs/54-evidence (G2-21, S2-25)" \
+  || bad "F2: web driver PASSes a journey whose steps held, with a screenshot in docs/54-evidence (G2-21, S2-25)" "$(cat "$F2/w1.txt")"
+( export FAKE_BODY=nothing; f2web --url http://127.0.0.1:1 ) >"$F2/w2.txt" 2>&1
+[ $? = 1 ] && grep -q '"failed_step":3' "$F2/w2.txt" && ok "F2: web driver FAILs the step whose assertion did not hold (G2-21)" \
+  || bad "F2: web driver FAILs the step whose assertion did not hold (G2-21)" "$(cat "$F2/w2.txt")"
+f2web >"$F2/w3.txt" 2>&1
+[ $? = 2 ] && grep -q 'STUDIO_WEB_URL' "$F2/w3.txt" && ok "F2: web driver with no app URL is CANNOT EVALUATE, naming the fix" \
+  || bad "F2: web driver with no app URL is CANNOT EVALUATE, naming the fix" "$(cat "$F2/w3.txt")"
+rm -rf "$F2W/node_modules"; f2web --url http://127.0.0.1:1 >"$F2/w4.txt" 2>&1
+[ $? = 2 ] && grep -q 'npm i -D playwright && npx playwright install chromium' "$F2/w4.txt" \
+  && ok "F2: web driver without Playwright is CANNOT EVALUATE with the exact install line (G2-21)" \
+  || bad "F2: web driver without Playwright is CANNOT EVALUATE with the exact install line (G2-21)" "$(cat "$F2/w4.txt")"
+
+# ·· W2-13: a web project with no build script is UNPROVEN, at the profile and at bootstrap
+F2P="$F2/prof"; mkdir -p "$F2P/docs/team"; printf '{"scripts":{"test":"node -e 0"}}\n' > "$F2P/package.json"
+printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{}}\n' > "$F2P/docs/team/project-profile.json"
+assert_exit 2 "F2: project-profile check: a web project with no build script is CANNOT EVALUATE (W2-13)" \
+  node "$HERE/project-profile.mjs" check --root "$F2P"
+assert_has "$TMP/out" 'no "build" script' "F2: ...saying the build script is what is missing"
+F2B="$F2/boot"; mkdir -p "$F2B"; printf '{"scripts":{}}\n' > "$F2B/package.json"
+node "$HERE/team-bootstrap.mjs" --root "$F2B" >"$F2/boot.txt" 2>&1
+assert_has "$F2/boot.txt" 'NO "build" script' "F2: team-bootstrap warns a web project that it has no build script (W2-13)"
+
+# ·· W2-19: trace at Gate 1
+F2T="$F2/trace"; mkdir -p "$F2T/docs/00-founder-intent"; printf 'brief\n' > "$F2T/docs/00-founder-intent/brief.md"
+printf '# PRD\n\n- [G-001] Track readings src: docs/00-founder-intent/brief.md\n- [F-001] Record a reading src: G-001\n- [AC-001] saves it src: F-001 ver: T-001\n' > "$F2T/docs/10-prd.md"
+printf '# Plan\n\n- [T-001] save test src: AC-001\n' > "$F2T/docs/50-test-plan.md"
+node "$HERE/trace.mjs" --project-root "$F2T" --only trace >/dev/null 2>&1; F2T0=$?
+node "$HERE/trace.mjs" --project-root "$F2T" --only trace --intent >"$F2/tr.txt" 2>&1; F2T1=$?
+[ "$F2T0" = 2 ] && [ "$F2T1" != 2 ] && ok "F2: trace --intent evaluates the intent chain at Gate 1 instead of CANNOT EVALUATE for a missing board (W2-19)" \
+  || bad "F2: trace --intent evaluates the intent chain at Gate 1 instead of CANNOT EVALUATE for a missing board (W2-19)" "plain=$F2T0 intent=$F2T1 $(cat "$F2/tr.txt")"
+
+# ·· W2-22: a trailing full stop is prose, not part of the branch name
+F2I="$F2/ib"; mkdir -p "$F2I/docs"
+( cd "$F2I" && git init -q -b main . && f2git commit -q --allow-empty -m i ) >/dev/null 2>&1
+printf 'The rule.\nIntegration branch: main.\n' > "$F2I/docs/23-git-strategy.md"
+[ "$(sh "$HERE/integration-branch.sh" "$F2I" 2>/dev/null)" = main ] && ok "F2: integration-branch reads 'Integration branch: main.' as main (W2-22)" \
+  || bad "F2: integration-branch reads 'Integration branch: main.' as main (W2-22)" "$(sh "$HERE/integration-branch.sh" "$F2I" 2>&1)"
+
+# ·· the loop fixture: a board with a merged ticket, a risk policy and a wave
+F2L="$F2/loop"; mkdir -p "$F2L/docs/team" "$F2L/docs/53-reviews"
+( cd "$F2L" && git init -q -b main . && printf 'docs/\n.agent-wt/\n' > .gitignore && printf '#!/bin/sh\necho "1 tests run: 1 passing"\n' > run-tests.sh \
+  && git add -A && f2git commit -qm init ) >/dev/null 2>&1
+printf 'Integration branch: main\n' > "$F2L/docs/23-git-strategy.md"
+printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"sh run-tests.sh","full":"sh run-tests.sh"}}\n' > "$F2L/docs/team/project-profile.json"
+( cd "$F2L" && git checkout -q -b feat/LP-001-auth main && echo login > auth.txt && git add auth.txt && f2git commit -qm LP-001 && git checkout -q main ) >/dev/null 2>&1
+( cd "$F2L"
+  node "$HERE/board.mjs" add LP-001 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move LP-001 claimed --by ios-developer
+  node "$HERE/board.mjs" move LP-001 done_reported --by ios-developer
+  node "$HERE/board.mjs" move LP-001 verified_static --by tech-manager --detail "deferred to wave"
+  node "$HERE/board.mjs" move LP-001 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/LP-001-auth\n\n## Not checked\nNothing.\n' > docs/53-reviews/LP-001-cycle-0.md
+  node "$HERE/board.mjs" move LP-001 approved --by code-reviewer --verdict docs/53-reviews/LP-001-cycle-0.md
+  node "$HERE/board.mjs" move LP-001 merged --by tech-manager ) >/dev/null 2>&1
+printf '{"schema":"risk-policy/v1","default":{"risk":"low","model":"fast","approvals":[],"required_evidence":[]},"rules":[{"pattern":"auth","risk":"high","model":"frontier","approvals":["code-reviewer"],"required_evidence":["review"]}]}\n' > "$F2L/docs/team/risk-policy.json"
+
+# G2-19 / G2-24: ship-gate reads QA's verdict from the board, and never reads a plan that is not there
+sh "$HERE/ship-gate.sh" "$F2L" >"$F2/sg.txt" 2>"$F2/sg.err"
+assert_has "$F2/sg.txt" "LP-001 has no qa_passed event" "F2: ship-gate blocks a merged ticket with no qa_passed EVENT, whatever the markdown says (G2-19)"
+grep -q "50-test-plan" "$F2/sg.err" && bad "F2: ship-gate does not read docs/50-test-plan.md before checking it exists (G2-24)" "$(cat "$F2/sg.err")" \
+  || ok "F2: ship-gate does not read docs/50-test-plan.md before checking it exists (G2-24)"
+printf '{"requireActorTokens":true}\n' > "$F2L/.studio-policy.json"
+sh "$HERE/ship-gate.sh" "$F2L" >"$F2/sg2.txt" 2>&1
+assert_has "$F2/sg2.txt" 'qa_passed --by qa-engineer --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role qa-engineer' \
+  "F2: ship-gate's printed qa_passed command mints its token inline under requireActorTokens (W2-10)"
+rm -f "$F2L/.studio-policy.json"
+
+# W2-20: orchestrator ship relays each failing sub-gate's own reasons
+( cd "$F2L" && node "$HERE/orchestrator.mjs" ship ) >"$F2/os.txt" 2>&1
+grep -q '^      | .*LP-001' "$F2/os.txt" && ok "F2: orchestrator ship relays the sub-gate's own reason lines, not just its name (W2-20)" \
+  || bad "F2: orchestrator ship relays the sub-gate's own reason lines, not just its name (W2-20)" "$(cat "$F2/os.txt")"
+
+# W2-14: a ticket that predates the risk policy is named, with the tier it would route to
+( cd "$F2L" && node "$HERE/orchestrator.mjs" round ) >"$F2/or.txt" 2>&1
+assert_has "$F2/or.txt" "RISK — 1 ticket(s) have no planned risk" "F2: orchestrator round names tickets created before risk-policy.json existed (W2-14)"
+
+# W2-3 / design decision 6: a high-risk ticket lands only on a wave that passed the runtime gate
+printf '#!/bin/sh\necho "RESULT: CANNOT EVALUATE — stub"\nexit 2\n' > "$F2/rg-no.sh"
+printf '#!/bin/sh\necho "RESULT: PASS — stub"\nexit 0\n' > "$F2/rg-ok.sh"
+( cd "$F2L" && STUDIO_RUNTIME_GATE="$F2/rg-no.sh" node "$HERE/wave-integrate.mjs" --root . --wave 1 ) >"$F2/wv1.txt" 2>&1; F2RC=$?
+[ "$F2RC" = 2 ] && grep -q "WAVE NOT LANDABLE" "$F2/wv1.txt" && grep -q "LP-001 (high)" "$F2/wv1.txt" \
+  && ok "F2: wave-integrate will not land a high-risk ticket (routed from its diff) until runtime passes on the wave (W2-3)" \
+  || bad "F2: wave-integrate will not land a high-risk ticket (routed from its diff) until runtime passes on the wave (W2-3)" "rc=$F2RC $(tail -8 "$F2/wv1.txt")"
+( cd "$F2L" && git worktree remove --force .agent-wt/integration-wave-1 && git branch -D integration/wave-1 ) >/dev/null 2>&1
+printf '{"requireActorTokens":true}\n' > "$F2L/.studio-policy.json"
+( cd "$F2L" && STUDIO_RUNTIME_GATE="$F2/rg-ok.sh" node "$HERE/wave-integrate.mjs" --root . --wave 2 ) >"$F2/wv2.txt" 2>&1; F2RC=$?
+[ "$F2RC" = 0 ] && ok "F2: ...and lands it once the runtime gate passes on the merged tree (W2-3)" \
+  || bad "F2: ...and lands it once the runtime gate passes on the merged tree (W2-3)" "rc=$F2RC $(tail -8 "$F2/wv2.txt")"
+assert_has "$F2/wv2.txt" '--token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket LP-001)"' \
+  "F2: wave-integrate's printed verified command mints its token inline under requireActorTokens (W2-10)"
+rm -f "$F2L/.studio-policy.json"
+# W2-9: BASE did not move; an untracked copy of a file the wave adds is what blocks the fast-forward
+echo stray > "$F2L/auth.txt"
+( cd "$F2L" && node "$HERE/wave-integrate.mjs" --root . --wave 2 --push ) >"$F2/wv3.txt" 2>&1
+assert_has "$F2/wv3.txt" "UNTRACKED files the wave adds" "F2: wave-integrate names untracked-file collisions instead of 'something landed' (W2-9)"
+assert_has "$F2/wv3.txt" "      auth.txt" "F2: ...listing the colliding file"
+rm -f "$F2L/auth.txt"
+
+# ·· C2-28: dispatch-preflight on a ticket that declares no files needs no --path/--file
+F2D="$F2/disp"; mkdir -p "$F2D/docs"
+( cd "$F2D" && git init -q -b main . && printf '# PRD\n' > docs/10-prd.md && git add -A && f2git commit -qm i ) >/dev/null 2>&1
+( cd "$F2D" && node "$HERE/team-bootstrap.mjs" --root . && node "$HERE/board.mjs" add DP-001 --title t --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+( cd "$F2D" && node "$HERE/dispatch-preflight.mjs" --root . --context docs/team/context-manifest.json --schedule docs/team/schedule.json \
+  --capability docs/team/capabilities.json --risk docs/team/risk-policy.json --role ios-developer --operation write --ticket DP-001 ) >"$F2/dp.txt" 2>&1; F2RC=$?
+[ "$F2RC" = 0 ] && grep -q "NOT CHECKED" "$F2/dp.txt" \
+  && ok "F2: dispatch-preflight needs no --path/--file for a ticket that declares no files, and says it checked none (C2-28)" \
+  || bad "F2: dispatch-preflight needs no --path/--file for a ticket that declares no files, and says it checked none (C2-28)" "rc=$F2RC $(tail -5 "$F2/dp.txt")"
+rm -rf "$F2"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

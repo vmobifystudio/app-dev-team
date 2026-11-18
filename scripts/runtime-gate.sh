@@ -115,7 +115,7 @@ record() {  # <PASS|FAIL|CANNOT_EVALUATE> — bound to HEAD and tree cleanliness
 . "$(dirname "$0")/build-env.sh"
 
 DATE=$(date +%F)
-EVIDENCE="$ROOT/docs/evidence"
+EVIDENCE="$ROOT/docs/54-evidence/runtime"   # S2-25: the one evidence-bundle dir; gate records live in docs/team/evidence/
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
@@ -379,7 +379,7 @@ ios_gate() {
       SHOT="$EVIDENCE/runtime-$DATE-ios.png"
       mkdir -p "$EVIDENCE"
       if xcrun simctl io "$UDID" screenshot "$SHOT" >/dev/null 2>&1; then
-        pass "ios    " "built, installed, launched and still running after 3s ($BUNDLE). Evidence: docs/evidence/runtime-$DATE-ios.png"
+        pass "ios    " "built, installed, launched and still running after 3s ($BUNDLE). Evidence: docs/54-evidence/runtime/runtime-$DATE-ios.png"
       else
         # EVIDENCE IS NOT OPTIONAL. This used to `pass` with the reason "Screenshot capture failed —
         # no evidence artifact", which is a PASS whose own text says it proved nothing: /app-ship
@@ -497,7 +497,7 @@ android_gate() {
       SHOT="$EVIDENCE/runtime-$DATE-android.png"
       mkdir -p "$EVIDENCE"
       if adb -s "$DEV" exec-out screencap -p > "$SHOT" 2>/dev/null && [ -s "$SHOT" ]; then
-        pass "android" "built, installed, launched and still running after 3s ($PKG). Evidence: docs/evidence/runtime-$DATE-android.png"
+        pass "android" "built, installed, launched and still running after 3s ($PKG). Evidence: docs/54-evidence/runtime/runtime-$DATE-android.png"
       else
         rm -f "$SHOT"
         # EVIDENCE IS NOT OPTIONAL — see the iOS branch above for the full reasoning. Reported by

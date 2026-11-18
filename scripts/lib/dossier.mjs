@@ -102,11 +102,11 @@ export function artifactEntry(root, head) {
   const rc = read.records.at(-1);
   const recorded = rc.commit || null;
 
-  if (rc.dirty === true) {
+  if (rc.dirty !== false) { // null = "could not tell", never clean (G2-11)
     return {
       gate,
       state: 'STALE',
-      detail: `artifact was built from a DIRTY tree at ${recorded ? recorded.slice(0, 12) : 'an unknown commit'} — it cannot be reproduced from any commit`,
+      detail: `artifact was built from a ${rc.dirty === true ? 'DIRTY' : 'not-known-clean'} tree at ${recorded ? recorded.slice(0, 12) : 'an unknown commit'} — it cannot be reproduced from any commit`,
       subject: recorded,
     };
   }
