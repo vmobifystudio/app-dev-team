@@ -117,6 +117,9 @@ truth and the command documentation must be corrected.
 | Warm/cold contract | `manager-harness.mjs`, `eval/manager-scenario.json` | Persistent and respawned managers produce identical state |
 | Ticket contract | `board.mjs add --invariant/--rollback/--file`, `risk-router.mjs` | A high/critical-risk ticket (derived from `--file`, never hand-typed) reaching review with no recorded invariant |
 | Release health | `release-health.mjs` | Widening a staged rollout on a judgment call instead of a measured crash-free rate and open-P0 count |
+| Actor tokens | `lib/actor.mjs`, `board.mjs actor mint`, `docs/team/actor-tokens.jsonl` | Under `requireActorTokens`, a gate event (`verified`, `approved`, `merged`, `qa_passed`, `closed`) recorded by a role that only typed `--by` — `spawn-prompt.mjs compose` mints the spawned agent's per-ticket token into its prompt; the orchestrator mints only for its own `--by tech-manager` events |
+| Re-derived evidence | `lib/evidence.mjs`, `docs/team/evidence/` | A `verified`/`qa_passed` carried by free text — `--evidence` must be a record `verify-done.sh`/`wave-integrate.mjs`/journey-gate wrote, which the board re-hashes and re-classifies |
+| Diff risk | `lib/risk.mjs` | A ticket planned `medium` merging on medium approvals after its actual diff touched high-risk paths — `merged` routes on the diff, not the plan |
 | Incident command | `agents/incident-commander.md` (conditional) | An incident coordinated by whoever happens to be free, instead of one independent authority for its duration |
 
 ### Command groups
@@ -294,9 +297,10 @@ On **utility tier**, `ceo` absorbs the `cpo` charter (one founder pass) and `cto
 | Role | Model | Owns |
 |---|---|---|
 | `tech-lead` | opus | Per-platform impl specs, module boundaries, reusable patterns, the mid-sprint Q&A batch |
-| `tech-manager` | opus | Sprint plan, the board, the merge gate, standups, findings register |
+| `tech-manager` | sonnet | Sprint plan, the board, standups, findings register |
 
-`tech-manager` is the only role that runs the merge, and it is the operating system of the pod.
+`tech-manager` is the operating system of the pod. It no longer runs the merge gate: the
+orchestrator runs it inline in `/app-build` step 4, and `wave-integrate.mjs` does the git merges.
 
 ### Engineering — builds and verifies
 
@@ -325,7 +329,7 @@ silent error is most expensive.
 | `chief-of-staff` | sonnet | Decision briefs, unresolved commitments, founder inbox |
 | `web-developer` | sonnet | TypeScript/browser implementation — makes `web-app` staffed |
 | `test-automation-engineer` | sonnet | Test infrastructure, device and state matrix, evidence bundles, flake detection |
-| `privacy-reviewer` | opus | Data inventory, consent, retention, regional compliance (flagship) |
+| `privacy-reviewer` | sonnet | Data inventory, consent, retention, regional compliance (flagship) |
 | `reliability-engineer` | opus | Offline, retries, idempotency, sync conflict, restoration, recovery |
 | `red-team-agent` | opus | Attacks the product and the studio own assumptions |
 | `release-auditor` | opus | Independent review of the evidence bundle and gate record; can block the release |
@@ -338,10 +342,10 @@ silent error is most expensive.
 |---|---|---|
 | `devops-engineer` | sonnet | Git strategy, CI, signing, flavors, secrets |
 | `security-reviewer` | opus | Pre-ship security pass, severity-classified findings |
-| `release-manager` | **opus** | Versioning, signing, submission-ready build, release notes — never uploads |
+| `release-manager` | sonnet | Versioning, signing, submission-ready build, release notes — never uploads |
 
-`release-manager` is opus because it is the only role that performs **irreversible** actions. The
-riskiest actor should not be the cheapest model.
+`release-manager` is sonnet because it never performs the irreversible action — the founder uploads,
+and `release-auditor` (opus) independently reviews the evidence and can block the release.
 
 ### Operational — conditional, off between incidents
 
@@ -689,6 +693,10 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `ship-gate.sh` | Release preconditions, dependency/version/policy tripwires, generated-CI rules and waivers |
 | `runtime-gate.sh` | Does the app build, launch, and stay up (iOS, Android, web — web via `npm run build`, tests, e2e or `web-smoke.mjs`) |
 | `spawn-gate.sh` | Worktree isolation before any parallel spawn |
+| `hooks/require-spawn-contract.sh` | PreToolUse on `Task`/`Agent`: a spawn naming a board ticket must carry a `spawn-prompt.mjs compose` prompt (verify, spawn-gate, contention) — one spawn per ticket |
+| `hooks/persist-ic-report.sh` | SubagentStop for IC roles: saves the agent's report to `docs/team/reports/<ticket>-<UTC>.md`, which `report-check` and the reviewer prompt read |
+| `hooks/guard-gate-writes.sh` | PreToolUse: refuses a subagent running `board.mjs actor mint` or writing `docs/team/actor-tokens.jsonl` / `docs/team/evidence/` by hand |
+| `hooks/require-review-verdict.sh` | SubagentStop: a `code-reviewer` cannot stop without a recorded verdict or `BLOCKED` |
 | `context-preflight.mjs` | Branch, dirty-tree, ticket, worktree, and source-document context |
 | `dependency-check.mjs` | Dependency declarations, lockfiles, and reproducible version constraints |
 | `version-consistency-check.mjs` | Release version versus iOS/Android manifests |

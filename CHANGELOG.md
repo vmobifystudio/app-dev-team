@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed — Sprint 2 (2026-11-18 expert review, Phase 2)
+
+- **Doc numbers no longer collide (R15).** `16-intent-validation.md` → `04-intent-validation.md`,
+  `16-pdr/` → `18-pdr/`, `17-ddr/` → `19-ddr/`, `72-release-audit.md` → `76-release-audit.md`,
+  `73-privacy-review.md` → `77-privacy-review.md`. Existing projects: `git mv` the five paths.
+- **Smaller spawns:** big skills split into short cores + `references/`; IC spawn ≈3.9k words (was
+  ≈12.5k), code-reviewer ≈7.5k (≈18.3k), `/app-build` ≈4.0k (≈7.5k). tech-manager, release-manager,
+  privacy-reviewer now run on sonnet.
+- **Contracts enforced by hooks:** spawn prompts checked before launch (`require-spawn-contract.sh`),
+  IC reports saved and checked at stop (`persist-ic-report.sh`), subagents cannot mint tokens or
+  hand-write evidence (`guard-gate-writes.sh`).
+- **Gates need proof:** per-spawn actor tokens (auto-minted by `spawn-prompt compose` under
+  `requireActorTokens`), `verified`/`qa_passed` need re-derivable evidence, gate-result files need
+  their raw log, risk is recomputed from the diff at `merged`.
+- **Web apps ship without a waiver:** runtime-gate web mode + web release candidates; one
+  parallelism cap (`scheduler.mjs cap`); ship-gate states its known-defects-only limit;
+  `/app-audit --yolo` defers risky fixes.
+
 ### Fixed
 
 Found by an end-to-end review of the flow (`/app-run` → init → plan → build → ship), each reproduced
@@ -537,7 +555,7 @@ each one was watched refuse before it was watched pass.
   Nothing subscribes, nothing is filed. `node scripts/messages.mjs channels` lists them. Same rule
   as the board's Markdown: a view may only show what the log can produce.
 - **Formal artifacts with IDs, writers and readers.** `ADR` (`docs/24-adr/`) · `PDR`
-  (`docs/16-pdr/`) · `DDR` (`docs/17-ddr/`) · `WAIVER` (`docs/72-waivers/`) · `INCIDENT`
+  (`docs/18-pdr/`) · `DDR` (`docs/19-ddr/`) · `WAIVER` (`docs/72-waivers/`) · `INCIDENT`
   (`docs/73-incidents/`) · `ASSUMPTION` (`docs/25-assumptions/`). One command
   (`messages.mjs artifact <TYPE>`) writes the file **and** registers it on the channel, because a
   file nobody knows exists and a claim with no content fail identically. Each has a `DOC_WRITERS`

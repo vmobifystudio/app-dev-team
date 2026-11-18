@@ -72,7 +72,7 @@ sh "${CLAUDE_PLUGIN_ROOT}/scripts/team-message.sh" --from cpo --to tech-manager 
 `answer` to answer as asked, `decision` to overrule or re-scope; the closing rules are in
 `team-protocol`.
 
-# Product decision records — `docs/16-pdr/`
+# Product decision records — `docs/18-pdr/`
 
 A scope cut, a pricing call, or a journey you decided *not* to build gets a **PDR**, not a line in a
 backlog nobody re-reads. One command writes the record and registers it on the channel:

@@ -93,10 +93,17 @@ record() {  # <PASS|FAIL|CANNOT_EVALUATE> — bound to HEAD and tree cleanliness
   # shellcheck disable=SC2046
   else hj="\"$head\""; st=$(git -C "$ROOT" status --porcelain -- ':(top)' $(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(exclude)/' "$OPS_PATHS") 2>/dev/null) || st=error
        [ -n "$st" ] && dj=true || dj=false; fi
+  # The result carries its raw log + sha256 so readiness can re-derive it (G-F6); evidence.mjs
+  # appends the RESULT and GATE-SUBJECT lines the re-derivation checks.
+  RUNLOG=$(mktemp "${TMPDIR:-/tmp}/runtime-gate.XXXXXX") || return 0
+  printf 'RUNTIME GATE\n%s%s' "$LINES" "$LOGTAIL" > "$RUNLOG"
+  [ "$hj" = null ] && hv=null || hv=$head
+  [ "$dj" = null ] && dj=true
   mkdir -p "$ROOT/docs/team" 2>/dev/null &&
-  printf '{\n  "schema": "gate-result/v1",\n  "gate": "runtime-gate",\n  "subject": { "head": %s, "dirty": %s },\n  "evaluated_at": "%s",\n  "result": "%s"\n}\n' \
-    "$hj" "$dj" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$ROOT/docs/team/runtime-result.json" ||
+  ( cd "$ROOT" && node "$(dirname "$OPS_PATHS")/evidence.mjs" gate --gate runtime-gate \
+      --result "$1" --log "$RUNLOG" --out docs/team/runtime-result.json --head "$hv" --dirty "$dj" ) >/dev/null ||
     echo "runtime-gate: could not write $ROOT/docs/team/runtime-result.json" >&2
+  rm -f "$RUNLOG"
 }
 
 # Pin the shared toolchain caches (OPS-003). This gate builds once per WAVE, so it is not the

@@ -19,7 +19,7 @@ base and commits: **one branch per ticket, unchanged**.
 owner, batched, and names one worktree path in its prompt; a per-ticket key gave an owner of three
 tickets three worktrees and one path that did not exist, and every branch then carried its siblings'
 files (`code-reviewer` check 9). One agent working its tickets one after another in its own tree
-corrupts nobody. Disk is bounded by the parallelism cap rather than by the backlog.
+corrupts nobody. Disk is bounded by the scheduler's cap rather than by the backlog.
 
 **Verifiers and auditors get one too.** "Read-only" describes the intent, not the guarantee.
 

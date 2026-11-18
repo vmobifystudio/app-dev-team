@@ -65,8 +65,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" artifact <TYPE> --by <role> --
 | Type | Path | Writer | Readers | Extra required |
 |---|---|---|---|---|
 | `ADR` architecture decision | `docs/24-adr/` | `cto`, `tech-lead` | `tech-lead`, the IC pod | — |
-| `PDR` product decision | `docs/16-pdr/` | `cpo`, `ceo` | `tech-manager`, `tech-lead`, `qa-engineer` | — |
-| `DDR` design decision | `docs/17-ddr/` | `ux-architect`, `product-designer` | `ios-developer`, `android-developer`, `tech-lead` | — |
+| `PDR` product decision | `docs/18-pdr/` | `cpo`, `ceo` | `tech-manager`, `tech-lead`, `qa-engineer` | — |
+| `DDR` design decision | `docs/19-ddr/` | `ux-architect`, `product-designer` | `ios-developer`, `android-developer`, `tech-lead` | — |
 | `WAIVER` | `docs/72-waivers/` | `security-reviewer`, `cto` | `release-manager`, `tech-manager` | `--expires YYYY-MM-DD` |
 | `INCIDENT` | `docs/73-incidents/` | `release-manager`, `qa-engineer` | `tech-manager`, `cto` | — |
 | `ASSUMPTION` | `docs/25-assumptions/` | `tech-lead`, `cpo`, the IC pod | `tech-manager`, `qa-engineer`, `product-validator` | `--owner`, `--confidence`, `--validate-by` |

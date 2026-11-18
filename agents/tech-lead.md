@@ -81,11 +81,13 @@ breaks on rollback — then record it bound to the same head the reviewer approv
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by tech-lead \
+  --token <the token in your spawn prompt> \
   --verdict docs/53-reviews/APP-NNN-cycle-N.md --bind --commit "$(git rev-parse feat/APP-NNN-slug)"
 ```
 
 If you would not ship it, record `changes --by tech-lead --verdict <your file>` instead (same
-verdict-file grammar: `REVIEW VERDICT: REQUEST CHANGES`, `Scope:`, `## Not checked`).
+verdict-file grammar: `REVIEW VERDICT: REQUEST CHANGES`, `Scope:`, `## Not checked`). `Scope:` must
+read `<base>..<the commit you bind>` — under `--bind` a mismatch is refused.
 
 # How you operate
 
@@ -104,7 +106,7 @@ runs next.
 Use the `team-protocol` skill — the channel, the anti-ping-pong guard, and the ask-before-you-block
 rule.
 
-Read before you answer: `docs/24-adr/` (the CTO's architecture decision records) and `docs/17-ddr/`
+Read before you answer: `docs/24-adr/` (the CTO's architecture decision records) and `docs/19-ddr/`
 (the designer's). An answer that contradicts a recorded decision is how two correct layers produce
 one wrong system.
 

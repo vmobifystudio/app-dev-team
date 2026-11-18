@@ -83,13 +83,14 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    touch .gitignore
    for p in .agent-wt/ .studio-stop docs/31-board-events.jsonl docs/31-board.md \
             docs/team/runs.jsonl docs/team/runtime-result.json docs/team/journey-result.json \
-            docs/team/actors.json docs/team/reports/; do
+            docs/team/actors.json docs/team/actor-tokens.jsonl docs/team/reports/; do
      grep -qxF "$p" .gitignore || printf '%s\n' "$p" >> .gitignore
    done
    ```
 
    That list is the studio's own operational state, appended to whatever platform `.gitignore`
-   `devops-engineer` wrote (plus `docs/team/actors.json`, which holds plaintext actor keys). The
+   `devops-engineer` wrote (plus `docs/team/actors.json` and `docs/team/actor-tokens.jsonl`, which hold actor keys and
+   per-spawn tokens). The
    board log and its rendering live in the main checkout only — a
    `git checkout` must not roll the board back, and ICs get their ticket through the spawn prompt,
    not from the board file. `docs/team/messages.jsonl` and the dispatch manifests stay
@@ -124,13 +125,16 @@ You are starting a fresh app project. The user's one-liner (if any) is:
        "owner": "founder",
        "reviewedOn": "$(date -u +%Y-%m-%d)",
        "requireDurableRuns": true,
-       "requireApprovalBinding": true
+       "requireApprovalBinding": true,
+       "requireActorTokens": true
      }
      EOF
      ```
 
      Edit `owner` to the actual accountable role once one is decided; `ship-gate.sh`'s `policy-check`
-     only requires the field to be non-empty, not who it names.
+     only requires the field to be non-empty, not who it names. `requireActorTokens` (not one of the
+     five) is also on: `spawn-prompt.mjs compose` mints each spawned agent's token, so it needs
+     nothing before the first spawn.
 
      **Only these two default on.** Codex found (PR #15) that turning on all five here breaks the
      very first spawn: `requireAuditAnchor`, `requirePromptRegistry`, and `requireEvaluation` are all
@@ -169,7 +173,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 
 6a. **Validate intent against the record — before the gate, not after it.** Spawn
    `product-validator` (active per the roster). It reads `docs/00-founder-intent/` and the derived
-   documents, writes `docs/16-intent-validation.md`, and returns one line:
+   documents, writes `docs/04-intent-validation.md`, and returns one line:
    `INTENT: ALIGNED | DRIFTED | CANNOT EVALUATE`. This is the one `product-validator` spawn for
    the run — `/app-run` reuses this result rather than spawning it again. Then run the graph:
 
@@ -214,7 +218,7 @@ docs/
   13-design-tokens.md
   14-components.md
   15-aso.md                  (if store work in scope)
-  16-intent-validation.md    (product-validator's verdict, read at GATE 1)
+  04-intent-validation.md    (product-validator's verdict, read at GATE 1)
   20-architecture.md
   21-engineering-principles.md
   22-impl-spec-ios.md        (product type ios-app / mobile-app)

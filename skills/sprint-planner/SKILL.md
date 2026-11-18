@@ -108,7 +108,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    ```bash
    board.mjs move APP-001 claimed --by android-developer
    board.mjs move APP-001 done_reported --by android-developer
-   board.mjs move APP-001 verified --by tech-manager --detail "verify-done.sh green"
+   board.mjs move APP-001 verified --by tech-manager --evidence <record verify-done printed>
    board.mjs move APP-001 review_requested --by android-developer --detail "-> code-reviewer"
    board.mjs move APP-001 changes --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md
    board.mjs move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md

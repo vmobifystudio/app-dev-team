@@ -121,7 +121,7 @@ POSIX `sh`. **Three outcomes, and the headline word on line 1 always matches the
 
 | Line 1 | Exit | Means | Do |
 |---|---|---|---|
-| `VERIFIED` | 0 | Claim holds and the tests are settled — ran green, or `--docs-only` exempted them | `board.mjs move <ID> verified`, then `review_requested`; spawn `code-reviewer` |
+| `VERIFIED` | 0 | Claim holds and the tests are settled — ran green, or `--docs-only` exempted them | `board.mjs move <ID> verified --evidence <record verify-done printed>`, then `review_requested`; spawn `code-reviewer` |
 | `REJECTED` | 1 | The claim is false, **or** a suite ran and reported failures | **Do not move the row.** Re-spawn the developer with the blocking lines verbatim |
 | `CANNOT EVALUATE` | 2 | The branch half checks out, but the suite **could not be executed** — missing toolchain, missing SDK, no gradle wrapper, or no test command given | `board.mjs move <ID> verified_static`, then review as normal. **Do not re-spawn the developer** — there is no failure to fix |
 
@@ -144,12 +144,12 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 verified_static \
   it do that. A sprint closes as *"merged, verification deferred"*, which is the truth.
 - The fact rides on the row for the rest of its life: the board renders `qa (static only)` and
   `board.mjs show` prints `NOT RUN: <what>`.
-- To clear it, run the suite and append the real verdict: `move APP-001 verified`. Then `closed` is
+- To clear it, run the suite and append the real verdict: `move APP-001 verified --evidence <record>`. Then `closed` is
   accepted.
 
 **A static-only ticket must never be reported as complete, and that is now a check, not a request.**
 `scripts/ship-gate.sh` **BLOCKS** on any ticket carrying the flag and names it, with the two routes
-out printed: run the suite and append `move <ID> verified`, or waive it deliberately with
+out printed: run the suite and append `move <ID> verified --evidence <record>`, or waive it deliberately with
 `WAIVED: <ID> — <who> — <why>` in `docs/60-releases.md`.
 
 Still name it in the standup and the ship-readiness report — the gate stops the release, it does not

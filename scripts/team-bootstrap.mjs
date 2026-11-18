@@ -35,7 +35,7 @@
  *                 write at all.
  *   risk-policy   default risk `medium` requiring a code-reviewer approval, plus the auth/migration
  *                 patterns at `high` (adds tech-lead) and billing/release at `critical`.
- *   schedule      `max_parallel: 2` and no tasks. The scheduler derives its ready set from the
+ *   schedule      no `max_parallel` (the scheduler's cap applies) and no tasks. The scheduler derives its ready set from the
  *                 board when a log exists, so an empty task list is correct, not a stub.
  *   context       delegated to `context-manifest.mjs create`, which hashes real files. Writing a
  *                 context manifest by hand here would be inventing the freshness claim the gate
@@ -173,7 +173,6 @@ const MANIFESTS = {
   },
   'schedule.json': {
     schema: 'scheduler-plan/v1',
-    max_parallel: 2,
     // Empty by design: when a board event log exists the scheduler DERIVES tasks from it, and a
     // hand-written list beside the board is the two-writable-truths defect that cost dogfood run 2
     // a dispatch. This file carries overrides, not a second copy of the board.

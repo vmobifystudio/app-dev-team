@@ -141,8 +141,41 @@ function subagentStop() {
     'own report-check on the persisted file will refuse it.');
 }
 
+/**
+ * guard-gate-writes (PreToolUse on Bash|Write|Edit|MultiEdit). A SUBAGENT (the payload carries
+ * `agent_id`) may not mint or revoke actor tokens, touch the token registry, or write gate evidence
+ * by hand: those are what make a gate event's role and evidence provable (lib/actor.mjs, evidence.mjs).
+ * The main session (no `agent_id`) is the orchestrator and is not restricted. Scripts the agent runs
+ * (verify-done.sh, journey-gate) still write evidence themselves — only hand-written paths are refused.
+ * Bound: a subagent that writes the path from inside an opaque program (`node -e` with a computed
+ * path) is not seen; this stops confused and literal agents, and leaves a hostile one a visible trail.
+ */
+function guardGateWrites() {
+  if (!payload.agent_id) allow();
+  if (!projectRoot(payload.cwd)) allow();
+  const input = payload.tool_input || {};
+  const TOKENS = 'docs/team/actor-tokens.jsonl';
+  const EVIDENCE = 'docs/team/evidence/';
+  const refuse = (what) => block(`guard-gate-writes: a subagent may not ${what}.\n` +
+    '  Actor tokens are minted by the orchestrator (spawn-prompt.mjs compose puts yours in your prompt), and\n' +
+    '  gate evidence is written by the scripts that produce it (verify-done.sh, journey-gate, runtime-gate).\n' +
+    '  Use the token and the evidence path you were given; if you lack one, return BLOCKED and say so.');
+  if (payload.tool_name === 'Bash') {
+    const cmd = String(input.command || '');
+    if (/\bactor\s+(mint|revoke)\b/.test(cmd)) refuse('mint or revoke actor tokens');
+    if (cmd.includes(TOKENS) || cmd.includes('actor-tokens.jsonl')) refuse('read or write the actor token registry');
+    if (cmd.includes(EVIDENCE) && /(>|\btee\b|\bcp\b|\bmv\b|\brm\b|\bsed\s+-i|\bln\b|\btouch\b|writeFile)/.test(cmd)) refuse('write gate evidence by hand');
+    allow();
+  }
+  const path = String(input.file_path || '').replace(/\\/g, '/');
+  if (path.endsWith(TOKENS)) refuse('write the actor token registry');
+  if (path.includes(`/${EVIDENCE}`) || path.startsWith(EVIDENCE)) refuse('write gate evidence by hand');
+  allow();
+}
+
 switch (process.argv[2]) {
   case 'pre-spawn': preSpawn(); break;
   case 'subagent-stop': subagentStop(); break;
+  case 'guard-gate-writes': guardGateWrites(); break;
   default: allow();
 }

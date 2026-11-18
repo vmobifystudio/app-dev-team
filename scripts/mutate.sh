@@ -255,6 +255,8 @@ MD07@@scripts/release-candidate.mjs@@if (isDir && platform !== 'web') die(2@@if 
 MD08@@scripts/scheduler.mjs@@: t.status === 'in_progress' ? 'running'@@: ['in_progress', 'review', 'qa'].includes(t.status) ? 'running'@@scheduler: only in_progress holds a slot — review and qa tickets do not starve the next wave (C9)@@Sprint 2 track D
 MD09@@scripts/scheduler.mjs@@export const MAX_PARALLEL = 3;@@export const MAX_PARALLEL = 2;@@scheduler.mjs cap prints the one parallelism cap, the same constant scripts import (C9)@@Sprint 2 track D
 MD10@@scripts/ship-gate.sh@@echo "        LIMIT: the scanners only replay KNOWN defect classes; unknown defects are covered by"@@:@@ship-gate and /app-ship state the scanners only replay known defects (G-F13)@@Sprint 2 track D
+MS01@@hooks/contract-hooks.mjs@@if (/\bactor\s+(mint|revoke)\b/.test(cmd)) refuse@@if (false) refuse@@S2: guard-gate-writes refuses a subagent minting an actor token@@Sprint 2 lead
+MS02@@scripts/spawn-prompt.mjs@@if (policy.requireActorTokens !== true) return [];@@return [];@@S2: compose mints the reviewer's token under requireActorTokens; the registry holds only its hash@@Sprint 2 lead
 CATALOGUE
 }
 

@@ -263,7 +263,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      the release can actually fail. `VERIFICATION: FAIL` → stop. This is the gate that catches a
      mis-calibrated threshold and a green rule that cannot fail, neither of which any amount of
      reading will find.
-   - `privacy-reviewer` produces `docs/73-privacy-review.md` — data inventory, consent, retention,
+   - `privacy-reviewer` produces `docs/77-privacy-review.md` — data inventory, consent, retention,
      third-party sharing, regional obligation. `PRIVACY: FAIL` → stop. **On a utility project this
      role is `off` and the gate is NOT `N/A`:** `security-reviewer` runs it as its privacy *mode*
      and returns the `PRIVACY:` line as well (`role-activation` §Tier deltas). Utility means one
@@ -314,7 +314,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 3a. **Spawn `release-auditor`** — *you* spawn it, **never `release-manager`**, and only after step 3
    has assembled the candidate. It reads the artifacts, not the summaries: `docs/60-releases.md`,
    `docs/50-test-plan.md`, `docs/54-evidence/`, `docs/51-bugs.md`, and every gate verdict above. It
-   writes `docs/72-release-audit.md` and returns `RELEASE AUDIT: PASS | PASS WITH NOTES | FAIL`.
+   writes `docs/76-release-audit.md` and returns `RELEASE AUDIT: PASS | PASS WITH NOTES | FAIL`.
 
    **`release-manager` cannot satisfy this gate.** The actor performing an irreversible action must
    not be its sole evaluator, so:

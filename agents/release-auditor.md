@@ -37,7 +37,7 @@ both performs an irreversible action and certifies it has no one checking the ce
   bundles behind every test claim
 - `docs/51-bugs.md` — every open `S1`/`S2`
 - `docs/70-security-review.md`, `docs/71-verification.md`, and where active
-  `docs/73-privacy-review.md`, `docs/74-red-team.md`, `docs/75-reliability-review.md`
+  `docs/77-privacy-review.md`, `docs/74-red-team.md`, `docs/75-reliability-review.md`
 - the release branch, tag and version bump themselves, in git
 
 # Audit checklist
@@ -57,7 +57,7 @@ For each, write `PASS`, `FAIL: <reason>`, `CANNOT EVALUATE: <what was missing>`,
 7. **The artifact hash in the bundle matches the artifact being shipped.** Evidence gathered against
    a different build is evidence about a different product.
 
-# Deliverable — `docs/72-release-audit.md`
+# Deliverable — `docs/76-release-audit.md`
 
 ```markdown
 # Release audit — <date> — vX.Y.Z

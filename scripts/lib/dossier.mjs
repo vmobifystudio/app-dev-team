@@ -40,6 +40,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { hashArtifact } from './artifact-hash.mjs';
+
 export const DOSSIER_PATH = 'docs/team/release-candidates.jsonl';
 
 /**
@@ -129,7 +131,7 @@ export function artifactEntry(root, head) {
       subject: recorded,
     };
   }
-  const now = hashFile(artifactPath);
+  const now = hashArtifact(artifactPath);
   if (now !== rc.sha256) {
     return {
       gate,

@@ -49,9 +49,9 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 
 1a. **Intent validation — before Gate 1, outside the chain that wrote the docs.** On the greenfield
    path `/app-init` step 6a has already spawned `product-validator`: **reuse that result** —
-   `docs/16-intent-validation.md` and its `INTENT:` line — and do not spawn it a second time. Spawn
+   `docs/04-intent-validation.md` and its `INTENT:` line — and do not spawn it a second time. Spawn
    it here only on the brownfield path, or when `/app-init` did not run it. It compares `docs/00-founder-intent/` — the founder's
-   recorded words — against `docs/10-prd.md` and the vision, writes `docs/16-intent-validation.md`,
+   recorded words — against `docs/10-prd.md` and the vision, writes `docs/04-intent-validation.md`,
    and returns `INTENT: ALIGNED | DRIFTED | CANNOT EVALUATE`. Then:
 
    ```bash
@@ -76,7 +76,8 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    - *Brownfield:* print the audit scorecard and the remediation backlog grouped by severity and
      Safe/Risky, and ask *"Which gaps should we fix?"* Risky changes proceed only if approved here.
    Wait for the answer. With `--yolo`, skip the gate (greenfield: auto-approve scope; brownfield:
-   fix all S1/S2 + Safe, defer Risky) and log the decision.
+   fix all S1/S2 + Safe, defer Risky — the /app-audit --yolo mechanism: Risky stays
+   `blocked needs-approval:` and is listed as DEFERRED) and log the decision.
 
 3. **Plan.** Run `/app-plan` (tech-manager builds the parallel board via `sprint-planner`), which
    runs **non-interactively here** — scope was approved at Gate 1 and this command has no third

@@ -59,6 +59,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { withFileLock } from './lib/atomic.mjs';
+import { effectiveCap } from './scheduler.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const die = (code, message) => { process.stderr.write(`worktree-slot: ${message}\n`); process.exit(code); };
@@ -80,10 +81,12 @@ if (typeof flags.root === 'string') {
 const DIR = typeof flags.dir === 'string' ? flags.dir : '.agent-wt';
 const STATE = typeof flags.state === 'string' ? resolve(flags.state) : resolve(ROOT, 'docs/team/worktree-slots.json');
 
-// The default pool is 3, which is `tech-manager.md`'s own stated default pod ("Default pod is 3
-// developers"). Naming the same number twice is a drift risk, so it is stated here as a DEFAULT the
-// caller overrides rather than as a rule: /app-build passes --pool from the sprint plan.
-const POOL = Number(flags.pool ?? process.env.APP_TEAM_SLOT_POOL ?? 3);
+// The default pool is the scheduler's cap (scheduler.mjs effectiveCap: the plan's max_parallel, else
+// MAX_PARALLEL) — one number, one owner (C9). --pool / APP_TEAM_SLOT_POOL still override it.
+const PLAN = resolve(ROOT, 'docs/team/schedule.json');
+let plan = null;
+try { plan = existsSync(PLAN) ? JSON.parse(readFileSync(PLAN, 'utf8')) : null; } catch { plan = null; }
+const POOL = Number(flags.pool ?? process.env.APP_TEAM_SLOT_POOL ?? effectiveCap(plan));
 if (!Number.isFinite(POOL) || POOL < 1) die(2, `--pool must be at least 1, got "${flags.pool ?? process.env.APP_TEAM_SLOT_POOL}"`);
 
 const git = (args, opts = {}) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();

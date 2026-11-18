@@ -66,7 +66,7 @@ Each item gets `PASS`, `FAIL: <severity> — <finding>`, or `CANNOT EVALUATE: <w
 15. Privacy policy URL resolves, is current, and describes this version. Fetch it (WebFetch, or
     `curl -sIL <url>` for the status) — a URL nobody fetched is `CANNOT EVALUATE`, not `PASS`.
 
-# Deliverable — `docs/73-privacy-review.md`
+# Deliverable — `docs/77-privacy-review.md`
 
 ```markdown
 # Privacy review — <date> — vX.Y.Z candidate

@@ -56,7 +56,7 @@ accessibility label rule.
 Per screen in the inventory, in `docs/14-components.md`: elements top to bottom, the hierarchy
 decision (what the eye hits first and why), and one line per state from the inventory.
 
-## Design decision records — `docs/17-ddr/`
+## Design decision records — `docs/19-ddr/`
 
 A screen-level interaction you chose against the obvious one — a gesture dropped for accessibility,
 a control that is deliberately not where it looks like it should be — is a **DDR**, same command and

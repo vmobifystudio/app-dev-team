@@ -56,7 +56,7 @@ if (agents.length === 0 || commands.length === 0) {
 const frontmatterName = (text, fallback) => (text.match(/^name:\s*(.+)$/m) || [, fallback])[1].trim();
 
 const roles = new Map(agents.map((a) => [frontmatterName(a.text, basename(a.path, '.md')), a]));
-const skillNames = new Set(skills.map((s) => frontmatterName(s.text, basename(dirname(s.path)))));
+const skillNames = new Set(skills.filter((s) => s.path.endsWith('SKILL.md')).map((s) => frontmatterName(s.text, basename(dirname(s.path)))));
 const roleNames = [...roles.keys()];
 
 const appBuild = commands.find((c) => c.rel.endsWith('app-build.md'));
@@ -560,14 +560,14 @@ const DOC_WRITERS = new Map([
   ['docs/13-design-tokens.md',          ['agents/product-designer.md']],
   ['docs/14-components.md',             ['agents/product-designer.md']],
   ['docs/15-aso.md',                    ['agents/aso-specialist.md']],
-  ['docs/16-intent-validation.md',      ['agents/product-validator.md']],
+  ['docs/04-intent-validation.md',      ['agents/product-validator.md']],
   ['docs/16-research.md',               ['agents/product-researcher.md']],
   ['docs/17-founder-inbox.md',          ['agents/chief-of-staff.md']],
   // The formal-artifact series (P3a). Each is created by `scripts/messages.mjs artifact <TYPE>`,
   // which writes the file AND registers it on the team channel in one step — the file alone is a
   // document nobody knows exists, the message alone is a claim with no content.
-  ['docs/16-pdr/',                      ['agents/cpo.md']],
-  ['docs/17-ddr/',                      ['agents/ux-architect.md', 'agents/product-designer.md']],
+  ['docs/18-pdr/',                      ['agents/cpo.md']],
+  ['docs/19-ddr/',                      ['agents/ux-architect.md', 'agents/product-designer.md']],
   ['docs/20-architecture.md',           ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
   ['docs/21-engineering-principles.md', ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
   // One artifact per platform, so every `docs/22-impl-spec-<anything>` folds into this row.
@@ -617,8 +617,8 @@ const DOC_WRITERS = new Map([
   ['docs/60-releases.md',               ['agents/release-manager.md']],
   ['docs/70-security-review.md',        ['agents/security-reviewer.md']],
   ['docs/71-verification.md',           ['agents/verification-engineer.md']],
-  ['docs/72-release-audit.md',          ['agents/release-auditor.md']],
-  ['docs/73-privacy-review.md',         ['agents/privacy-reviewer.md']],
+  ['docs/76-release-audit.md',          ['agents/release-auditor.md']],
+  ['docs/77-privacy-review.md',         ['agents/privacy-reviewer.md']],
   ['docs/74-red-team.md',               ['agents/red-team-agent.md']],
   ['docs/75-reliability-review.md',     ['agents/reliability-engineer.md']],
   // A waiver carries an expiry and an EXPIRED WAIVER IS A FINDING — the exemption was granted for a
@@ -748,12 +748,16 @@ const CANONICAL_PATHS = [
   'docs/team/schedule.json',                 // scheduler overrides; the ready set derives from the board
   'docs/team/context-manifest.json',         // the hashed context an agent was actually given
   'docs/team/runs.jsonl',                    // the run ledger: leases and attempts (run-ledger, run-doctor, board.mjs)
+  'docs/team/actor-tokens.jsonl',            // per-spawn actor token hashes (lib/actor.mjs) — script-written only
+  'docs/team/evidence/',                     // re-derivable test/gate evidence (lib/evidence.mjs) — script-written only
+  'docs/team/reports/<ticket>-<UTC>.md',     // IC final reports saved by hooks/persist-ic-report.sh
 ];
 // Structural references that name no artifact: the directories themselves, the glob the standup
 // reads a day's fragments with, and the archive consumed fragments are moved to.
 const STRUCTURAL_PATHS = new Set([
   'docs/daily', 'docs/daily/', 'docs/daily/<today>-*.md', 'docs/daily/.fragments/',
   'docs/team', 'docs/team/', 'docs/53-reviews', 'docs/53-reviews/',
+  'docs/team/reports', 'docs/team/reports/', 'docs/team/reports/APP-NNN-*.md',
 ]);
 const ALLOWED_PATHS = new Set([...CANONICAL_PATHS, ...STRUCTURAL_PATHS]);
 

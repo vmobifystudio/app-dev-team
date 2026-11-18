@@ -60,23 +60,23 @@
     },
     {
       "id": "code-reviewer",
-      "version": "1.0.10",
+      "version": "1.0.11",
       "owner": "code-reviewer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.9",
-      "content_hash": "3a2c05468fe45af87ac688b0df95c6d4c23d9b9fd5a558fab084084b5e2826fd"
+      "rollback_version": "1.0.10",
+      "content_hash": "58efd3a981b031f60f94a3120400ac7dab790b0ad0a674e73b85fb452ce07f21"
     },
     {
       "id": "cpo",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "owner": "cpo",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.2",
-      "content_hash": "fa7b7d58a3d8b09e606b6a50925ecd91f7fc83a0250225b5b7c9436a9f2e6ca9"
+      "rollback_version": "1.0.3",
+      "content_hash": "bc082db0a2f54d4358b89f6dd034341e3439b5fb1642e11fcb2cb0a2a8c32eb9"
     },
     {
       "id": "cto",
@@ -130,23 +130,23 @@
     },
     {
       "id": "privacy-reviewer",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "owner": "privacy-reviewer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.2",
-      "content_hash": "d4e5a883d12d418e50e64466f529ab577acea729cc71830240ee9f9de6e66300"
+      "rollback_version": "1.0.3",
+      "content_hash": "7ff910a326e0bdae176e52b07f2f3964fa8454bf24cdc4cd6bd8315c8b60dcd0"
     },
     {
       "id": "product-designer",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "owner": "product-designer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.1",
-      "content_hash": "db61eecf50f89f314b0b167077e467542778ba9d1d90b1ded66ba7ed22033285"
+      "rollback_version": "1.0.2",
+      "content_hash": "68d3cf3aab4802f63b3219934120f489829659f592fbffa04d0fe3206f0f1d74"
     },
     {
       "id": "product-manager",
@@ -170,23 +170,23 @@
     },
     {
       "id": "product-validator",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "owner": "product-validator",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-17",
+      "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.0",
-      "content_hash": "1c314026a219a96541ea84c4f2a3df005aad18c79f05841c7ce8a649c63d28a1"
+      "rollback_version": "1.0.1",
+      "content_hash": "45699bc52737b307cf890f0bd5bc83e29bf04ccccfdc9d99c1fb18bdaa2b73a8"
     },
     {
       "id": "qa-engineer",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "owner": "qa-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.4",
-      "content_hash": "dff7d76f24bbf17ec8ebfcd3c7837faea5c8b8acdd3079f3bf37c942b357c675"
+      "rollback_version": "1.0.5",
+      "content_hash": "562178a60c6151505fadae7a7d340c412c8a6951328725d5f437a45bb7fd13ed"
     },
     {
       "id": "red-team-agent",
@@ -200,13 +200,13 @@
     },
     {
       "id": "release-auditor",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "owner": "release-auditor",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-17",
+      "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.0",
-      "content_hash": "76096ab963c46207612f709e92193d99b89b8b01dddbfdf330d395d73cb87334"
+      "rollback_version": "1.0.1",
+      "content_hash": "bab2224118ffffb1cfbc9f354a3416f4b494e18db7362f0cb00dfe11c5f44e37"
     },
     {
       "id": "release-manager",
@@ -230,33 +230,33 @@
     },
     {
       "id": "security-reviewer",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "owner": "security-reviewer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.1",
-      "content_hash": "c1655851f5cf761bef9fd4b0a106540c5f973e230ffe25e77241acea78e56efa"
+      "rollback_version": "1.0.2",
+      "content_hash": "f6ea0f3c6bd88e5f966d19e05acc2bf70eb78553f3f123dd4ff8a81bb8844014"
     },
     {
       "id": "tech-lead",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "owner": "tech-lead",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.2",
-      "content_hash": "7f24ac29e72e2ecd6b11c6bf212afe7e88381f2b99338ecd84d55a09e1867b39"
+      "rollback_version": "1.0.3",
+      "content_hash": "9cec94cef12b4bba9317a7eb5c786028767304acfb25edcf6ea206df8e94b3f2"
     },
     {
       "id": "tech-manager",
-      "version": "1.0.10",
+      "version": "1.0.11",
       "owner": "tech-manager",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.9",
-      "content_hash": "9626dd9ce876e7e725660df9515684ca5ad9efcacdf06b6ece5ae43239f6232c"
+      "rollback_version": "1.0.10",
+      "content_hash": "c8ea9c67825a0471aa9be83187ba51c09ba9be83d1bf61333725fa128e1bcf03"
     },
     {
       "id": "test-automation-engineer",
@@ -270,13 +270,13 @@
     },
     {
       "id": "ux-architect",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "owner": "ux-architect",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.1",
-      "content_hash": "06b16d247c3f3c122c03a2a3368b21bde71e7df9dfb223989b41dc796a04d281"
+      "rollback_version": "1.0.2",
+      "content_hash": "5690c9834aaf5df719279d13276847f87ec872ced5409c63ee6c1b8f0fe050ea"
     },
     {
       "id": "verification-engineer",

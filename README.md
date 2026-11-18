@@ -154,6 +154,14 @@ mechanically rather than on trust:
   words — an independent review reproduced that a transcript merely *quoting* the required command
   satisfied it with zero work done. It now checks the append-only log directly; a false claim can't
   forge a real log line the way it can forge a sentence.
+- **Spawn contract** (`hooks/require-spawn-contract.sh`, PreToolUse on `Task`/`Agent`) refuses a
+  ticket spawn whose prompt was not composed by `spawn-prompt.mjs compose` — one spawn per ticket.
+- **IC report capture** (`hooks/persist-ic-report.sh`, SubagentStop) saves each IC's report to
+  `docs/team/reports/`, so `report-check` and the reviewer read the report, not a paraphrase.
+- **Gate-write guard** (`hooks/guard-gate-writes.sh`) refuses a subagent minting actor tokens or
+  hand-writing `docs/team/actor-tokens.jsonl` / `docs/team/evidence/`. Under `requireActorTokens`
+  each gate event needs the per-ticket token `spawn-prompt.mjs` minted into that agent's prompt, and
+  `verified`/`qa_passed` need `--evidence` the board re-derives (`lib/actor.mjs`, `lib/evidence.mjs`).
 - **Base-vs-head regression check** (`scripts/wave-integrate.mjs --check-baseline`) — on a failed
   wave, checks whether the unmodified integration branch *also* fails the same suite before blaming
   the tickets in it. Opt-in and additive: it changes nothing about a green wave, and never turns a
@@ -399,7 +407,7 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 | | `cpo` | PRD, user stories, backlog |
 | | `cto` | Architecture & stack (starts from the House KB defaults) |
 | **Management** | `tech-lead` | Per-platform impl specs, reusable patterns |
-| | `tech-manager` | Sprint board, parallel coordination, standups, **merge gate** |
+| | `tech-manager` | Sprint board, parallel coordination, standups |
 | **Engineering** | `ios-developer` | SwiftUI — routes through Axiom iOS skills (parallel) |
 | | `android-developer` | Compose/Material 3 (parallel) |
 | | `backend-developer` | API + persistence (when in scope) |
@@ -549,17 +557,17 @@ soft-routed — absent ones degrade gracefully to the House KB defaults):
 CLAUDE.md                    project conventions (seeded from the House KB)
 docs/
   00-founder-intent/           your own words — the team cannot edit them
-  00-vision · 01-intake · 02-team-roster · 03-decision-rights
+  00-vision · 01-intake · 02-team-roster · 03-decision-rights · 04-intent-validation
   10-prd · 11-backlog · 12-flows · 13-design-tokens · 14-components · 15-aso
-  16-research · 16-intent-validation · 16-pdr/ · 17-founder-inbox · 17-ddr/
+  16-research · 17-founder-inbox · 18-pdr/ · 19-ddr/
   20-architecture · 21-engineering-principles · 22-impl-spec-{ios,android,web,backend}
   23-git-strategy · 24-adr/ · 25-assumptions/
   30-sprint-plan · 31-board-events.jsonl (source) → 31-board.md · 32-board-view.md (generated)
   33-rounds.jsonl · 34-dashboard.html (exported snapshot)
   40-api · 41-monetization
   50-test-plan · 51-bugs · 52-analytics · 53-reviews/ · 54-evidence/ · evidence/
-  60-releases · 70-security-review · 71-verification · 72-release-audit · 72-waivers/
-  73-privacy-review · 73-incidents/ · 74-red-team · 75-reliability-review
+  60-releases · 70-security-review · 71-verification · 72-waivers/ · 73-incidents/
+  74-red-team · 75-reliability-review · 76-release-audit · 77-privacy-review
   80-audit · 81-findings      (brownfield: gap report and findings register)
   90-learnings
   daily/                       standups and per-agent fragments
@@ -570,7 +578,7 @@ ios/   android/   backend/   (per scope)
 
 ## Tuning
 
-- **Pod size** defaults to 3 engineers; the tech-manager scales it at sprint planning.
+- **Pod size** is the scheduler's cap (`node scripts/scheduler.mjs cap`), one constant every script imports.
 - **Roles are files** in `agents/` — edit, add (e.g. `ml-engineer`), or remove.
 - **Stack defaults** live in `knowledge/stack-defaults.md` — change them once, every project follows.
 - **Autonomy** — `/app-run --yolo` to skip scope-lock; `/loop /app-run …` for fully self-paced runs.

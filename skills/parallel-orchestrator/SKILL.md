@@ -18,7 +18,9 @@ For the isolation rules you enforce here, read `agent-isolation` and
    `todo`, every `dependsOn` merged (`qa` or `done`). A ticket behind a `blocked` dependency is never
    ready and never reported by this rule — that is the doctor's `stranded` check at step 0.
 
-1a. **Claim before you spawn** — one append per ticket; it is also the readiness check:
+1a. **Preflight, then claim, then spawn.** Run `dispatch-preflight` for the ticket first; claim only
+   on CLEAR. Preflight checks the scheduler's `ready` set, which only holds `todo` tickets, so a
+   ticket claimed first is `in_progress` and is refused. Then one append per ticket:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 claimed --by ios-developer
@@ -34,13 +36,13 @@ For the isolation rules you enforce here, read `agent-isolation` and
 2a. **Lease one slot per writing agent:**
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001,APP-004 --pool 3
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner android-developer --tickets APP-002 --pool 3
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001,APP-004
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner android-developer --tickets APP-002
    ```
 
    The owner works its tickets **one after another in that slot**, one `feat/APP-NNN-slug` branch per
-   ticket. `lease` refuses when the pool is full — that is the parallelism cap; raising `--pool N` is
-   a decision about how much of the machine the studio may use, not a workaround.
+   ticket. `lease` refuses when the pool is full — that is the scheduler's cap (`scheduler.mjs cap`);
+   raising it is a decision about how much of the machine the studio may use, not a workaround.
 
 2a-i. **Tell every agent, in its prompt, that destructive commands are banned** repo-wide:
 
@@ -100,7 +102,7 @@ For the isolation rules you enforce here, read `agent-isolation` and
 
    | Line 1 | Exit | Do |
    |---|---|---|
-   | `VERIFIED` | 0 | `board.mjs move APP-NNN verified --by tech-manager`, then `review_requested` |
+   | `VERIFIED` | 0 | `board.mjs move APP-NNN verified --by tech-manager --evidence <record verify-done printed>`, then `review_requested` |
    | `REJECTED` | 1 | The row stays. Re-spawn that developer with the blocking lines verbatim |
    | `CANNOT EVALUATE` | 2 | `board.mjs move APP-NNN verified_static --by tech-manager --detail "<what could not run>"`, then `review_requested`. **Do not re-spawn the developer — there is no failure to fix** |
 

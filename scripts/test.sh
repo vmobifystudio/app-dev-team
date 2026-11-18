@@ -825,7 +825,7 @@ send "$V" --from tech-lead --to ios-developer --ticket APP-1 --kind decision --s
             || bad "reopening a decided thread with no evidence is refused"
 assert_has "$TMP/tmreopen.txt" "reopen_without_evidence" "...naming the guard"
 ( cd "$V" && sh "$M" --from android-developer --to tech-lead --ticket APP-1 --kind question \
-    --summary "add export back?" --evidence "user research 2026-07-30, docs/16-pdr/PDR-001" ) >/dev/null 2>&1
+    --summary "add export back?" --evidence "user research 2026-07-30, docs/18-pdr/PDR-001" ) >/dev/null 2>&1
 [ $? = 0 ] && ok "...and the same question WITH evidence is accepted" \
             || bad "...and the same question WITH evidence is accepted"
 
@@ -10229,6 +10229,41 @@ TDA_OUT=$( cd "$TDA" && node "$HERE/board.mjs" show --json | node -e "$TDA_JS" 2
 [ "$TDA_OUT" = "DEFERRED (needs-approval): AUDIT-001 risky" ] \
   && ok "app-audit --yolo: the deferred set is listed from the board log — Risky in, Safe out (W19)" \
   || bad "app-audit --yolo: the deferred set is listed from the board log — Risky in, Safe out (W19)" "$TDA_OUT"
+
+# --- Sprint 2 lead: tokens reach the agents that write gate events; subagents cannot forge them ----
+# spawn-prompt compose mints the reviewer's token itself under requireActorTokens (nobody has to
+# remember), the registry holds only its hash, and guard-gate-writes refuses a SUBAGENT (payload has
+# agent_id) minting, touching the registry, or hand-writing gate evidence — the main session is free.
+echo
+SL="$TMP/s2-lead"; rm -rf "$SL"; mkdir -p "$SL/docs"
+( cd "$SL" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init ) >/dev/null 2>&1
+( cd "$SL" && node "$HERE/board.mjs" add SL-1 --title t --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+printf '{"requireActorTokens": true}\n' > "$SL/.studio-policy.json"
+SLP=$(node "$HERE/spawn-prompt.mjs" compose --root "$SL" --ticket SL-1 --role code-reviewer 2>/dev/null)
+SLT=$(printf '%s\n' "$SLP" | sed -n 's/^Token: //p')
+[ -n "$SLT" ] && ! grep -qF "$SLT" "$SL/docs/team/actor-tokens.jsonl" 2>/dev/null && [ -s "$SL/docs/team/actor-tokens.jsonl" ] \
+  && ok "S2: compose mints the reviewer's token under requireActorTokens; the registry holds only its hash" \
+  || bad "S2: compose mints the reviewer's token under requireActorTokens; the registry holds only its hash" "token=[$SLT]"
+rm -f "$SL/.studio-policy.json"
+node "$HERE/spawn-prompt.mjs" compose --root "$SL" --ticket SL-1 --role code-reviewer 2>/dev/null | grep -q '^Token: ' \
+  && bad "S2: ...and mints nothing when the policy does not require tokens" \
+  || ok "S2: ...and mints nothing when the policy does not require tokens"
+SLG="$HERE/../hooks/guard-gate-writes.sh"
+slg() { node -e 'const [, t, a, k, v, c] = process.argv; const o = { hook_event_name: "PreToolUse", tool_name: t, cwd: c, tool_input: { [k]: v } };
+  if (a) o.agent_id = a; process.stdout.write(JSON.stringify(o))' "$1" "$2" "$3" "$4" "$SL" | sh "$SLG" >/dev/null 2>&1; }
+slg Bash agent-1 command "node scripts/board.mjs actor mint --role code-reviewer --ticket SL-1"
+[ $? = 2 ] && ok "S2: guard-gate-writes refuses a subagent minting an actor token" || bad "S2: guard-gate-writes refuses a subagent minting an actor token"
+slg Bash "" command "node scripts/board.mjs actor mint --role code-reviewer --ticket SL-1"
+[ $? = 0 ] && ok "S2: ...the main session (the orchestrator) may mint" || bad "S2: ...the main session (the orchestrator) may mint"
+slg Write agent-1 file_path "$SL/docs/team/evidence/test-x.json"
+[ $? = 2 ] && ok "S2: guard-gate-writes refuses a subagent hand-writing gate evidence" || bad "S2: guard-gate-writes refuses a subagent hand-writing gate evidence"
+slg Bash agent-1 command "cat docs/team/evidence/test-x.json"
+[ $? = 0 ] && ok "S2: ...but lets it read evidence" || bad "S2: ...but lets it read evidence"
+slg Bash agent-1 command "tail docs/team/actor-tokens.jsonl"
+[ $? = 2 ] && ok "S2: guard-gate-writes refuses a subagent touching the token registry" || bad "S2: guard-gate-writes refuses a subagent touching the token registry"
+node -e 'process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "a", cwd: process.argv[1], tool_input: { command: "node board.mjs actor mint" } }))' "$TMP" | sh "$SLG" >/dev/null 2>&1
+[ $? = 0 ] && ok "S2: guard-gate-writes is a no-op outside an app-dev-team project" || bad "S2: guard-gate-writes is a no-op outside an app-dev-team project"
+rm -rf "$SL"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

@@ -13,7 +13,7 @@ journey gate edge cases, the QA ticket, journal fields) are in
 `${CLAUDE_PLUGIN_ROOT}/skills/parallel-orchestrator/references/build-loop-branches.md`. Each step
 below names the section when you need it; read nothing from it otherwise.
 
-Before spawning any ticket owner, run the unified dispatch gate:
+Before claiming any ticket (the claim comes after a CLEAR preflight), run the unified dispatch gate:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-preflight.mjs" \
@@ -215,8 +215,9 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
      `REJECTED` → `board.mjs move APP-NNN rejected --by tech-manager --detail "<the blocking line>"`,
      then re-spawn the developer with the blocking lines verbatim. This is a **developer** retry, not
-     a review cycle. `VERIFIED` → `board.mjs move APP-NNN verified --by tech-manager --detail
-     "verify-done.sh green"`; if it reports `tests=unverified`, say so in the `--detail`. Exit `2` →
+     a review cycle. `VERIFIED` → `board.mjs move APP-NNN verified --by tech-manager --evidence <the path on
+     verify-done's "Evidence:" line> [--token "$T"]`; `verified` without the record verify-done
+     wrote is refused. If it reports `tests=unverified`, say so in a `--detail`. Exit `2` →
      **CANNOT EVALUATE**, never a pass; record `verified_static` with the reason verbatim, and **do
      not re-spawn the developer** — `build-loop-branches.md` §Step 3 for its two causes.
    - **Read `Shared surfaces touched`.** If two returning agents name the same file, or both report
@@ -243,8 +244,11 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      review work), route to `tech-lead`. The CLI refuses `approved` from the ticket's owner.
    - Spawn a `code-reviewer` for that branch immediately — do not wait for the other devs. Its
      prompt is `spawn-prompt.mjs compose --root . --ticket APP-NNN --role code-reviewer`, verbatim:
-     it carries the saved DONE report, the branch tip and the verdict contract, and the hook refuses
-     a reviewer prompt without them. Reviewers
+     it carries the saved DONE report, the branch tip, the verdict contract and (under
+     `requireActorTokens`) that agent's minted `Token:` line; the hook refuses a reviewer prompt
+     without them. The same holds for every `tech-lead`, `qa-engineer` and `verification-engineer`
+     spawn: compose it, never mint for yourself what an agent should prove, never paste a token into
+     another agent's prompt. Reviewers
      run in parallel with each other and with still-running developers. It appends
      `board.mjs move APP-NNN started --by code-reviewer` when it picks the ticket up.
 
@@ -306,8 +310,12 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
      ```bash
      node "${CLAUDE_PLUGIN_ROOT}/scripts/approval-check.mjs" --ticket APP-NNN --head "$(git rev-parse <branch>)"
-     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN merged --by tech-manager
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN merged --by tech-manager [--token "$T"]
      ```
+
+     Under `requireActorTokens` your own gate events (`verified`, `merged`, `closed`) carry a token
+     you mint first: `T=$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role
+     tech-manager --ticket APP-NNN)`.
 
      `approval-check` exit `1` → the approval does not cover the branch as it stands (a later commit,
      or never bound): request a fresh review, do not merge. `merged` refuses without a non-owner
@@ -348,7 +356,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
    | Exit | Meaning | Do |
    |---|---|---|
-   | `0` GREEN | merged tree passes | run the `board.mjs move APP-NNN verified` lines it printed, then push (below) |
+   | `0` GREEN | merged tree passes | run the `board.mjs move ... verified --evidence <record>` lines it printed, then push (below) |
    | `1` FAIL/CONFLICT | wave does not advance | re-spawn only the owners its candidate list names; a textual conflict is **yours** to resolve here (`git-pr-strategy` §6); a behaviour/contract one goes to that contract's owner as a ticket |
    | `2` CANNOT EVALUATE | no `full` scope, or the suite could not run | not a pass; every ticket keeps `verified_static`, `closed` stays refused |
 
@@ -416,13 +424,15 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    Record QA's verdict per ticket, then close what passed:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_passed --by qa-engineer
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN closed   --by tech-manager
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_passed --by qa-engineer \
+     --token <its token> --evidence docs/team/journey-result.json
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN closed   --by tech-manager [--token "$T"]
    # or, for a ticket QA rejected — it stays in qa and is named in the summary
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_failed --by qa-engineer --detail "BUG-NNN"
    ```
 
-   `closed` is refused without a `qa_passed`. After a `RUNTIME GATE: FAIL` no row in the wave gets a
+   QA's `--evidence` is the journey-gate PASS record, or the record from `verify-done.sh
+   <integration branch> <base> full` run after the merge. `closed` is refused without a `qa_passed`. After a `RUNTIME GATE: FAIL` no row in the wave gets a
    `qa_passed` at all.
 
 6. **Daily report + board view.** Spawn `tech-manager` to concatenate the per-agent fragments at

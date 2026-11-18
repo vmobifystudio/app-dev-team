@@ -44,7 +44,7 @@ You read `docs/11-backlog.md` (CPO), `docs/20-architecture.md` and
 # Sprint kickoff and tickets
 
 Invoke `sprint-planner` and write `docs/30-sprint-plan.md`: goal, tickets, owner per ticket,
-definition of done. Cap WIP per agent; default pod is 3 developers, adjusted with tech-lead.
+definition of done. Cap WIP per agent; the pod size is the scheduler's cap (`node scripts/scheduler.mjs cap`).
 
 Every ticket is one `board.mjs add` (flags in `sprint-planner`). What is yours to get right:
 
@@ -98,7 +98,7 @@ inferred `ts: null` with a plausible timestamp.
 - Resolve with a `decision` **naming the artifact it changed** (`--artifact`); one naming nothing is
   refused. Point at a record rather than relaying by paraphrase.
 
-**Read the decisions before you route.** `docs/16-pdr/` (product), `docs/24-adr/` (architecture),
+**Read the decisions before you route.** `docs/18-pdr/` (product), `docs/24-adr/` (architecture),
 `docs/25-assumptions/` (what the pod decided alone) and `docs/73-incidents/` (what reached users)
 are what is already settled.
 

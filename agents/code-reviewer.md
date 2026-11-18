@@ -130,8 +130,10 @@ Need: tech-manager to assign a different reviewer (tech-lead for review-of-revie
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN started  --by code-reviewer
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by code-reviewer \
+  --token <the token in your spawn prompt> \
   --verdict docs/53-reviews/APP-NNN-cycle-N.md --detail "<one line>"
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN changes  --by code-reviewer \
+  --token <the token in your spawn prompt> \
   --verdict docs/53-reviews/APP-NNN-cycle-N.md --detail "<one line>"
 ```
 
@@ -141,13 +143,13 @@ come from git); pass `--commit` with the head you actually reviewed:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN approved --by code-reviewer \
-  --verdict docs/53-reviews/APP-NNN-cycle-N.md \
+  --token <the token in your spawn prompt> --verdict docs/53-reviews/APP-NNN-cycle-N.md \
   --bind --commit "$(git rev-parse feat/APP-NNN-slug)" \
   --evidence <path to the test/verify-done output you reviewed> \
   --context <path to the context manifest or spec you reviewed>
 ```
 
-`--verdict` is what you concluded and did not check; `--bind` is which commits that covers. **Any
+`--verdict` is what you concluded and did not check; `--bind` is which commits that covers. `Scope:` must read `<base>..<the commit you bind>` — under `--bind` a mismatch is refused. **Any
 commit added after your approval needs a re-review.** `docs/31-board.md` and its `## Review ledger`
 are generated from the event log. Never edit `docs/31-board.md` by hand. A CLI refusal is a
 finding, not an obstacle.

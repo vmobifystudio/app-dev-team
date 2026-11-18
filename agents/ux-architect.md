@@ -58,7 +58,7 @@ Then, once for the whole product, the inventory the pod and QA both count agains
 a user finds. `product-designer` composes only the states in this column; `qa-engineer`'s device and
 state matrix is generated from it.
 
-# Design decision records — `docs/17-ddr/`
+# Design decision records — `docs/19-ddr/`
 
 When you choose one interaction over another and the reason will not survive in the flow or token
 file — a gesture rejected for accessibility, a navigation model chosen against the obvious one —

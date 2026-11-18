@@ -106,6 +106,25 @@ function reportBudget(role, ticket, text) {
   if (total > budget) process.stderr.write(`spawn-prompt: WARNING — OVER BUDGET by ${total - budget} words. Not a refusal; trim the role file or the specs this ticket pulls in.\n`);
 }
 
+// Roles whose spawn writes gate events (approved/changes, qa_passed/qa_failed, verified). Under
+// `requireActorTokens: true` in .studio-policy.json, compose mints THIS agent's token for THIS ticket
+// (board.mjs actor mint — the main session is the orchestrator; hooks/guard-gate-writes.sh refuses a
+// subagent minting) and inlines it, so nobody has to remember to. ICs write no gate events.
+const GATE_WRITERS = new Set(['code-reviewer', 'tech-lead', 'qa-engineer', 'verification-engineer', 'security-reviewer']);
+function tokenLines(root, role, ticket) {
+  if (!GATE_WRITERS.has(role)) return [];
+  let policy = {};
+  try { policy = JSON.parse(readFileSync(join(root, '.studio-policy.json'), 'utf8')); } catch { return []; }
+  if (policy.requireActorTokens !== true) return [];
+  let token = '';
+  try {
+    token = execFileSync(process.execPath, [resolve(HERE, 'board.mjs'), 'actor', 'mint', '--role', role, '--ticket', ticket],
+      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  } catch (e) { die(2, `could not mint the ${role} token for ${ticket}: ${String(e.stderr || e.message).trim()}`); }
+  return ['', `Token: ${token}`,
+    `Pass \`--token ${token}\` on every gate event you write for ${ticket}. It proves your role for this ticket only; never write it to a file or hand it on.`];
+}
+
 function cmdCompose() {
   const ticket = String(flags.ticket || '');
   const role = String(flags.role || '');
@@ -172,6 +191,7 @@ function cmdCompose() {
     base ? `The integration branch for this project is \`${base}\`.` : null,
     '',
     'Do not edit the specs. If you are blocked, flag the blocker and stop — do not guess.',
+    ...tokenLines(ROOT, role, row.id),
     '',
     '**Expected output contract.** Return exactly this block, with every field filled in — a',
     'pointer to a skill or a role file is not a substitute; this text, completed:',
@@ -232,6 +252,8 @@ function composeReview(ROOT, row, slot, base) {
       : `**No persisted DONE report for ${row.id}.** Review against the board row and the branch, and say so under \`## Not checked\`.`,
     ...(latest ? ['', '```', report, '```'] : []),
     '',
+    ...tokenLines(ROOT, 'code-reviewer', row.id),
+    '',
     `Write the verdict to \`docs/53-reviews/${row.id}-cycle-${cycle}.md\`, record it with`,
     `\`board.mjs move ${row.id} approved|changes --by code-reviewer --verdict <that file>\`, and return the`,
     'same block verbatim. **Expected output contract** — every field filled in:',
@@ -239,7 +261,7 @@ function composeReview(ROOT, row, slot, base) {
     '```',
     'REVIEW VERDICT: APPROVE | REQUEST CHANGES',
     `Ticket: ${row.id}`,
-    'Scope: <base>..<head>',
+    'Scope: <base>..<the commit you bind>',
     'Track: <floor | light | standard | full> — <why, if raised>',
     `Recorded: \`board.mjs move ${row.id} approved|changes --by code-reviewer\` (exit 0)`,
     'Acceptance (black-box): <criterion → pass/fail, one line each>',

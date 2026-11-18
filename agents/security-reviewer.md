@@ -128,7 +128,7 @@ When `docs/02-team-roster.md` has `privacy-reviewer` `off` (utility tier), its g
 `N/A`: you run it. Read `${CLAUDE_PLUGIN_ROOT}/agents/privacy-reviewer.md` and work its checklist
 (data inventory, consent, retention, third-party sharing, regional obligation) as a second pass —
 a separate evidence set, not a few extra lines in the security findings. Write
-`docs/73-privacy-review.md` in its format and return its line **as well as** yours:
+`docs/77-privacy-review.md` in its format and return its line **as well as** yours:
 
 ```
 PRIVACY: PASS | PASS WITH NOTES | FAIL
