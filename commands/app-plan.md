@@ -98,8 +98,8 @@ Focus (optional): $ARGUMENTS
 
    **Then read what it wrote, and edit it.** The defaults are the safe end of each contract, not
    decisions anyone made for this project: developer roles may write source, document roles may
-   write documents, nobody may touch `docs/team/actors.json`, and risk defaults to medium needing a
-   tech-manager approval. A project with a backend, a payments surface or an unusual layout will
+   write documents, nobody may touch `docs/team/actors.json`, and risk defaults to medium needing
+   only the `code-reviewer` approval. A project with a backend, a payments surface or an unusual layout will
    need more than that, and it is better to widen it deliberately than to discover mid-sprint that
    the gate was never going to allow the work.
 
@@ -115,6 +115,23 @@ Focus (optional): $ARGUMENTS
 
    A tool that is genuinely not installed here is reported, not guessed around — that is a blocker
    for the user, stated before the sprint starts rather than discovered when the first build breaks.
+
+4c. **Commit what the pod will read — before anyone is spawned.** Every IC works in a leased git
+   worktree, and a worktree sees only committed files. Stage by explicit path, never a blanket add:
+
+   ```bash
+   for f in docs/30-sprint-plan.md docs/team/messages.jsonl docs/team/capabilities.json \
+            docs/team/risk-policy.json docs/team/schedule.json docs/team/context-manifest.json \
+            docs/team/project-profile.json docs/11-backlog.md docs/22-impl-spec-*.md; do
+     [ -e "$f" ] && git add -- "$f"
+   done
+   git diff --cached --name-only    # confirm only those landed
+   git commit -m "docs: sprint plan and specs from /app-plan"
+   ```
+
+   The board log and its rendering (`docs/31-board-events.jsonl`, `docs/31-board.md`) are
+   gitignored on purpose and stay in the main checkout; the spawn prompt carries each IC its ticket.
+   `docs/team/actors.json` holds plaintext actor keys and is never committed.
 
 5. **Hand off.** When a human invoked `/app-plan` directly, ask "ready to launch the pod with
    `/app-build`?" and do not auto-launch.

@@ -71,7 +71,9 @@ risky change during an audit.
 ## Step 4 — Hand off
 
 Onboarding hands to `/app-audit`. Audit writes `docs/80-audit.md` and a remediation backlog of
-`AUDIT-NNN` tickets (each carrying its severity, the violated House KB rule, and Safe/Risky tag),
+`AUDIT-NNN` tickets (each carrying its severity, the violated House KB rule, and Safe/Risky tag —
+a Risky ticket is added `--status blocked --reason "needs-approval: ..."` and stays blocked until
+the founder approves it at the audit gate),
 then the normal build loop closes them.
 
 ## Anti-patterns

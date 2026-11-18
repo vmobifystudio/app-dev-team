@@ -245,8 +245,12 @@ There are two profiles. Every spawnable ticket owner uses one of them — includ
 ticket produces documents rather than code, because a doc ticket is still work on a branch that
 still has to be verified and merged.
 
-**CODE profile** — `ios-developer`, `android-developer`, `backend-developer`,
-`monetization-engineer`, `devops-engineer`:
+The role lists below are `CODE_ROLES` and `ARTIFACT_ROLES` in `scripts/lib/contract.mjs`, which is
+canonical; `spawn-prompt.mjs` inlines that contract into every spawn prompt, and this section is the
+reference for what each field means.
+
+**CODE profile** — `ios-developer`, `android-developer`, `backend-developer`, `web-developer`,
+`monetization-engineer`, `devops-engineer`, `test-automation-engineer`:
 
 ```
 DONE: APP-NNN
@@ -270,7 +274,7 @@ Next: code-reviewer
 ```
 
 **DOC profile** — `ux-architect`, `product-designer`, `product-manager`, `product-researcher`,
-`qa-engineer`, `aso-specialist`, `data-analyst`, `verification-engineer` when it owns a ticket:
+`qa-engineer`, `data-analyst`, `aso-specialist`:
 
 ```
 DONE: APP-NNN
@@ -292,8 +296,9 @@ branch cannot be verified, cannot be merged, and cannot be told apart from a tic
 
 Roles that **gate** rather than work tickets — `code-reviewer`, `security-reviewer`,
 `verification-engineer` in its certifying role, `release-manager`, `tech-lead`, `tech-manager` —
-return their own verdict block instead (`APPROVED:` / `REQUEST CHANGES:` / `SECURITY:` /
-`VERIFICATION:` / `SHIP CANDIDATE:`). A role that can do both says which it is doing in its first
+return their own verdict block instead (`REVIEW VERDICT: APPROVE` / `REVIEW VERDICT: REQUEST
+CHANGES` / `SECURITY:` / `VERIFICATION:` / `SHIP CANDIDATE:`). `verification-engineer` is in
+neither profile list even when it owns a ticket: it returns its `VERIFICATION:` block. A role that can do both says which it is doing in its first
 line.
 
 Canonical paths, used verbatim by the loop — no other spelling is recognised:

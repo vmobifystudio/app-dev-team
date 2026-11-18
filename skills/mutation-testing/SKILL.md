@@ -1,6 +1,6 @@
 ---
 name: mutation-testing
-description: Use when adding or reviewing a gate, guard rule, CI grep, or test assertion in this plugin's own scripts — and whenever a suite is green and you need to know whether that means anything. Runs scripts/mutate.sh, which breaks the code on purpose and reports which assertions failed to notice. Triggers from code-reviewer, verification-engineer, and any change under scripts/ or hooks/.
+description: Use when adding or reviewing a gate, guard or test assertion — and whenever a green suite needs to prove it can go red. Used by code-reviewer and verification-engineer. mutate.sh covers this plugin's own scripts only; app projects revert the diff instead.
 ---
 
 # Mutation testing
@@ -12,16 +12,30 @@ to `/dev/null`, `|| ok` every time), two doctor assertions that a demoted gate c
 and a hook that stood down in exactly the incident it was written for.
 
 **A green suite is evidence only to the extent its assertions can go red.** `scripts/mutate.sh` is
-that, executable.
+that, executable — **for this plugin's own `scripts/` and `hooks/` only.** Its catalogue names
+plugin files and its runner is `scripts/test.sh`; it cannot mutate an app project.
+
+## On an app project
+
+Mutation-test the project's own suite against the ticket's diff: revert the diff's changed
+production lines (in a scratch copy or throwaway worktree, never the shared tree), run the new
+tests, and confirm they **fail**; restore the lines and confirm they pass. A new test that stays
+green with the change reverted proves nothing about the change. Report it as
+`Mutation: reverted <file:lines> -> <test> FAILED as expected`, or name the test that survived.
 
 ## Running it
 
 ```sh
-sh scripts/mutate.sh                # all 16 catalogued mutations (~1 min each — the whole suite runs)
+sh scripts/mutate.sh                # every catalogued mutation (85 today: --list | grep -c '^M[0-9]')
 sh scripts/mutate.sh --list         # the catalogue, plus what it cannot test and why
-sh scripts/mutate.sh --only M04     # one mutation, while you iterate on an assertion
+sh scripts/mutate.sh --only M04     # one mutation (or a list: --only M38,M39), while you iterate
 sh scripts/mutate.sh --sample 4     # what CI runs on every PR
+sh scripts/mutate.sh --full-suite   # run the whole suite per mutation instead of its section
 ```
+
+By default each mutation runs only its `test.sh` section, which takes seconds; that can hide the
+"CAUGHT, but NOT by the assertion written for it" verdict, so the nightly full run passes
+`--full-suite`.
 
 Exit `0` all caught · `1` something SURVIVED · `2` could not run (baseline not green, anchor drifted).
 
@@ -43,7 +57,7 @@ until `scripts/mutate.sh --only <your-id>` prints CAUGHT and names *your* assert
 Adding one is four fields in the catalogue at the top of `scripts/mutate.sh`:
 
 ```
-M17@@scripts/your-gate.sh@@<exact text to break>@@<replacement>@@<the test.sh label that must fail>
+M87@@scripts/your-gate.sh@@<exact text to break>@@<replacement>@@<the test.sh label that must fail>
 ```
 
 - The find text must occur **exactly once** in the file. Zero or many exits 2 — a mutation anchored

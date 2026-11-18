@@ -42,10 +42,11 @@ render erases it and no rule in this plugin ever saw it. The loop's steps map to
 | 3 | `verify-done.sh` VERIFIED / REJECTED | `verified` / `rejected` |
 | 3 | routed to review | `review_requested` (`--detail "-> code-reviewer"`) |
 | 3 | reviewer begins | `started` |
-| 4 | `APPROVED` / `REQUEST CHANGES` | `approved` / `changes` |
-| 4 | merge gate clears | `merged` |
-| 5 | QA verdict | `qa_passed` / `qa_failed`, then `closed` |
+| 4 | `REVIEW VERDICT: APPROVE` / `REVIEW VERDICT: REQUEST CHANGES` | `approved` / `changes` |
+| 4 | merge gate clears (you run it inline) | `merged` |
+| 5 | QA verdict | `qa_passed` / `qa_failed`, then `closed` (a `QA-` ticket: `merged` → `closed`) |
 | any | stopped, for any reason | `blocked`, later `unblocked` |
+| cap | founder grants one more review cycle | `reopened` (`--by founder`) |
 
 **Exit `1` is a refusal, and a refusal is a finding.** The CLI rejects the transition and prints why
 and what is legal from here. Do not retry it, do not work around it, and do not touch the Markdown:
@@ -137,7 +138,8 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      `docs/51-bugs.md` does not exist yet — expected, not a failure; say so and continue. `check`
      exits 1 while anything still owes an answer. Here that is a **report** — open bugs
      mid-sprint are what a sprint is for — and at ship it is a **refusal**. For every open `S1`/`S2`
-     with no ticket, cut a `BUG-NNN-fix` row and link it:
+     with no ticket, cut a `BUG-NNN-fix` row (`board.mjs add ... --depends <the original ticket>` —
+     satisfied once the original is `merged`, which it already is if QA found the bug) and link it:
 
      ```bash
      node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" --root . link BUG-007 --ticket BUG-007-fix --by tech-manager
@@ -187,71 +189,13 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    not proceed to step 2. Why this step exists and sits here rather than later (the "zero times in
    ten agent-runs" measurement): `scripts/messages.mjs`'s `open` docstring.
 
-2. **Spawn developers in parallel.** Use the `parallel-orchestrator` skill, which requires a
-   **worktree per writing agent, leased before the spawn** (`agent-isolation`), and serializes any
-   ticket pair that shares a file. Launch IC agents concurrently in a **single assistant message** —
-   one Task invocation per owner, each passed its slot path and the full list of tickets they're
-   working this round.
-
-   **Lease one slot per OWNER, not one per ticket:**
-
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease \
-     --owner ios-developer --tickets APP-001,APP-002 --pool 3
-   ```
-
-   The owner works its tickets **one after another in that one slot**, cutting `feat/APP-NNN-slug`
-   per ticket and committing between — so branch-per-ticket is unchanged and every branch carries
-   only its own files (`code-reviewer` check 9). `lease` refuses when the pool is full; that is the
-   parallelism cap, and raising it is a decision, not a workaround. The unit of isolation is the
-   **writer**, never the ticket: `agent-isolation` Rule 1 has the argument.
-
-   **Claim each ticket before its agent is spawned**, so the board says who is working on what while
-   they work rather than after they return:
-
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN claimed --by <owner-role>
-   ```
-
-   A refusal here means the ticket was not actually ready — read the reason and spawn nobody for it.
-
-   **Then run the isolation gate, and obey it.** Last command before the launch message — and it
-   takes the **owners** you are about to spawn, because that is what now has a tree each:
-
-   ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" ios-developer android-developer
-   ```
-
-   Exit `1` → **REFUSED: spawn nobody.** It names the tickets with no worktree and prints the
-   `git worktree add` line for each; create them and re-run, or serialize the round. Exit `2` →
-   worktrees are unavailable here, so serialize; a 2 is never a go-ahead. Exit `0` with a single
-   ticket prints `SERIALIZED` — legal, and it must be said in the standup.
-
-   **This gate is also the studio kill switch.** If `.studio-stop` exists at the repository root (or
-   `APP_TEAM_STOP` is set in the environment), it refuses with `EMERGENCY STOP` and the operator's
-   recorded reason. Spawn nobody, report what is unfinished, and stop the loop. **You never clear
-   `.studio-stop` yourself** — an agent deciding the halt no longer applies is the halt not existing.
-   An operator sets it with `echo "reason" > .studio-stop` and clears it with `rm .studio-stop`,
-   with no code change and no restart.
-
-   **Then compose each agent's prompt — do not write it by hand.**
-
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-prompt.mjs" compose \
-     --root . --ticket APP-NNN --role <owner> --slot .agent-wt/<owner>
-   ```
-
-   Use its stdout as the spawn message **verbatim**. This exists because the reminder that a prompt
-   must contain the output contract also failed the person who wrote it: the first prompt ever sent
-   against this loop said *"Return the CODE profile defined in `team-protocol`"* instead of
-   containing it, and the agent — correct code, correctly committed — returned **0 of 6** contract
-   fields (H5, 2026-08-07). The identical ticket, role and slot, re-spawned with the contract text
-   pasted in, returned all six (H5b). See `parallel-orchestrator` step 4 for the full account.
-
-   This is a script rather than a reminder because the reminder failed on the people who wrote it:
-   two writers went into one checkout hours after that rule was hardened, one ran `git stash` +
-   `git reset`, and 22 files of the other's work were lost (DR4-027). Isolation cannot be a
-   convention the orchestrator remembers.
+2. **Spawn developers in parallel — run the `parallel-orchestrator` skill.** It is the one copy of
+   the launch procedure: claim each ticket, lease one slot per OWNER (`worktree-slot.mjs lease`),
+   check file overlap, compose each prompt with `spawn-prompt.mjs compose`, run `spawn-gate.sh
+   <owners>` (which is also the `.studio-stop` kill switch — you never clear it yourself), then launch
+   every owner in a **single assistant message**, each given its slot path and the full list of
+   tickets it works this round. A refusal at any of those steps means **spawn nobody** for what it
+   names. What follows is only what is specific to this loop.
 
    **Spawn by the ticket's `Owner` column — never from a hardcoded list.** The authority on which
    owners this loop can spawn is `board-doctor` (Manual-fallback check 4) and the
@@ -450,10 +394,24 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      that ticket before the merge gate**, passing the branch, `$BASE`, and the named constants and
      rules verbatim. Its `VERIFICATION: PASS` / `VERIFICATION: FAIL` gates the merge **alongside**
      the review verdict: `FAIL` blocks the merge exactly as a `REQUEST CHANGES` would, and is
-     re-worked the same way: write `docs/53-reviews/APP-NNN-cycle-N.md` opening with
-     `REQUEST CHANGES — VERIFICATION: FAIL` and the findings, record it with
+     re-worked the same way: write `docs/53-reviews/APP-NNN-cycle-N.md` as a FAIL file (below)
+     carrying the `VERIFICATION: FAIL` findings, record it with
      `board.mjs move APP-NNN changes --by tech-manager --verdict <that file>`, and re-spawn the
-     developer. Cycles are derived from `changes` events — nobody edits a column — so this counts
+     developer.
+
+     **A FAIL file** — verification or design QA — is what `--verdict` parses, so its shape is fixed:
+
+     ```
+     REVIEW VERDICT: REQUEST CHANGES
+     Scope: <base>..<head>
+     <the FAIL detail: VERIFICATION: FAIL or DESIGN QA: FAIL — <n> item(s), and each finding>
+
+     ## Not checked
+     <what this pass did not look at>
+     ```
+
+     Line 1 is exactly `REVIEW VERDICT: REQUEST CHANGES` and line 2 the scope; any other opening is
+     refused. Cycles are derived from `changes` events — nobody edits a column — so this counts
      toward the 2-cycle cap like any other rejection.
 
      If a verdict is missing both fields, ask the reviewer for them before merging — a verdict that
@@ -495,14 +453,16 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 
      Verdict is `DESIGN QA: PASS` or `DESIGN QA: FAIL — <n> item(s)`. A `FAIL` blocks the merge
      exactly as a `REQUEST CHANGES` does and is re-worked the same way — persist it at
-     `docs/53-reviews/APP-NNN-cycle-N.md` opening with `REQUEST CHANGES — DESIGN QA: FAIL`, record
+     `docs/53-reviews/APP-NNN-cycle-N.md` as a FAIL file (shape above), record
      `board.mjs move APP-NNN changes --by tech-manager --verdict <that file>` (that event IS the
      cycle; nobody edits a column), and re-spawn the ticket's owner.
-   - `APPROVED` (and `VERIFICATION: PASS`, if one was required above) → the reviewer appends
+   - `REVIEW VERDICT: APPROVE` (and `VERIFICATION: PASS`, if one was required above) → the reviewer
+     appends
      `board.mjs move APP-NNN approved --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md`
      — plus `--bind --evidence <path> --context <path>` when `.studio-policy.json` sets
      `requireApprovalBinding` (the `/app-init` default). Without `--bind` the merge gate's
-     `approval-check` refuses the approval.
+     `approval-check` refuses the approval. The binding is to the **ticket branch tip** at review
+     time: any commit added to the branch after the approval means a fresh review, not a merge.
      **The path moved from `--detail` to `--verdict`, and that is the whole change**: `--detail` was
      free text nothing opened, so an approval could name a file that did not exist, or name nothing
      at all. `--verdict` is read, parsed and hashed onto the event — the append is refused if the
@@ -510,15 +470,26 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
      you are appending `approved`, if it has no `Scope: <base>..<head>`, or if it has no
      `## Not checked` section. A refusal here means the review is not recorded yet, not that the
      code is bad; read the message and have the reviewer finish the document.
-     Then spawn `tech-manager` to run the Merge gate (see `agents/tech-manager.md`), passing the
-     `$BASE` resolved in step 3. The gate **is** `board.mjs move APP-NNN merged --by tech-manager`,
-     which refuses without a non-owner `approved`; on exit 0 the row is `qa`.
+     **Then run the merge gate yourself, inline — do not spawn `tech-manager` for it.** It is two
+     CLI calls:
 
-     **The gate no longer runs `git merge`, and that is the change.** It passes or refuses per
-     ticket, exactly as before. The git merges happen ONCE, for the whole wave, in step 5 —
-     `wave-integrate.mjs`. Per-ticket merging pushed the integration branch once per ticket (three
-     CI runs for a three-ticket wave, none of them read), and handed every conflict back to a cold
-     developer respawn for a rebase whose hunks the manager was already holding.
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/approval-check.mjs" --ticket APP-NNN --head "$(git rev-parse <branch>)"
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN merged --by tech-manager
+     ```
+
+     `approval-check` exit `1` → the approval does not cover the branch as it stands (a commit landed
+     after it, or it was never bound): request a fresh review, do not merge. `merged` refuses
+     without a non-owner `approved` that satisfies the risk policy, and under
+     `requireApprovalBinding` the board re-runs the binding check itself; on exit 0 the row is `qa`.
+     The default risk policy needs only the `code-reviewer` approval — nobody else is waiting to
+     sign.
+
+     **The gate does not run `git merge`.** It passes or refuses per ticket. The git merges happen
+     ONCE, for the whole wave, in step 5 — `wave-integrate.mjs`, which this loop owns, conflicts
+     included. Per-ticket merging pushed the integration branch once per ticket (three CI runs for a
+     three-ticket wave, none of them read), and handed every conflict back to a cold developer
+     respawn for a rebase whose hunks the orchestrator was already holding.
    - `REQUEST CHANGES` → `board.mjs move APP-NNN changes --by code-reviewer --verdict
      docs/53-reviews/APP-NNN-cycle-N.md`, then re-spawn the original developer **pointed at that
      file**, not at notes you are holding in context. You no longer have to remember to check the
@@ -538,9 +509,19 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
    - **Cap: 2 review cycles, enforced at write time.** The 3rd `changes` is **refused**, and the CLI
      appends `blocked` in its place and prints the dependents that just stopped being claimable.
      That is not an error to work around: stop the loop for that ticket and surface it to the user
-     with the full reviewer + developer history. Do not auto-retry beyond it.
+     with the full reviewer + developer history. Do not auto-retry beyond it. If the founder decides
+     it is worth one more cycle, that answer is recorded as
+     `board.mjs move APP-NNN reopened --by founder --detail "<the founder's reason>"`, which moves the
+     ticket back to `in_progress` with exactly one more cycle; re-spawn the owner from there. Only the
+     founder's answer writes it — never append it on your own judgement.
    - A ticket going `blocked` here is exactly what strands its dependents — the CLI names them on
      the spot, and step 0 re-runs at the top of every round to catch the rest.
+
+   **Utility tier.** On a `utility` roster the same loop runs with less ceremony: `code-reviewer`
+   also runs the design-QA pass (there is no `ux-architect`), its approval is the only one — there
+   is no second approval to wait for — and the wave's `QA-` ticket is closed straight from `merged`
+   (step 5). `tech-manager` is spawned only for planning, the standup, an escalation, or a semantic
+   conflict between two tickets; never per ticket.
 
 4a. **Release the slot and reap the pool.** When an owner has no tickets left in flight, release its
    lease and reclaim anything nothing is using:
@@ -567,9 +548,22 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 
    | Exit | Meaning | Do |
    |---|---|---|
-   | `0` GREEN | merged tree passes | run the `board.mjs move APP-NNN verified` lines it printed, then `wave-integrate.mjs --wave <N> --push` (one push, one CI run — never trigger/re-run/cancel a workflow yourself) |
-   | `1` FAIL/CONFLICT | wave does not advance | re-spawn only the owners the printed candidate list names; a textual conflict is yours to resolve (`git-pr-strategy` §6), a behaviour/contract one goes to that contract's owner as a ticket |
+   | `0` GREEN | merged tree passes | run the `board.mjs move APP-NNN verified` lines it printed, then push (below) |
+   | `1` FAIL/CONFLICT | wave does not advance | re-spawn only the owners the printed candidate list names; a textual conflict is **yours** to resolve here (`git-pr-strategy` §6) — this loop owns wave integration, not `tech-manager`; a behaviour/contract one goes to that contract's owner as a ticket |
    | `2` CANNOT EVALUATE | no `full` scope, or the suite could not run | not a pass; every ticket keeps `verified_static`, `closed` stays refused |
+
+   **The push is a second call on the same, already-green wave branch** — it does not re-merge or
+   re-test:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE" --push
+   ```
+
+   It fast-forwards `$BASE` and pushes once: one push, one CI run — never trigger, re-run or cancel
+   a workflow yourself. With no `origin` remote the push is skipped and it still exits `0`; say
+   `NOT PUSHED: no origin` in the standup. An exit `1` from **this** call is a push failure, not a
+   code failure: the wave is already integrated locally, so re-spawn nobody — report the push error
+   verbatim.
 
    A non-green wave is a normal outcome, not a stuck loop — `merge-reconcile` reports those tickets
    as `AWAITING INTEGRATION`, never as a lying board.
@@ -668,7 +662,9 @@ approval, a claim on a dependency that never merged. Exit `2` means the log is m
 
    **Its return goes through step 3 exactly like a developer's.** It is a DOC-profile ticket, so:
    `done_reported`, then `verify-done.sh <branch> "$BASE" --docs-only`, then the daily-fragment
-   check, then review and the merge gate. A QA return with no `Branch:`, or a branch `verify-done`
+   check, then review and the merge gate. A `QA-` ticket has no QA stage of its own — nobody QAs
+   the QA pass — so once `merged` it goes straight to
+   `board.mjs move QA-<sprint>-w<n> closed --by tech-manager`. A QA return with no `Branch:`, or a branch `verify-done`
    cannot find, is **REJECTED** — re-spawn QA to redo the pass on a branch. Do not accept the
    documents and move on: observed live, `50-test-plan.md` and `51-bugs.md` landed straight in the
    shared tree with no branch, commit, ticket or fragment, so the run's single best artifact had no

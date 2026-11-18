@@ -56,20 +56,44 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    report back; no step ever brought it back, so conflicts reached Gate 1 unarbitrated.
 
 4. **Spawn the `active` roles among `ux-architect`, `product-designer`, `tech-lead`, and `devops-engineer` in parallel**
-   in a single message:
+   in a single message — **except on `utility` tier, where `tech-lead` runs first and
+   `devops-engineer` is spawned after it returns**: there `tech-lead` writes the architecture
+   `devops-engineer` reads, so launching both in one batch has devops reading a file that does not
+   exist yet.
    - `ux-architect` reads PRD, writes docs/12-flows.md — flows and the screen-and-state inventory.
    - `product-designer` composes that inventory into docs/13-design-tokens.md and docs/14-components.md.
    - `tech-lead` reads architecture + PRD, writes per-platform impl specs — and on `utility` tier
      also writes `docs/20-architecture.md` + `docs/21-engineering-principles.md`, the technical pass
      `cto` would have run. Write only the impl specs for platforms the product type actually has:
-     a `backend-service` gets `22-impl-spec-backend.md` and no iOS or Android spec.
+     a `backend-service` gets `22-impl-spec-backend.md` and no iOS or Android spec; a `web-app` gets
+     `22-impl-spec-web.md` (what `web-developer` reads), plus `22-impl-spec-backend.md` only if a
+     backend is in scope.
    - `devops-engineer` reads architecture, writes `docs/23-git-strategy.md`, a platform
      `.gitignore`, and the CI workflow — seeded from the House KB `git-workflow.md`.
      The `.gitignore` **must include `.agent-wt/`** — that is where per-agent git worktrees live
      (`agent-isolation`), and an un-ignored worktree dir shows up as untracked noise in every
      agent's `git status`.
 
-5. **Bootstrap the project.** Generate, seeded from the House Knowledge Base (`knowledge/`) and the
+5. **Bootstrap the project.** First make it a git repository — every later step leases git
+   worktrees, and a worktree sees only what is committed:
+
+   ```bash
+   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || git init -b main
+   touch .gitignore
+   for p in .agent-wt/ .studio-stop docs/31-board-events.jsonl docs/31-board.md \
+            docs/team/runs.jsonl 'docs/team/*-result.json' docs/team/actors.json; do
+     grep -qxF "$p" .gitignore || printf '%s\n' "$p" >> .gitignore
+   done
+   ```
+
+   That list is the studio's own operational state, appended to whatever platform `.gitignore`
+   `devops-engineer` wrote (plus `docs/team/actors.json`, which holds plaintext actor keys). The
+   board log and its rendering live in the main checkout only — a
+   `git checkout` must not roll the board back, and ICs get their ticket through the spawn prompt,
+   not from the board file. `docs/team/messages.jsonl` and the `docs/team/*.json` manifests stay
+   **tracked**: they are project decisions and history a reviewer should be able to read.
+
+   Then generate, seeded from the House Knowledge Base (`${CLAUDE_PLUGIN_ROOT}/knowledge/`) and the
    docs just produced:
    - the target project's **`CLAUDE.md`** — chosen stack, build/run commands, the team's working
      rules, the picked commit convention, and canonical names (so agents never guess);
@@ -120,11 +144,23 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      `requireApprovalBinding` have no such ordering problem — `run-ledger.mjs` and
      `approval-check.mjs` degrade to CANNOT EVALUATE on an empty/absent log rather than erroring at
      spawn time — so they default on safely. Neither is checked at spawn: `ship-gate.sh` checks both
-     at release, and the merge gate (`tech-manager` step 1a) checks the ticket's own approval, which
-     is why `code-reviewer` approves with `--bind` on such a project. Turn the other three on explicitly, per project, once their
+     at release, and the merge gate (`/app-build` step 4, run inline by the orchestrator) checks the
+     ticket's own approval, which is why `code-reviewer` approves with `--bind` on such a project. Turn the other three on explicitly, per project, once their
      prerequisite exists: `requireAuditAnchor` after the board has its first ticket and someone runs
      `audit-anchor.mjs create`; `requireEvaluation` once the project has its own `eval/manifest.json`;
      `requirePromptRegistry` is a studio-repo concept and does not apply to a shipped project at all.
+
+5a. **Commit the planning docs**, staging by explicit path — never a blanket add:
+
+   ```bash
+   for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent docs/team/messages.jsonl \
+            docs/0*.md docs/1*.md docs/2*.md; do [ -e "$f" ] && git add -- "$f"; done
+   git diff --cached --name-only    # confirm only those landed
+   git commit -m "docs: project plan from /app-init"
+   ```
+
+   Uncommitted docs are invisible to every worktree `/app-build` leases, so an IC would build
+   against no spec at all.
 
 6. **Print a summary**: list every doc produced, with one-line description each, and the suggested
    next command (`/app-run` for the mostly-autonomous flow, or `/app-plan` → `/app-build` for manual control).
@@ -132,7 +168,8 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 6a. **Validate intent against the record — before the gate, not after it.** Spawn
    `product-validator` (active per the roster). It reads `docs/00-founder-intent/` and the derived
    documents, writes `docs/16-intent-validation.md`, and returns one line:
-   `INTENT: ALIGNED | DRIFTED | CANNOT EVALUATE`. Then run the graph:
+   `INTENT: ALIGNED | DRIFTED | CANNOT EVALUATE`. This is the one `product-validator` spawn for
+   the run — `/app-run` reuses this result rather than spawning it again. Then run the graph:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root .
@@ -180,7 +217,8 @@ docs/
   21-engineering-principles.md
   22-impl-spec-ios.md        (product type ios-app / mobile-app)
   22-impl-spec-android.md    (product type android-app / mobile-app)
-  22-impl-spec-backend.md    (product type backend-service / web-app, or backend in scope)
+  22-impl-spec-web.md        (product type web-app)
+  22-impl-spec-backend.md    (product type backend-service, or backend in scope)
   23-git-strategy.md
   41-monetization.md         (if monetized)
   52-analytics.md
