@@ -4370,12 +4370,12 @@ assert_has "$TMP/out" 'MISSING  Second-path check:' "...and naming each missing 
 assert_has "$TMP/out" 'NOT fill them in yourself' \
   "...and forbidding the orchestrator from inventing the answer, which would record a claim nobody made"
 
-printf 'Worktree: .agent-wt/APP-001\nMutation confirmed: yes\nDaily fragment: docs/daily/x.md\nAssumptions & open questions: none\nSecond-path check: grepped every writer\nShared surfaces touched: none\n' > "$RPT/good.txt"
+printf 'Worktree: .agent-wt/APP-001\nBranch: feat/APP-001-x\nMutation confirmed: yes\nDaily fragment: docs/daily/x.md\nAssumptions & open questions: none\nSecond-path check: grepped every writer\nShared surfaces touched: none\n' > "$RPT/good.txt"
 node "$HERE/report-check.mjs" --role ios-developer --report "$RPT/good.txt" >/dev/null 2>&1
 [ $? = 0 ] && ok "...while a complete code-tier report clears" || bad "...while a complete code-tier report clears"
 node "$HERE/report-check.mjs" --role qa-engineer --report "$RPT/good.txt" >/dev/null 2>&1
-[ $? = 0 ] && ok "...and an artifact-tier role owes three fields, not six" \
-           || bad "...and an artifact-tier role owes three fields, not six"
+[ $? = 0 ] && ok "...and an artifact-tier role owes its own tier's fields (no Second-path check)" \
+           || bad "...and an artifact-tier role owes its own tier's fields (no Second-path check)"
 node "$HERE/report-check.mjs" --role code-reviewer --report "$RPT/good.txt" >/dev/null 2>&1
 [ $? = 2 ] && ok "...and a gate role, which returns a verdict rather than a DONE, has no report contract" \
            || bad "...and a gate role, which returns a verdict rather than a DONE, has no report contract"
@@ -10605,6 +10605,196 @@ F2D="$F2/disp"; mkdir -p "$F2D/docs"
   && ok "F2: dispatch-preflight needs no --path/--file for a ticket that declares no files, and says it checked none (C2-28)" \
   || bad "F2: dispatch-preflight needs no --path/--file for a ticket that declares no files, and says it checked none (C2-28)" "rc=$F2RC $(tail -5 "$F2/dp.txt")"
 rm -rf "$F2"
+
+# --- Sprint 3 track E: spawn prompts by mode, per-ticket QA tokens, hooks that read the mode ------
+# Every gate spawn the loop makes has a compose template that mints its own token (W2-1, W2-2); hooks
+# decide by the prompt's / report's first line, not by role alone (R2-8); ticket IDs are whole board
+# IDs (W2-4, W2-7, W2-16); the gate-write guard refuses only writes INTO evidence and closes the
+# quoting/variable/inline-program/nested-claude/transcript holes (C2-4, G2-1, G2-15, G2-16, G2-27).
+echo
+TE="$TMP/s3e"; rm -rf "$TE"; mkdir -p "$TE/docs/team/reports"
+( cd "$TE" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m init \
+  && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
+  && node "$HERE/board.mjs" add APP-001 --title greet --owner ios-developer --acceptance "Given Ada, shows Hello Ada" --by tech-manager \
+  && node "$HERE/board.mjs" add APP-001-analytics --title events --owner data-analyst --by tech-manager \
+  && node "$HERE/board.mjs" add APP-002 --title other --owner android-developer --by tech-manager \
+  && node "$HERE/board.mjs" add QA-1-w1 --title "QA pass — wave 1" --owner qa-engineer --by tech-manager \
+  && git branch feat/APP-001-greet && git branch feat/APP-001-analytics-events ) >/dev/null 2>&1
+printf '{"requireActorTokens": true, "requireApprovalBinding": true}\n' > "$TE/.studio-policy.json"
+printf 'DONE: APP-001\nBranch: feat/APP-001-greet\nIC-REPORT\n' > "$TE/docs/team/reports/APP-001-20261101T000000000Z.md"
+printf 'DONE: APP-001-analytics\nSUFFIX-REPORT\n' > "$TE/docs/team/reports/APP-001-analytics-20261119T000000000Z.md"
+printf 'DESIGN QA: PASS\nTicket: APP-001\nDESIGNQA-REPORT\n' > "$TE/docs/team/reports/APP-001-20261120T000000000Z.md"
+te_compose() { ( cd "$TE" && node "$HERE/spawn-prompt.mjs" compose --root . "$@" ); }
+
+# W2-1 / C2-1 — the QA prompt lists the wave and mints one qa-engineer token PER listed ticket.
+te_compose --ticket QA-1-w1 --role qa-engineer --tickets APP-001,APP-002 >"$TMP/te-qa.txt" 2>/dev/null
+grep -q '^Token for APP-001: st_' "$TMP/te-qa.txt" && grep -q '^Token for APP-002: st_' "$TMP/te-qa.txt" \
+  && ok "S3E: the QA prompt carries one qa-engineer token per wave ticket (Token for APP-NNN:)" \
+  || bad "S3E: the QA prompt carries one qa-engineer token per wave ticket (Token for APP-NNN:)" "$(head -c 600 "$TMP/te-qa.txt")"
+node -e 'const l = require("fs").readFileSync(process.argv[1], "utf8").split("\n").filter(Boolean).map(JSON.parse);
+  process.exit(l.some((r) => r.role === "qa-engineer" && r.ticket === "APP-001") && !l.some((r) => r.ticket === "QA-1-W1") ? 0 : 1)' "$TE/docs/team/actor-tokens.jsonl" \
+  && ok "S3E: ...minted for APP-NNN itself (qa_passed on APP-NNN is provable), none for the QA- ticket" \
+  || bad "S3E: ...minted for APP-NNN itself (qa_passed on APP-NNN is provable), none for the QA- ticket"
+grep -qF 'Given Ada, shows Hello Ada' "$TMP/te-qa.txt" && grep -qF 'qa_passed --by qa-engineer --token' "$TMP/te-qa.txt" \
+  && ok "S3E: ...with each ticket's acceptance and the qa_passed command QA records itself (W2-8)" \
+  || bad "S3E: ...with each ticket's acceptance and the qa_passed command QA records itself (W2-8)"
+te_compose --ticket QA-1-w1 --role qa-engineer >/dev/null 2>&1
+[ $? = 2 ] && ok "S3E: a QA compose with no ticket at qa refuses (no QA ticket for an empty wave)" \
+  || bad "S3E: a QA compose with no ticket at qa refuses (no QA ticket for an empty wave)"
+
+# W2-2 / C2-2 — gate-role templates, each with its own token, each clearing verify.
+for _r in tech-lead security-reviewer verification-engineer; do
+  te_compose --ticket APP-001 --role "$_r" >"$TMP/te-$_r.txt" 2>/dev/null
+  if [ $? = 0 ] && grep -q '^Token: st_' "$TMP/te-$_r.txt" && node "$HERE/spawn-prompt.mjs" verify --role "$_r" --prompt "$TMP/te-$_r.txt" >/dev/null 2>&1; then
+    ok "S3E: compose has a $_r template that mints its token and clears verify"
+  else bad "S3E: compose has a $_r template that mints its token and clears verify" "$(head -c 400 "$TMP/te-$_r.txt")"; fi
+done
+te_compose --role release-auditor >"$TMP/te-ra.txt" 2>/dev/null
+[ $? = 0 ] && grep -qF 'RELEASE AUDIT: PASS | PASS WITH NOTES | FAIL' "$TMP/te-ra.txt" \
+  && ok "S3E: compose has a release-auditor template (no board ticket needed)" \
+  || bad "S3E: compose has a release-auditor template (no board ticket needed)"
+grep -qF 'docs/53-reviews/APP-001-cycle-0-tech-lead.md' "$TMP/te-tech-lead.txt" \
+  && ok "S3E: ...the tech-lead's second approval writes its own verdict file, not the reviewer's" \
+  || bad "S3E: ...the tech-lead's second approval writes its own verdict file, not the reviewer's"
+
+# C2-7 / C2-10 / C2-9 / R2-6 — the reviewer template: routing fields, base, evidence, context, --bind.
+te_compose --ticket APP-001 --role code-reviewer >"$TMP/te-rv.txt" 2>"$TMP/te-rv.err"
+TETIP=$(cd "$TE" && git rev-parse feat/APP-001-greet)
+grep -qF 'Constants routed to verification-engineer:' "$TMP/te-rv.txt" && grep -qF 'Rules routed to verification-engineer:' "$TMP/te-rv.txt" \
+  && ok "S3E: the reviewer contract carries the two routing fields (C2-7)" \
+  || bad "S3E: the reviewer contract carries the two routing fields (C2-7)"
+grep -q '^Base: ' "$TMP/te-rv.txt" && grep -q '^Evidence: ' "$TMP/te-rv.txt" && grep -q '^Context: ' "$TMP/te-rv.txt" \
+  && ok "S3E: ...and Base:, Evidence:, Context: lines (C2-10)" || bad "S3E: ...and Base:, Evidence:, Context: lines (C2-10)"
+grep -qF -- "--bind --commit $TETIP --base " "$TMP/te-rv.txt" && grep -qF "Scope: $TETIP..$TETIP" "$TMP/te-rv.txt" \
+  && ok "S3E: ...and the exact --bind command and Scope range under requireApprovalBinding (R2-6)" \
+  || bad "S3E: ...and the exact --bind command and Scope range under requireApprovalBinding (R2-6)"
+grep -qF 'git worktree add --detach' "$TMP/te-rv.txt" && grep -qF 'You stay in the main checkout' "$TMP/te-rv.txt" \
+  && ok "S3E: ...the reviewer stays in the main checkout, scratch in a mktemp worktree (C2-9)" \
+  || bad "S3E: ...the reviewer stays in the main checkout, scratch in a mktemp worktree (C2-9)"
+grep -q IC-REPORT "$TMP/te-rv.txt" && ! grep -q 'SUFFIX-REPORT\|DESIGNQA-REPORT' "$TMP/te-rv.txt" \
+  && ok "S3E: the reviewer gets the DONE report for exactly this ID, never APP-001-analytics's or a DESIGN QA verdict (W2-4, C2-3)" \
+  || bad "S3E: the reviewer gets the DONE report for exactly this ID, never APP-001-analytics's or a DESIGN QA verdict (W2-4, C2-3)"
+assert_has "$TMP/te-rv.err" "mandatory skills" "S3E: the budget line counts the mandatory-skill closure (C2-20)"
+
+# C2-5 / C2-11 — the IC prints its base and checkout line; a retry goes onto the existing branch.
+te_compose --ticket APP-001 --role ios-developer >"$TMP/te-ic.txt" 2>/dev/null
+grep -qF 'git checkout -b feat/APP-001-<short-slug> main' "$TMP/te-ic.txt" \
+  && ok "S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)" \
+  || bad "S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nScope: a..b\nBlocking: RETRY-BLOCKING-LINE\n\n## Not checked\nNothing\n' > "$TE/docs/v.md"
+te_compose --ticket APP-001 --role ios-developer --retry docs/v.md >"$TMP/te-rt.txt" 2>"$TMP/te-rt.err"
+grep -qF 'feat/APP-001-greet` already exists' "$TMP/te-rt.txt" && grep -q RETRY-BLOCKING-LINE "$TMP/te-rt.txt" \
+  && grep -q 'model: opus' "$TMP/te-rt.err" && ! grep -qF 'git checkout -b' "$TMP/te-rt.txt" \
+  && ok "S3E: compose --retry names the existing branch, the verdict, and the model tier on stderr (C2-11)" \
+  || bad "S3E: compose --retry names the existing branch, the verdict, and the model tier on stderr (C2-11)" "$(cat "$TMP/te-rt.err")"
+
+# C2-8 / R2-7 — the artifact contract owes Branch: and report-check checks it.
+grep -q '^Branch: feat/QA-1-w1' "$TMP/te-qa.txt" && grep -q '^Shared surfaces touched:' "$TMP/te-qa.txt" \
+  && ok "S3E: the artifact contract carries Branch:, Mutation confirmed:, Shared surfaces touched: (R2-7)" \
+  || bad "S3E: the artifact contract carries Branch:, Mutation confirmed:, Shared surfaces touched: (R2-7)"
+printf 'DONE: QA-1-w1\nWorktree: x\nMutation confirmed: x\nDaily fragment: x\nAssumptions & open questions: none\nShared surfaces touched: none\n' > "$TMP/te-nobranch.txt"
+node "$HERE/report-check.mjs" --role qa-engineer --report "$TMP/te-nobranch.txt" >"$TMP/te-nb.out" 2>&1
+[ $? = 1 ] && grep -q 'MISSING  Branch:' "$TMP/te-nb.out" && ok "S3E: report-check refuses an artifact DONE with no Branch: (C2-8)" \
+  || bad "S3E: report-check refuses an artifact DONE with no Branch: (C2-8)" "$(cat "$TMP/te-nb.out")"
+
+# C2-3 / S2-7 / R2-8 — design QA is a mode: composed, allowed by the pre-spawn hook, not blocked on stop.
+TEPRE="$HERE/../hooks/require-spawn-contract.sh"
+te_spawn() { node -e 'const [, s, p, c] = process.argv; process.stdout.write(JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Agent", cwd: c,
+  tool_input: { subagent_type: s, description: "x", prompt: require("fs").readFileSync(p, "utf8") } }))' "$1" "$2" "$TE" | sh "$TEPRE"; }
+te_compose --ticket APP-001 --role ux-architect --mode design-qa >"$TMP/te-dq.txt" 2>/dev/null
+head -1 "$TMP/te-dq.txt" | grep -q '^Design QA ticket APP-001\.' && te_spawn app-dev-team:ux-architect "$TMP/te-dq.txt" >/dev/null 2>&1 \
+  && ok "S3E: a composed design-QA prompt (ux-architect) is ALLOWED by the pre-spawn hook" \
+  || bad "S3E: a composed design-QA prompt (ux-architect) is ALLOWED by the pre-spawn hook"
+te_compose --ticket APP-001 --role product-designer --mode design-qa >/dev/null 2>&1
+[ $? = 2 ] && ok "S3E: ...and product-designer may not design-QA (its own design)" || bad "S3E: ...and product-designer may not design-QA (its own design)"
+printf 'Run the analytics gate on APP-001 and return one line: ANALYTICS: PASS | FAIL | CANNOT EVALUATE.\n' > "$TMP/te-an.txt"
+te_spawn app-dev-team:data-analyst "$TMP/te-an.txt" >/dev/null 2>&1
+[ $? = 0 ] && ok "S3E: a data-analyst ANALYTICS gate prompt is a gate spawn, not an un-contracted IC spawn" \
+  || bad "S3E: a data-analyst ANALYTICS gate prompt is a gate spawn, not an un-contracted IC spawn"
+printf 'Work ticket QA-1-w1.\nReturn the DOC profile from team-protocol.\n' > "$TMP/te-qaptr.txt"
+te_spawn app-dev-team:qa-engineer "$TMP/te-qaptr.txt" >/dev/null 2>&1
+[ $? = 2 ] && ok "S3E: a hand-written QA-1-w1 prompt is policed as QA-1-w1, not read as QA-1 (W2-16)" \
+  || bad "S3E: a hand-written QA-1-w1 prompt is policed as QA-1-w1, not read as QA-1 (W2-16)"
+TESTOP="$HERE/../hooks/persist-ic-report.sh"
+te_stop() { node -e 'const [, a, i, m, c, t] = process.argv; const o = { hook_event_name: "SubagentStop", agent_type: a, agent_id: i, cwd: c, transcript_path: "/nonexistent" };
+  if (m) o.last_assistant_message = m; if (t) o.agent_transcript_path = t; process.stdout.write(JSON.stringify(o))' "$@" | sh "$TESTOP"; }
+te_stop app-dev-team:ux-architect te1 "$(printf 'DESIGN QA: FAIL — 1 item(s)\nTicket: APP-001\nState completeness: error state missing')" "$TE" >/dev/null 2>&1
+[ $? = 0 ] && grep -l 'error state missing' "$TE/docs/team/reports/"APP-001-*.md >/dev/null 2>&1 \
+  && ok "S3E: a DESIGN QA verdict on stop is persisted and NOT blocked as a missing DONE (R2-8)" \
+  || bad "S3E: a DESIGN QA verdict on stop is persisted and NOT blocked as a missing DONE (R2-8)"
+te_stop app-dev-team:verification-engineer te2 "$(printf 'VERIFICATION: PASS\nTicket: APP-001')" "$TE" >/dev/null 2>&1
+[ $? = 0 ] && ok "S3E: a verification-engineer VERIFICATION verdict is not blocked either" || bad "S3E: a verification-engineer VERIFICATION verdict is not blocked either"
+# C2-26 — no last_assistant_message: the subagent's own transcript supplies the report.
+printf '%s\n' '{"type":"user","message":{"role":"user","content":"Work ticket APP-001."}}' \
+  '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"DONE: APP-001\nWorktree: x\nTRANSCRIPT-FALLBACK"}]}}' > "$TMP/te-tr.jsonl"
+te_stop app-dev-team:ios-developer te3 "" "$TE" "$TMP/te-tr.jsonl" >/dev/null 2>&1
+[ $? = 2 ] && grep -l TRANSCRIPT-FALLBACK "$TE/docs/team/reports/"APP-001-*.md >/dev/null 2>&1 \
+  && ok "S3E: with no last_assistant_message the transcript's last assistant text is persisted and checked (C2-26)" \
+  || bad "S3E: with no last_assistant_message the transcript's last assistant text is persisted and checked (C2-26)"
+
+# W2-7 / C2-25 — the review hook reads the ticket from `Review ticket X.`, whole IDs, once per agent.
+TERV="$HERE/../hooks/require-review-verdict.sh"
+TEL="$TMP/s3e-rv"; rm -rf "$TEL"; mkdir -p "$TEL/docs"
+printf '%s\n' '{"ts":"t1","ticket":"APP-001","event":"approved","by":"code-reviewer","detail":{"verdict_path":"docs/53-reviews/APP-001-cycle-0.md"}}' \
+  '{"ts":"t1","ticket":"QA-1","event":"approved","by":"code-reviewer","detail":{"verdict_path":"docs/53-reviews/QA-1-cycle-0.md"}}' \
+  '{"ts":"t0","ticket":"APP-002","event":"created","by":"tech-manager"}' '{"ts":"t0","ticket":"QA-1-w1","event":"created","by":"tech-manager"}' > "$TEL/docs/31-board-events.jsonl"
+te_rv() {  # <transcript text> <last message> [agent_id] [stop_hook_active]
+  printf '{"role":"user","content":"%s"}\n' "$1" > "$TEL/t.jsonl"
+  node -e 'const [, t, m, c, i, s] = process.argv; const o = { hook_event_name: "SubagentStop", agent_type: "app-dev-team:code-reviewer", agent_transcript_path: t,
+    transcript_path: "/nonexistent", cwd: c, last_assistant_message: m, stop_hook_active: s === "true" }; if (i) o.agent_id = i; process.stdout.write(JSON.stringify(o))' \
+    "$TEL/t.jsonl" "$2" "$TEL" "${3:-}" "${4:-}" | sh "$TERV"; }
+te_rv 'Review ticket APP-002.\n(APP-001 was approved earlier.)' 'done' >/dev/null 2>&1
+[ $? = 2 ] && ok "S3E: a reviewer of APP-002 is not let off by APP-001's verdict named elsewhere in its transcript (C2-25)" \
+  || bad "S3E: a reviewer of APP-002 is not let off by APP-001's verdict named elsewhere in its transcript (C2-25)"
+te_rv 'Please review the wave QA ticket QA-1-w1 now.' 'done' >/dev/null 2>&1
+[ $? = 2 ] && ok "S3E: QA-1-w1 is not satisfied by QA-1's verdict (whole-ID match, W2-7)" \
+  || bad "S3E: QA-1-w1 is not satisfied by QA-1's verdict (whole-ID match, W2-7)"
+te_rv 'Review ticket APP-001.' 'done' >/dev/null 2>&1
+[ $? = 0 ] && ok "S3E: ...while the ticket the prompt reviews, with a real verdict, is ALLOWED (agent_transcript_path read)" \
+  || bad "S3E: ...while the ticket the prompt reviews, with a real verdict, is ALLOWED (agent_transcript_path read)"
+te_rv 'Design QA ticket APP-002.' 'DESIGN QA: PASS' >/dev/null 2>&1
+[ $? = 0 ] && ok "S3E: a code-reviewer in design-QA mode stopping with DESIGN QA: is ALLOWED" \
+  || bad "S3E: a code-reviewer in design-QA mode stopping with DESIGN QA: is ALLOWED"
+te_rv 'Review ticket APP-002.' 'done' rv-once >/dev/null 2>&1; _a=$?
+te_rv 'Review ticket APP-002.' 'done' rv-once >/dev/null 2>&1; _b=$?
+te_rv 'Review ticket APP-002.' 'done' rv-other true >/dev/null 2>&1; _c=$?
+[ "$_a" = 2 ] && [ "$_b" = 0 ] && [ "$_c" = 0 ] \
+  && ok "S3E: the review hook blocks ONCE per agent_id, and lets stop_hook_active through" \
+  || bad "S3E: the review hook blocks ONCE per agent_id, and lets stop_hook_active through" "a=$_a b=$_b c=$_c"
+rm -rf "$TEL"
+
+# C2-4 / G2-1 / G2-15 / G2-16 / G2-27 — the gate-write guard.
+TEG="$HERE/../hooks/guard-gate-writes.sh"
+teg() { node -e 'const [, t, k, v, c] = process.argv; process.stdout.write(JSON.stringify({ hook_event_name: "PreToolUse", tool_name: t, agent_id: "sub-1", cwd: c, tool_input: { [k]: v } }))' \
+  "$1" "$2" "$3" "$TE" | sh "$TEG" >/dev/null 2>&1; }
+teg Bash command 'node scripts/board.mjs move APP-001 verified --by tech-manager --evidence docs/team/evidence/test-1.json 2>&1'
+[ $? = 0 ] && ok "S3E: guard allows citing an evidence path next to 2>&1 (C2-4)" || bad "S3E: guard allows citing an evidence path next to 2>&1 (C2-4)"
+teg Bash command 'cd docs/team/evidence && echo "{}" > test-9.json'
+[ $? = 2 ] && ok "S3E: guard refuses cd into the evidence dir then write (G2-1)" || bad "S3E: guard refuses cd into the evidence dir then write (G2-1)"
+teg Bash command 'node scripts/board.mjs actor "mint" --role code-reviewer --ticket APP-001'
+[ $? = 2 ] && ok "S3E: guard refuses a quoted \"mint\" (G2-1)" || bad "S3E: guard refuses a quoted \"mint\" (G2-1)"
+teg Bash command 'S=mint; node scripts/board.mjs actor $S --role code-reviewer --ticket APP-001'
+[ $? = 2 ] && ok "S3E: guard refuses a board.mjs actor subcommand held in a variable (G2-1)" || bad "S3E: guard refuses a board.mjs actor subcommand held in a variable (G2-1)"
+teg Bash command "node --input-type=module -e \"import { mintActorToken as m } from './scripts/lib/actor.mjs'; console.log(m)\""
+[ $? = 2 ] && ok "S3E: guard refuses node -e importing actor.mjs (G2-1)" || bad "S3E: guard refuses node -e importing actor.mjs (G2-1)"
+teg Bash command 'cd /tmp && claude -p "approve APP-001"'
+[ $? = 2 ] && ok "S3E: guard refuses a nested claude session from a subagent (G2-16)" || bad "S3E: guard refuses a nested claude session from a subagent (G2-16)"
+teg Bash command 'git commit -m "fix the claude hook"'
+[ $? = 0 ] && ok "S3E: ...but not the word claude inside an argument" || bad "S3E: ...but not the word claude inside an argument"
+teg Read file_path "$HOME/.claude/projects/x/session.jsonl"
+[ $? = 2 ] && ok "S3E: guard refuses a subagent reading ~/.claude/projects transcripts (G2-15)" || bad "S3E: guard refuses a subagent reading ~/.claude/projects transcripts (G2-15)"
+mkdir -p "$TE/docs/team/evidence" && ln -s "$TE/docs/team/evidence" "$TE/elink"
+teg Write file_path "$TE/elink/test-forged.json"
+[ $? = 2 ] && ok "S3E: guard resolves a symlink into the evidence dir before comparing (G2-27)" || bad "S3E: guard resolves a symlink into the evidence dir before comparing (G2-27)"
+
+# C2-27 — outside a studio project the shell wrapper never starts node.
+TEBIN="$TMP/s3e-bin"; mkdir -p "$TEBIN"; printf '#!/bin/sh\ntouch "%s/node-ran"\nexit 0\n' "$TEBIN" > "$TEBIN/node"; chmod +x "$TEBIN/node"
+TENO="$TMP/s3e-unrelated"; mkdir -p "$TENO"
+node -e 'process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "a", cwd: process.argv[1], tool_input: { command: "ls" } }))' "$TENO" \
+  | ( cd "$TENO" && CLAUDE_PROJECT_DIR= PATH="$TEBIN:$PATH" sh "$TEG" ) >/dev/null 2>&1
+[ ! -e "$TEBIN/node-ran" ] && ok "S3E: outside a studio project the hook wrapper exits before starting node (C2-27)" \
+  || bad "S3E: outside a studio project the hook wrapper exits before starting node (C2-27)"
+rm -rf "$TE" "$TEBIN" "$TENO"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

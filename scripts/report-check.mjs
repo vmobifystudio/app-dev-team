@@ -63,7 +63,9 @@ if (!role) die(2, 'need --role <role>');
 // `.checked` omits `Branch:` — it is required in the TEMPLATE (contractBlock, contract.mjs) because
 // the daily-fragment truth check below needs it, but it was never one of the six report-check has
 // always counted, and changing that count would silently invalidate every "returned all N" fixture
-// this suite already carries.
+// this suite already carries. The ARTIFACT tier does check `Branch:` (C2-8): its contract only
+// gained the field in Sprint 3, so there was no count to preserve, and a docs ticket with no branch
+// is REJECTED by verify-done anyway — better named here, at the handoff.
 const required = contractFor(role)?.checked ?? null;
 if (!required) {
   die(2, `"${role}" is not a ticket-owning role in either contract tier.\n` +
@@ -137,6 +139,7 @@ process.stdout.write(
   missing.map((m) => `  MISSING  ${m}`).join('\n') + '\n\n' +
   '  Each missing field is a gate that will now silently do nothing for this ticket:\n' +
   '    Worktree:                     isolation was never confirmed\n' +
+  '    Branch:                       verify-done has no branch to check the work on\n' +
   '    Mutation confirmed:           nothing states the change was actually written and committed\n' +
   '    Daily fragment:               the standup has no input from this run\n' +
   '    Assumptions & open questions: guesses stay unrouted and the next wave inherits them\n' +

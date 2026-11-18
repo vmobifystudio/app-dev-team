@@ -277,6 +277,20 @@ MG17@@scripts/orchestrator.mjs@@if (unrouted.length) {@@if (false) {@@F2: orches
 MG18@@scripts/ship-gate.sh@@grep -q '"requireActorTokens"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null || return 0@@return 0@@F2: ship-gate's printed qa_passed command mints its token inline under requireActorTokens (W2-10)@@Sprint 3 track F2
 MG19@@scripts/drivers/web.sh@@catch { cannot('Playwright is not installed in this project@@catch { out('PASS', 'Playwright is not installed in this project@@F2: web driver without Playwright is CANNOT EVALUATE with the exact install line (G2-21)@@Sprint 3 track F2
 MG20@@scripts/worktree-slot.mjs@@if (tickets.length > 1) die(1@@if (false) die(1@@a batch of tickets in one lease is REFUSED — one spawn per ticket@@worktree-slot: one tree per WRITER
+ME01@@scripts/spawn-prompt.mjs@@tokensFor(ROOT, 'qa-engineer', wave.map((r) => r.id))@@tokensFor(ROOT, 'qa-engineer', [])@@S3E: the QA prompt carries one qa-engineer token per wave ticket (Token for APP-NNN:)@@Sprint 3 track E
+ME02@@hooks/contract-hooks.mjs@@|| !ticket || gateHeaderOf(role, report)) allow();@@|| !ticket) allow();@@S3E: a DESIGN QA verdict on stop is persisted and NOT blocked as a missing DONE (R2-8)@@Sprint 3 track E
+ME03@@hooks/contract-hooks.mjs@@for (let n = parts.length; n >= 2; n--)@@for (let n = 2; n >= 2; n--)@@S3E: a hand-written QA-1-w1 prompt is policed as QA-1-w1, not read as QA-1 (W2-16)@@Sprint 3 track E
+ME04@@hooks/contract-hooks.mjs@@|| touch.test(cmd) || cdThere.test(cmd) || viaVar)@@|| touch.test(cmd) || viaVar)@@S3E: guard refuses cd into the evidence dir then write (G2-1)@@Sprint 3 track E
+ME05@@hooks/contract-hooks.mjs@@|| /@anthropic-ai\/claude-code\b/.test(cmd)) refuse(@@&& false) refuse(@@S3E: guard refuses a nested claude session from a subagent (G2-16)@@Sprint 3 track E
+ME06@@hooks/require-review-verdict.sh@@[ -n "$MENTIONS" ] || MENTIONS=$(grep -oE "$ID_ERE" "$TRANSCRIPT" 2>/dev/null | sort -u)@@MENTIONS=$(grep -oE "$ID_ERE" "$TRANSCRIPT" 2>/dev/null | sort -u)@@S3E: a reviewer of APP-002 is not let off by APP-001's verdict named elsewhere in its transcript (C2-25)@@Sprint 3 track E
+ME07@@scripts/spawn-prompt.mjs@@ && readFileSync(join(dir, f), 'utf8').trimStart().startsWith('DONE:')).sort().pop();@@ && true).sort().pop();@@S3E: the reviewer gets the DONE report for exactly this ID, never APP-001-analytics's or a DESIGN QA verdict (W2-4, C2-3)@@Sprint 3 track E
+ME08@@scripts/spawn-prompt.mjs@@const gate = /^Work ticket /.test(first) ? '' : (GATE_HEADERS[role] || []).find((h) => text.includes(h));@@const gate = '';@@S3E: a data-analyst ANALYTICS gate prompt is a gate spawn, not an un-contracted IC spawn@@Sprint 3 track E
+ME09@@hooks/contract-hooks.mjs@@ || roots.some((r) => abs.startsWith(join(r, EVIDENCE)))) refuse@@) refuse@@S3E: guard resolves a symlink into the evidence dir before comparing (G2-27)@@Sprint 3 track E
+ME10@@hooks/contract-hooks.mjs@@|| lastAssistantText(payload.agent_transcript_path) ||@@||@@S3E: with no last_assistant_message the transcript's last assistant text is persisted and checked (C2-26)@@Sprint 3 track E
+ME11@@hooks/in-studio.sh@@[ "$_studio" = 1 ] || [ -z "$_cwd" ] || exit 0@@true@@S3E: outside a studio project the hook wrapper exits before starting node (C2-27)@@Sprint 3 track E
+ME12@@hooks/require-review-verdict.sh@@[ -e "$_m" ] && exit 0@@true@@S3E: the review hook blocks ONCE per agent_id, and lets stop_hook_active through@@Sprint 3 track E
+ME13@@scripts/spawn-prompt.mjs@@...fence(`git checkout -b feat/${row.id}-<short-slug> ${base}`)]@@...fence('')]@@S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)@@Sprint 3 track E
+ME14@@scripts/lib/contract.mjs@@export const ARTIFACT_CONTRACT = ['Worktree:', 'Branch:',@@export const ARTIFACT_CONTRACT = ['Worktree:',@@S3E: report-check refuses an artifact DONE with no Branch: (C2-8)@@Sprint 3 track E
 CATALOGUE
 }
 
