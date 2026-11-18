@@ -32,9 +32,11 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    **On a first pass there is no release artifact yet** — `release-manager` builds it in step 3 — and
    the runtime and journey results are produced in step 1b. So skip `record` when no release build
    exists for this HEAD, and expect `orchestrator ship` below to exit `2` naming **only** the
-   `artifact`, `runtime` and `journey` gates. That is the expected shape here, not a pass: step 3b
-   re-runs this check after the build and it must be `0` there. Anything else it names (board doctor,
-   `ship-gate.sh`) is resolved in step 1a now.
+   `artifact`, `runtime` and `journey` gates — or exit `1` with `runtime`/`journey` **STALE**, when HEAD
+   moved after they last ran (the QA branch's fast-forward in `/app-build` step 5 does): re-run those
+   two on this HEAD (step 1b's commands) before going on. That is the expected shape here, not a pass:
+   step 3b re-runs this check after the build and it must be `0` there. Anything else it names (board
+   doctor, `ship-gate.sh`) is resolved in step 1a now.
 
    Then:
 

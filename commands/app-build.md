@@ -448,7 +448,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_passed --by qa-engineer \
      --token <its token for APP-NNN> --evidence docs/team/journey-result.json
-   # or, for a ticket QA rejected — it stays in qa and is named in the summary
+   # or, for a ticket QA rejected — it stays in qa; the BUG-NNN-fix path: build-loop-branches.md §Step 5
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_failed --by qa-engineer \
      --token <its token for APP-NNN> --detail "BUG-NNN"
    ```
@@ -465,15 +465,17 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    the integration branch (`build-loop-branches.md` §Step 5 — the QA ticket). `closed` is refused
    without a `qa_passed`. After a `RUNTIME GATE: FAIL` no row in the wave gets a `qa_passed` at all.
 
-   **The `QA-` ticket itself is docs-only** (its branch holds the test plan and bug rows): its return
-   gets report-check, `done_reported`, `verify-done.sh <branch> "$BASE" --docs-only` and the fragment
-   check like any DOC ticket — a return with no `Branch:` is **REJECTED**. You review it inline (no
-   `code-reviewer` spawn), then `merged` and `closed` with `<TOKEN>` for the `QA-` ID; it closes from
-   `merged` without waiting for integration, and nobody QAs the QA pass.
+   **The `QA-` ticket is docs-only** — `docs/` prose outside `docs/team/`, plus `docs/team/journeys/<journey-id>.json`;
+   anything else (control files, build manifests, `.mdx`, files outside `docs/`) takes the review
+   path. Its return gets report-check, `done_reported`, `verify-done.sh <branch> "$BASE" --docs-only`
+   and the fragment check; no `Branch:` is **REJECTED**. Review it inline (no `code-reviewer`), then
+   `merged` and `closed` with `<TOKEN>` for the `QA-` ID — nobody QAs the QA pass. **Then** land its
+   files (`wave-integrate` skips `QA-` tickets) with the fast-forward `closed` prints:
+   `git checkout <integration> && git merge --ff-only qa/<QA-ID>` — `git rebase <integration>
+   qa/<QA-ID>` first when it says the integration branch moved.
 
 6. **Daily report + board view.** Concatenate the per-agent fragments into the standup with a
-   command — no `tech-manager` spawn for it — then render the board (its Mermaid graph outlines
-   stranded and blocked tickets in red) and print the terminal view:
+   command — no `tech-manager` spawn for it — then render the board and print the terminal view:
 
    ```bash
    D=$(date +%F); { echo "## In flight and blocked"; node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show
@@ -487,9 +489,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --escalations
    ```
 
-   It lists open questions (each a `tech-manager` action item) and escalations. Exit `1` → an
-   escalation is open: **surface it to the user verbatim in this round's report**; never carry it to
-   the next round.
+   Exit `1` → an escalation is open: **surface it to the user verbatim in this round's report**;
+   never carry it to the next round.
 
 6a. **Journal the round — one line, every round, before you loop** — to `docs/33-rounds.jsonl`,
    what happened to the loop (the event log records what happened to tickets).
@@ -524,8 +525,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 - **Never move a row to `review` on an unverified `DONE`.**
 - **Never advance a wave across a `RUNTIME GATE: FAIL`, and never record a `CANNOT EVALUATE` as a
   launched build.**
-- **Never merge a branch containing another ticket's files** — a shared tree was used; stop the round
-  and check both branches.
+- **Never merge a branch containing another ticket's files** — stop the round and check both branches.
 - Never spawn more than one agent for the same ticket simultaneously, or two agents into one slot.
 - Never auto-merge across a `REQUEST CHANGES`.
 - Never re-spawn a developer past the 2-cycle cap without user input.

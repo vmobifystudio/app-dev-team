@@ -53,7 +53,11 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
 0b. **`docs/team/project-profile.json`** — `/app-plan` step 4b scaffolds it UNSTATED; you work out
    `platform`, `toolchain` (one `{tool, args, expect}` per pinned tool) and `test.fast`/`test.full`
    and **return the JSON in your report** — a subagent may not write this control file in the main
-   tree (the guard refuses it); the orchestrator writes it. Check your draft in your own slot first (`node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check --root <your slot>`). Until it
+   tree (the guard refuses it); the orchestrator writes it. and commits it to the integration branch (the board freezes the COMMITTED
+   profile, `git show <integration>:docs/team/project-profile.json`, never a working-tree edit). A JS
+   test command must install from the lockfile itself — `verify-done` runs it in a fresh worktree with
+   no `node_modules`: `npm ci && npm test` (or `pnpm install --frozen-lockfile && …`);
+   `project-profile.mjs check` BLOCKS a bare `npm test`. Check your draft in your own slot first (`node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check --root <your slot>`). Until it
    passes, `orchestrator round` is CANNOT EVALUATE and no round can start. A tool missing on this
    machine is a blocker you report, never a version you edit to make the check pass. **Get the test
    commands right before the first gate**: the board freezes them (and the profile's sha) on the

@@ -100,13 +100,13 @@
     },
     {
       "id": "devops-engineer",
-      "version": "1.0.10",
+      "version": "1.0.11",
       "owner": "devops-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.9",
-      "content_hash": "87cd839dc1c48855684b984f8ca3275d5fbae10813aff7f5ed49f3c334957a64"
+      "rollback_version": "1.0.10",
+      "content_hash": "b1e6bd594b3ef092fb4fd76548266bb5af15c502707d23c619754f2de5f6b435"
     },
     {
       "id": "ios-developer",
@@ -180,13 +180,13 @@
     },
     {
       "id": "qa-engineer",
-      "version": "1.0.10",
+      "version": "1.0.11",
       "owner": "qa-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.9",
-      "content_hash": "b55f17380ec1dad077f2e8914751b2e18d20319aa014346c95d7d4f1025cf441"
+      "rollback_version": "1.0.10",
+      "content_hash": "baed80ee770cd63abb291e79402b4902f75e0f386ba7ad0e349550bdbfdf8d6f"
     },
     {
       "id": "red-team-agent",
@@ -210,13 +210,13 @@
     },
     {
       "id": "release-manager",
-      "version": "1.0.9",
+      "version": "1.0.10",
       "owner": "release-manager",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.8",
-      "content_hash": "a9422eec5b335e3b588adb18eaeee70c4948fea655a0a9ee7af4769bc3271781"
+      "rollback_version": "1.0.9",
+      "content_hash": "f8a6360405d2ceb9301a0e467a692b8a7b7da87870db7965d901dee1e8a9e935"
     },
     {
       "id": "reliability-engineer",

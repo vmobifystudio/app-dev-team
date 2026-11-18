@@ -5,14 +5,8 @@ description: Use before writing any code, spec or store asset on a Mobify Studio
 
 # House conventions
 
-The plugin ships a House Knowledge Base under `knowledge/` mined from our internal shipped
-apps. This skill is how an agent loads the right pack before working, so what it produces looks
-like the studio's other apps — same architecture, same monetization patterns, same store hygiene.
-
-## When to use
-
-Invoke this **before** the first edit/spec on any ticket, sprint, or asset. It costs one read
-and prevents a whole class of "this doesn't match how we build" rework.
+Load the House Knowledge Base pack (`knowledge/`, mined from our shipped apps) that matches your
+work **before** the first edit or spec, so what you produce matches the studio's other apps.
 
 ## Procedure
 
@@ -70,9 +64,3 @@ and prevents a whole class of "this doesn't match how we build" rework.
    input contract names, nothing wider unless a specific question sends you looking. Re-reading the
    full PRD, every standup and every sibling ticket "to be safe" burns budget and invites a
    mid-ticket compaction. This never licenses skipping a required read.
-
-## Anti-patterns
-
-- Writing code first and checking conventions later — the rework is the cost you were avoiding.
-- Inventing a new architecture/pattern when a pack already specifies one.
-- Silently following the KB when the project doc says otherwise (or vice-versa) without flagging it.

@@ -281,7 +281,7 @@ ME01@@scripts/spawn-prompt.mjs@@tokensFor(ROOT, 'qa-engineer', wave.map((r) => r
 ME02@@hooks/contract-hooks.mjs@@|| !ticket || gateHeaderOf(role, report)) allow();@@|| !ticket) allow();@@S3E: a DESIGN QA verdict on stop is persisted and NOT blocked as a missing DONE (R2-8)@@Sprint 3 track E
 ME03@@hooks/contract-hooks.mjs@@for (let n = parts.length; n >= 2; n--)@@for (let n = 2; n >= 2; n--)@@S3E: a hand-written QA-1-w1 prompt is policed as QA-1-w1, not read as QA-1 (W2-16)@@Sprint 3 track E
 ME04@@hooks/contract-hooks.mjs@@if (name === 'cd' || name === 'pushd') {@@if (false) {@@S3E: guard refuses cd into the evidence dir then write (G2-1)@@Sprint 3 track E
-ME05@@hooks/contract-hooks.mjs@@|| /@anthropic-ai\/claude-code\b/.test(flat)) refuse(@@&& false) refuse(@@S3E: guard refuses a nested claude session from a subagent (G2-16)@@Sprint 3 track E
+ME05@@hooks/contract-hooks.mjs@@if (name === 'claude' || name === 'claude-code' || texts.some((t) => /@anthropic-ai\/claude-code\b/.test(t))) {@@if (false) {@@S3E: guard refuses a nested claude session from a subagent (G2-16)@@Sprint 3 track E
 ME06@@hooks/require-review-verdict.sh@@[ -n "$MENTIONS" ] || MENTIONS=$(grep -oE "$ID_ERE" "$TRANSCRIPT" 2>/dev/null | sort -u)@@MENTIONS=$(grep -oE "$ID_ERE" "$TRANSCRIPT" 2>/dev/null | sort -u)@@S3E: a reviewer of APP-002 is not let off by APP-001's verdict named elsewhere in its transcript (C2-25)@@Sprint 3 track E
 ME07@@scripts/spawn-prompt.mjs@@ && readFileSync(join(dir, f), 'utf8').trimStart().startsWith('DONE:')).sort().pop();@@ && true).sort().pop();@@S3E: the reviewer gets the DONE report for exactly this ID, never APP-001-analytics's or a DESIGN QA verdict (W2-4, C2-3)@@Sprint 3 track E
 ME08@@scripts/spawn-prompt.mjs@@const gate = /^Work ticket /.test(first) ? '' : (GATE_HEADERS[role] || []).find((h) => text.includes(h));@@const gate = '';@@S3E: a data-analyst ANALYTICS gate prompt is a gate spawn, not an un-contracted IC spawn@@Sprint 3 track E
@@ -320,9 +320,9 @@ MF26@@scripts/verify-done.sh@@TOKFLAG=$(node "$EV" token-flag@@TOKFLAG=$(true "$
 MM01@@commands/app-init.md@@docs/53-reviews/ docs/54-evidence/@@docs/53-review/ docs/54-evidence/@@K3: every path /app-init gitignores is an operational path (C3W-12)@@Sprint 4 track K3
 MM02@@commands/app-ship.md@@waiver is the exception: android, ios and web drivers all ship.@@Drivers do not ship yet.@@K3: app-build and app-ship name the web driver and its setup (C3W-3)@@Sprint 4 track K3
 MM03@@commands/app-build.md@@on every tier, except a wave made only of@@skip it on the utility tier and a wave made only of@@K3: the utility lane runs one QA- ticket per wave, like flagship (C3W-2)@@Sprint 4 track K3
-ML01@@hooks/contract-hooks.mjs@@if (sp >= 0 && texts.slice(sp + 1).includes('compose'))@@if (false)@@spawn-prompt.mjs" compose --ticket APP-001 --role qa-engineer@@Sprint 4 track K2
-ML02@@hooks/contract-hooks.mjs@@if (dynamicMjs || dynamicScript || ((scriptIdx >= 0) && expansion)) {@@if (false) {@@K2: guard exit 2 for Bash: node scripts/b?ard.mjs@@Sprint 4 track K2
-ML03@@hooks/contract-hooks.mjs@@if (hits(w.v.pat, here, G.control))@@if (false)@@K2: guard exit 2 for Bash: cp x docs/team/risk-policy.json@@Sprint 4 track K2
+ML01@@hooks/contract-hooks.mjs@@if (script === 'spawn-prompt.mjs' && after.some((w) => w.v.text === 'compose'))@@if (false)@@spawn-prompt.mjs" compose --ticket APP-001 --role qa-engineer@@Sprint 4 track K2
+ML02@@hooks/contract-hooks.mjs@@if (dynamicMjs || dynamicScript) {@@if (false) {@@K2: guard exit 2 for Bash: node scripts/b?ard.mjs@@Sprint 4 track K2
+ML03@@hooks/contract-hooks.mjs@@if (hits(w.v.pat, here, G[key], tree)) {@@if (false) {@@K2: guard exit 2 for Bash: cp x docs/team/risk-policy.json@@Sprint 4 track K2
 ML04@@hooks/contract-hooks.mjs@@if (a.v.text === '-t' || a.v.text === '--target-directory')@@if (false)@@K2: guard exit 2 for Bash: cp -t docs/team/evidence x.json@@Sprint 4 track K2
 ML05@@hooks/contract-hooks.mjs@@if (name === 'dd')@@if (false)@@K2: guard exit 2 for Bash: dd if=x.json@@Sprint 4 track K2
 ML06@@hooks/contract-hooks.mjs@@if (s === '' || s === '.') continue;@@if (s === '') continue;@@K2: guard exit 2 for Bash: echo {} > docs/team/./evidence@@Sprint 4 track K2
@@ -330,12 +330,12 @@ ML07@@hooks/contract-hooks.mjs@@if (name === 'cd' || name === 'pushd') {@@if (fa
 ML08@@hooks/contract-hooks.mjs@@pat += s.replace(/\[[^\]/]*\]/g, ONE).replace(/\*/g, STAR).replace(/\?/g, ONE);@@pat += s.replace(/\*/g, STAR);@@K2: guard exit 2 for Bash: cp x.json docs/team/evidenc?/@@Sprint 4 track K2
 ML09@@hooks/contract-hooks.mjs@@    if (c === '"') {@@    if (false) {@@K2: guard exit 0 for Bash: node scripts/board.mjs move APP-001 blocked --by ios-developer --detail "the actor field is wrong"@@Sprint 4 track K2
 ML10@@hooks/contract-hooks.mjs@@if (c === '\n' && heredocs.length) {@@if (false) {@@K2: guard exit 0 for Bash: git commit -F - <<EOF@@Sprint 4 track K2
-ML11@@hooks/contract-hooks.mjs@@/\b(actor|evidence|events)\.mjs\b/@@/\b(actor|evidence)\.mjs\b/@@import('./scripts/lib/events.mjs')@@Sprint 4 track K2
+ML11@@hooks/contract-hooks.mjs@@\b(actor|evidence|events)\.mjs\b/g@@\b(actor|evidence)\.mjs\b/g@@import('./scripts/lib/events.mjs')@@Sprint 4 track K2
 ML12@@hooks/contract-hooks.mjs@@if (['Grep', 'Glob'].includes(payload.tool_name) && input.path) {@@if (false) {@@K2: guard exit 2 for Glob: @@Sprint 4 track K2
 ML13@@hooks/contract-hooks.mjs@@Do not spawn ${role} yourself: stop and return BLOCKED@@run node spawn-prompt.mjs compose --root x@@K2: a subagent's refused spawn is told the orchestrator composes@@Sprint 4 track K2
-ML14@@hooks/contract-hooks.mjs@@if (hits(target, [], G.control))@@if (false)@@K2: guard exit 2 for Write: @@Sprint 4 track K2
-ML15@@hooks/contract-hooks.mjs@@if (writes && CONTROL.some((c) => body.includes(basename(c))))@@if (false)@@writeFileSync('docs/team/capabilities.json'@@Sprint 4 track K2
-ML16@@hooks/contract-hooks.mjs@@if (i > 0 && texts[i + 1]) queue.push(@@if (false) queue.push(@@K2: guard exit 2 for Bash: bash -c "cp x docs/team/evidence/"@@Sprint 4 track K2
+ML14@@hooks/contract-hooks.mjs@@if (hits(target, [], G[key]))@@if (false)@@K2: guard exit 2 for Write: @@Sprint 4 track K2
+ML15@@hooks/contract-hooks.mjs@@const hit = inlineWrite(body);@@const hit = '';@@writeFileSync('docs/team/capabilities.json'@@Sprint 4 track K2
+ML16@@hooks/contract-hooks.mjs@@if (body) queue.push(...shellCommands(body.v.pat));@@if (false) queue.push(...shellCommands(body.v.pat));@@K2: guard exit 2 for Bash: bash -c "cp x docs/team/evidence/"@@Sprint 4 track K2
 ML17@@hooks/contract-hooks.mjs@@if (/^(perl|ruby)$/.test(name) && flagged(@@if (false && flagged(@@K2: guard exit 2 for Bash: perl -pi -e@@Sprint 4 track K2
 ML18@@scripts/spawn-prompt.mjs@@const branchName = qa ? `qa/${row.id}`@@const branchName = qa ? `feat/${row.id}-<short-slug>`@@K2: QA composes on branch qa/@@Sprint 4 track K2
 ML19@@scripts/spawn-prompt.mjs@@if (role === 'qa-engineer' && !qa && row.owner !== 'qa-engineer') {@@if (false) {@@K2: qa-engineer composed on an app ticket@@Sprint 4 track K2
@@ -367,6 +367,38 @@ MK19@@scripts/board.mjs@@if (existsSync(out) || out === paths.log) {@@if (false)
 MK20@@scripts/lib/evidence.mjs@@if (rel !== posix.normalize(rel) || rel.startsWith('./') || !rel.startsWith(`${EVIDENCE_DIR}/`)) return@@if (false) return@@K1: a record whose log is spelled docs//team/… is refused (C3G-17)@@Sprint 4 track K1
 MK21@@scripts/lib/actor.mjs@@if (e.code !== 'EAGAIN' || waited >= maxWaitMs) throw e;@@throw e;@@K1: the founder confirmation retries EAGAIN instead of failing (C3G-10)@@Sprint 4 track K1
 MK22@@scripts/lib/events.mjs@@state.staticUnrun = 'the executable test suite';@@state.staticUnrun = String(detail?.note || detail || '').trim() || 'the executable test suite';@@K1: the STATIC ONLY banner never echoes free-text --detail (C3W-13)@@Sprint 4 track K1
+MQ01@@hooks/contract-hooks.mjs@@else if (fed !== undefined) queue.push(...shellCommands(fed));@@else if (false) queue.push(...shellCommands(fed));@@MQ: guard exit 2 — heredoc into sh minting@@Sprint 5 track P2
+MQ02@@hooks/contract-hooks.mjs@@else if (fed === null) refuse(@@else if (false) refuse(@@MQ: guard exit 2 — unknown text piped into sh@@Sprint 5 track P2
+MQ03@@hooks/contract-hooks.mjs@@for (const w of raw) for@@for (const w of []) for@@MQ: guard exit 2 — command substitution minting@@Sprint 5 track P2
+MQ04@@hooks/contract-hooks.mjs@@if (raw.stdinExpands) for@@if (false) for@@MQ: guard exit 2 — unquoted heredoc substitution runs@@Sprint 5 track P2
+MQ05@@hooks/contract-hooks.mjs@@srcs.forEach((s) => path(under(dest,@@srcs.forEach((s) => (under(dest,@@MQ: guard exit 2 — cp a .studio-policy.json into the root@@Sprint 5 track P2
+MQ06@@hooks/contract-hooks.mjs@@if (into && isDir(w.v.pat, here, G.teamDir[0])) {@@if (false) {@@MQ: guard exit 2 — cp into docs/team/@@Sprint 5 track P2
+MQ07@@hooks/contract-hooks.mjs@@(tree ? segsRel : segsHit)(q, toSegs(g))@@segsHit(q, toSegs(g))@@MQ: guard exit 2 — rm -rf docs/team@@Sprint 5 track P2
+MQ08@@hooks/contract-hooks.mjs@@if (['rm', 'mv', 'restore', 'checkout', 'switch'].includes(sub))@@if (false)@@MQ: guard exit 2 — git restore the profile@@Sprint 5 track P2
+MQ09@@hooks/contract-hooks.mjs@@if (!out1 && !pl[0]) {@@if (false) {@@MQ: guard exit 2 — patch from a file on stdin@@Sprint 5 track P2
+MQ10@@hooks/contract-hooks.mjs@@texts.forEach((t) => patchPaths(t).map(at).forEach(path))@@texts.forEach(() => {})@@MQ: guard exit 2 — git apply a patch touching risk-policy@@Sprint 5 track P2
+MQ11@@hooks/contract-hooks.mjs@@if (pure(cmdWords[0])) refuse(@@if (false) refuse(@@MQ: guard exit 2 — a bare "$@" verb@@Sprint 5 track P2
+MQ12@@hooks/contract-hooks.mjs@@positionals.some((w) => WILD.test(w.v.pat))@@false@@MQ: guard exit 2 — board.mjs with a computed subcommand@@Sprint 5 track P2
+MQ13@@hooks/contract-hooks.mjs@@part('sub', ''); return j + 1; } // C4G-L1@@part('q', ''); return j + 1; } // C4G-L1@@MQ: guard exit 2 — ANSI-C quoted subcommand@@Sprint 5 track P2
+MQ14@@hooks/contract-hooks.mjs@@if ([...roots, DOT].some((w) => hits(w.v.pat, here, G.transcripts, true)))@@if (false)@@MQ: guard exit 2 — grep -r from home@@Sprint 5 track P2
+MQ15@@hooks/contract-hooks.mjs@@const DARWIN = process.platform === 'darwin';@@const DARWIN = false;@@MQ: guard exit 2 — docs/Team case variant (macOS)@@Sprint 5 track P2
+MQ16@@hooks/contract-hooks.mjs@@const ps = p.some((s) => WILD.test(s)) ? [p] : [p, toSegs(realish(`/${p.join('/')}`))];@@const ps = [p];@@MQ: guard exit 2 — an absolute path through a symlinked dir@@Sprint 5 track P2
+MQ17@@hooks/contract-hooks.mjs@@if (script === 'audit-anchor.mjs' && after.some((w) => w.v.text === 'create'))@@if (false)@@MQ: guard exit 2 — audit-anchor.mjs create@@Sprint 5 track P2
+MQ18@@hooks/contract-hooks.mjs@@const withBase = (p) => { const t = tilde(String(p)); return isAbsolute(t) ? t : join(base, t); };@@const withBase = (p) => join(base, String(p));@@MQ: guard exit 2 — Glob pattern starting with ~@@Sprint 5 track P2
+MQ19@@hooks/contract-hooks.mjs@@['*-result.json', 'ship-gate-verdict.json'@@['ship-gate-verdict.json'@@MQ: guard exit 2 — cp over a gate result@@Sprint 5 track P2
+MQ20@@hooks/contract-hooks.mjs@@log: [join(R, 'docs', '31-board-events.jsonl')],@@log: [],@@MQ: guard exit 2 — append to the board log@@Sprint 5 track P2
+MQ21@@hooks/contract-hooks.mjs@@const hit = named(stmt) || (tainted.some(uses) ? 'a guarded file' : '');@@const hit = named(stmt);@@MQ: guard exit 2 — inline program writing via a variable@@Sprint 5 track P2
+MQ22@@hooks/contract-hooks.mjs@@if (hit) return hit;@@if (hit || /team\/evidence/.test(body)) return 'x';@@MQ: guard exit 0 — inline program reads evidence and renames elsewhere@@Sprint 5 track P2
+MQ23@@hooks/contract-hooks.mjs@@if (existsSync(join(dirname(dirname(realish(p))), 'board.mjs'))) return p;@@return p;@@MQ: guard exit 0 — the app's own src/events.mjs@@Sprint 5 track P2
+MQ24@@hooks/contract-hooks.mjs@@if (name === 'tar' &&@@if (false &&@@MQ: guard exit 2 — tar -x in the main tree@@Sprint 5 track P2
+MQ25@@hooks/contract-hooks.mjs@@if (rest.some((w) => w.v.text === '-delete'))@@if (false)@@MQ: guard exit 2 — find -delete over docs@@Sprint 5 track P2
+MQ26@@hooks/contract-hooks.mjs@@if (cmd.length) queue.push(cmd);@@if (false) queue.push(cmd);@@MQ: guard exit 2 — find -exec cp into docs/team@@Sprint 5 track P2
+MQ27@@hooks/contract-hooks.mjs@@if (ctx.xargs && WRITERS.has(name)) tree(DOT);@@if (false) tree(DOT);@@MQ: guard exit 2 — xargs rm in the main tree@@Sprint 5 track P2
+MQ28@@hooks/contract-hooks.mjs@@if (!s || ['push', 'save', 'pop', 'apply'].includes(s) || dd >= 0)@@if (false)@@MQ: guard exit 2 — git stash in the main tree@@Sprint 5 track P2
+MQ29@@hooks/contract-hooks.mjs@@if (Object.prototype.hasOwnProperty.call(fileBodies, script.v.text)) queue.push(@@if (false) queue.push(@@MQ: guard exit 2 — heredoc to a script then sh runs it@@Sprint 5 track P2
+MQ30@@hooks/contract-hooks.mjs@@evidence: [join(R, 'docs', 'team', 'evidence')],@@evidence: [join(R, 'docs', 'team', 'evidence'), join(cwd, 'docs', 'team', 'evidence')],@@MQ: guard exit 0 — in its own worktree: git stash@@Sprint 5 track P2
+MQ31@@commands/app-build.md@@**Then** land its@@Then land its@@MQ: app-build lands a QA- ticket by close-then-ff-only@@Sprint 5 track P2
+MQ32@@agents/release-manager.md@@`docs/60-releases.md`, `docs/70-security-review.md` and `docs/71-verification.md`, staged by@@`docs/60-releases.md`, staged by@@MQ: ship's STALE first pass, release-manager's release-doc commit@@Sprint 5 track P2
 CATALOGUE
 }
 

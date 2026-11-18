@@ -169,13 +169,13 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    never a blanket add:
 
    ```bash
-   for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent/ docs/team/messages.jsonl \
+   sh -c 'for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent/ docs/team/messages.jsonl \
             docs/*.md .github fastlane \
             package.json package-lock.json pnpm-lock.yaml yarn.lock .nvmrc */package.json \
             Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
             settings.gradle settings.gradle.kts */build.gradle */build.gradle.kts gradle gradlew; do
      [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
-   done
+   done'   # sh, not zsh: zsh aborts the loop on an unmatched */ glob
    git diff --cached --name-only    # confirm only those landed
    git commit -m "docs: project plan from /app-init"
    git status --short               # anything left is a file nobody committed: commit it or say why

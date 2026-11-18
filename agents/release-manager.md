@@ -88,6 +88,9 @@ override the gate because a missing input "isn't written yet".
    - Web: `version` in `package.json`.
 
    Then `node "${CLAUDE_PLUGIN_ROOT}/scripts/version-consistency-check.mjs" .` — exit `1` stops you.
+   **Commit the bump in ONE commit with the release docs**, once the notes below are written — the version files plus
+   `docs/60-releases.md`, `docs/70-security-review.md` and `docs/71-verification.md`, staged by
+   explicit path. Uncommitted, they dirty the tree and `orchestrator ship` is CANNOT EVALUATE.
 3. **Do not tag.** The tag names the SHA that actually shipped, so it is the last row of the
    founder's checklist (below), after the upload succeeds and the release audit passed.
 
