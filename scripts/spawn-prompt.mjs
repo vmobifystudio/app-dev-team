@@ -518,6 +518,8 @@ function composeReview({ ROOT, row, allIds, base, role }) {
       'REVIEW VERDICT: APPROVE | REQUEST CHANGES',
       `Ticket: ${row.id}`,
       'Scope: <base>..<the commit you bind>',
+      // C5W-5: `approved --bind` refuses a verdict that names none of the bound diff's files.
+      'Files reviewed: <every path in the Range above (`git diff --name-only`), and what you found in each>',
       'Track: <floor | light | standard | full> — <why, if raised>',
       `Recorded: \`board.mjs move ${row.id} approved|changes --by ${role}\` (exit 0)`,
       'Acceptance (black-box): <criterion → pass/fail, one line each>',

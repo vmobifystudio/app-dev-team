@@ -11817,6 +11817,15 @@ q1dp() { ( cd "$Q1D" && node "$HERE/dispatch-preflight.mjs" --root "$Q1D" --tick
 [ "$(q1dp src/auth/session.js src/convert.js)" -ge 1 ] && [ "$(q1dp src/convert.js src/auth/session.js)" -ge 1 ] \
   && ok "Q1: dispatch-preflight routes every repeated --file, in either order (C5W-3)" \
   || bad "Q1: dispatch-preflight routes every repeated --file, in either order (C5W-3)" "$(q1dp src/auth/session.js src/convert.js) / $(q1dp src/convert.js src/auth/session.js)"
+# ·· C5W-5 / C5W-13: the reviewer's template names the files (approved --bind needs one); routing a constant is not a rejection.
+Q1CR="$HERE/../agents/code-reviewer.md"
+grep -q '^Files reviewed: <every path in the diff' "$Q1CR" && grep -q "'Files reviewed: <every path in the Range above" "$HERE/spawn-prompt.mjs" \
+  && ok "Q1: the code-reviewer verdict template and the composed contract carry Files reviewed: (C5W-5)" \
+  || bad "Q1: the code-reviewer verdict template and the composed contract carry Files reviewed: (C5W-5)"
+grep -q 'routing is not a rejection. `REQUEST CHANGES` only if you can show it is wrong' "$Q1CR" \
+  && ! grep -q '`REQUEST CHANGES` and name it for `verification-engineer`' "$Q1CR" \
+  && ok "Q1: code-reviewer routes a real-world constant without REQUEST CHANGES, as app-build step 4 expects (C5W-13)" \
+  || bad "Q1: code-reviewer routes a real-world constant without REQUEST CHANGES, as app-build step 4 expects (C5W-13)"
 
 # --- Sprint 5 track P2: the guard reads what RUNS, guards what is written, and passes honest commands ---
 # C4G-H1 (text fed to a bare shell), H2 (protected files vs dir writes / git / patch / tar / find),
