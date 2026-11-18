@@ -11757,7 +11757,7 @@ grep -q 'WAIVED  *journey  — WAIVED: journey gate: founder (Q)' "$TMP/out" \
   || bad "Q1: ...and readiness prints the gate WAIVED with who and why (C5W-1)" "$(cat "$TMP/out")"
 ( cd "$Q1W" && node "$HERE/board.mjs" add APP-001 --title t --owner web-developer ) >/dev/null 2>&1
 ( cd "$Q1W" && node "$HERE/orchestrator.mjs" ship ) >"$TMP/q1ship.txt" 2>&1
-grep -q '^  CLEAR  *readiness' "$TMP/q1ship.txt" && grep -q '| .*WAIVED: journey gate' "$TMP/q1ship.txt" \
+grep -q '^  CLEAR  *readiness' "$TMP/q1ship.txt" && grep -q '| WAIVED  *journey  — WAIVED: journey gate: founder' "$TMP/q1ship.txt" \
   && grep -q 'WAIVED: journey gate by founder (Q)' "$TMP/q1ship.txt" \
   && ok "Q1: orchestrator ship — readiness CLEAR on a waived journey gate, and both readiness and ship-gate echo the waiver (C5W-1)" \
   || bad "Q1: orchestrator ship — readiness CLEAR on a waived journey gate, and both readiness and ship-gate echo the waiver (C5W-1)" "$(cat "$TMP/q1ship.txt")"
