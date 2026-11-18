@@ -100,7 +100,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    review verdicts (`docs/53-reviews/`) and evidence records stay uncommitted in the main checkout,
    where the board and the gates read them. The rest of that file (`docs/daily/`, the channel,
    `schedule.json`, `memory.jsonl`, `incidents.jsonl`, `release-candidates.jsonl`,
-   `audit-anchor.json`, the register `docs/90-register.*`) is tracked on purpose: dirty checks skip it, history keeps it. The
+   `audit-anchor.json`, the register `docs/90-register.jsonl`) is tracked on purpose: dirty checks skip it, history keeps it. The
    board log and its rendering live in the main checkout only — a
    `git checkout` must not roll the board back, and ICs get their ticket through the spawn prompt,
    not from the board file. `docs/team/messages.jsonl` and the dispatch manifests stay
