@@ -141,7 +141,18 @@ for (const t of tickets.values()) {
   // Whole-id match, longest board id wins (lib/integration.mjs matchesTicket): APP-1 no longer
   // claims feat/APP-10-x, nor APP-001 feat/APP-001-analytics-x when APP-001-analytics is a ticket.
   const mine = ticketBranches(git, t.id, ids);
-  if (!mine.length) { unknown.push(t.id); continue; }
+  if (!mine.length) {
+    // C3G-8: `merged` now records the commit it was about, so a deleted branch is still checkable.
+    const head = t.events.findLast((e) => e.event === 'merged')?.detail?.merged_head;
+    if (head && git(['cat-file', '-e', `${head}^{commit}`]) !== null) {
+      if (isAncestor(git, head, base)) ok += 1;
+      else if (awaitingWave(t)) pending.push({ id: t.id, branches: [head.slice(0, 12)] });
+      else lying.push({ id: t.id, status: t.status, branches: [`${head.slice(0, 12)} (recorded at merged)`] });
+      continue;
+    }
+    unknown.push(t.id);
+    continue;
+  }
   // Any matching branch being merged is enough: a ticket may legitimately have had more than one.
   const merged = mine.some((b) => isAncestor(git, b, base));
   if (merged) ok += 1;

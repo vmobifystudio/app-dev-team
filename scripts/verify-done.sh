@@ -98,11 +98,9 @@ fi
 # NOTHING IS SUBSTITUTED WHEN THE PROFILE IS SILENT. project-profile.mjs exits 2 for an undeclared
 # scope and this passes that straight through, because a default test command would make "the tests
 # ran" true of a command nobody chose — the same class as an evidence-optional pass.
-CMD_SOURCE=caller
 _scope=""
 case "$TEST_CMD" in
   fast|full)
-    CMD_SOURCE=profile
     _scope="$TEST_CMD"
     _resolved=$(node "$(dirname "$0")/project-profile.mjs" test-command --scope "$_scope" 2>&1)
     if [ $? -ne 0 ]; then
@@ -213,115 +211,78 @@ CANNOT_EVAL_WHY=""
 # Sets TESTS_STATUS (green | failing | cannot-run) and CANNOT_EVAL_WHY. Called on BOTH exit paths
 # with $TEST_RC: a zero exit is evidence that nothing errored, never evidence that a suite ran.
 
-# ONE trap for both the temporary worktree and the test log. Two `trap ... EXIT` statements do not
-# stack in POSIX sh — the second silently replaces the first — so the worktree would have been left
-# behind the moment a test log was created.
-TMP_WT=""
+# One trap, for the test log. (The temporary worktree the suite runs in is lib/evidence.mjs's now —
+# design E: it makes and removes a fresh detached worktree of the exact tip itself.)
 TEST_LOG=""
 EVIDENCE=""
 EV="$(dirname "$0")/lib/evidence.mjs"
-# The ticket id, for the next-step commands this prints (whole token, as the board spells it).
-TICKET_ID=$(printf '%s' "$BRANCH" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | head -n 1)
+# The ticket id, for the next-step commands this prints — as the BOARD spells it, and the LONGEST
+# board id the branch is named for (C3G-9 / FB5): feat/APP-001-analytics-x is APP-001-analytics's
+# when that ticket exists, and BUG-001-fix is not BUG-001. With no board (or no match), the first
+# ID-shaped token, either case.
+TICKET_ID=$(node "$EV" ticket-for --branch "$BRANCH" 2>/dev/null || true)
+[ -n "$TICKET_ID" ] || TICKET_ID=$(printf '%s' "$BRANCH" | grep -oiE '[A-Z][A-Z0-9]*-[0-9]+(-w[0-9]+)?' | head -n 1)
 [ -n "$TICKET_ID" ] || TICKET_ID='<ID>'
 # W2-10: every printed board command carries the inline-mint --token when the project requires
 # tokens — a shell variable minted in one Bash call does not survive to the next.
 TOKFLAG=$(node "$EV" token-flag --role tech-manager --ticket "$TICKET_ID" 2>/dev/null || true)
 cleanup() {
   [ -n "$TEST_LOG" ] && rm -f "$TEST_LOG"
-  if [ -n "$TMP_WT" ]; then
-    git worktree remove --force "$TMP_WT" >/dev/null 2>&1
-    git worktree prune >/dev/null 2>&1
-    rm -rf "$TMP_WT"
-  fi
   return 0
 }
 trap cleanup EXIT INT TERM
 
-if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
-  # Locate a worktree holding this branch. `git worktree list --porcelain` emits, per worktree:
-  #   worktree <path>\n ... \n branch refs/heads/<name>
-  WT=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$BRANCH" '
-    /^worktree /{ path = substr($0, 10) }
-    $0 == "branch " b { print path; exit }')
-
-  CURRENT=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-  RUN_DIR=""
-
-  if [ -n "$WT" ]; then
-    RUN_DIR="$WT"
-    echo "verify-done: $BRANCH is checked out at $WT — running tests there (no checkout)." >&2
-  elif [ "$CURRENT" = "$BRANCH" ]; then
-    RUN_DIR="."
+if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ] && [ -z "$FAILURES" ]; then
+  # Say, once per run, whether the caches this script just pinned actually apply to THIS command.
+  # An exported variable the project's own test command ignores is a saving nobody made, and
+  # silently believing in it is the shape of defect this repository keeps re-finding.
+  sh "$(dirname "$0")/build-env.sh" --check "$TEST_CMD" >&2 || true
+  echo "verify-done: running tests on $BRANCH, in a fresh detached worktree of its tip: $TEST_CMD" >&2
+  # NEVER `git checkout` here, and never run in the developer's tree (C3G-7, design E): a shared
+  # tree carries other agents' files, and any tree carries skip-worktree / assume-unchanged bits and
+  # untracked files the commit does not contain. lib/evidence.mjs runs the suite in a worktree made
+  # for this run from exactly the tip.
+  # Capture, never discard: the verdict below tells the loop to "re-spawn the developer with these
+  # failures verbatim", and needs them.
+  # G2-2: lib/evidence.mjs RUNS the command and records its own exit code and output — there is
+  # no path where this script reports an outcome for the record to copy. The verdict below is the
+  # record's own (the shared classifier), and the census of the changed test files rides on it.
+  # The SAME question on both branches: a zero exit is evidence that nothing errored, never
+  # evidence that a suite ran. Ran-evidence decides both directions.
+  TEST_LOG=$(mktemp)
+  if [ -n "$_scope" ]; then
+    _evj=$(node "$EV" test --branch "$RESOLVED" --base "$BASE" --scope "$_scope" 2>"$TEST_LOG")
   else
-    # NEVER `git checkout` here. /app-build explicitly runs verification alongside still-running
-    # developers, and the shared worktree is where those developers are writing. Checking out in
-    # place did three wrong things at once: it rejected a valid DONE because someone else's files
-    # were dirty, it carried those uncommitted files onto the branch under test so the tests were
-    # not testing this branch, and it moved HEAD under an agent that was mid-edit. A throwaway
-    # detached worktree is the branch's own tree and touches nobody else's.
-    CANDIDATE=$(mktemp -d)
-    rmdir "$CANDIDATE" 2>/dev/null   # `git worktree add` wants to create the directory itself
-    if git worktree add --detach --quiet "$CANDIDATE" "$RESOLVED" 2>/dev/null; then
-      TMP_WT="$CANDIDATE"            # only now is there something for the trap to clean up
-      RUN_DIR="$TMP_WT"
-      echo "verify-done: running tests in a temporary detached worktree at $TMP_WT." >&2
-    else
-      rm -rf "$CANDIDATE"
-      # Not a REJECTED: the developer's claim is untouched by this repo's inability to make a
-      # worktree. It is precisely a cannot-evaluate.
-      TESTS_STATUS="cannot-run"
-      CANNOT_EVAL_WHY="could not create a temporary worktree for $BRANCH, so the tests were never started"
-    fi
+    _evj=$(node "$EV" test --branch "$RESOLVED" --base "$BASE" --command "$TEST_CMD" 2>"$TEST_LOG")
   fi
-
-  if [ -z "$FAILURES" ] && [ "$TESTS_STATUS" != "cannot-run" ]; then
-    # Say, once per run, whether the caches this script just pinned actually apply to THIS command.
-    # An exported variable the project's own test command ignores is a saving nobody made, and
-    # silently believing in it is the shape of defect this repository keeps re-finding.
-    sh "$(dirname "$0")/build-env.sh" --check "$TEST_CMD" >&2 || true
-    echo "verify-done: running tests on $BRANCH: $TEST_CMD" >&2
-    # Capture, never discard. The verdict below tells the loop to "re-spawn the developer with
-    # these failures verbatim" — and the output went to /dev/null, so there were no verbatim
-    # failures to hand over. The re-spawned developer was told only that something failed, and
-    # guessed at what; an instruction that cannot be followed is the same defect class as a gate
-    # that cannot fail.
-    # G2-2: lib/evidence.mjs RUNS the command and records its own exit code and output — there is
-    # no path where this script reports an outcome for the record to copy. The verdict below is the
-    # record's own (the shared classifier), and the census of the changed test files rides on it.
-    # The SAME question on both branches. `classify_test_outcome` was consulted only when the
-    # command FAILED; on exit 0 this wrote `green` unconditionally, so `verify-done.sh feat/X main
-    # "true"` — and `"echo 'skipping tests'"` — printed `VERIFIED ... tests=green`. Rigorous when
-    # the command fails and credulous when it succeeds is backwards for a gate, and it is the purest
-    # green-while-nothing-happened case in the repo: a zero exit is evidence that nothing errored,
-    # never evidence that a suite ran. Ran-evidence decides both directions; the exit code only
-    # decides which verdict a suite that DID run gets.
-    TEST_LOG=$(mktemp)
-    if [ -n "$_scope" ]; then
-      _evj=$(node "$EV" test --branch "$RESOLVED" --base "$BASE" --dir "$RUN_DIR" --scope "$_scope" 2>"$TEST_LOG")
-    else
-      _evj=$(node "$EV" test --branch "$RESOLVED" --base "$BASE" --dir "$RUN_DIR" --command "$TEST_CMD" 2>"$TEST_LOG")
-    fi
-    if [ $? -ne 0 ] || [ -z "$_evj" ]; then
+  if [ $? -ne 0 ] || [ -z "$_evj" ]; then
+    TESTS_STATUS="cannot-run"
+    CANNOT_EVAL_WHY="the evidence writer could not run the suite: $(tr '\n' ' ' < "$TEST_LOG")"
+  else
+    _ef() { node -e 'const r = JSON.parse(process.argv[1]); const v = process.argv[2].split(".").reduce((o, k) => (o == null ? o : o[k]), r); process.stdout.write(v == null ? "" : String(v));' "$_evj" "$1"; }
+    TESTS_STATUS=$(_ef verdict); CANNOT_EVAL_WHY=$(_ef why); TEST_RC=$(_ef exit); EVIDENCE=$(_ef record)
+    cp "$(_ef log)" "$TEST_LOG" 2>/dev/null || :
+    case "$TESTS_STATUS" in green|failing|cannot-run) ;; *) TESTS_STATUS="cannot-run"; CANNOT_EVAL_WHY="the classifier returned no verdict" ;; esac
+    # G2-22: a GREEN run whose changed tests assert nothing is not evidence the code works. Not a
+    # REJECTED — the census is a heuristic, and a false REJECTED sends a developer on a phantom hunt.
+    if [ "$TESTS_STATUS" = green ] && [ "$(_ef census.assert_nothing)" = true ]; then
       TESTS_STATUS="cannot-run"
-      CANNOT_EVAL_WHY="the evidence writer could not run the suite: $(tr '\n' ' ' < "$TEST_LOG")"
-    else
-      _ef() { node -e 'const r = JSON.parse(process.argv[1]); const v = process.argv[2].split(".").reduce((o, k) => (o == null ? o : o[k]), r); process.stdout.write(v == null ? "" : String(v));' "$_evj" "$1"; }
-      TESTS_STATUS=$(_ef verdict); CANNOT_EVAL_WHY=$(_ef why); TEST_RC=$(_ef exit); EVIDENCE=$(_ef record)
-      cp "$(_ef log)" "$TEST_LOG" 2>/dev/null || :
-      case "$TESTS_STATUS" in green|failing|cannot-run) ;; *) TESTS_STATUS="cannot-run"; CANNOT_EVAL_WHY="the classifier returned no verdict" ;; esac
-      # G2-22: a GREEN run whose changed tests assert nothing is not evidence the code works. Not a
-      # REJECTED — the census is a heuristic, and a false REJECTED sends a developer on a phantom hunt.
-      if [ "$TESTS_STATUS" = green ] && [ "$(_ef census.assert_nothing)" = true ]; then
+      CANNOT_EVAL_WHY="the suite ran green, but the test files this branch adds or changes declare $(_ef census.tests) test(s) and ZERO assertions ($(_ef census.files)) — a suite that asserts nothing passes whatever the code does. Add assertions; the board refuses \`verified\` on this record"
+    fi
+    if [ "$TESTS_STATUS" = green ] && [ "$(_ef dirty)" = true ]; then
+      TESTS_STATUS="cannot-run"
+      CANNOT_EVAL_WHY="the suite changed tracked files (or HEAD) in its own fresh worktree while it ran, so what it tested is not $BRANCH's commit"
+    fi
+    # FB3: a green the BOARD will refuse is not VERIFIED. The command must be one the board froze
+    # from the project profile (an identical explicit string counts — FB4); ask the same function.
+    if [ "$TESTS_STATUS" = green ]; then
+      _cc=$(node "$EV" check-command --record "$EVIDENCE" 2>&1)
+      if [ $? -ne 0 ]; then
         TESTS_STATUS="cannot-run"
-        CANNOT_EVAL_WHY="the suite ran green, but the test files this branch adds or changes declare $(_ef census.tests) test(s) and ZERO assertions ($(_ef census.files)) — a suite that asserts nothing passes whatever the code does. Add assertions; the board refuses \`verified\` on this record"
-      fi
-      if [ "$TESTS_STATUS" = green ] && [ "$(_ef dirty)" = true ]; then
-        TESTS_STATUS="cannot-run"
-        CANNOT_EVAL_WHY="the suite ran in $RUN_DIR with uncommitted changes to tracked files, so it tested code that is not $BRANCH's commit. Commit or discard them, then re-run"
+        CANNOT_EVAL_WHY="the suite ran green, but the board will refuse this record: $(printf '%s' "$_cc" | sed 's/^evidence: //' | tr '\n' ' ' | sed 's/[. ]*$//')"
       fi
     fi
   fi
-
 fi
 
 # --- verdict --------------------------------------------------------------------------------------
@@ -365,7 +326,7 @@ if [ "$TESTS_STATUS" = "deferred-to-wave" ]; then
   STATIC_EV=$(node "$EV" static --branch "$RESOLVED" --base "$BASE" 2>/dev/null || true)
   [ -n "$STATIC_EV" ] && echo "  Evidence (static — what a reviewer binds to): $STATIC_EV"
   echo "Next: record the honest state, which unlocks review, approval and the merge gate:"
-  echo "    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID verified_static --by tech-manager --detail \"deferred to wave integration\"$TOKFLAG"
+  echo "    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID verified_static --by tech-manager${STATIC_EV:+ --evidence $STATIC_EV} --detail \"deferred to wave integration\"$TOKFLAG"
   echo "  It refuses \`closed\` and blocks ship-gate until something runs the suite. That something is"
   echo "    node scripts/wave-integrate.mjs --root . --wave <N> --base $BASE"
   echo "  whose green full run is what earns the real \`verified\` for every ticket in the wave."
@@ -392,7 +353,7 @@ if [ "$TESTS_STATUS" = "unverified" ] || [ "$TESTS_STATUS" = "cannot-run" ]; the
   [ -n "$STATIC_EV" ] && echo "  Evidence (static — what a reviewer binds to): $STATIC_EV"
   echo "Next: this ticket is INSPECTABLE BUT NOT RUNNABLE. Static review is still owed and still"
   echo "  possible — record it and let the code-reviewer work:"
-  echo "    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID verified_static --by tech-manager --detail \"the executable test suite\"$TOKFLAG"
+  echo "    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID verified_static --by tech-manager${STATIC_EV:+ --evidence $STATIC_EV} --detail \"the executable test suite\"$TOKFLAG"
   echo "  That unlocks review, approval and merge, and refuses \`closed\` until the suite has run."
   exit 2
 fi
@@ -414,10 +375,6 @@ fi
 echo "VERIFIED: $BRANCH"
 echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=$TESTS_STATUS head=$HEAD_SHA"
 echo "  Evidence: $EVIDENCE"
-if [ "$DOCS_ONLY" -eq 0 ] && [ "$CMD_SOURCE" = caller ]; then
-  echo "  NOTE: the command was chosen by the caller, not declared in docs/team/project-profile.json."
-  echo "  The board refuses \`verified\` on such a record (G2-3): declare test.fast, then run with \`fast\`."
-fi
 echo "Next: record it — node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID verified --by tech-manager --evidence $EVIDENCE$TOKFLAG"
 echo "  then move the board row to review and spawn the code-reviewer."
 exit 0

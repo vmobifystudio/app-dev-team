@@ -287,6 +287,11 @@ function verifyChain(text) {
  * and the subagent guard hook refuses writes into .git/. THE BOUND: the same OS user can rewrite
  * the log AND the anchor with Bash outside the guard; a project with no git repository has no
  * anchor (the chain alone, as before). A legacy log is anchored on first use (trust on first use).
+ * C3G-12, stated: the guard matches command TEXT, so anything that reaches this module's exports
+ * without naming board.mjs — `node -e "import('…/lib/events.mjs')…writeAnchor(…)"` — or names
+ * the git dir indirectly (`.gi?/studio`, `$D/studio`) re-anchors a rewritten log. The hook lists
+ * events.mjs among the guarded imports and refuses globs/variables near `.git`; past that the
+ * anchor detects a confused or careless rewrite, not a deliberate one by the same OS user.
  */
 function anchorPath(logPath) {
   const dir = dirname(logPath);
@@ -423,6 +428,9 @@ function reduce(events) {
         // needed. The list of correctable fields was the list I thought of, not the list the work
         // requires.
         if (Array.isArray(fields.files)) state.meta.files = fields.files.map(String);
+        // C3W-7: invariants are correctable too. A high-risk ticket created without --invariant
+        // could never reach review, and nothing could add one. (`corrected --invariant "I1; I2"`.)
+        if (Array.isArray(fields.invariants)) state.meta.invariants = fields.invariants.map(String).filter(Boolean);
         // `owner` is corrigible because a mis-assigned ticket is a real and common mistake, and
         // leaving it wrong forces the hand-edit this event exists to replace.
         if (typeof fields.owner === 'string' && fields.owner) state.owner = fields.owner;
@@ -462,7 +470,10 @@ function reduce(events) {
         state.verified = true;
         state.verifiedMode = 'static';
         state.verifiedStatic = true;
-        state.staticUnrun = String(detail || '').trim() || 'the executable test suite';
+        // C3W-13: a FIXED phrase, never the caller's --detail. This string is echoed in banners,
+        // refusals and dashboards every later reader sees; free text there is a prompt-injection
+        // channel and a place to misstate what did not run. The detail stays on the event.
+        state.staticUnrun = 'the executable test suite';
         break;
       case 'rejected':
         state.verifyPending = false;
@@ -714,7 +725,7 @@ function validateTransition(tickets, candidate) {
       if (['high', 'critical'].includes(state.meta?.risk) && !(state.meta?.invariants?.length > 0)) {
         return {
           ok: false,
-          reason: `${id} is ${state.meta.risk}-risk and was created with no --invariant — a reviewer has nothing to check the change against`,
+          reason: `${id} is ${state.meta.risk}-risk and has no invariant recorded — a reviewer has nothing to check the change against. Record them: board.mjs move ${id} corrected --by tech-manager --invariant "I1; I2"`,
           legal: legal.filter((e) => e !== 'review_requested'),
         };
       }

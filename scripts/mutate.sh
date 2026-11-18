@@ -228,8 +228,8 @@ MA01@@skills/defect-hunting/SKILL.md@@`references/round-trip.md`@@`references/ro
 M101@@scripts/lib/evidence.mjs@@if (again.verdict !== rec.verdict) return fail(@@if (false) return fail(@@TC: ...because the board re-runs the classifier over the log@@Sprint 2 track C
 M102@@scripts/lib/evidence.mjs@@if (sha256(text) !== rec.log_sha256) return@@if (false) return@@TC: ...because the log no longer hashes to the record@@Sprint 2 track C
 M103@@scripts/lib/evidence.mjs@@if (tip.sha === head || (!exact && isAncestor(git, tip.sha, head))) return { ok: true, tip: tip.sha };@@if (tip.sha) return { ok: true, tip: tip.sha };@@TC: a record for an older tip of the ticket branch is refused@@Sprint 2 track C
-M104@@scripts/lib/evidence.mjs@@if (rec.command_source !== 'profile' || !declared.includes(rec.command)) {@@if (false) {@@TC: a caller-chosen test command is refused when the profile declares one@@Sprint 2 track C
-M105@@scripts/lib/evidence.mjs@@if (code.length) return fail(@@if (false) return fail(@@TC: a --docs-only record on a branch that changes source is refused@@Sprint 2 track C
+M104@@scripts/lib/evidence.mjs@@if (!declared.includes(rec.command)) {@@if (false) {@@TC: a caller-chosen test command is refused when the profile declares one@@Sprint 2 track C
+M105@@scripts/lib/evidence.mjs@@if (code.length) return { ok: false, code: 1,@@if (false) return { ok: false, code: 1,@@TC: a --docs-only record on a branch that changes source is refused@@Sprint 2 track C
 M106@@scripts/lib/evidence.mjs@@if (afterTs && !(Date.parse(rec.at) > Date.parse(afterTs)))@@if (false)@@TC: qa_passed on the developer's pre-merge record is refused@@Sprint 2 track C
 M107@@scripts/lib/readiness.mjs@@const derived = checkGateLog(root, v);@@const derived = { ok: true };@@TC: readiness: a hand-written PASS gate-result is CANNOT_EVALUATE, not PASS@@Sprint 2 track C
 M108@@scripts/lib/evidence.mjs@@if (last !== v.result) return@@if (false) return@@TC: readiness: a result whose own log reached a different verdict is not PASS@@Sprint 2 track C
@@ -297,7 +297,7 @@ MF03@@scripts/lib/evidence.mjs@@if (forged in f) bye(2,@@if (false) bye(2,@@F1: 
 MF04@@scripts/lib/evidence.mjs@@if (!declared.length) {@@if (false) {@@F1: a profile that declares no test command cannot verify a code ticket (G2-3)@@Sprint 3 track F1
 MF05@@scripts/lib/evidence.mjs@@const exact = rec.produced_by === 'verify-done.sh' && !afterTs;@@const exact = false;@@F1: verified evidence from a DESCENDANT of the ticket tip is refused (G2-4)@@Sprint 3 track F1
 MF06@@scripts/lib/evidence.mjs@@if (rec.assertion_census?.assert_nothing) {@@if (false) {@@F1: ...and the board refuses verified on that record@@Sprint 3 track F1
-MF07@@scripts/lib/evidence.mjs@@const isDoc = docFile(docsIsServedSite(git, rec.head));@@const isDoc = docFile(false);@@F1: a --docs-only record over a served docs/ site (docs/index.html) is refused (G2-25)@@Sprint 3 track F1
+MF07@@scripts/lib/evidence.mjs@@const isDoc = docFile(docsIsServedSite(git, head));@@const isDoc = docFile(false);@@F1: a --docs-only record over a served docs/ site (docs/index.html) is refused (G2-25)@@Sprint 3 track F1
 MF08@@scripts/lib/verdict.mjs@@if (event === 'approved' && NOTHING_REVIEWED.test(body)) {@@if (false) {@@F1: an APPROVE whose ## Not checked says Everything is refused (G2-26)@@Sprint 3 track F1
 MF09@@scripts/lib/verdict.mjs@@const scope = sides.length === 2 && sides[0] && sides[1] ? [scopeLine[0], sides[0], sides[1]] : null;@@const scope = scopeLine ? [scopeLine[0], sides[0], sides.slice(1).join('..')] : null;@@F1: a three-sided Scope is refused by the verdict contract itself, with or without --bind (G2-5)@@Sprint 3 track F1
 MF10@@scripts/board.mjs@@if (!manifest || manifest.schema !== 'context-manifest/v2' || !Array.isArray(manifest.sources)) {@@if (false) {@@F1: --bind --context must be a context-manifest/v2 (G2-6)@@Sprint 3 track F1
@@ -314,7 +314,7 @@ MF20@@scripts/lib/actor.mjs@@if (!stdin.isTTY) {@@if (false) {@@F1: actor mint -
 MF21@@scripts/lib/actor.mjs@@session: pick('STUDIO_SESSION_ID') || pick('CLAUDE_CODE_SESSION_ID'),@@session: pick('STUDIO_SESSION_ID'),@@F1: a mint records the Claude Code session it ran in (G2-17)@@Sprint 3 track F1
 MF22@@scripts/verify-done.sh@@if [ "$TESTS_STATUS" = green ] && [ "$(_ef census.assert_nothing)" = true ]; then@@if false; then@@F1: verify-done downgrades a green run whose changed tests assert nothing to CANNOT EVALUATE (G2-22)@@Sprint 3 track F1
 MF23@@scripts/lib/events.mjs@@...(isQaDocs(state) ? ['merged'] : [])@@...[]@@F1: a docs-only QA- ticket merges straight from verified, reviewed inline (decision 1)@@Sprint 3 track F1
-MF24@@scripts/board.mjs@@if (state && isQaDocs(state)) return '';@@if (false) return '';@@F1: ...and closes from merged without being on the integration branch (W2-6)@@Sprint 3 track F1
+MF24@@scripts/board.mjs@@if (state && isQaDocs(state)) {@@if (false) {@@F1: ...and closes from merged without being on the integration branch (W2-6)@@Sprint 3 track F1
 MF25@@scripts/board.mjs@@const integration = integrationBase(gitAt(process.cwd()));@@const integration = 'main';@@F1: ...and the recorded base is develop's tip, not main's@@Sprint 3 track F1
 MF26@@scripts/verify-done.sh@@TOKFLAG=$(node "$EV" token-flag@@TOKFLAG=$(true "$EV" token-flag@@F1: verify-done prints the board command with the inline-mint --token under requireActorTokens (W2-10)@@Sprint 3 track F1
 MM01@@commands/app-init.md@@docs/53-reviews/ docs/54-evidence/@@docs/53-review/ docs/54-evidence/@@K3: every path /app-init gitignores is an operational path (C3W-12)@@Sprint 4 track K3
@@ -345,6 +345,28 @@ ML22@@scripts/orchestrator.mjs@@const why = reason ? ` [${reason.slice(0, 200)}]
 ML23@@scripts/project-profile.mjs@@missingBuild = why || 'package.json has no "build" script';@@missingBuild = 'package.json has no "build" script';@@K2: project-profile names the missing package.json@@Sprint 4 track K2
 ML24@@scripts/ship-gate.sh@@if [ "$1" = tech-manager ]; then@@if true; then@@F2: ship-gate's printed qa_passed command carries the agent's prompt token@@Sprint 3 track F2
 ML25@@scripts/drivers/web.sh@@drives a RUNNING app. Start it ${SERVE}@@drives a RUNNING app.@@K2: the web driver with no URL says how to start the app@@Sprint 4 track K2
+MK01@@scripts/board.mjs@@if (sameCommands(frozen.commands, cur.commands)) return '';@@return '';@@K1: a gate event under a profile whose test commands changed is refused (C3G-3)@@Sprint 4 track K1
+MK02@@scripts/board.mjs@@if (event.by !== 'tech-manager') return 'only the orchestrator@@if (false) return 'only the orchestrator@@K1: only tech-manager re-freezes the test commands@@Sprint 4 track K1
+MK03@@scripts/verify-done.sh@@_cc=$(node "$EV" check-command --record "$EVIDENCE" 2>&1)@@_cc=$(true)@@K1: a green of an undeclared command prints CANNOT EVALUATE, not VERIFIED (FB3)@@Sprint 4 track K1
+MK04@@scripts/lib/evidence.mjs@@const mb = git(['merge-base', integration, head]);@@const mb = git(['rev-parse', `${head}~1`]);@@K1: a --docs-only record whose own base hides a code commit is refused — the diff is from merge-base(integration, tip) (C3G-4)@@Sprint 4 track K1
+MK05@@scripts/board.mjs@@return d.ok ? '' : `${ticket} is on the QA- docs-only fast path@@return true ? '' : `${ticket} is on the QA- docs-only fast path@@K1: ...but a code commit added after verified ends the fast path at merged (C3G-5)@@Sprint 4 track K1
+MK06@@scripts/journey-gate.mjs@@if (dirname(real) !== realpathSync(DRIVERS_DIR) || !statSync(real).isFile()) {@@if (false) {@@K1: journey-gate refuses a driver that is not one of the plugin's scripts/drivers/* (C3G-6)@@Sprint 4 track K1
+MK07@@scripts/lib/evidence.mjs@@if (drv) return fail(drv);@@if (false) return fail(drv);@@K1: qa_passed refuses a journey result that names no plugin driver (design F)@@Sprint 4 track K1
+MK08@@scripts/lib/evidence.mjs@@run = spawnSync('sh', ['-c', cmd], { cwd: at,@@run = spawnSync('sh', ['-c', cmd], { cwd,@@K1: a skip-worktree'd edit in the developer's tree does not change the result — the committed suite fails (C3G-7)@@Sprint 4 track K1
+MK09@@scripts/lib/readiness.mjs@@.split('\n').some((l) => /^(S|[a-z]) /.test(l));@@.split('\n').some(() => false);@@K1: ...and a skip-worktree entry makes the tree dirty for the gates (ls-files -v)@@Sprint 4 track K1
+MK10@@scripts/board.mjs@@if (landed.length) return@@if (false) return@@K1: closed refuses when the ticket's branch gained commits after merged that are on the integration branch (C3G-8)@@Sprint 4 track K1
+MK11@@scripts/board.mjs@@: { note: event.detail || undefined, merged_head: subj.sha };@@: { note: event.detail || undefined };@@K1: merged records the commit it is about (C3G-8)@@Sprint 4 track K1
+MK12@@scripts/lib/evidence.mjs@@if (!recordedBranch || !matchesTicket(@@if (false && !matchesTicket(@@K1: a ticket with no branch named for it cannot cite another branch's green (C3G-9)@@Sprint 4 track K1
+MK13@@scripts/lib/evidence.mjs@@.replace(/^refs\/(heads|remotes\/[^/]+)\//, ''), id, ids))[0];@@.replace(/^refs\/(heads|remotes\/[^/]+)\//, ''), id, []))[0];@@K1: verify-done's ticket is the LONGEST board id the branch is named for (C3G-9 / FB5)@@Sprint 4 track K1
+MK14@@scripts/lib/evidence.mjs@@if (tip.ambiguous.length) return { ok: false, code: 1, reason:@@if (tip.ambiguous.length) return { ok: false, code: 2, reason:@@K1: evidence for a ticket with two branches named for it is refused with exit 1 (C3W-9)@@Sprint 4 track K1
+MK15@@scripts/lib/evidence.mjs@@if (staticOnly && rec.mode !== 'static') return fail(@@if (false) return fail(@@K1: verified_static refuses a tests record — it cites the --static one@@Sprint 4 track K1
+MK16@@scripts/lib/events.mjs@@if (Array.isArray(fields.invariants)) state.meta.invariants@@if (false) state.meta.invariants@@K1: ...after corrected --invariant it can (C3W-7)@@Sprint 4 track K1
+MK17@@scripts/board.mjs@@(role === 'tech-manager'@@(true@@K1: ...and the refusal tells the agent to return BLOCKED, never how to mint (C3W-8)@@Sprint 4 track K1
+MK18@@scripts/board.mjs@@if (!bound.detail.files.some((f) => vtext.includes(f))) {@@if (false) {@@K1: an APPROVE that names none of the bound diff's files is refused (C3G-13)@@Sprint 4 track K1
+MK19@@scripts/board.mjs@@if (existsSync(out) || out === paths.log) {@@if (false) {@@K1: migrate --out onto an existing file is refused (C3G-14)@@Sprint 4 track K1
+MK20@@scripts/lib/evidence.mjs@@if (rel !== posix.normalize(rel) || rel.startsWith('./') || !rel.startsWith(`${EVIDENCE_DIR}/`)) return@@if (false) return@@K1: a record whose log is spelled docs//team/… is refused (C3G-17)@@Sprint 4 track K1
+MK21@@scripts/lib/actor.mjs@@if (e.code !== 'EAGAIN' || waited >= maxWaitMs) throw e;@@throw e;@@K1: the founder confirmation retries EAGAIN instead of failing (C3G-10)@@Sprint 4 track K1
+MK22@@scripts/lib/events.mjs@@state.staticUnrun = 'the executable test suite';@@state.staticUnrun = String(detail?.note || detail || '').trim() || 'the executable test suite';@@K1: the STATIC ONLY banner never echoes free-text --detail (C3W-13)@@Sprint 4 track K1
 CATALOGUE
 }
 

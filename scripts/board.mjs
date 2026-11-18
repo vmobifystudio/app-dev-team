@@ -17,6 +17,12 @@
  * marks `high`/`critical` cannot reach `review_requested` without at least one `--invariant`
  * recorded at creation (see `validateTransition`'s `review_requested` case in lib/events.mjs).
  *   board.mjs move  <ID> <event> --by <role> [--detail "..."]
+ *   board.mjs move  <ID> corrected --by tech-manager [--invariant "I1; I2"] [--test-profile]
+ *
+ * TEST COMMANDS ARE FROZEN (C3G-3, design C): the first gate event stamps the profile's test.fast /
+ * test.full (+ the profile's sha) on the log; a later gate event under a profile that declares
+ * different commands is refused until the orchestrator runs `corrected --test-profile`.
+ * `merged` records the commit it is about (`merged_head`); `closed` checks that commit (C3G-8).
  *   board.mjs assign <ID> --to <role> [--by <role>]
  *   board.mjs show  [ID] [--json]
  *   board.mjs render
@@ -53,7 +59,7 @@ import { withFileLock } from './lib/atomic.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { resolveActor, verifyActorToken, mintActorToken, revokeActorToken, listActorTokens, TOKEN_REGISTRY, inlineTokenFlag } from './lib/actor.mjs';
 import { GATE_EVENTS } from './lib/capabilities.mjs';
-import { verifyTestEvidence, verifyQaEvidence } from './lib/evidence.mjs';
+import { verifyTestEvidence, verifyQaEvidence, currentTestProfile, frozenTestProfile, sameCommands, docsOnlyDiff } from './lib/evidence.mjs';
 import { RANK, routeFiles } from './lib/risk.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
@@ -365,10 +371,19 @@ function stampActor(paths, flags, ticket, eventName) {
   const token = typeof flags.token === 'string' ? flags.token : '';
   const role = String(flags.by || '');
   const gate = GATE_EVENTS.has(eventName);
+  // C3W-8 / design D: only the orchestrator's own role (tech-manager) is shown an inline mint. For an
+  // AGENT role, printing a mint was an instruction to self-attest — the agent would mint the token
+  // that is supposed to prove the orchestrator sent it.
   const refuseToken = (r) => die(r.code, `refusing ${eventName} on ${ticket}: ${r.reason}\n` +
-    '  A gate event needs --token <the token minted for THIS spawn>. A spawned agent uses the one in its\n' +
-    '  prompt; the orchestrator mints its own inline, in the same command:\n' +
-    `    node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move ${ticket} ${eventName} --by ${role || '<role>'}${inlineTokenFlag(root, role || '<role>', ticket) || ` --token "$(node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role ${role || '<role>'} --ticket ${ticket})"`} …`);
+    (role === 'tech-manager'
+      ? '  A gate event needs --token. The orchestrator mints its own inline, in the same command:\n' +
+        `    node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move ${ticket} ${eventName} --by tech-manager${inlineTokenFlag(root, 'tech-manager', ticket) || ` --token "$(node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket ${ticket})"`} …`
+      : role === 'founder'
+        ? '  A founder token is minted by the human founder at their own terminal (actor mint --role founder).'
+        : `  A gate event by ${role || 'an agent role'} needs the --token from THAT agent's spawn prompt. Agents never mint:\n` +
+          '  the orchestrator composes the prompt (spawn-prompt.mjs compose), which mints the token. If you are the\n' +
+          '  agent, return BLOCKED naming this refusal. If you are the orchestrator, re-spawn the agent with a\n' +
+          '  freshly composed prompt.'));
   // G2-12: THE POLICY FLOOR IS RECORDED ON EVERY EVENT, not inferred from the first gate event — so
   // deleting requireActorTokens (or requireApprovalBinding) before any gate was written is refused
   // as well. A board with no event yet has no floor: that is the stated bound.
@@ -718,7 +733,7 @@ function bindApprovalEvidence(flags, ticket, state) {
   } else {
     const tip = ticketTip(gitAt(process.cwd()), ticket, boardIds());
     if (tip.ambiguous.length) {
-      return { ok: false, code: 2, reason: `several branches are named for ${ticket} (${tip.ambiguous.join(', ')}) — pass --commit <sha> naming the one you reviewed` };
+      return { ok: false, code: 1, reason: `several branches are named for ${ticket} (${tip.ambiguous.join(', ')}) — delete the stale one, or pass --commit <sha> naming the one you reviewed` }; // C3W-9: a decidable refusal, not CANNOT EVALUATE
     }
     if (tip.sha) {
       commit = tip.sha;
@@ -847,6 +862,22 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     process.exit(1);
   }
 
+  // C3W-7: `corrected --invariant "I1; I2"` records invariants (same spelling as `add`).
+  if (name === 'corrected' && typeof flags.invariant === 'string') {
+    let base = event.detail;
+    if (typeof base === 'string' && base.trim().startsWith('{')) { try { base = JSON.parse(base); } catch { /* kept as a note */ } }
+    const invariants = flags.invariant.split(';').map((s) => scrub('--invariant', s.trim())).filter(Boolean);
+    event.detail = { ...(typeof base === 'object' && base ? base : base ? { note: base } : {}), invariants };
+  }
+
+  // C3G-3 / design C: THE TEST COMMANDS ARE FROZEN AT THE FIRST GATE EVENT; changing them is an
+  // orchestrator decision (`corrected --test-profile`), never a file edit.
+  const profileBlock = freezeTestProfile(name, ticket, flags, event, paths);
+  if (profileBlock) {
+    process.stderr.write(`board: refused ${ticket} ${name} — ${profileBlock}\n`);
+    process.exit(1);
+  }
+
   if (name === 'claimed') {
     const lease = claimLease(ticket, flags, paths);
     if (!lease.ok) {
@@ -907,6 +938,19 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
         process.exit(1);
       }
     }
+    // C3G-13: an APPROVE must name at least one path from the bound diff. "I did not read the diff"
+    // under `## Not checked` satisfied every structural check; a verdict that mentions none of the
+    // files it approves was not written by anyone who looked at them. BOUND: naming a path proves
+    // the reviewer saw the file list, not that they read the hunks.
+    if (bound.detail.files.length) {
+      let vtext = '';
+      try { vtext = readFileSync(resolve(process.cwd(), String(flags.verdict)), 'utf8'); } catch { /* readVerdict already opened it */ }
+      if (!bound.detail.files.some((f) => vtext.includes(f))) {
+        process.stderr.write(`board: refused ${ticket} approved — the verdict ${flags.verdict} names none of the ${bound.detail.files.length} file(s) in the bound diff (${bound.detail.files.slice(0, 5).join(', ')}${bound.detail.files.length > 5 ? ', …' : ''}).\n` +
+          '  An approval says what it read: cite the paths you reviewed (and what you found in each).\n');
+        process.exit(1);
+      }
+    }
     event.detail = typeof event.detail === 'object' && event.detail
       ? { ...event.detail, ...bound.detail }
       : { note: event.detail || undefined, ...bound.detail };
@@ -916,14 +960,21 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
   // verify-done wrote; the board re-hashes its raw log, re-runs the classifier over it and checks it
   // ran on (a descendant of) the ticket's branch tip. `qa_passed` names a journey-gate result or a
   // post-merge test run, re-derived the same way.
-  if (name === 'verified' || name === 'qa_passed') {
+  // C3W-4: `verified_static --evidence <the --static record>` is recorded (validated as a static
+  // record for this ticket's exact tip), so the reviewer has a record to --bind to. Optional: a
+  // static verification with no record still unlocks review, and --bind then has nothing to cite.
+  if (name === 'verified' || name === 'qa_passed' || (name === 'verified_static' && flags.evidence)) {
     const { root } = studioPolicy();
-    const ev = name === 'verified'
+    const ev = name === 'verified_static'
+      ? verifyTestEvidence(root, flags.evidence, { ticket, staticOnly: true })
+      : name === 'verified'
       ? verifyTestEvidence(root, flags.evidence, { ticket })
-      : verifyQaEvidence(root, flags.evidence, { ticket, mergedTs: events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'merged')?.ts || '' });
+      : verifyQaEvidence(root, flags.evidence, { ticket, mergedTs: events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'merged')?.ts || '', mergedHead: recordedMergeHead(events, ticket) });
     if (!ev.ok) {
       process.stderr.write(`board: refused ${ticket} ${name} — ${ev.reason}\n` +
-        (name === 'verified'
+        (name === 'verified_static'
+          ? '  `verified_static --evidence` cites the --static record verify-done printed (docs/team/evidence/test-*.json).\n'
+          : name === 'verified'
           ? '  `verified` needs --evidence <the record verify-done.sh printed> (docs/team/evidence/test-*.json).\n'
           : '  `qa_passed` needs --evidence docs/team/journey-result.json (a journey-gate PASS), or a verify-done record of a run on the merged tree.\n'));
       process.exit(ev.code || 1);
@@ -937,6 +988,17 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
   if (gitBlock) {
     process.stderr.write(`board: refused ${ticket} ${name} — ${gitBlock}\n`);
     process.exit(1);
+  }
+
+  // C3G-8: `merged` RECORDS the commit it is about, so `closed` checks that and not a caller's --head.
+  if (name === 'merged') {
+    const g = gitAt(process.cwd());
+    const subj = g(['rev-parse', '--git-dir']) === null ? { error: 'no repository' } : mergeSubject(g, ticket, flags);
+    if (!subj.error) {
+      event.detail = typeof event.detail === 'object' && event.detail
+        ? { ...event.detail, merged_head: subj.sha }
+        : { note: event.detail || undefined, merged_head: subj.sha };
+    }
   }
 
   // G-F7: RISK FROM THE DIFF, at the merge it governs.
@@ -969,6 +1031,42 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
 }
 
 /**
+ * C3G-3 / design C. Returns a refusal, or '' (stamping `event.test_profile` when it freezes).
+ *   - a gate event on a board with nothing frozen, once the profile declares a test command: the
+ *     profile's commands + sha are stamped on THIS event — that is the freeze;
+ *   - a gate event whose profile commands differ from the frozen ones: refused;
+ *   - `corrected --test-profile` by tech-manager (token-proven under requireActorTokens — and agents
+ *     cannot mint): re-freezes to the profile as it is now. The board reads the file; the caller
+ *     names no command.
+ * BOUND: before the first gate event nothing is frozen (lib/evidence.mjs frozenTestProfile).
+ */
+function freezeTestProfile(name, ticket, flags, event, paths) {
+  const { root } = studioPolicy();
+  const cur = currentTestProfile(root);
+  const frozen = frozenTestProfile(paths.log);
+  if (name === 'corrected' && flags['test-profile']) {
+    if (event.by !== 'tech-manager') return 'only the orchestrator (--by tech-manager) re-freezes the test commands';
+    if (studioPolicy().policy.requireActorTokens === true && event.actor?.mode !== 'token') {
+      return `re-freezing the test commands needs the orchestrator's token:${inlineTokenFlag(root, 'tech-manager', ticket)}`;
+    }
+    if (!Object.keys(cur.commands).length) return 'the project profile declares no test command to freeze';
+    event.test_profile = { commands: cur.commands, sha: cur.sha, at: event.ts };
+    return '';
+  }
+  if (!GATE_EVENTS.has(name)) return '';
+  if (!frozen.commands) {
+    if (Object.keys(cur.commands).length) event.test_profile = { commands: cur.commands, sha: cur.sha, at: event.ts };
+    return '';
+  }
+  if (sameCommands(frozen.commands, cur.commands)) return '';
+  const show = (c) => JSON.stringify(c || {});
+  return `docs/team/project-profile.json declares test commands ${show(cur.commands)}, but this board froze ${show(frozen.commands)}.\n` +
+    '  A test command is what a green means, and the profile is a file anyone with Write can edit, so the board\n' +
+    '  keeps the frozen set until the orchestrator records the change. Restore the profile, or (orchestrator) run:\n' +
+    `    node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move ${ticket} corrected --by tech-manager --test-profile${inlineTokenFlag(root, 'tech-manager', ticket)}`;
+}
+
+/**
  * The two gates that need git, so they live here and not in lib/events.mjs (which stays pure).
  * Returns the refusal reason, or '' to proceed.
  *
@@ -984,21 +1082,39 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
  */
 function gitRefusal(name, ticket, flags, events, state) {
   if (name !== 'merged' && name !== 'closed') return '';
-  // Design decision 1: a docs-only QA- ticket is reviewed inline and closes from merged without
-  // being on the integration branch. Nothing to bind, nothing to integrate.
-  if (state && isQaDocs(state)) return '';
   const git = gitAt(process.cwd());
   if (git(['rev-parse', '--git-dir']) === null) return ''; // no repository: no commit to bind (stated bound)
+  const recorded = name === 'closed' ? recordedMergeHead(events, ticket) : '';
+  // C3G-8: `closed` is about the commit RECORDED at `merged`, never a caller's --head.
+  if (recorded && flags.head) process.stderr.write(`board: --head ${flags.head} ignored — ${ticket} is closed against the commit recorded at merged (${recorded.slice(0, 12)})\n`);
+  // Design decision 1 + design B: a docs-only QA- ticket closes from merged without integration —
+  // but only while GIT still proves its branch changes documents only, re-derived at merged and
+  // closed against the integration branch (a code commit added after `verified` ends the fast path).
+  if (state && isQaDocs(state)) {
+    const subj = recorded ? { sha: recorded } : mergeSubject(git, ticket, flags);
+    if (subj.error) return `${subj.error} — the QA- docs-only fast path must know which commit it is about.`;
+    const d = docsOnlyDiff(git, subj.sha);
+    return d.ok ? '' : `${ticket} is on the QA- docs-only fast path, but ${d.reason}. A QA ticket that changes code takes the normal path (review_requested -> approved -> merged).`;
+  }
   const binding = studioPolicy().policy.requireApprovalBinding === true;
   if (name === 'closed') {
     const base = integrationBase(git);
     if (!base) return '';
-    // G2-8: no branch named for the ticket used to mean "nothing to check" and closed passed. Now
-    // the subject must be known — the branch tip, or --head naming the merged commit.
-    const subj = mergeSubject(git, ticket, flags);
+    // G2-8: the subject must be known — the merged commit recorded at `merged` (C3G-8), or, for a
+    // ticket merged before that was recorded, the branch tip / --head.
+    const subj = recorded ? { sha: recorded, source: 'the commit recorded at merged' } : mergeSubject(git, ticket, flags);
     if (subj.error) return `${subj.error} — "done" asserts integrated code, and which code is unknown.`;
     if (!isAncestor(git, subj.sha, base)) {
       return `${subj.source} (${subj.sha.slice(0, 12)}) is not merged into ${base} — "done" would claim integrated code that is not on the integration branch. Merge it (or land the wave) first.`;
+    }
+    // C3G-8: commits added to the ticket's branch AFTER `merged` must not be on the integration
+    // branch — they rode in unreviewed. BOUND: checkable only while the branch still exists; once it
+    // is deleted, a commit on the integration branch cannot be attributed to the ticket.
+    const tip = ticketTip(git, ticket, boardIds());
+    if (recorded && tip.sha && tip.sha !== recorded) {
+      const beyond = (git(['rev-list', tip.sha, `^${recorded}`]) || '').split('\n').filter(Boolean);
+      const landed = beyond.filter((c) => isAncestor(git, c, base));
+      if (landed.length) return `${tip.branch} gained ${landed.length} commit(s) after ${ticket} merged (${landed.slice(0, 3).map((c) => c.slice(0, 12)).join(', ')}), and they are on ${base} — they were never reviewed. Revert them, or reopen the ticket and review them.`;
     }
     // G2-9: what merged must be WHAT WAS APPROVED. Ancestry alone let commits pushed after the
     // `merged` event ride into `done` unreviewed.
@@ -1014,6 +1130,12 @@ function gitRefusal(name, ticket, flags, events, state) {
   if (subj.error) return `requireApprovalBinding is on and ${ticket}'s branch tip is unknown: ${subj.error}`;
   const { issues } = checkApprovals(events, { ticket, head: subj.sha, cwd: process.cwd() });
   return issues.length ? `the approval is not bound to ${subj.sha}:\n  ${issues.join('\n  ')}` : '';
+}
+
+/** C3G-8: the commit the last `merged` on this ticket recorded ('' when none was recorded). */
+function recordedMergeHead(events, ticket) {
+  const m = events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'merged');
+  return (m && typeof m.detail === 'object' && m.detail && m.detail.merged_head) || '';
 }
 
 /**
@@ -1467,6 +1589,12 @@ function cmdMigrate(pathArg, flags, paths) {
   const lines = events.map((e) => JSON.stringify(e)).join('\n');
   const out = typeof flags.out === 'string' ? resolve(process.cwd(), flags.out) : null;
   if (out) {
+    // C3G-14: --out never overwrites. Pointed at the live log it replaced the chained, anchored
+    // history with an unchained inferred one in one command; pointed at any other file it destroyed
+    // that. A migration writes a NEW file, which a human then moves into place deliberately.
+    if (existsSync(out) || out === paths.log) {
+      die(1, `migrate --out ${flags.out}: ${out === paths.log ? 'that is the live event log' : 'the file exists'} — migrate writes a new file and never overwrites one. Choose a path that does not exist.`);
+    }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, `${lines}\n`);
   } else {
@@ -1607,7 +1735,10 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
           '  add <ID> --title T [--owner R] [--depends A,B] [--status todo|blocked] ...\n' +
           '  move <ID> <event> --by <role> [--detail "..."]\n' +
           '  move <ID> merged --by <role> [--head <sha>]   --head only when no branch is named for <ID>\n' +
-          '  move <ID> closed --by <role> [--head <sha>]   likewise: the merged commit must be the approved one\n' +
+          '  move <ID> closed --by <role>    checked against the commit recorded at merged (--head only for a legacy merge)\n' +
+          '  move <ID> verified_static --by <role> [--evidence <the --static record verify-done printed>]\n' +
+          '  move <ID> corrected --by tech-manager --invariant "I1; I2"   record a ticket\'s invariants\n' +
+          '  move <ID> corrected --by tech-manager --test-profile [--token T]   re-freeze the profile\'s test commands\n' +
           '  move <ID> reopened --by founder  blocked|review -> in_progress, +1 review cycle over the cap\n' +
           '  assign <ID> --to <role>\n' +
           '  show [ID] [--json]\n' +
@@ -1615,7 +1746,8 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
           '  verify                          the audit chain — was this log rewritten?\n' +
           '  move <ID> verified --by <role> --evidence <record verify-done printed> [--token T]\n' +
           '  move <ID> qa_passed --by <role> --evidence docs/team/journey-result.json|<post-merge record> [--token T]\n' +
-          '  actor mint --role R --ticket T [--ttl-minutes N]   orchestrator only: prints a per-spawn token once\n' +          '  actor mint --role founder --ticket T   the human founder, at a terminal (TTY): single-use, 30 min\n' +
+          '  actor mint --role R --ticket T [--ttl-minutes N]   orchestrator only: prints a per-spawn token once\n' +
+          '  actor mint --role founder --ticket T   the human founder, at a terminal (TTY): single-use, 30 min\n' +
           '  actor revoke --token-id ID | actor list\n' +
           '  migrate [board.md] [--out log.jsonl]\n' +
           `  events: ${[...EVENTS].join(' ')}\n`

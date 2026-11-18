@@ -52,12 +52,27 @@ function candidate(root) {
  * docs/team/, reviews, worktrees: lib/operational-paths.txt — the same list runtime-gate.sh and
  * ship-gate.sh read)? Counting them made every honest gate result STALE (W3 / G-F6). A git error
  * is dirty, never clean.
+ *
+ * FB6, decided: an UNTRACKED file outside the operational paths IS a dirty tree — a stray verdict or
+ * scratch file at the root is state the commit does not contain, and the gate cannot know it is
+ * harmless. Put scratch under docs/team/ (operational) or delete it.
+ * C3G-7: an index entry marked skip-worktree or assume-unchanged (`git ls-files -v`: tag `S`, or a
+ * lowercase tag) hides edits from `git status`, so it counts as dirty too.
+ * BOUND: a file ignored by .gitignore or .git/info/exclude is invisible here. Test evidence is immune
+ * (it runs in a fresh worktree of the commit); a journey/runtime gate run in the developer's tree is not.
  */
+export function indexHides(root) {
+  try {
+    return execFileSync('git', ['ls-files', '-v'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+      .split('\n').some((l) => /^(S|[a-z]) /.test(l));
+  } catch { return true; }
+}
 export function treeDirty(root) {
   const excludes = readFileSync(new URL('./operational-paths.txt', import.meta.url), 'utf8')
     .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((p) => `:(exclude)${p}`);
   try {
-    return execFileSync('git', ['status', '--porcelain', '--', ':(top)', ...excludes], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0;
+    return indexHides(root)
+      || execFileSync('git', ['status', '--porcelain', '--', ':(top)', ...excludes], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0;
   } catch { return true; }
 }
 

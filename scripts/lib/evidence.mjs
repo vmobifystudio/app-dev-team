@@ -28,13 +28,21 @@
  * log that says otherwise, a green with no log, a log edited after the fact, a record for another
  * commit. It does NOT defeat an agent that fabricates the raw log itself and hashes it: every byte
  * here is in the same filesystem the agent can write. What closes that is upstream — the test
- * command must be the project-profile's declared one (checked below when the profile declares
- * any), `docs/team/` is outside every role's allowed_paths, and a forged log is a deliberate,
- * transcript-visible act rather than a confused agent's typo.
+ * command must be one the BOARD FROZE from the project profile (C3G-3, design C), the suite runs in
+ * a fresh worktree of the exact commit (C3G-7, design E), `docs/team/` is outside every role's
+ * allowed_paths, and a forged log is a deliberate, transcript-visible act rather than a confused
+ * agent's typo.
+ *
+ * C3G-17 BOUND: a record and log hand-written into docs/team/evidence/ (through a guard evasion)
+ * with a consistent sha still re-derive — nothing here is signed. What this file does guarantee is
+ * that the path is CANONICAL: `docs//team`, `./docs/team` and symlinked spellings all resolve to
+ * the one real evidence directory before the prefix check (locate/readLog), so a path game cannot
+ * point a record outside it, and the recorded path is the normalized one.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, posix, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
@@ -42,9 +50,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { classifyTestRun } from './test-evidence.mjs';
-import { gitAt, integrationBase, isAncestor, ticketIdsFromBoard, ticketTip } from './integration.mjs';
+import { gitAt, integrationBase, isAncestor, matchesTicket, ticketIdsFromBoard, ticketTip } from './integration.mjs';
 import { resolveProjectRoot } from './root.mjs';
-import { treeDirty } from './readiness.mjs';
+import { indexHides, treeDirty } from './readiness.mjs';
 import { inlineTokenFlag } from './actor.mjs';
 import { censusTestFiles, isTestFile } from '../assertion-census.mjs';
 
@@ -106,9 +114,13 @@ function locate(root, given) {
 /** The raw log a record or result points at: present, inside the evidence dir, and hashing to its sha. */
 function readLog(root, rec) {
   if (!rec.log || !rec.log_sha256) return { ok: false, reason: 'it carries no raw log pointer + sha256, so nothing can re-derive its verdict (a hand-written result looks exactly like this)' };
-  const abs = resolve(root, String(rec.log));
-  if (!abs.startsWith(resolve(root, EVIDENCE_DIR) + sep)) return { ok: false, reason: `its log ${rec.log} is not under ${EVIDENCE_DIR}/` };
+  // C3G-17: the pointer must be the CANONICAL spelling (what writeEvidenceLog writes), and its real
+  // path must sit in the real evidence dir — `docs//team/…`, `./docs/…` or a symlink out are refused.
+  const rel = String(rec.log);
+  if (rel !== posix.normalize(rel) || rel.startsWith('./') || !rel.startsWith(`${EVIDENCE_DIR}/`)) return { ok: false, reason: `its log ${rel} is not under ${EVIDENCE_DIR}/ in canonical form` };
+  const abs = resolve(root, rel);
   if (!existsSync(abs)) return { ok: false, reason: `its raw log ${rec.log} is missing` };
+  if (!realpathSync(abs).startsWith(resolve(realpathSync(root), EVIDENCE_DIR) + sep)) return { ok: false, reason: `its log ${rel} resolves outside ${EVIDENCE_DIR}/` };
   const text = readFileSync(abs, 'utf8');
   if (sha256(text) !== rec.log_sha256) return { ok: false, reason: `its raw log ${rec.log} no longer hashes to the recorded sha256 — the log was edited after the verdict` };
   return { ok: true, text };
@@ -121,7 +133,54 @@ function profileTests(root) {
     return Object.fromEntries(['fast', 'full'].filter((k) => typeof t[k] === 'string' && t[k].trim()).map((k) => [k, t[k]]));
   } catch { return {}; }
 }
-function declaredCommands(root) { return Object.values(profileTests(root)); }
+
+/**
+ * C3G-3 / design C: THE DECLARED TEST COMMANDS ARE FROZEN ON THE BOARD. project-profile.json is a
+ * file any role with Write can edit, so "the command the profile declares" was whatever the profile
+ * said at the moment of the claim: `test.full: "echo Executed 9 tests"` minted a profile-sourced
+ * green. The board stamps `test_profile` {commands, sha} on the first gate event once the profile
+ * declares one (board.mjs), and only an orchestrator `corrected --test-profile` re-freezes it.
+ * `frozenTestProfile` is the latest stamp on the log ({commands: null} when none yet).
+ * BOUND: until the first gate event nothing is frozen, so a profile edited before any gate event is
+ * what gets frozen — it is in the tree, reviewable, and every later edit needs the orchestrator.
+ */
+export const BOARD_LOG = 'docs/31-board-events.jsonl';
+export function currentTestProfile(root) {
+  let sha = null;
+  try { sha = sha256(readFileSync(resolve(root, 'docs/team/project-profile.json'))); } catch { /* no profile */ }
+  return { commands: profileTests(root), sha };
+}
+export function frozenTestProfile(logPath) {
+  let frozen = null;
+  try {
+    for (const l of readFileSync(logPath, 'utf8').split('\n')) {
+      if (!l.includes('"test_profile"')) continue;
+      try { const tp = JSON.parse(l).test_profile; if (tp && tp.commands) frozen = tp; } catch { /* loadLog reports bad lines */ }
+    }
+  } catch { /* no log */ }
+  return frozen || { commands: null, sha: null };
+}
+export const sameCommands = (a, b) => JSON.stringify(Object.entries(a || {}).sort()) === JSON.stringify(Object.entries(b || {}).sort());
+/** The commands a record must have run: the board's frozen set, else (nothing frozen yet) the profile's. */
+function declaredCommands(root) {
+  const frozen = frozenTestProfile(resolve(root, BOARD_LOG)).commands;
+  return Object.values(frozen || profileTests(root));
+}
+/**
+ * FB4: the COMMAND decides, not who typed it — an explicit command string identical to a declared
+ * one is that command. `{ok}` or `{ok:false, code, reason}`. Shared with verify-done (FB3), so it
+ * never prints VERIFIED for a record the board will refuse.
+ */
+export function commandAccepted(root, rec) {
+  const declared = declaredCommands(root);
+  if (!declared.length) {
+    return { ok: false, code: 2, reason: 'the project profile declares no test command (docs/team/project-profile.json test.fast / test.full), so no run can verify a code ticket — a caller-chosen command can be `echo "Executed 9 tests"`. Declare test.fast, then run verify-done with `fast`.' };
+  }
+  if (!declared.includes(rec.command)) {
+    return { ok: false, code: 1, reason: `ran "${rec.command}", which is not a test command the board accepts (the ones it froze from the project profile) (${declared.map((c) => `"${c}"`).join(', ')}) — a caller-chosen command can be \`echo "Executed 9 tests"\`. Run verify-done with \`fast\` or \`full\`.` };
+  }
+  return { ok: true };
+}
 
 // ponytail: "a document" is a path under docs/ or a prose extension. A docs ticket shipping a .json
 // schema needs a real test run; widen this list only with a reason.
@@ -135,21 +194,47 @@ function docsIsServedSite(git, head) {
 }
 
 /**
+ * C3G-4 / design B: does `head` change documents only? The file list is derived from
+ * merge-base(INTEGRATION BRANCH, head) — never from a record's or caller's base, which could be
+ * `head~1` and hide every code commit before it. `{ok, files}` or `{ok:false, code, reason}`.
+ */
+export function docsOnlyDiff(git, head) {
+  const integration = integrationBase(git);
+  if (!integration) return { ok: false, code: 2, reason: 'no integration branch (develop/main/master) exists, so what the branch changes — and whether it is documents only — is unknown' };
+  const mb = git(['merge-base', integration, head]);
+  if (!mb) return { ok: false, code: 2, reason: `${String(head).slice(0, 12)} shares no history with ${integration}` };
+  const files = (git(['diff', '--name-only', mb, head]) || '').split('\n').filter(Boolean);
+  if (!files.length) return { ok: false, code: 1, reason: `the branch changes no files against ${integration} (re-derived from git), so a --docs-only record verifies nothing` };
+  const isDoc = docFile(docsIsServedSite(git, head));
+  const code = files.filter((f) => !isDoc(f));
+  if (code.length) return { ok: false, code: 1, reason: `the branch changes non-document files against ${integration} (re-derived from git): ${code.slice(0, 5).join(', ')}${code.length > 5 ? ', …' : ''}` };
+  return { ok: true, files };
+}
+
+/**
  * Is `head` the ticket's tip (or, unless `exact`, a descendant of it)? `{ok, reason, code}`.
  * G2-4: verify-done evidence must be EXACTLY the tip — a descendant scratch branch carrying extra
  * commits was accepted for `verified`. Descendants stay legal for a wave run and for QA's run on
  * the merged tree, where the ticket is, by construction, an ancestor of what ran.
  */
-function boundToTicket(git, ticket, head, recordedBranch, { exact = false, root = '' } = {}) {
+function boundToTicket(git, ticket, head, recordedBranch, { exact = false, root = '', mergedHead = '' } = {}) {
   const tip = ticketTip(git, ticket, root ? ticketIdsFromBoard(root) : []);
-  if (tip.ambiguous.length) return { ok: false, code: 2, reason: `several branches are named for ${ticket} (${tip.ambiguous.join(', ')}) — the evidence cannot be bound to one` };
+  if (tip.ambiguous.length) return { ok: false, code: 1, reason: `several branches are named for ${ticket} (${tip.ambiguous.join(', ')}) — the evidence cannot be bound to one. Delete the stale branch (one branch per ticket) and re-record` }; // C3W-9: exit 1, the fix is known
   if (tip.sha) {
     if (tip.sha === head || (!exact && isAncestor(git, tip.sha, head))) return { ok: true, tip: tip.sha };
     if (exact && isAncestor(git, tip.sha, head)) return { ok: false, reason: `the evidence ran on ${head.slice(0, 12)}, a DESCENDANT of ${ticket}'s tip ${tip.sha.slice(0, 12)} (${tip.branch}) carrying commits the ticket does not — \`verified\` is about exactly the tip. Re-run verify-done on ${tip.branch}.` };
     return { ok: false, reason: `the evidence ran on ${head.slice(0, 12)}, which does not contain ${ticket}'s branch tip ${tip.sha.slice(0, 12)} (${tip.branch}) — it is about older or different code. Re-run verify-done on the current tip.` };
   }
-  // No branch named for the ticket (work on a shared branch): the record must still describe the
-  // CURRENT tip of the branch it names, or it is evidence about a commit that has since moved.
+  // QA on the merged tree after the ticket's branch was deleted: the commit `merged` recorded
+  // (C3G-8) must be in what ran.
+  if (mergedHead && !exact && (mergedHead === head || isAncestor(git, mergedHead, head))) return { ok: true, tip: mergedHead };
+  // No LOCAL branch named for the ticket: the record's own branch must be named for it (C3G-9 — a
+  // remote-only ticket branch) and still be at the head it ran on. Any other branch's green is
+  // evidence about other work, so a ticket with no branch named for it earns no test evidence.
+  const shortName = String(recordedBranch || '').replace(/^refs\/(heads|remotes\/[^/]+)\//, '');
+  if (!recordedBranch || !matchesTicket(shortName, ticket, root ? ticketIdsFromBoard(root) : [])) {
+    return { ok: false, reason: `no branch is named for ${ticket}, and the evidence ran on ${recordedBranch || '(no branch)'}, which is not named for it either — ${ticket}'s work belongs on a branch named for it (feat/${ticket}-<slug>)` };
+  }
   const now = recordedBranch ? git(['rev-parse', '--verify', `${recordedBranch}^{commit}`]) : null;
   if (now && now === head) return { ok: true, tip: head };
   return { ok: false, reason: `no branch is named for ${ticket}, and the evidence's branch ${recordedBranch || '(none)'} is now at ${now ? now.slice(0, 12) : 'nothing'}, not the ${head.slice(0, 12)} it ran on` };
@@ -159,7 +244,7 @@ function boundToTicket(git, ticket, head, recordedBranch, { exact = false, root 
  * Re-derive a test-evidence/v1 record for `ticket`. `afterTs` (qa_passed) requires the run to have
  * happened after that moment (the merge). Returns `{ok, detail}` or `{ok:false, code, reason}`.
  */
-export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = process.cwd(), allowStatic = false, exactHead = '' } = {}) {
+export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = process.cwd(), allowStatic = false, staticOnly = false, exactHead = '', mergedHead = '' } = {}) {
   const loc = locate(root, given);
   if (!loc.ok) return loc;
   let rec;
@@ -170,7 +255,7 @@ export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = pr
   const git = gitAt(cwd);
   if (!rec.head || git(['cat-file', '-e', `${rec.head}^{commit}`]) === null) return fail(`its head ${rec.head || '(none)'} is not a commit in this repository`, 2);
   const exact = rec.produced_by === 'verify-done.sh' && !afterTs;
-  const bound = boundToTicket(git, ticket, rec.head, rec.branch, { exact, root });
+  const bound = boundToTicket(git, ticket, rec.head, rec.branch, { exact, root, mergedHead });
   if (!bound.ok) return fail(bound.reason, bound.code || 1);
   if (exactHead && rec.head !== exactHead) return fail(`ran on ${String(rec.head).slice(0, 12)}, not the commit being approved (${exactHead.slice(0, 12)})`);
   if (afterTs && !(Date.parse(rec.at) > Date.parse(afterTs))) return fail(`was recorded at ${rec.at}, before ${ticket} merged (${afterTs}) — QA evidence is a run on the MERGED tree, not the developer's pre-review run`);
@@ -181,15 +266,10 @@ export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = pr
     const again = classifyTestRun(Number(rec.exit_code), log.text);
     if (again.verdict !== rec.verdict) return fail(`says "${rec.verdict}" but re-classifying its own log gives "${again.verdict}"${again.why ? ` (${again.why})` : ''} — the recorded verdict is not the one its log supports`);
     if (again.verdict !== 'green') return fail(`the suite did not run green (${again.verdict}${again.why ? `: ${again.why}` : ''})`);
-    // G2-3: the command must be one the PROFILE declares, resolved by the writer from the profile
-    // (command_source "profile"). A profile that declares none cannot verify a code ticket at all.
-    const declared = declaredCommands(root);
-    if (!declared.length) {
-      return fail('the project profile declares no test command (docs/team/project-profile.json test.fast / test.full), so no run can verify a code ticket — a caller-chosen command can be `echo "Executed 9 tests"`. Declare test.fast, then run verify-done with `fast`.', 2);
-    }
-    if (rec.command_source !== 'profile' || !declared.includes(rec.command)) {
-      return fail(`ran "${rec.command}" (command_source ${JSON.stringify(rec.command_source)}), which is not a test command the project profile declares (${declared.map((c) => `"${c}"`).join(', ')}) — a caller-chosen command can be \`echo "Executed 9 tests"\`. Run verify-done with \`fast\` or \`full\`.`);
-    }
+    // G2-3 / C3G-3: the command must be one the board FROZE from the profile (commandAccepted). A
+    // profile that declares none cannot verify a code ticket at all.
+    const cmdOk = commandAccepted(root, rec);
+    if (!cmdOk.ok) return fail(cmdOk.reason, cmdOk.code);
     if (rec.dirty === true) return fail('the suite ran on a working tree with uncommitted changes to tracked files — it tested code that is not the commit. Commit or discard, then re-run.');
     // G2-22: a changed suite whose tests assert nothing is not evidence the code works.
     if (rec.assertion_census?.assert_nothing) {
@@ -197,15 +277,12 @@ export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = pr
     }
   } else if (rec.mode === 'docs-only') {
     if (afterTs) return fail('is a --docs-only record; QA needs a run of the suite or a journey-gate result');
-    const base = git(['merge-base', String(rec.base || integrationBase(git) || 'main'), rec.head]);
-    const files = base ? (git(['diff', '--name-only', base, rec.head]) || '').split('\n').filter(Boolean) : [];
-    if (!files.length) return fail('a --docs-only record whose branch changes no files (re-derived from git) verifies nothing');
-    const isDoc = docFile(docsIsServedSite(git, rec.head));
-    const code = files.filter((f) => !isDoc(f));
-    if (code.length) return fail(`is --docs-only, but the branch changes non-document files (re-derived from git): ${code.slice(0, 5).join(', ')}${code.length > 5 ? ', …' : ''} — run the tests`);
-  } else if (!(allowStatic && rec.mode === 'static')) {
-    return fail(`has mode ${JSON.stringify(rec.mode)}; only "tests" and "docs-only" earn verified`);
+    const d = docsOnlyDiff(git, rec.head);
+    if (!d.ok) return fail(`is --docs-only, but ${d.reason} — run the tests`, d.code);
+  } else if (!((allowStatic || staticOnly) && rec.mode === 'static')) {
+    return fail(`has mode ${JSON.stringify(rec.mode)}; only "tests" and "docs-only" earn verified (a "static" record is what verified_static cites)`);
   }
+  if (staticOnly && rec.mode !== 'static') return fail(`has mode ${JSON.stringify(rec.mode)}; \`verified_static\` cites the --static record verify-done printed`);
   return {
     ok: true,
     detail: {
@@ -246,7 +323,7 @@ export function checkGateLog(root, v) {
  * Re-derive QA evidence for `ticket`: a journey-gate result (PASS, clean tree, log re-derives, run
  * on a tree containing the ticket's tip) or a test-evidence run recorded after the merge.
  */
-export function verifyQaEvidence(root, given, { ticket, mergedTs, cwd = process.cwd() } = {}) {
+export function verifyQaEvidence(root, given, { ticket, mergedTs, mergedHead = '', cwd = process.cwd() } = {}) {
   const loc = locate(root, given);
   if (!loc.ok) {
     // journey-gate writes docs/team/journey-result.json; accept it by its own path too.
@@ -257,7 +334,21 @@ export function verifyQaEvidence(root, given, { ticket, mergedTs, cwd = process.
   let rec;
   try { rec = JSON.parse(readFileSync(loc.abs, 'utf8')); } catch (e) { return { ok: false, code: 2, reason: `${loc.rel} is unreadable: ${e.message}` }; }
   if (rec.schema === 'gate-result/v1') return verifyJourney(root, loc.abs, loc.rel, { ticket, cwd });
-  return verifyTestEvidence(root, given, { ticket, afterTs: mergedTs || '1970-01-01T00:00:00Z', cwd });
+  return verifyTestEvidence(root, given, { ticket, afterTs: mergedTs || '1970-01-01T00:00:00Z', mergedHead, cwd });
+}
+
+const DRIVERS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'drivers');
+function journeyDriverProblem(root, v) {
+  const d = v.driver || {};
+  const m = /^scripts\/drivers\/([A-Za-z0-9._-]+)$/.exec(String(d.path || ''));
+  if (!m) return `names no plugin driver (driver ${JSON.stringify(d.path ?? null)}) — only scripts/drivers/* produce a journey verdict the board accepts`;
+  const file = resolve(DRIVERS_DIR, m[1]);
+  if (!existsSync(file) || sha256(readFileSync(file)) !== d.sha256) return `its driver ${d.path} is not the plugin's current ${m[1]} (sha256 differs or the file is gone)`;
+  const log = readFileSync(resolve(root, String(v.log)), 'utf8');
+  const lines = [...log.matchAll(/^GATE-DRIVER: (\S+) (\S+)$/gm)];
+  const last = lines[lines.length - 1];
+  if (!last || last[1] !== d.path || last[2] !== d.sha256) return 'its raw log does not name the driver the result claims';
+  return '';
 }
 
 function verifyJourney(root, abs, rel, { ticket, cwd }) {
@@ -269,10 +360,14 @@ function verifyJourney(root, abs, rel, { ticket, cwd }) {
   if (v.subject?.dirty !== false) return fail('was recorded against a dirty (or unknown) working tree');
   const derived = checkGateLog(root, v);
   if (!derived.ok) return fail(derived.reason);
+  // Design F: the verdict came from one of THIS plugin's drivers, byte for byte — named in the
+  // result, named again in the raw log (which the sha pins), and still the file shipped beside us.
+  const drv = journeyDriverProblem(root, v);
+  if (drv) return fail(drv);
   const git = gitAt(cwd);
   const tip = ticketTip(git, ticket, ticketIdsFromBoard(root));
   const head = String(v.subject.head);
-  if (tip.ambiguous.length) return fail(`several branches are named for ${ticket} (${tip.ambiguous.join(', ')})`, 2);
+  if (tip.ambiguous.length) return fail(`several branches are named for ${ticket} (${tip.ambiguous.join(', ')}) — delete the stale one`, 1);
   if (tip.sha && !(tip.sha === head || isAncestor(git, tip.sha, head))) return fail(`the journeys ran on ${head.slice(0, 12)}, which does not contain ${ticket}'s tip ${tip.sha.slice(0, 12)}`);
   if (!tip.sha) {
     const base = integrationBase(git);
@@ -302,12 +397,25 @@ export function runTestEvidence(root, { branch, base, dir, scope = '', command =
     if (!cmd) return { ok: false, reason: `the project profile declares no test.${scope}` };
   }
   if (!cmd) return { ok: false, reason: 'no test command (give --scope fast|full, or --command)' };
-  const at = resolve(cwd, dir || '.');
+  // C3G-7 / design E: THE SUITE RUNS IN A FRESH DETACHED WORKTREE OF EXACTLY `head`, never in the
+  // developer's tree. skip-worktree / assume-unchanged bits, .git/info/exclude'd and untracked
+  // planted files live in one worktree's index or directory; a tree made for this run has none of
+  // them. `dir` is no longer consulted. Cost: a cold tree — build-env.sh pins the caches outside it.
+  const at = mkdtempSync(resolve(tmpdir(), 'studio-run-'));
+  rmSync(at, { recursive: true, force: true });
+  if (git(['worktree', 'add', '--detach', '--quiet', at, head]) === null) return { ok: false, reason: `could not create a detached worktree of ${head} to run the suite in` };
   const inDir = gitAt(at);
-  const dirHead = inDir(['rev-parse', 'HEAD']);
-  if (dirHead !== head) return { ok: false, reason: `${at} has ${dirHead || 'nothing'} checked out, not ${branch} (${head})` };
-  const dirty = inDir(['status', '--porcelain', '--untracked-files=no']);
-  const run = spawnSync('sh', ['-c', cmd], { cwd: at, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+  let run;
+  let dirty;
+  try {
+    run = spawnSync('sh', ['-c', cmd], { cwd: at, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+    // HEAD moving or tracked files changing under the run still voids it (the suite edited its tree).
+    dirty = inDir(['rev-parse', 'HEAD']) !== head || indexHides(at) || Boolean(inDir(['status', '--porcelain', '--untracked-files=no']));
+  } finally {
+    git(['worktree', 'remove', '--force', at]);
+    git(['worktree', 'prune']);
+    rmSync(at, { recursive: true, force: true });
+  }
   const output = `${run.stdout || ''}${run.stderr || ''}${run.error ? `\n${run.error.message}\n` : ''}`;
   const exitCode = run.status === null ? 128 : run.status;
   const mb = git(['merge-base', base, head]);
@@ -378,6 +486,8 @@ export function runGate(projectRoot, { gate, out, args = [] }) {
 //   evidence.mjs gate   --gate runtime-gate [--root R] [--out RESULT.json] -- <gate args>
 //       runs the plugin's own gate script, prints its output, exits with its code
 //   evidence.mjs token-flag --role R --ticket T   the inline-mint --token text, or nothing
+//   evidence.mjs check-command --record R    exit 0 when the board would accept the record's command
+//   evidence.mjs ticket-for --branch B       the board ticket B is named for (longest id), or nothing
 // There is no --result, --exit or --log: a writer that accepts the outcome from its caller is a
 // forgery service with a schema (G2-2).
 // The guard never throws: under `node -e` argv[1] is an ordinary argument, not a path.
@@ -403,6 +513,20 @@ if (process.argv[1] && isMain()) {
     const r = writeBranchEvidence(evidenceRoot(), { branch: f.branch, base: f.base, mode: cmd === 'docs' ? 'docs-only' : 'static' });
     if (!r.ok) bye(2, r.reason);
     process.stdout.write(`${r.record}\n`);
+  } else if (cmd === 'check-command') {
+    // FB3: would the board accept this record's command? verify-done asks before it prints VERIFIED.
+    const root = evidenceRoot();
+    let rec = null;
+    try { rec = JSON.parse(readFileSync(resolve(root, f.record || ''), 'utf8')); } catch { bye(2, `no readable record at ${f.record}`); }
+    const r = commandAccepted(root, rec);
+    if (!r.ok) bye(r.code, r.reason);
+  } else if (cmd === 'ticket-for') {
+    // C3G-9 / FB5: the board ticket a branch is named for — the LONGEST matching board id, spelled
+    // as the board spells it. Nothing when no board id matches.
+    const ids = ticketIdsFromBoard(evidenceRoot());
+    // matchesTicket already gives the name to the longest board id, so at most one id matches.
+    const hit = ids.filter((id) => matchesTicket(String(f.branch || '').replace(/^refs\/(heads|remotes\/[^/]+)\//, ''), id, ids))[0];
+    process.stdout.write(hit || '');
   } else if (cmd === 'token-flag') {
     // For shell callers that PRINT a next-step board command (W2-10): the inline-mint --token form
     // when the project requires tokens, else nothing.
