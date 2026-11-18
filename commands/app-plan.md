@@ -79,7 +79,11 @@ Focus (optional): $ARGUMENTS
    project. Spawn `devops-engineer` to fill `platform`, `toolchain` (one `{tool, args, expect}` per
    tool pinned in `docs/20-architecture.md` / `${CLAUDE_PLUGIN_ROOT}/knowledge/stack-defaults.md`) and `test.fast` /
    `test.full` (until `test.fast` is declared no code ticket can reach `verified`), then confirm it
-   holds on this machine:
+   holds on this machine. **The test commands freeze at the first gate event**: the board snapshots
+   `test.fast`/`test.full` and the profile's sha onto it, and every later `verified` must have run
+   the frozen command. Changing them afterwards is an orchestrator decision, re-frozen with
+   `board.mjs move <ID> corrected --by tech-manager --test-profile` plus the inline tech-manager
+   `--token`; until then every gate event is refused with that command.
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check --root .
@@ -95,8 +99,17 @@ Focus (optional): $ARGUMENTS
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add APP-001 \
      --title "..." --feature F-001 --owner ios-developer --depends APP-000 \
-     --estimate M --spec "prd#F-001" --acceptance "Given ..., When ..., Then ..." --by tech-manager
+     --estimate M --spec "prd#F-001" --acceptance "Given ..., When ..., Then ..." \
+     --file ios/App/Auth/SessionStore.swift \
+     --invariant "a signed-out user never sees another account's data; a token is never logged" \
+     --by tech-manager
    ```
+
+   **Every ticket the risk router rates `high`/`critical` (auth, privacy, credentials, migrations,
+   billing, release) carries at least one `--invariant`** (`;`-separated), or `review_requested`
+   is refused later and the ticket can never be reviewed. Missed one? Fix it in place — the
+   sanctioned route, never a re-add:
+   `board.mjs move APP-001 corrected --by tech-manager --invariant "I1; I2"` (it replaces the list).
 
    Each `add` re-renders `docs/31-board.md`, so the board exists as a side effect of the tickets
    existing. Every `APP-NNN-analytics` ticket is owned per the roster: `data-analyst` where it is
@@ -135,7 +148,10 @@ Focus (optional): $ARGUMENTS
    ```bash
    for f in docs/*.md docs/team/messages.jsonl docs/team/capabilities.json docs/team/risk-policy.json \
             docs/team/schedule.json docs/team/context-manifest.json docs/team/project-profile.json \
-            .gitignore CLAUDE.md .github fastlane; do
+            .gitignore CLAUDE.md .github fastlane \
+            package.json package-lock.json pnpm-lock.yaml yarn.lock .nvmrc */package.json \
+            Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
+            settings.gradle settings.gradle.kts */build.gradle */build.gradle.kts gradle gradlew; do
      [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
    done
    git diff --cached --name-only    # confirm only those landed

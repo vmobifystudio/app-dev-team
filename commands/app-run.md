@@ -108,9 +108,11 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    - After each round, the standup at `docs/daily/<today>.md` is the concatenation `/app-build`
      step 6 runs (no `tech-manager` spawn); print a 3-line summary: counts per status, what merged,
      blockers.
-   - Before each spawn — `QA-` tickets included — run
-     `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-preflight.mjs`; no role launches until context,
-     scheduling, capabilities, and risk routing all clear.
+   - Before each `claimed` — `QA-` tickets included — run
+     `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-preflight.mjs` (`/app-build`'s top); no ticket is claimed
+     until context, scheduling, capabilities, and risk routing all clear. It gates the claim, not
+     every spawn: a reviewer, a gate role or a retry on an already-claimed ticket gets no new
+     preflight (it would refuse a ticket in `review` or `qa`).
    - Where named-agent persistence is available, run the warm/cold manager scenario and retain its
      digest; otherwise use the portable respawn model backed by the same files.
    - **The budget ceiling stops this loop and says why** (`/app-build` step 0). An unattended run

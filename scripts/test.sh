@@ -11162,6 +11162,32 @@ s3a Write file_path "$SLA/.git/studio/board-anchor-x.json"
 [ $? = 2 ] && ok "S3: ...and writing it with Write" || bad "S3: ...and writing it with Write"
 rm -rf "$SLA"
 
+
+# --- Sprint 4 track K3: commands/skills prose matches the shipped mechanisms ---
+echo
+K3B="$HERE/../commands/app-build.md"; K3S="$HERE/../commands/app-ship.md"; K3I="$HERE/../commands/app-init.md"
+K3L="$HERE/../skills/parallel-orchestrator/references/build-loop-branches.md"
+# C3W-12: every path /app-init gitignores is one the dirty checks treat as operational, so the two
+# lists cannot drift (an ignored path the checks call source, or the reverse).
+K3MISS=""
+for _p in $(sed -n '/^   for p in \.agent-wt/,/; do$/p' "$K3I" | tr ' \\;' '\n\n\n' | grep -E '^(docs/|\.)'); do
+  _q=${_p%/}
+  grep -qxF "$_q" "$HERE/lib/operational-paths.txt" || K3MISS="$K3MISS $_p"
+done
+_k3n=$(sed -n '/^   for p in \.agent-wt/,/; do$/p' "$K3I" | tr ' \\;' '\n\n\n' | grep -cE '^(docs/|\.)')
+[ -z "$K3MISS" ] && [ "$_k3n" -ge 16 ] \
+  && ok "K3: every path /app-init gitignores is an operational path (C3W-12)" \
+  || bad "K3: every path /app-init gitignores is an operational path (C3W-12)" "not operational:$K3MISS (n=$_k3n)"
+# C3W-3: the web journey path is documented where the gate is run, and the 'no drivers' line is gone.
+grep -q 'drivers/web.sh' "$K3B" && grep -q 'drivers/web.sh' "$K3S" && grep -q 'npx playwright install chromium' "$K3L" \
+  && ! grep -q 'Drivers do not ship yet' "$K3S" \
+  && ok "K3: app-build and app-ship name the web driver and its setup (C3W-3)" \
+  || bad "K3: app-build and app-ship name the web driver and its setup (C3W-3)"
+# C3W-2 / design A: the utility lane runs the same one QA- ticket per wave.
+grep -q 'on every tier, except a wave made only of' "$K3B" && ! grep -q 'No `QA-` ticket' "$K3L" \
+  && ok "K3: the utility lane runs one QA- ticket per wave, like flagship (C3W-2)" \
+  || bad "K3: the utility lane runs one QA- ticket per wave, like flagship (C3W-2)"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

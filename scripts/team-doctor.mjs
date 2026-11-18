@@ -751,6 +751,7 @@ const CANONICAL_PATHS = [
   'docs/team/schedule.json',                 // scheduler overrides; the ready set derives from the board
   'docs/team/context-manifest.json',         // the hashed context an agent was actually given
   'docs/team/runs.jsonl',                    // the run ledger: leases and attempts (run-ledger, run-doctor, board.mjs)
+  'docs/team/worktree-slots.json',           // worktree-slot.mjs's lease state (gitignored, main checkout only)
   'docs/team/actor-tokens.jsonl',            // per-spawn actor token hashes (lib/actor.mjs) — script-written only
   'docs/team/evidence/',                     // re-derivable test/gate evidence (lib/evidence.mjs) — script-written only
   'docs/team/reports/<ticket>-<UTC>.md',     // IC final reports saved by hooks/persist-ic-report.sh

@@ -54,7 +54,12 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
    `platform`, `toolchain` (one `{tool, args, expect}` per pinned tool) and `test.fast`/`test.full`,
    then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check --root .`. Until it
    passes, `orchestrator round` is CANNOT EVALUATE and no round can start. A tool missing on this
-   machine is a blocker you report, never a version you edit to make the check pass.
+   machine is a blocker you report, never a version you edit to make the check pass. **Get the test
+   commands right before the first gate**: the board freezes them (and the profile's sha) on the
+   first gate event, and every later `verified` must run the frozen command. A change after that is
+   not yours to make by editing the file — put it in your return; the orchestrator re-freezes it
+   with an orchestrator `corrected --test-profile`. On a `web-app` you also write the `build`,
+   `start` and `test` scripts `22-impl-spec-web.md` names into `package.json`, and commit it.
 
 1. **`docs/23-git-strategy.md`** — the branch model (`main`/`develop` protected, short-lived
    `feature|fix|refactor|chore|audit|sprint|release|hotfix` branches), the chosen commit

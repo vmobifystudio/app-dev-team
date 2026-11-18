@@ -94,8 +94,12 @@ On a `utility` process tier the same loop runs with less ceremony:
 
 - **No separate design-QA spawn** — `code-reviewer` runs the design-QA checklist inside its review
   (`ux-architect` stays on the roster for flows; it just is not spawned per ticket).
-- **No `QA-` ticket.** `qa-engineer` records `qa_passed` / `qa_failed` per ticket against the wave's
-  test evidence record (the `verify-done ... full` record `wave-integrate` printed).
+- **The same one `QA-<sprint>-w<n>` ticket per wave as flagship** — never a QA spawn per ticket.
+  `qa-engineer` works on branch `qa/QA-<sprint>-w<n>` (its test plan, journeys and bug rows),
+  records `qa_passed` / `qa_failed` for each listed ticket with that ticket's token, and cites the
+  wave's evidence (below). You merge the `QA-` ticket inline, with no review spawn — that merge is
+  what carries its journeys, `docs/50-test-plan.md` and `docs/51-bugs.md` into the integration
+  branch, where the journey gate and `/app-ship` read them.
 - **The reviewer may run at `model: sonnet`** on floor/light tracks (the Agent tool's `model`
   parameter); a retry still climbs the ladder from there.
 - `APP-NNN-analytics` tickets are owned by the feature's IC when `data-analyst` is not active.
@@ -117,7 +121,23 @@ nothing is a skip wearing a label.
 ```
 android  drivers/android.sh   drives adb + uiautomator; needs a device or emulator
 ios      drivers/ios.sh       launches and screenshots; step execution needs XCUITest
+web      drivers/web.sh       drives Chromium through the PROJECT's Playwright; needs the app served
 ```
+
+**A `web-app` journey, end to end** — Playwright is the project's devDependency, never the
+plugin's. `22-impl-spec-web.md` (`tech-lead`) names the build and start scripts; `devops-engineer`
+(or the scaffolding `web-developer` ticket) writes them into `package.json`:
+
+```bash
+npm i -D playwright && npx playwright install chromium     # once per project / machine
+npm run build && (npm run start >/tmp/web.log 2>&1 &)      # or serve the build dir statically:
+#   (python3 -m http.server 4173 --directory dist >/tmp/web.log 2>&1 &)
+STUDIO_WEB_URL=http://localhost:3000 node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
+  --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/web.sh"
+```
+
+Use the port the server printed. Stop the server after the gate. No Playwright, no Chromium, or no
+`STUDIO_WEB_URL` → CANNOT EVALUATE naming the exact fix; run it, do not waive it.
 
 Always pass `--driver`: a gate invoked without one makes every declared journey CANNOT EVALUATE for a
 reason nobody can see. With no device attached either driver returns CANNOT EVALUATE naming the

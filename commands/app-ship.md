@@ -207,12 +207,18 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    #
    #   android  ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh   drives adb + uiautomator; needs a device or emulator
    #   ios      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/ios.sh       launches and screenshots; step execution needs XCUITest
+   #   web      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/web.sh       the project's Playwright against the served build (STUDIO_WEB_URL)
    #
-   # With no device attached either driver returns CANNOT EVALUATE naming the missing thing, which
+   # With no device (web: no Playwright, Chromium or URL) a driver returns CANNOT EVALUATE naming the missing thing, which
    # is the correct answer and NOT a pass.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
-     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh
+     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh, drivers/web.sh
    ```
+
+   **A `web-app`**: install the project's Playwright and Chromium, build the candidate, start it
+   (`npm run start`, or a static server on the build dir), and pass its URL as `STUDIO_WEB_URL` —
+   the exact commands are `build-loop-branches.md` §Step 5 — journey-gate drivers
+   (`${CLAUDE_PLUGIN_ROOT}/skills/parallel-orchestrator/references/`).
 
    Six dry runs measured the gates catching every process defect and **zero** product defects. An
    app that launches and sits there satisfies `runtime-gate.sh` exit `0` completely. This is the
@@ -228,10 +234,11 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
        screen-and-state inventory already names the ids. Declare at least one P0 journey (see
        `${CLAUDE_PLUGIN_ROOT}/docs/team/journeys/README.md`; `qa-engineer` declares them) and re-run — do not waive it, because the waiver would be
        recording that nobody ever stated what this product must do.
-     - **No driver available** → follow step 1a's produce-or-waive rule: make it evaluable, or
-       record `WAIVED: journey gate — <who waived it> — <reason>` in `docs/60-releases.md` and
-       repeat it in the release summary and step 4's confirmation. **Drivers do not ship yet**, so
-       this is the expected path today and the waiver is the honest record of it.
+     - **No driver can run here** (no device or emulator; on web, no Playwright, Chromium or served
+       app) → follow step 1a's produce-or-waive rule: make it evaluable — the driver's CANNOT
+       EVALUATE line names the fix — or record `WAIVED: journey gate — <who waived it> — <reason>`
+       in `docs/60-releases.md` and repeat it in the release summary and step 4's confirmation. A
+       waiver is the exception: android, ios and web drivers all ship.
 
    **Product types the script cannot see are N/A, not waived — and not unchecked.** `runtime-gate.sh`
    detects iOS, Android and `web-app` (a `web-app` is gated like the others — never N/A, never a
@@ -303,7 +310,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    ```bash
    sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
    node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
-     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh, as in 1b
+     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or ios.sh / web.sh, as in 1b
    node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
      --artifact <the .ipa/.aab path, or the web build dir, release-manager named> --platform ios|android|web --variant release \
      --by release-manager

@@ -18,7 +18,8 @@ writes are safe, a project that cannot use worktrees) is `references/orchestrato
 
 Your spawn prompt names your worktree (`.agent-wt/<owner>-<n>`). It is your **project root**; never
 leave it. Before you write anything, cut the ticket's branch from the integration branch the prompt
-names: `git checkout -b feat/APP-NNN-short-slug <integration branch>`. Given no worktree? Say so in
+names: `git checkout -b feat/APP-NNN-short-slug <integration branch>` (a `QA-` ticket: the
+`qa/QA-<sprint>-w<n>` branch the prompt prints). Given no worktree? Say so in
 your first line, branch in the repo root, and treat Rule 5 as live.
 
 Shared-tree files are the exception, and only these: your review verdict
@@ -79,6 +80,13 @@ If `HEAD` is not where you left it, or files you did not write have appeared, **
 up" — another agent's uncommitted work may be in that tree. Write a `blocker` naming what moved and
 let `tech-manager` resolve it. A stalled ticket is cheap; a discarded working tree is not
 recoverable.
+
+## Rule 6 — you never compose or mint
+
+`spawn-prompt.mjs compose` and `board.mjs actor mint` are the orchestrator's; your token is the one
+in your spawn prompt. A token refusal, or a hook saying a prompt must be composed → stop and return
+`BLOCKED:` naming it; the orchestrator re-spawns you with a freshly composed prompt. Never work
+around it.
 
 ## Output contract
 

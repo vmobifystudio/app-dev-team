@@ -162,6 +162,9 @@ mechanically rather than on trust:
   hand-writing `docs/team/actor-tokens.jsonl` / `docs/team/evidence/`. Under `requireActorTokens`
   each gate event needs the per-ticket token `spawn-prompt.mjs` minted into that agent's prompt, and
   `verified`/`qa_passed` need `--evidence` the board re-derives (`lib/actor.mjs`, `lib/evidence.mjs`).
+- **What these do not prove** — the accepted bounds (same-user forgery, the orchestrator can mint
+  any agent role, the guard is a text match, a TTY can be faked) are stated once, in
+  [`docs/HANDBOOK.md` → What the gates prove and what they don't](docs/HANDBOOK.md#what-the-gates-prove-and-what-they-dont).
 - **Base-vs-head regression check** (`scripts/wave-integrate.mjs --check-baseline`) — on a failed
   wave, checks whether the unmodified integration branch *also* fails the same suite before blaming
   the tickets in it. Opt-in and additive: it changes nothing about a green wave, and never turns a
