@@ -99,6 +99,7 @@ fi
 # scope and this passes that straight through, because a default test command would make "the tests
 # ran" true of a command nobody chose — the same class as an evidence-optional pass.
 CMD_SOURCE=caller
+_scope=""
 case "$TEST_CMD" in
   fast|full)
     CMD_SOURCE=profile
@@ -211,24 +212,20 @@ CANNOT_EVAL_WHY=""
 #
 # Sets TESTS_STATUS (green | failing | cannot-run) and CANNOT_EVAL_WHY. Called on BOTH exit paths
 # with $TEST_RC: a zero exit is evidence that nothing errored, never evidence that a suite ran.
-classify_test_outcome() {
-  _tab=$(printf '\t')
-  _c=$(node "$(dirname "$0")/lib/test-evidence.mjs" "$TEST_RC" "$TEST_LOG") \
-    || _c="cannot-run${_tab}the ran-evidence classifier (node scripts/lib/test-evidence.mjs) could not run: $_c"
-  TESTS_STATUS=${_c%%"$_tab"*}
-  CANNOT_EVAL_WHY=${_c#*"$_tab"}
-  # Anything but the three known verdicts (empty output included) is CANNOT EVALUATE, never green.
-  case "$TESTS_STATUS" in
-    green|failing|cannot-run) ;;
-    *) TESTS_STATUS="cannot-run"; CANNOT_EVAL_WHY="the ran-evidence classifier returned no verdict ('$_c')" ;;
-  esac
-}
 
 # ONE trap for both the temporary worktree and the test log. Two `trap ... EXIT` statements do not
 # stack in POSIX sh — the second silently replaces the first — so the worktree would have been left
 # behind the moment a test log was created.
 TMP_WT=""
 TEST_LOG=""
+EVIDENCE=""
+EV="$(dirname "$0")/lib/evidence.mjs"
+# The ticket id, for the next-step commands this prints (whole token, as the board spells it).
+TICKET_ID=$(printf '%s' "$BRANCH" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | head -n 1)
+[ -n "$TICKET_ID" ] || TICKET_ID='<ID>'
+# W2-10: every printed board command carries the inline-mint --token when the project requires
+# tokens — a shell variable minted in one Bash call does not survive to the next.
+TOKFLAG=$(node "$EV" token-flag --role tech-manager --ticket "$TICKET_ID" 2>/dev/null || true)
 cleanup() {
   [ -n "$TEST_LOG" ] && rm -f "$TEST_LOG"
   if [ -n "$TMP_WT" ]; then
@@ -288,7 +285,9 @@ if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
     # failures to hand over. The re-spawned developer was told only that something failed, and
     # guessed at what; an instruction that cannot be followed is the same defect class as a gate
     # that cannot fail.
-    TEST_LOG=$(mktemp)
+    # G2-2: lib/evidence.mjs RUNS the command and records its own exit code and output — there is
+    # no path where this script reports an outcome for the record to copy. The verdict below is the
+    # record's own (the shared classifier), and the census of the changed test files rides on it.
     # The SAME question on both branches. `classify_test_outcome` was consulted only when the
     # command FAILED; on exit 0 this wrote `green` unconditionally, so `verify-done.sh feat/X main
     # "true"` — and `"echo 'skipping tests'"` — printed `VERIFIED ... tests=green`. Rigorous when
@@ -296,8 +295,31 @@ if [ "$DOCS_ONLY" -eq 0 ] && [ -n "$TEST_CMD" ]; then
     # green-while-nothing-happened case in the repo: a zero exit is evidence that nothing errored,
     # never evidence that a suite ran. Ran-evidence decides both directions; the exit code only
     # decides which verdict a suite that DID run gets.
-    if ( cd "$RUN_DIR" && sh -c "$TEST_CMD" ) >"$TEST_LOG" 2>&1; then TEST_RC=0; else TEST_RC=$?; fi
-    classify_test_outcome
+    TEST_LOG=$(mktemp)
+    if [ -n "$_scope" ]; then
+      _evj=$(node "$EV" test --branch "$RESOLVED" --base "$BASE" --dir "$RUN_DIR" --scope "$_scope" 2>"$TEST_LOG")
+    else
+      _evj=$(node "$EV" test --branch "$RESOLVED" --base "$BASE" --dir "$RUN_DIR" --command "$TEST_CMD" 2>"$TEST_LOG")
+    fi
+    if [ $? -ne 0 ] || [ -z "$_evj" ]; then
+      TESTS_STATUS="cannot-run"
+      CANNOT_EVAL_WHY="the evidence writer could not run the suite: $(tr '\n' ' ' < "$TEST_LOG")"
+    else
+      _ef() { node -e 'const r = JSON.parse(process.argv[1]); const v = process.argv[2].split(".").reduce((o, k) => (o == null ? o : o[k]), r); process.stdout.write(v == null ? "" : String(v));' "$_evj" "$1"; }
+      TESTS_STATUS=$(_ef verdict); CANNOT_EVAL_WHY=$(_ef why); TEST_RC=$(_ef exit); EVIDENCE=$(_ef record)
+      cp "$(_ef log)" "$TEST_LOG" 2>/dev/null || :
+      case "$TESTS_STATUS" in green|failing|cannot-run) ;; *) TESTS_STATUS="cannot-run"; CANNOT_EVAL_WHY="the classifier returned no verdict" ;; esac
+      # G2-22: a GREEN run whose changed tests assert nothing is not evidence the code works. Not a
+      # REJECTED — the census is a heuristic, and a false REJECTED sends a developer on a phantom hunt.
+      if [ "$TESTS_STATUS" = green ] && [ "$(_ef census.assert_nothing)" = true ]; then
+        TESTS_STATUS="cannot-run"
+        CANNOT_EVAL_WHY="the suite ran green, but the test files this branch adds or changes declare $(_ef census.tests) test(s) and ZERO assertions ($(_ef census.files)) — a suite that asserts nothing passes whatever the code does. Add assertions; the board refuses \`verified\` on this record"
+      fi
+      if [ "$TESTS_STATUS" = green ] && [ "$(_ef dirty)" = true ]; then
+        TESTS_STATUS="cannot-run"
+        CANNOT_EVAL_WHY="the suite ran in $RUN_DIR with uncommitted changes to tracked files, so it tested code that is not $BRANCH's commit. Commit or discard them, then re-run"
+      fi
+    fi
   fi
 
 fi
@@ -340,8 +362,10 @@ if [ "$TESTS_STATUS" = "deferred-to-wave" ]; then
   echo "  run — by design: --static defers it to the wave integration pass, which runs it ONCE on the"
   echo "  merged tree rather than once per ticket in a cold worktree."
   echo "  This is NOT a pass and NOT a rejection. Do not re-spawn the developer."
+  STATIC_EV=$(node "$EV" static --branch "$RESOLVED" --base "$BASE" 2>/dev/null || true)
+  [ -n "$STATIC_EV" ] && echo "  Evidence (static — what a reviewer binds to): $STATIC_EV"
   echo "Next: record the honest state, which unlocks review, approval and the merge gate:"
-  echo "    board.mjs move <ID> verified_static --by tech-manager --detail \"deferred to wave integration\""
+  echo "    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID verified_static --by tech-manager --detail \"deferred to wave integration\"$TOKFLAG"
   echo "  It refuses \`closed\` and blocks ship-gate until something runs the suite. That something is"
   echo "    node scripts/wave-integrate.mjs --root . --wave <N> --base $BASE"
   echo "  whose green full run is what earns the real \`verified\` for every ticket in the wave."
@@ -364,9 +388,11 @@ if [ "$TESTS_STATUS" = "unverified" ] || [ "$TESTS_STATUS" = "cannot-run" ]; the
     echo "  Why: $CANNOT_EVAL_WHY."
     quote_test_output
   fi
+  STATIC_EV=$(node "$EV" static --branch "$RESOLVED" --base "$BASE" 2>/dev/null || true)
+  [ -n "$STATIC_EV" ] && echo "  Evidence (static — what a reviewer binds to): $STATIC_EV"
   echo "Next: this ticket is INSPECTABLE BUT NOT RUNNABLE. Static review is still owed and still"
   echo "  possible — record it and let the code-reviewer work:"
-  echo "    board.mjs move <ID> verified_static --by tech-manager --detail \"the executable test suite\""
+  echo "    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID verified_static --by tech-manager --detail \"the executable test suite\"$TOKFLAG"
   echo "  That unlocks review, approval and merge, and refuses \`closed\` until the suite has run."
   exit 2
 fi
@@ -376,19 +402,22 @@ fi
 # re-hashes the log and re-runs the classifier over it, so "VERIFIED" pasted into --detail is no
 # longer evidence of anything. Written only here, on the VERIFIED path.
 HEAD_SHA=$(git rev-parse "$RESOLVED^{commit}")
-if [ "$DOCS_ONLY" -eq 1 ]; then _mode=docs-only; else _mode=tests; fi
-EVIDENCE=$(node "$(dirname "$0")/lib/evidence.mjs" test --branch "$BRANCH" --base "$BASE" --head "$HEAD_SHA" \
-  --mode "$_mode" --command "$TEST_CMD" --command-source "$CMD_SOURCE" --exit "${TEST_RC:-0}" \
-  --log "${TEST_LOG:-/dev/null}" --commits "$COMMITS" --files "$FILES_CHANGED" 2>&1) || {
-  echo "CANNOT EVALUATE: $BRANCH"
-  echo "  The claim checks out, but the evidence record could not be written: $EVIDENCE"
-  echo "  Without it the board will not accept \`verified\`. Fix the write, re-run."
-  exit 2
-}
+if [ "$DOCS_ONLY" -eq 1 ]; then
+  EVIDENCE=$(node "$EV" docs --branch "$RESOLVED" --base "$BASE" 2>&1) || {
+    echo "CANNOT EVALUATE: $BRANCH"
+    echo "  The claim checks out, but the evidence record could not be written: $EVIDENCE"
+    echo "  Without it the board will not accept \`verified\`. Fix the write, re-run."
+    exit 2
+  }
+fi
 
 echo "VERIFIED: $BRANCH"
 echo "  base=$BASE commits=$COMMITS files=$FILES_CHANGED tests=$TESTS_STATUS head=$HEAD_SHA"
 echo "  Evidence: $EVIDENCE"
-echo "Next: record it — board.mjs move <ID> verified --by <role> --evidence $EVIDENCE   (plus --token <yours> under requireActorTokens)"
+if [ "$DOCS_ONLY" -eq 0 ] && [ "$CMD_SOURCE" = caller ]; then
+  echo "  NOTE: the command was chosen by the caller, not declared in docs/team/project-profile.json."
+  echo "  The board refuses \`verified\` on such a record (G2-3): declare test.fast, then run with \`fast\`."
+fi
+echo "Next: record it — node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID verified --by tech-manager --evidence $EVIDENCE$TOKFLAG"
 echo "  then move the board row to review and spawn the code-reviewer."
 exit 0

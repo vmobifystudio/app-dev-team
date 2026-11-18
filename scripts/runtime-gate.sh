@@ -83,28 +83,18 @@ esac
 ROOT=$(cd "$ROOT" && pwd)
 OPS_PATHS="$(cd "$(dirname "$0")" && pwd)/lib/operational-paths.txt"
 
-record() {  # <PASS|FAIL|CANNOT_EVALUATE> — bound to HEAD and tree cleanliness, like journey-gate
-  [ "$RECORD" = 1 ] || return 0
-  head=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
-  if [ -z "$head" ]; then hj=null; dj=null
-  # The studio's own operational files (board log, docs/team/, reviews...) do not make the tree
-  # dirty — otherwise every honest result is STALE (W3). One list: lib/operational-paths.txt.
-  # A git error counts as dirty, never as clean.
-  # shellcheck disable=SC2046
-  else hj="\"$head\""; st=$(git -C "$ROOT" status --porcelain -- ':(top)' $(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(exclude)/' "$OPS_PATHS") 2>/dev/null) || st=error
-       [ -n "$st" ] && dj=true || dj=false; fi
-  # The result carries its raw log + sha256 so readiness can re-derive it (G-F6); evidence.mjs
-  # appends the RESULT and GATE-SUBJECT lines the re-derivation checks.
-  RUNLOG=$(mktemp "${TMPDIR:-/tmp}/runtime-gate.XXXXXX") || return 0
-  printf 'RUNTIME GATE\n%s%s' "$LINES" "$LOGTAIL" > "$RUNLOG"
-  [ "$hj" = null ] && hv=null || hv=$head
-  [ "$dj" = null ] && dj=true
-  mkdir -p "$ROOT/docs/team" 2>/dev/null &&
-  ( cd "$ROOT" && node "$(dirname "$OPS_PATHS")/evidence.mjs" gate --gate runtime-gate \
-      --result "$1" --log "$RUNLOG" --out docs/team/runtime-result.json --head "$hv" --dirty "$dj" ) >/dev/null ||
-    echo "runtime-gate: could not write $ROOT/docs/team/runtime-result.json" >&2
-  rm -f "$RUNLOG"
-}
+# --record (G2-2): lib/evidence.mjs RUNS this gate (without --record) and writes gate-result/v1 from
+# the gate's OWN exit code and output, with head and dirty (lib/operational-paths.txt excluded) read
+# from git — the result is never a value this script hands to a writer. record() is a no-op.
+if [ "$RECORD" = 1 ]; then
+  if [ -n "$SCHEME_OPT" ]; then
+    exec node "$(dirname "$OPS_PATHS")/evidence.mjs" gate --gate runtime-gate --root "$ROOT" \
+      --out docs/team/runtime-result.json -- --platform "$PLATFORM" --scheme "$SCHEME_OPT"
+  fi
+  exec node "$(dirname "$OPS_PATHS")/evidence.mjs" gate --gate runtime-gate --root "$ROOT" \
+    --out docs/team/runtime-result.json -- --platform "$PLATFORM"
+fi
+record() { :; }
 
 # Pin the shared toolchain caches (OPS-003). This gate builds once per WAVE, so it is not the
 # repeated cost the caches were added for — but it runs on the same machine minutes after

@@ -94,8 +94,23 @@
  *     requires them is refused for gate events (board.mjs): turning the flag off is not a
  *     downgrade an agent can make by editing .studio-policy.json.
  *   - Tokens are never read from the environment: subagents inherit it.
+ *
+ * FOUNDER TOKENS (G2-14). `reopened` is the founder's override of the review-cycle cap, and
+ * `actor mint --role founder` was a CLI any orchestrator or subagent could run. Now a founder token
+ * is minted only by a human at a terminal: stdin must be a TTY and the human types the ticket id
+ * back. The token is short-lived (default 30 min) and SINGLE-USE (board.mjs refuses a founder
+ * token_id already on the log), so pasting it into a `! …` command leaves nothing reusable behind.
+ * The founder runs, in their own terminal (Claude Code's Bash tool and `!` give the process no TTY):
+ *     node "<plugin>/scripts/board.mjs" actor mint --role founder --ticket APP-NNN
+ * then, in Claude Code:   ! node "<plugin>/scripts/board.mjs" move APP-NNN reopened --by founder --token <it>
+ * BOUND: a hostile agent can fake a TTY (script(1), expect) and type the id itself. This stops a
+ * confused or literal agent cold and makes the hostile one take a deliberate, transcript-visible step.
+ *
+ * SESSION MARKER (G2-17). Every mint records the Claude Code session it ran in (CLAUDE_CODE_SESSION_ID)
+ * and the agent markers the harness exports (AI_AGENT, CLAUDE_CODE_CHILD_SESSION), when present.
+ * Recorded, not enforced: what those values mean for a subagent is the harness's, not ours to assume.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readSync } from 'node:fs';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 
@@ -289,10 +304,49 @@ function appendToken(root, body) {
   return { ok: true };
 }
 
+/** Who is minting: the session and agent markers the harness exports, when it does (G2-17). */
+function mintContext() {
+  const env = process.env;
+  const pick = (k) => (env[k] ? String(env[k]) : null);
+  return {
+    session: pick('STUDIO_SESSION_ID') || pick('CLAUDE_CODE_SESSION_ID'),
+    agent: { ai_agent: pick('AI_AGENT'), child_session: pick('CLAUDE_CODE_CHILD_SESSION'), entrypoint: pick('CLAUDE_CODE_ENTRYPOINT') },
+    tty: Boolean(process.stdin.isTTY),
+  };
+}
+
+/** A human at a terminal types the ticket id back. `{ok}` or `{ok:false, reason}`. */
+function founderConfirms(ticket, { stdin = process.stdin, read = readSync } = {}) {
+  if (!stdin.isTTY) {
+    return { ok: false, reason: 'a founder token is minted only by the human founder at a terminal (stdin is not a TTY here, and an agent Bash call never has one).\n' +
+      '  Founder: in your own terminal run\n' +
+      `    node "<plugin>/scripts/board.mjs" actor mint --role founder --ticket ${ticket}\n` +
+      `  then in Claude Code:  ! node "<plugin>/scripts/board.mjs" move ${ticket} reopened --by founder --token <the token>` };
+  }
+  process.stderr.write(`Founder override for ${ticket}. Type the ticket id to mint a single-use founder token: `);
+  const buf = Buffer.alloc(256);
+  let line = '';
+  try {
+    for (;;) {
+      const n = read(0, buf, 0, buf.length, null);
+      if (n <= 0) break;
+      line += buf.subarray(0, n).toString('utf8');
+      if (line.includes('\n')) break;
+    }
+  } catch (e) { return { ok: false, reason: `could not read the confirmation: ${e.message}` }; }
+  if (line.trim().toUpperCase() !== String(ticket).toUpperCase()) return { ok: false, reason: `confirmation "${line.trim()}" is not ${ticket} — nothing minted` };
+  return { ok: true };
+}
+
 /** Mint a token for one role on one ticket. The plaintext is returned ONCE and never stored. */
-function mintActorToken({ root, role, ticket, ttlMinutes = 240 }) {
+function mintActorToken({ root, role, ticket, ttlMinutes = 240, confirm = founderConfirms }) {
   if (!role) return { ok: false, reason: 'mint needs --role' };
   if (!ticket) return { ok: false, reason: 'mint needs --ticket (a token is scoped to one ticket so a leaked one is not universal)' };
+  if (role === 'founder') {
+    const c = confirm(ticket);
+    if (!c.ok) return c;
+    if (ttlMinutes === 240) ttlMinutes = 30;
+  }
   const minutes = Number(ttlMinutes);
   if (!(minutes > 0 && minutes <= 24 * 60)) return { ok: false, reason: '--ttl-minutes must be between 1 and 1440' };
   const token = `st_${randomBytes(24).toString('base64url')}`;
@@ -300,7 +354,8 @@ function mintActorToken({ root, role, ticket, ttlMinutes = 240 }) {
   const record = {
     schema: 'actor-token/v1', kind: 'mint', token_id: sha256(token).slice(0, 16), token_sha256: sha256(token),
     role, ticket: String(ticket).toUpperCase(), minted_at: new Date(now).toISOString(),
-    expires_at: new Date(now + minutes * 60000).toISOString(), session: process.env.STUDIO_SESSION_ID || null,
+    expires_at: new Date(now + minutes * 60000).toISOString(), ...mintContext(),
+    ...(role === 'founder' ? { single_use: true } : {}),
   };
   const w = appendToken(root, record);
   if (!w.ok) return w;
@@ -335,10 +390,22 @@ function verifyActorToken({ root, token, role, ticket, required = true }) {
     ok: true,
     actor: {
       schema: 'actor/v1', actor_id: `token:${rec.token_id}`, role, mode: 'token', required,
-      token_id: rec.token_id, minted_at: rec.minted_at, expires_at: rec.expires_at,
+      token_id: rec.token_id, minted_at: rec.minted_at, expires_at: rec.expires_at, ...(rec.single_use ? { single_use: true } : {}),
       session: process.env.STUDIO_SESSION_ID || null, model: process.env.STUDIO_MODEL || null,
     },
   };
 }
 
-export { resolveActor, mintToken, REGISTRY, TOKEN_REGISTRY, mintActorToken, revokeActorToken, listActorTokens, verifyActorToken };
+/**
+ * The `--token` argument a PRINTED next-step board command must carry (W2-10/W2-11): the
+ * orchestrator's inline mint, in the SAME command, because a shell variable does not survive
+ * between Bash calls. '' when the project does not require tokens.
+ */
+function inlineTokenFlag(root, role, ticket) {
+  let policy = {};
+  try { policy = JSON.parse(readFileSync(resolve(root, '.studio-policy.json'), 'utf8')) || {}; } catch { return ''; }
+  if (policy.requireActorTokens !== true) return '';
+  return ` --token "$(node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role ${role} --ticket ${ticket || '<ID>'})"`;
+}
+
+export { inlineTokenFlag, founderConfirms, resolveActor, mintToken, REGISTRY, TOKEN_REGISTRY, mintActorToken, revokeActorToken, listActorTokens, verifyActorToken };

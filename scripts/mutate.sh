@@ -213,7 +213,7 @@ M95@@scripts/lib/test-evidence.mjs@@if (most > 0 || uncounted) return { verdict:
 M96@@scripts/wave-integrate.mjs@@if (flags.push && greenTip.ok && greenTip.out === tip) {@@if (flags.push) {@@--push refuses an existing wave branch whose tip is NOT the commit that ran green (W6)@@W1/G-F5 in the wave
 M97@@scripts/wave-integrate.mjs@@const push = hasOrigin ? gitTry(['push', 'origin', BASE], { cwd: ROOT }) : { ok: true, out: '' };@@const push = gitTry(['push', 'origin', BASE], { cwd: ROOT });@@--wave N --push after a green --wave N lands it instead of refusing 'already exists' (W6)@@W1/G-F5 in the wave
 M98@@scripts/lib/readiness.mjs@@['status', '--porcelain', '--', ':(top)', ...excludes]@@['status', '--porcelain', '--', ':(top)']@@readiness: a tree dirty ONLY in the studio's operational files is clean (W3)@@W3 / G-F6
-M99@@scripts/runtime-gate.sh@@-e 's/^/:(exclude)/' "$OPS_PATHS")@@-e 's/^/:(exclude)/' /dev/null)@@runtime-gate --record: operational files do not record the tree as dirty (W3)@@W3 / G-F6
+M99@@scripts/lib/readiness.mjs@@.map((p) => `:(exclude)${p}`);@@.filter(() => false);@@runtime-gate --record: operational files do not record the tree as dirty (W3)@@W3 / G-F6
 M100@@scripts/ship-gate.sh@@-e 's/^/:(exclude)/' "$HERE/lib/operational-paths.txt")@@-e 's/^/:(exclude)/' /dev/null)@@ship-gate: operational files do not make approval binding UNKNOWN (G-F6)@@W3 / G-F6
 M129@@hooks/contract-hooks.mjs@@if (verify.status === 1) {@@if (false) {@@C10: the pre-spawn hook BLOCKS an IC prompt that only points at the contract@@Sprint 2 track B
 M121@@hooks/contract-hooks.mjs@@if (payload.stop_hook_active === true || existsSync(marker)) allow();@@if (false) allow();@@C10: ...and a SECOND stop by the same subagent is let through (never blocks forever)@@Sprint 2 track B
@@ -227,13 +227,13 @@ M128@@scripts/context-manifest.mjs@@if (moved && flags['strict-head'])@@if (move
 MA01@@skills/defect-hunting/SKILL.md@@`references/round-trip.md`@@`references/round-trip-moved.md`@@every references/ file a SKILL.md or command names exists, and every reference is named@@Sprint 2 track A
 M101@@scripts/lib/evidence.mjs@@if (again.verdict !== rec.verdict) return fail(@@if (false) return fail(@@TC: ...because the board re-runs the classifier over the log@@Sprint 2 track C
 M102@@scripts/lib/evidence.mjs@@if (sha256(text) !== rec.log_sha256) return@@if (false) return@@TC: ...because the log no longer hashes to the record@@Sprint 2 track C
-M103@@scripts/lib/evidence.mjs@@if (tip.sha === head || isAncestor(git, tip.sha, head)) return { ok: true, tip: tip.sha };@@if (tip.sha) return { ok: true, tip: tip.sha };@@TC: a record for an older tip of the ticket branch is refused@@Sprint 2 track C
-M104@@scripts/lib/evidence.mjs@@if (declared.length && !declared.includes(rec.command)) {@@if (false) {@@TC: a caller-chosen test command is refused when the profile declares one@@Sprint 2 track C
+M103@@scripts/lib/evidence.mjs@@if (tip.sha === head || (!exact && isAncestor(git, tip.sha, head))) return { ok: true, tip: tip.sha };@@if (tip.sha) return { ok: true, tip: tip.sha };@@TC: a record for an older tip of the ticket branch is refused@@Sprint 2 track C
+M104@@scripts/lib/evidence.mjs@@if (rec.command_source !== 'profile' || !declared.includes(rec.command)) {@@if (false) {@@TC: a caller-chosen test command is refused when the profile declares one@@Sprint 2 track C
 M105@@scripts/lib/evidence.mjs@@if (code.length) return fail(@@if (false) return fail(@@TC: a --docs-only record on a branch that changes source is refused@@Sprint 2 track C
 M106@@scripts/lib/evidence.mjs@@if (afterTs && !(Date.parse(rec.at) > Date.parse(afterTs)))@@if (false)@@TC: qa_passed on the developer's pre-merge record is refused@@Sprint 2 track C
 M107@@scripts/lib/readiness.mjs@@const derived = checkGateLog(root, v);@@const derived = { ok: true };@@TC: readiness: a hand-written PASS gate-result is CANNOT_EVALUATE, not PASS@@Sprint 2 track C
 M108@@scripts/lib/evidence.mjs@@if (last !== v.result) return@@if (false) return@@TC: readiness: a result whose own log reached a different verdict is not PASS@@Sprint 2 track C
-M109@@scripts/board.mjs@@const r = verifyActorToken({ root, token, role, ticket, required: true });@@const r = { ok: true, actor: { mode: 'token', required: true } };@@TC: under requireActorTokens a gate event with --by alone is refused@@Sprint 2 track C
+M109@@scripts/board.mjs@@const r = spent(verifyActorToken({ root, token, role, ticket, required: true }));@@const r = { ok: true, actor: { mode: 'token', required: true } };@@TC: under requireActorTokens a gate event with --by alone is refused@@Sprint 2 track C
 M110@@scripts/lib/actor.mjs@@if (rec.role !== role) return@@if (false) return@@TC: a token minted for another role cannot clear the gate@@Sprint 2 track C
 M111@@scripts/lib/actor.mjs@@if (rec.ticket !== String(ticket).toUpperCase()) return@@if (false) return@@TC: a token minted for another ticket is refused@@Sprint 2 track C
 M112@@scripts/lib/actor.mjs@@if (r.records.some((x) => x.kind === 'revoke' && x.token_id === rec.token_id)) return@@if (false) return@@TC: a revoked token is refused@@Sprint 2 track C
@@ -291,6 +291,32 @@ ME11@@hooks/in-studio.sh@@[ "$_studio" = 1 ] || [ -z "$_cwd" ] || exit 0@@true@@
 ME12@@hooks/require-review-verdict.sh@@[ -e "$_m" ] && exit 0@@true@@S3E: the review hook blocks ONCE per agent_id, and lets stop_hook_active through@@Sprint 3 track E
 ME13@@scripts/spawn-prompt.mjs@@...fence(`git checkout -b feat/${row.id}-<short-slug> ${base}`)]@@...fence('')]@@S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)@@Sprint 3 track E
 ME14@@scripts/lib/contract.mjs@@export const ARTIFACT_CONTRACT = ['Worktree:', 'Branch:',@@export const ARTIFACT_CONTRACT = ['Worktree:',@@S3E: report-check refuses an artifact DONE with no Branch: (C2-8)@@Sprint 3 track E
+MF01@@scripts/lib/integration.mjs@@return o.length > want.length && o.startsWith(`${want}-`) && bare(n, o);@@return false;@@F1: ...with all three branches present, each ticket's tip is its own branch (no ambiguity, no theft)@@Sprint 3 track F1
+MF02@@scripts/lib/integration.mjs@@const bare = (name, id) => new RegExp(`(^|/)${esc(id)}${SLUG}$`).test(name);@@const bare = (name, id) => name.includes(id);@@F1: matchesTicket is whole-id and gives a branch to the LONGEST board id (APP-001 / APP-001-analytics / APP-0010)@@Sprint 3 track F1
+MF03@@scripts/lib/evidence.mjs@@if (forged in f) bye(2,@@if (false) bye(2,@@F1: evidence.mjs test refuses --exit/--log — the writer observes the outcome itself (G2-2)@@Sprint 3 track F1
+MF04@@scripts/lib/evidence.mjs@@if (!declared.length) {@@if (false) {@@F1: a profile that declares no test command cannot verify a code ticket (G2-3)@@Sprint 3 track F1
+MF05@@scripts/lib/evidence.mjs@@const exact = rec.produced_by === 'verify-done.sh' && !afterTs;@@const exact = false;@@F1: verified evidence from a DESCENDANT of the ticket tip is refused (G2-4)@@Sprint 3 track F1
+MF06@@scripts/lib/evidence.mjs@@if (rec.assertion_census?.assert_nothing) {@@if (false) {@@F1: ...and the board refuses verified on that record@@Sprint 3 track F1
+MF07@@scripts/lib/evidence.mjs@@const isDoc = docFile(docsIsServedSite(git, rec.head));@@const isDoc = docFile(false);@@F1: a --docs-only record over a served docs/ site (docs/index.html) is refused (G2-25)@@Sprint 3 track F1
+MF08@@scripts/lib/verdict.mjs@@if (event === 'approved' && NOTHING_REVIEWED.test(body)) {@@if (false) {@@F1: an APPROVE whose ## Not checked says Everything is refused (G2-26)@@Sprint 3 track F1
+MF09@@scripts/lib/verdict.mjs@@const scope = sides.length === 2 && sides[0] && sides[1] ? [scopeLine[0], sides[0], sides[1]] : null;@@const scope = scopeLine ? [scopeLine[0], sides[0], sides.slice(1).join('..')] : null;@@F1: a three-sided Scope is refused by the verdict contract itself, with or without --bind (G2-5)@@Sprint 3 track F1
+MF10@@scripts/board.mjs@@if (!manifest || manifest.schema !== 'context-manifest/v2' || !Array.isArray(manifest.sources)) {@@if (false) {@@F1: --bind --context must be a context-manifest/v2 (G2-6)@@Sprint 3 track F1
+MF11@@scripts/board.mjs@@if (!ev.ok) return { ok: false, code: ev.code, reason: `--evidence: ${ev.reason}` };@@if (false) return {};@@F1: ...the evidence is re-derived, not hashed by name@@Sprint 3 track F1
+MF12@@scripts/board.mjs@@if (subj.error) return { refusal: `${subj.error}\n  risk-policy.json is in force@@if (false) return { refusal: `${subj.error}\n  risk-policy.json is in force@@F1: ...naming why the diff is unknown@@Sprint 3 track F1
+MF13@@scripts/board.mjs@@if (subj.error) return `${subj.error} — "done" asserts integrated code@@if (false) return `${subj.error} — "done" asserts integrated code@@F1: ...because the code being closed is unknown@@Sprint 3 track F1
+MF14@@scripts/board.mjs@@if (issues.length) return `the code being closed@@if (false) return `the code being closed@@F1: closed is refused when the merged tip is not the approved commit (G2-9)@@Sprint 3 track F1
+MF15@@scripts/lib/approval.mjs@@if (tip.sha && tip.sha !== detail.commit) {@@if (false) {@@F1: approval-check (ship mode) refuses a branch that moved past its approval (G2-9)@@Sprint 3 track F1
+MF16@@scripts/lib/events.mjs@@if (a.chained === chain.chained && a.tip === chain.tip) return { ok: true };@@return { ok: true };@@F1: a log rewritten with every hash RECOMPUTED is refused — the anchor outside the tree disagrees (G2-10)@@Sprint 3 track F1
+MF17@@scripts/board.mjs@@const lowered = gate ? ratchetedOff(paths.log, policy) : [];@@const lowered = [];@@F1: deleting requireActorTokens before any gate event was written is still refused (G2-12)@@Sprint 3 track F1
+MF18@@scripts/lib/events.mjs@@if ((name === 'merged' || name === 'closed') && wroteOn(state, by, ['approved'])) {@@if (false) {@@F1: the role that approved a ticket may not merge it (G2-13)@@Sprint 3 track F1
+MF19@@scripts/lib/events.mjs@@if (name === 'approved' && wroteOn(state, by, ['verified', 'verified_static'])) {@@if (false) {@@F1: the role that verified a ticket may not approve it (G2-13)@@Sprint 3 track F1
+MF20@@scripts/lib/actor.mjs@@if (!stdin.isTTY) {@@if (false) {@@F1: actor mint --role founder is refused without a TTY (G2-14)@@Sprint 3 track F1
+MF21@@scripts/lib/actor.mjs@@session: pick('STUDIO_SESSION_ID') || pick('CLAUDE_CODE_SESSION_ID'),@@session: pick('STUDIO_SESSION_ID'),@@F1: a mint records the Claude Code session it ran in (G2-17)@@Sprint 3 track F1
+MF22@@scripts/verify-done.sh@@if [ "$TESTS_STATUS" = green ] && [ "$(_ef census.assert_nothing)" = true ]; then@@if false; then@@F1: verify-done downgrades a green run whose changed tests assert nothing to CANNOT EVALUATE (G2-22)@@Sprint 3 track F1
+MF23@@scripts/lib/events.mjs@@...(isQaDocs(state) ? ['merged'] : [])@@...[]@@F1: a docs-only QA- ticket merges straight from verified, reviewed inline (decision 1)@@Sprint 3 track F1
+MF24@@scripts/board.mjs@@if (state && isQaDocs(state)) return '';@@if (false) return '';@@F1: ...and closes from merged without being on the integration branch (W2-6)@@Sprint 3 track F1
+MF25@@scripts/board.mjs@@const integration = integrationBase(gitAt(process.cwd()));@@const integration = 'main';@@F1: on a develop-model project the bind base is the merge-base with develop, matching the reviewer's Scope (W2-5)@@Sprint 3 track F1
+MF26@@scripts/verify-done.sh@@TOKFLAG=$(node "$EV" token-flag@@TOKFLAG=$(true "$EV" token-flag@@F1: verify-done prints the board command with the inline-mint --token under requireActorTokens (W2-10)@@Sprint 3 track F1
 CATALOGUE
 }
 

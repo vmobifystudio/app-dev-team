@@ -11,11 +11,13 @@
  * WITH A TICKET AND A HEAD, THE APPROVED COMMIT MUST EQUAL THE HEAD. The ancestor test let a
  * commit added after the review ride in under it (G-F2). Without a ticket — ship-gate checking a
  * release candidate that integrates many tickets — no single approval can equal the head, so the
- * check there stays "the approved commit is IN what ships" (ancestor).
+ * check there is "the approved commit is IN what ships" (ancestor) AND (G2-9) "the ticket's branch
+ * did not move after it was approved": a branch still carrying commits past its approval shipped
+ * them unreviewed under the ancestor test. A ticket whose branch is gone is judged by ancestry.
  */
 import { createHash } from 'node:crypto';
 
-import { gitAt, isAncestor } from './integration.mjs';
+import { gitAt, isAncestor, ticketTip } from './integration.mjs';
 
 const sameTicket = (a, b) => String(a ?? '').toUpperCase() === String(b ?? '').toUpperCase();
 
@@ -30,6 +32,7 @@ export function checkApprovals(events, { ticket = '', head = '', cwd = process.c
   const latest = new Map();
   for (const e of all) latest.set(`${String(e.ticket).toUpperCase()}\u0000${e.by || ''}`, e);
   const counted = [...latest.values()];
+  const ids = [...new Set(events.filter((e) => e.event === 'created').map((e) => String(e.ticket)))];
   const issues = [];
   const headSha = head ? git(['rev-parse', '--verify', `${head}^{commit}`]) : null;
   if (head && !headSha) issues.push(`--head ${head} does not resolve to a commit`);
@@ -49,6 +52,12 @@ export function checkApprovals(events, { ticket = '', head = '', cwd = process.c
           : `${id}: approval commit ${detail.commit} is not the head ${headSha} and not an ancestor of it`);
       } else if (!behind) {
         issues.push(`${id}: approval commit ${detail.commit} is not an ancestor of ${head}`);
+      }
+    }
+    if (!ticket) {
+      const tip = ticketTip(git, id, ids);
+      if (tip.sha && tip.sha !== detail.commit) {
+        issues.push(`${id}: its branch ${tip.branch} is at ${tip.sha.slice(0, 12)}, not the approved ${String(detail.commit).slice(0, 12)} — commits after the approval are unreviewed. Re-review, or drop them.`);
       }
     }
     // VERIFY THE CANDIDATE THE APPROVAL NAMED, NOT ITS LAST COMMIT. Legacy approvals carry no
