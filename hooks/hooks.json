@@ -36,6 +36,15 @@
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/block-cross-worktree-write.sh\""
           }
         ]
+      },
+      {
+        "matcher": "^(Task|Agent)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/require-spawn-contract.sh\""
+          }
+        ]
       }
     ],
     "SubagentStop": [
@@ -45,6 +54,15 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/require-review-verdict.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "(^|:)(ios-developer|android-developer|backend-developer|web-developer|monetization-engineer|devops-engineer|test-automation-engineer|ux-architect|product-designer|product-manager|product-researcher|qa-engineer|data-analyst|aso-specialist)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/persist-ic-report.sh\""
           }
         ]
       }
