@@ -216,12 +216,17 @@ const MANIFEST = /(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|pnpm-(lock|w
 const PROSE_ANYWHERE = /\.(md|rst)$/i;
 const PROSE_IN_DOCS = /\.(md|rst|txt)$/i;
 const QA_JOURNEY = /^docs\/team\/journeys\/[^/]+\.json$/;
+// PR46-5: the QA- fast path skips review, so it is an ALLOWLIST of what QA writes (qa-engineer.md
+// §Output): the test plan, the bug list, evidence bundles, its daily fragment, its journeys. Never a
+// doc a gate reads (60-releases WAIVED lines, 23-git-strategy's integration branch, 53-reviews, …).
+const QA_DOCS = /^docs\/(50-test-plan\.md|51-bugs\.md|54-evidence\/[^/]+\.md|daily\/[^/]+\.md)$/;
 export const docFile = (served, { qa = false } = {}) => (f) => {
   if (MANIFEST.test(f) || /\.mdx$/i.test(f)) return false;
   // C5G-5: macOS volumes fold case — `docs/Team/risk-policy.json` IS docs/team/risk-policy.json there.
   const lf = f.toLowerCase();
   if (lf.startsWith('docs/team/')) return qa && QA_JOURNEY.test(f);
   if (lf === BOARD_LOG) return false;
+  if (qa) return QA_DOCS.test(f);
   if (f.startsWith('docs/')) return served ? PROSE_IN_DOCS.test(f) : true;
   return !qa && PROSE_ANYWHERE.test(f);
 };
@@ -250,7 +255,7 @@ export function docsOnlyDiff(git, head, { qa = false, base = '' } = {}) {
   if (!files.length) return { ok: false, code: 1, reason: `the branch changes no files against ${base ? `the merge-base recorded at merged (${mb.slice(0, 12)})` : integration} (re-derived from git), so a --docs-only record verifies nothing` };
   const isDoc = docFile(docsIsServedSite(git, head), { qa });
   const code = files.filter((f) => !isDoc(f));
-  if (code.length) return { ok: false, code: 1, reason: `the branch changes non-document files against ${integration} (re-derived from git): ${code.slice(0, 5).join(', ')}${code.length > 5 ? ', …' : ''}${qa ? ' — on a QA- ticket only docs/ prose (outside docs/team/) and docs/team/journeys/*.json are documents' : ''}` };
+  if (code.length) return { ok: false, code: 1, reason: `the branch changes non-document files against ${integration} (re-derived from git): ${code.slice(0, 5).join(', ')}${code.length > 5 ? ', …' : ''}${qa ? ' — on a QA- ticket only docs/50-test-plan.md, docs/51-bugs.md, docs/54-evidence/*.md, docs/daily/*.md and docs/team/journeys/*.json are documents' : ''}` };
   return { ok: true, files, base: mb };
 }
 
@@ -370,7 +375,7 @@ export function checkGateLog(root, v) {
 // the record QA just failed (or anything older) cannot pass the same ticket on re-QA.
 export function verifyQaEvidence(root, given, { ticket, mergedTs, mergedHead = '', failedTs = '', cwd = process.cwd() } = {}) {
   const journey = (abs, rel) => {
-    const r = verifyJourney(root, abs, rel, { ticket, cwd });
+    const r = verifyJourney(root, abs, rel, { ticket, cwd, mergedHead });
     if (!r.ok || !failedTs) return r;
     let at = '';
     try { at = JSON.parse(readFileSync(abs, 'utf8')).evaluated_at || ''; } catch { /* verifyJourney already read it */ }
@@ -408,7 +413,7 @@ function journeyDriverProblem(root, v) {
   return '';
 }
 
-function verifyJourney(root, abs, rel, { ticket, cwd }) {
+function verifyJourney(root, abs, rel, { ticket, cwd, mergedHead = '' }) {
   let v;
   try { v = JSON.parse(readFileSync(abs, 'utf8')); } catch (e) { return { ok: false, code: 2, reason: `${rel} is unreadable: ${e.message}` }; }
   const fail = (reason, code = 1) => ({ ok: false, code, reason: `${rel}: ${reason}` });
@@ -429,6 +434,8 @@ function verifyJourney(root, abs, rel, { ticket, cwd }) {
   if (!tip.sha) {
     const base = integrationBase(git);
     if (!base || !(git(['rev-parse', base]) === head || isAncestor(git, head, base))) return fail(`no branch is named for ${ticket} and ${head.slice(0, 12)} is not on the integration branch`);
+    // PR46-11: with the branch gone, the commit recorded at merged is what proves the journeys ran on its code.
+    if (mergedHead && !(mergedHead === head || isAncestor(git, mergedHead, head))) return fail(`the journeys ran on ${head.slice(0, 12)}, which does not contain ${ticket}'s merged commit ${mergedHead.slice(0, 12)}`);
   }
   return { ok: true, detail: { evidence: rel, evidence_sha256: sha256(readFileSync(abs)), evidence_head: head, evidence_mode: 'journey-gate', log_sha256: v.log_sha256 } };
 }
@@ -542,7 +549,7 @@ export function runGate(projectRoot, { gate, out, args = [] }) {
 //   evidence.mjs static --branch B --base X      a --static record (the suite is owed to the wave)
 //   evidence.mjs gate   --gate runtime-gate [--root R] [--out RESULT.json] -- <gate args>
 //       runs the plugin's own gate script, prints its output, exits with its code
-//   evidence.mjs token-flag --role R --ticket T   the inline-mint --token text, or nothing
+//   evidence.mjs token-flag --role R --ticket T [--root P]   the inline-mint --token text, or nothing
 //   evidence.mjs check-command --record R    exit 0 when the board would accept the record's command
 //   evidence.mjs ticket-for --branch B       the board ticket B is named for (longest id), or nothing
 // There is no --result, --exit or --log: a writer that accepts the outcome from its caller is a
@@ -587,7 +594,7 @@ if (process.argv[1] && isMain()) {
   } else if (cmd === 'token-flag') {
     // For shell callers that PRINT a next-step board command (W2-10): the inline-mint --token form
     // when the project requires tokens, else nothing.
-    process.stdout.write(inlineTokenFlag(evidenceRoot(), f.role || '<role>', f.ticket || '<ID>'));
+    process.stdout.write(inlineTokenFlag(f.root ? resolve(String(f.root)) : evidenceRoot(), f.role || '<role>', f.ticket || '<ID>'));
   } else if (cmd === 'gate') {
     const r = runGate(f.root || evidenceRoot(), { gate: f.gate, out: f.out, args: passthrough });
     if (!r.ok) bye(r.code || 2, r.reason);

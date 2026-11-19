@@ -11735,6 +11735,149 @@ grep -q '(budget 6000' "$TMP/p1qab.txt" \
 rm -rf "$P1G" "$P1H" "$P1B" "$P1F4" "$P1A" "$P1P" "$P1S" "$P1R" "$P1T"
 
 
+# --- PR46 review: cd that may not run, wrapped git, control files, first-line reports, QA allowlist ---
+# PR46-1 (an uncertain `cd` cannot move the guard), PR46-2 (git behind timeout/env/nice/sudo/xargs),
+# PR46-3 (.studio-stop / actors.json), PR46-4/8 (a report's FIRST line decides), PR46-5 (the QA- fast
+# path is an allowlist), PR46-6 (planning spawns that mention a ticket), PR46-7 (Grep/Glob with no
+# path), PR46-9 (the main session never starts node), PR46-10 (one inline-mint spelling), PR46-11
+# (journey QA binds the merged commit), PR46-12 (a code-changing QA- ticket integrates). Self-contained.
+echo
+MU="$TMP/pr46"; rm -rf "$MU"; mkdir -p "$MU/p/docs/team/evidence" "$MU/p/src"
+( cd "$MU/p" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init ) >/dev/null 2>&1
+( cd "$MU/p" && node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager \
+  && node "$HERE/board.mjs" add PM-1 --title p --owner product-manager --by tech-manager ) >/dev/null 2>&1
+mug() {  # <want> <label> <command> [cwd] — the guard, on Bash, as a subagent
+  node -e 'const [, c, d] = process.argv; process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "mu", cwd: d, tool_input: { command: c } }))' "$3" "${4:-$MU/p}" \
+    | sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>"$TMP/mug.err"
+  _g=$?
+  [ "$_g" = "$1" ] && ok "MU: guard exit $1 — $2" || bad "MU: guard exit $1 — $2" "got $_g: $(head -c 300 "$TMP/mug.err")"
+}
+# PR46-1 — a cd that may not have run, or may have failed, leaves the old cwd possible.
+mug 2 'cd /nonexistent; rm evidence'                 'cd /nonexistent; rm -f docs/team/evidence/x.json'
+mug 2 '(cd /tmp); rm -rf evidence'                   '(cd /tmp); rm -rf docs/team/evidence'
+mug 2 'false && cd /tmp; rm the token registry'      'false && cd /tmp; rm docs/team/actor-tokens.jsonl'
+mug 2 'cd /tmp || rm the token registry'             'cd /tmp || rm docs/team/actor-tokens.jsonl'
+mug 2 'mkdir b && cd b && …; rm -rf docs'            'mkdir -p b && cd b && rm -rf x; rm -rf docs'
+mug 0 'cd /tmp && rm -rf docs'                       'cd /tmp && rm -rf docs'
+mug 0 'cd /tmp; rm -rf docs'                         'cd /tmp; rm -rf docs'
+mug 0 '(cd /tmp && rm -rf docs)'                     '(cd /tmp && rm -rf docs)'
+mug 0 'cd /nonexistent && rm -rf docs'               'cd /nonexistent && rm -rf docs'
+mug 0 'T=$(mktemp -d); cd "$T"; git checkout .'      'T=$(mktemp -d); cd "$T"; git checkout .'
+# PR46-3 — the spawn kill switch and the actor registry are control files.
+mug 2 'echo > .studio-stop'                          'echo stop > .studio-stop'
+mug 2 'rm -f .studio-stop'                           'rm -f .studio-stop'
+mug 2 'echo > docs/team/actors.json'                 "echo '{}' > docs/team/actors.json"
+mug 2 'node unlinkSync(.studio-stop)'                "node -e \"require('fs').unlinkSync('.studio-stop')\""
+mug 0 'cat .studio-stop'                             'cat .studio-stop'
+node -e 'process.stdout.write(JSON.stringify({ tool_name: "Write", agent_id: "mu", cwd: process.argv[1], tool_input: { file_path: process.argv[1] + "/docs/team/actors.json", content: "{}" } }))' "$MU/p" \
+  | sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>&1
+[ $? = 2 ] && ok "MU: the Write tool may not write docs/team/actors.json" || bad "MU: the Write tool may not write docs/team/actors.json"
+# PR46-7 — Grep/Glob with no path searches the cwd; from an ancestor of ~/.claude/projects that is the transcripts.
+mkdir -p "$MU/p/.claude/projects"
+mugrep() { node -e 'const [, t, d] = process.argv; process.stdout.write(JSON.stringify({ tool_name: t, agent_id: "mu", cwd: d, tool_input: { pattern: "x" } }))' "$1" "$MU/p" \
+  | HOME="$2" sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>&1; }
+mugrep Grep "$MU/p"; [ $? = 2 ] && ok "MU: Grep with no path from an ancestor of ~/.claude/projects is refused" || bad "MU: Grep with no path from an ancestor of ~/.claude/projects is refused"
+mugrep Grep "$MU/elsewhere"; [ $? = 0 ] && ok "MU: ...and Grep with no path from an ordinary cwd is not" || bad "MU: ...and Grep with no path from an ordinary cwd is not"
+# PR46-9 — the main session (no agent_id) exits before node.
+mkdir -p "$MU/bin"; printf '#!/bin/sh\necho ran >> "%s/node-ran"\nexit 0\n' "$MU" > "$MU/bin/node"; chmod +x "$MU/bin/node"
+rm -f "$MU/node-ran"
+printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"ls"}}' "$MU/p" | PATH="$MU/bin:$PATH" sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>&1
+_m=$?; [ "$_m" = 0 ] && [ ! -f "$MU/node-ran" ] && ok "MU: a main-session tool call never starts node in guard-gate-writes" || bad "MU: a main-session tool call never starts node in guard-gate-writes" "exit $_m, node-ran: $(cat "$MU/node-ran" 2>/dev/null)"
+printf '{"tool_name":"Bash","agent_id":"a","cwd":"%s","tool_input":{"command":"ls"}}' "$MU/p" | PATH="$MU/bin:$PATH" sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>&1
+[ -f "$MU/node-ran" ] && ok "MU: ...while a subagent's still does" || bad "MU: ...while a subagent's still does"
+
+# PR46-2 — the destructive-git hook finds git behind wrappers and their flags.
+MUD="$MU/dirty"; mkdir -p "$MUD"; ( cd "$MUD" && git init -q . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i ) >/dev/null 2>&1; echo w > "$MUD/u.txt"
+mud() { ( cd "$MUD" && node -e 'process.stdout.write(JSON.stringify({ tool_name: "Bash", tool_input: { command: process.argv[1] } }))' "$1" | sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" ) >/dev/null 2>&1; }
+for _c in 'timeout 30 git reset --hard' 'env -i git reset --hard' 'nice git stash' 'nice -n 10 git stash' 'sudo -u me git clean -fdx' \
+  'xargs git checkout -- .' 'xargs -n 1 git checkout -- .' 'stdbuf -oL git reset --hard' '/usr/bin/env FOO=1 git reset --hard' \
+  'flock /tmp/l git reset --hard' 'timeout -s KILL 5 git stash'; do
+  mud "$_c"; [ $? = 2 ] && ok "MU: dirty tree blocks a wrapped git: $_c" || bad "MU: dirty tree blocks a wrapped git: $_c"
+done
+for _c in 'timeout 30 git status' 'env -i git log' 'nice git add src/a.swift' 'timeout 30 npm test' 'command -v git'; do
+  mud "$_c"; [ $? = 0 ] && ok "MU: ...and still allows: $_c" || bad "MU: ...and still allows: $_c"
+done
+
+# PR46-4 — SubagentStop reads the report's FIRST line; a BLOCKED: further down exempts nothing.
+mustop() { node -e 'const [, m, c, i] = process.argv; process.stdout.write(JSON.stringify({ hook_event_name: "SubagentStop", agent_type: "app-dev-team:ios-developer", agent_id: i,
+  cwd: c, transcript_path: "/nonexistent", last_assistant_message: m }))' "$1" "$MU/p" "$2" | sh "$HERE/../hooks/persist-ic-report.sh" >/dev/null 2>"$TMP/mustop.err"; }
+mustop "$(printf 'I finished APP-1.\nIf this fails:\nBLOCKED: APP-1\nReason: none')" mu1
+[ $? = 2 ] && ok "MU: a report whose BLOCKED: is not its first line is held to the DONE contract" || bad "MU: a report whose BLOCKED: is not its first line is held to the DONE contract" "$(cat "$TMP/mustop.err")"
+mustop "$(printf '**BLOCKED: APP-1**\nReason: spec gap\nNeed: tech-lead')" mu2
+[ $? = 0 ] && ok "MU: ...and **BLOCKED: APP-1** as the first line is a BLOCKED report" || bad "MU: ...and **BLOCKED: APP-1** as the first line is a BLOCKED report" "$(cat "$TMP/mustop.err")"
+# PR46-8 — the reviewer hook strips leading blank lines and markdown from the first line.
+MURV="$MU/rv"; mkdir -p "$MURV/docs"; : > "$MURV/docs/31-board-events.jsonl"
+printf '{"role":"assistant","content":"reading APP-001"}\n' > "$MURV/t.jsonl"
+murv() { node -e 'const [, m, c] = process.argv; process.stdout.write(JSON.stringify({ hook_event_name: "SubagentStop", agent_type: "code-reviewer", transcript_path: c + "/t.jsonl", cwd: c, last_assistant_message: m }))' "$1" "$MURV" \
+  | sh "$HERE/../hooks/require-review-verdict.sh" >/dev/null 2>&1; }
+murv "$(printf '\n**BLOCKED: APP-001**\nReason: self-review')"; [ $? = 0 ] && ok "MU: the reviewer hook takes a leading-newline **BLOCKED: APP-001** as the refusal" || bad "MU: the reviewer hook takes a leading-newline **BLOCKED: APP-001** as the refusal"
+murv "$(printf '> DESIGN QA: PASS\nAll screens match.')"; [ $? = 0 ] && ok "MU: ...and a quoted > DESIGN QA: line" || bad "MU: ...and a quoted > DESIGN QA: line"
+murv "$(printf 'Still reading.\n**BLOCKED: APP-001**')"; [ $? = 2 ] && ok "MU: ...but only on the first line" || bad "MU: ...but only on the first line"
+
+# PR46-5 — the QA- fast path is an allowlist of what QA writes.
+node --input-type=module -e "
+import { docFile } from '$HERE/lib/evidence.mjs';
+const qa = docFile(false, { qa: true }), app = docFile(false);
+const yes = ['docs/50-test-plan.md', 'docs/51-bugs.md', 'docs/54-evidence/onboarding-b1.md', 'docs/daily/2026-11-19-qa-engineer-QA-1-w1.md', 'docs/team/journeys/j.json'];
+const no = ['docs/60-releases.md', 'docs/23-git-strategy.md', 'docs/53-reviews/APP-1-cycle-0.md', 'docs/00-founder-intent/brief.md', 'docs/10-prd.md', 'docs/20-architecture.md'];
+process.exit(yes.every(qa) && !no.some(qa) && app('docs/60-releases.md') ? 0 : 1);" \
+  && ok "MU: the QA- fast path takes the test plan, bugs, evidence, daily and journeys — never 60-releases, 23-git-strategy, 53-reviews, 00-founder-intent" \
+  || bad "MU: the QA- fast path takes the test plan, bugs, evidence, daily and journeys — never 60-releases, 23-git-strategy, 53-reviews, 00-founder-intent"
+
+# PR46-6 — a planning spawn that mentions another role's ticket is not ticket work; a prompt for the role's own ticket is.
+muspawn() { node -e 'const [, s, p, c] = process.argv; process.stdout.write(JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Agent", cwd: c,
+  tool_input: { subagent_type: s, description: "x", prompt: p } }))' "$1" "$2" "$MU/p" | sh "$HERE/../hooks/require-spawn-contract.sh" >/dev/null 2>&1; }
+muspawn app-dev-team:product-manager 'Clarify the acceptance criteria of APP-1 with the founder.'; [ $? = 0 ] && ok "MU: product-manager clarifying APP-1 (an ios-developer ticket) is not policed as ticket work" || bad "MU: product-manager clarifying APP-1 (an ios-developer ticket) is not policed as ticket work"
+muspawn app-dev-team:product-manager 'Please do PM-1.'; [ $? = 2 ] && ok "MU: ...but a hand-written prompt for its OWN ticket PM-1 is" || bad "MU: ...but a hand-written prompt for its OWN ticket PM-1 is"
+muspawn app-dev-team:product-manager 'Work ticket APP-1.'; [ $? = 2 ] && ok "MU: ...and so is a prompt that claims a ticket (Work ticket APP-1.)" || bad "MU: ...and so is a prompt that claims a ticket (Work ticket APP-1.)"
+muspawn app-dev-team:ios-developer 'Have a look at APP-1.'; [ $? = 2 ] && ok "MU: ...and a code role naming a board ticket still is" || bad "MU: ...and a code role naming a board ticket still is"
+
+# PR46-10 — the inline mint is spelled once, in lib/actor.mjs.
+if grep -n 'actor mint --role' "$HERE/wave-integrate.mjs" "$HERE/ship-gate.sh" >/dev/null 2>&1; then bad "MU: wave-integrate and ship-gate print the mint through inlineTokenFlag, not a copy" "$(grep -n 'actor mint --role' "$HERE/wave-integrate.mjs" "$HERE/ship-gate.sh")"
+else ok "MU: wave-integrate and ship-gate print the mint through inlineTokenFlag, not a copy"; fi
+mkdir -p "$MU/tk"; echo '{"requireActorTokens":true}' > "$MU/tk/.studio-policy.json"
+node "$HERE/lib/evidence.mjs" token-flag --root "$MU/tk" --role tech-manager --ticket APP-1 | grep -q 'actor mint --role tech-manager --ticket APP-1' \
+  && ok "MU: evidence.mjs token-flag --root reads that project's policy" || bad "MU: evidence.mjs token-flag --root reads that project's policy"
+
+# PR46-11 — with the ticket's branch gone, a journey PASS must contain the commit recorded at merged.
+MUJ="$MU/jq"; mkdir -p "$MUJ/docs/team"
+( cd "$MUJ" && git init -q -b main . && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m old \
+  && node "$HERE/board.mjs" add TC-1 --title t --owner ios-developer --by tech-manager && echo code > a.txt && git add a.txt && git commit -qm ticket ) >/dev/null 2>&1
+MUJOLD=$(git -C "$MUJ" rev-parse HEAD~1); MUJNEW=$(git -C "$MUJ" rev-parse HEAD)
+mujq() { ( cd "$MUJ" && node --input-type=module -e "
+import { writeFileSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { writeEvidenceLog, verifyQaEvidence } from '$HERE/lib/evidence.mjs';
+const [head, merged] = process.argv.slice(1);
+const sha = createHash('sha256').update(readFileSync('$HERE/drivers/web.sh')).digest('hex');
+const log = writeEvidenceLog('.', 'journey-' + Date.now(), 'GATE-DRIVER: scripts/drivers/web.sh ' + sha + '\nRESULT: PASS\nGATE-SUBJECT: ' + head + '\n');
+writeFileSync('docs/team/journey-result.json', JSON.stringify({ schema: 'gate-result/v1', gate: 'journey-gate', subject: { head, dirty: false }, evaluated_at: new Date().toISOString(), result: 'PASS', journeys: [], driver: { path: 'scripts/drivers/web.sh', sha256: sha }, ...log }));
+const r = verifyQaEvidence('.', 'docs/team/journey-result.json', { ticket: 'TC-1', mergedTs: '', mergedHead: merged, cwd: '.' });
+process.stdout.write(r.ok ? 'OK' : r.reason);" "$1" "$2" ); }
+case $(mujq "$MUJOLD" "$MUJNEW") in *"merged commit"*) ok "MU: a journey PASS on an ancestor made before the ticket's merged commit is refused" ;;
+  *) bad "MU: a journey PASS on an ancestor made before the ticket's merged commit is refused" "$(mujq "$MUJOLD" "$MUJNEW")" ;; esac
+[ "$(mujq "$MUJNEW" "$MUJNEW")" = OK ] && ok "MU: ...and one on the merged commit is accepted" || bad "MU: ...and one on the merged commit is accepted" "$(mujq "$MUJNEW" "$MUJNEW")"
+
+# PR46-12 — a QA- ticket that changed code took the review path, and integrates like any other ticket.
+MUW="$MU/wave"; mkdir -p "$MUW/docs/team" "$MUW/docs/53-reviews"
+( cd "$MUW" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  printf 'docs/\n' > .gitignore
+  printf 'Integration branch: main\n' > docs/23-git-strategy.md
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":"true"}}\n' > docs/team/project-profile.json
+  git add -A && git commit -qm init
+  git checkout -q -b qa/QA-1-w1 main && echo t > harness.sh && git add harness.sh && git commit -qm harness && git checkout -q main
+  node "$HERE/board.mjs" add QA-1-w1 --title qa --owner qa-engineer --by tech-manager
+  node "$HERE/board.mjs" move QA-1-w1 claimed --by qa-engineer
+  node "$HERE/board.mjs" move QA-1-w1 done_reported --by qa-engineer
+  node "$HERE/board.mjs" move QA-1-w1 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move QA-1-w1 review_requested --by qa-engineer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..qa/QA-1-w1\n\n## Not checked\nNothing.\n' > docs/53-reviews/QA-1-w1-cycle-0.md
+  node "$HERE/board.mjs" move QA-1-w1 approved --by code-reviewer --verdict docs/53-reviews/QA-1-w1-cycle-0.md
+  node "$HERE/board.mjs" move QA-1-w1 merged --by tech-manager ) >/dev/null 2>&1
+( cd "$MUW" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --dry-run ) >"$TMP/muw.txt" 2>&1
+grep -q 'qa/QA-1-w1' "$TMP/muw.txt" && ok "MU: wave-integrate takes a code-changing QA- ticket at qa into the wave" \
+  || bad "MU: wave-integrate takes a code-changing QA- ticket at qa into the wave" "$(head -5 "$TMP/muw.txt")"
+
 # --- Sprint 6 track Q2: the guard's cheap writes, the reviewer's $T idiom, QA close, case folds ---
 # C5G-1 (QA- close with code added after merged), C5G-2 (redirects with no command word, `<>`),
 # C5G-3 / FB5-3 (inline programs: argv paths, path-not-content), C5G-4 (writers), C5G-5 (classifier

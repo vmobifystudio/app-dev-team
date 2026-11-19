@@ -137,7 +137,10 @@ fi
 # BY MODE, NOT ROLE (R2-8): a code-reviewer spawned for the design-qa gate (`Design QA ticket X.`,
 # when ux-architect is off) returns `DESIGN QA: PASS | FAIL` and records nothing — the orchestrator
 # records a FAIL. Same anchoring.
-case "$LAST_MSG" in
+# PR46-8: the first non-blank line, with leading whitespace and markdown (`**`, `_`, `#`, `>`) stripped —
+# `**BLOCKED: APP-001**` is the same refusal. Still the first line only.
+HEAD_LINE=$(printf '%s\n' "$LAST_MSG" | awk '/[^ \t\r]/ { sub(/^[ \t\r*_#>]+/, ""); print; exit }')
+case "$HEAD_LINE" in
   BLOCKED:*|"DESIGN QA:"*) exit 0 ;;
 esac
 

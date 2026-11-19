@@ -66,9 +66,10 @@ import { fileURLToPath } from 'node:url';
 
 import { parseArgs } from './lib/args.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
-import { parseEventLog, reduce } from './lib/events.mjs';
+import { isQaDocs, parseEventLog, reduce } from './lib/events.mjs';
 import { classifyTestRun } from './lib/test-evidence.mjs';
 import { writeTestEvidence } from './lib/evidence.mjs';
+import { inlineTokenFlag } from './lib/actor.mjs';
 import { RANK, routeFiles } from './lib/risk.mjs';
 import { matchesTicket } from './lib/integration.mjs';
 
@@ -155,7 +156,9 @@ const noBranch = [];
 const ambiguous = [];
 for (const t of tickets.values()) {
   if (t.status !== 'qa') continue;
-  if (/^QA-/i.test(t.id)) continue; // docs-only, closes from `merged` without integration (design 1)
+  // PR46-12: only a DOCS-ONLY QA ticket closes from `merged` without integration (design 1); a QA- ticket
+  // that changed code took the review path and is integrated like any other.
+  if (isQaDocs(t)) continue;
   const mine = branches.filter((b) => matchesTicket(b, t.id, ALL_IDS));
   if (!mine.length) { noBranch.push(t.id); continue; }
   const already = mine.filter((b) => gitTry(['merge-base', '--is-ancestor', b, BASE]).ok);
@@ -366,10 +369,9 @@ const EVIDENCE = green
   : '';
 // W2-10: printed commands are runnable as printed — the plugin path, and under requireActorTokens
 // the token minted INLINE in the same command (a shell variable does not survive between calls).
-let TOKENS = false;
-try { TOKENS = JSON.parse(readFileSync(resolve(ROOT, '.studio-policy.json'), 'utf8')).requireActorTokens === true; } catch { /* no policy: no tokens */ }
+// PR46-10: lib/actor.mjs's inlineTokenFlag is the one spelling of that mint.
 const BOARD_CLI = 'node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs"';
-const tokenFor = (role, id) => (TOKENS ? ` --token "$(${BOARD_CLI} actor mint --role ${role} --ticket ${id})"` : '');
+const tokenFor = (role, id) => inlineTokenFlag(ROOT, role, id);
 const boardCommands = merged.map((m) => `  ${BOARD_CLI} move ${m.id} verified --by tech-manager --evidence ${EVIDENCE} --detail "wave ${WAVE} full suite green"${tokenFor('tech-manager', m.id)}`).join('\n');
 
 if (cannotRun) {

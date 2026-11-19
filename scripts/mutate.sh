@@ -264,7 +264,7 @@ MG04@@scripts/lib/operational-paths.txt@@docs/team/runs.jsonl@@docs/team@@F2: an
 MG05@@scripts/release-candidate.mjs@@if (SHAPE[platform] && !SHAPE[platform].test(artifactPath)) die(1@@if (false) die(1@@F2: release-candidate refuses an ios artifact that is not an .ipa (G2-23)@@Sprint 3 track F2
 MG06@@scripts/ship-gate.sh@@if (!e) out.push(@@if (false) out.push(@@F2: ship-gate blocks a merged ticket with no qa_passed EVENT, whatever the markdown says (G2-19)@@Sprint 3 track F2
 MG07@@scripts/wave-integrate.mjs@@if (rg.status !== 0) {@@if (false) {@@F2: wave-integrate will not land a high-risk ticket (routed from its diff) until runtime passes on the wave (W2-3)@@Sprint 3 track F2
-MG08@@scripts/wave-integrate.mjs@@(TOKENS ? @@(false ? @@F2: wave-integrate's printed verified command mints its token inline under requireActorTokens (W2-10)@@Sprint 3 track F2
+MG08@@scripts/wave-integrate.mjs@@const tokenFor = (role, id) => inlineTokenFlag(ROOT, role, id);@@const tokenFor = () => '';@@F2: wave-integrate's printed verified command mints its token inline under requireActorTokens (W2-10)@@Sprint 3 track F2
 MG09@@scripts/worktree-slot.mjs@@while (state.slots?.[`${owner}-${n}`]) n += 1;@@;@@...as ios-developer-2@@worktree-slot: one tree per WRITER
 MG10@@scripts/trace.mjs@@} else if (!boardDoc && INTENT) {@@} else if (false) {@@F2: trace --intent evaluates the intent chain at Gate 1 instead of CANNOT EVALUATE for a missing board (W2-19)@@Sprint 3 track F2
 MG11@@scripts/integration-branch.sh@@| head -n 1 | sed -E 's/[./]+$//'@@| head -n 1@@F2: integration-branch reads 'Integration branch: main.' as main (W2-22)@@Sprint 3 track F2
@@ -322,7 +322,7 @@ MM02@@commands/app-ship.md@@waiver is the exception: android, ios and web driver
 MM03@@commands/app-build.md@@on every tier, except a wave made only of@@skip it on the utility tier and a wave made only of@@K3: the utility lane runs one QA- ticket per wave, like flagship (C3W-2)@@Sprint 4 track K3
 ML01@@hooks/contract-hooks.mjs@@if (script === 'spawn-prompt.mjs' && after.some((w) => w.v.text === 'compose'))@@if (false)@@spawn-prompt.mjs" compose --ticket APP-001 --role qa-engineer@@Sprint 4 track K2
 ML02@@hooks/contract-hooks.mjs@@if (dynamicMjs || dynamicScript) {@@if (false) {@@K2: guard exit 2 for Bash: node scripts/b?ard.mjs@@Sprint 4 track K2
-ML03@@hooks/contract-hooks.mjs@@if (hits(w.v.pat, here, G[key], tree)) {@@if (false) {@@K2: guard exit 2 for Bash: cp x docs/team/risk-policy.json@@Sprint 4 track K2
+ML03@@hooks/contract-hooks.mjs@@if (hitsH(w.v.pat, G[key], tree)) {@@if (false) {@@K2: guard exit 2 for Bash: cp x docs/team/risk-policy.json@@Sprint 4 track K2
 ML04@@hooks/contract-hooks.mjs@@if (a.v.text === '-t' || a.v.text === '--target-directory')@@if (false)@@K2: guard exit 2 for Bash: cp -t docs/team/evidence x.json@@Sprint 4 track K2
 ML05@@hooks/contract-hooks.mjs@@if (name === 'dd')@@if (false)@@K2: guard exit 2 for Bash: dd if=x.json@@Sprint 4 track K2
 ML06@@hooks/contract-hooks.mjs@@if (s === '' || s === '.') continue;@@if (s === '') continue;@@K2: guard exit 2 for Bash: echo {} > docs/team/./evidence@@Sprint 4 track K2
@@ -331,7 +331,7 @@ ML08@@hooks/contract-hooks.mjs@@pat += s.replace(/\[[^\]/]*\]/g, ONE).replace(/\
 ML09@@hooks/contract-hooks.mjs@@    if (c === '"') {@@    if (false) {@@K2: guard exit 0 for Bash: node scripts/board.mjs move APP-001 blocked --by ios-developer --detail "the actor field is wrong"@@Sprint 4 track K2
 ML10@@hooks/contract-hooks.mjs@@if (c === '\n' && heredocs.length) {@@if (false) {@@K2: guard exit 0 for Bash: git commit -F - <<EOF@@Sprint 4 track K2
 ML11@@hooks/contract-hooks.mjs@@\b(actor|evidence|events)\.mjs\b/g@@\b(actor|evidence)\.mjs\b/g@@import('./scripts/lib/events.mjs')@@Sprint 4 track K2
-ML12@@hooks/contract-hooks.mjs@@if (['Grep', 'Glob'].includes(payload.tool_name) && input.path) {@@if (false) {@@K2: guard exit 2 for Glob: @@Sprint 4 track K2
+ML12@@hooks/contract-hooks.mjs@@if (searchFrom) {@@if (false) {@@K2: guard exit 2 for Glob: @@Sprint 4 track K2
 ML13@@hooks/contract-hooks.mjs@@Do not spawn ${role} yourself: stop and return BLOCKED@@run node spawn-prompt.mjs compose --root x@@K2: a subagent's refused spawn is told the orchestrator composes@@Sprint 4 track K2
 ML14@@hooks/contract-hooks.mjs@@if (hits(target, [], G[key]))@@if (false)@@K2: guard exit 2 for Write: @@Sprint 4 track K2
 ML15@@hooks/contract-hooks.mjs@@const { hit, writes } = inlineWrite(body);@@const { hit, writes } = { hit: '', writes: false };@@writeFileSync('docs/team/capabilities.json'@@Sprint 4 track K2
@@ -404,7 +404,7 @@ MQ02@@hooks/contract-hooks.mjs@@else if (fed === null) refuse(@@else if (false) 
 MQ03@@hooks/contract-hooks.mjs@@for (const w of raw) for@@for (const w of []) for@@MQ: guard exit 2 — command substitution minting@@Sprint 5 track P2
 MQ04@@hooks/contract-hooks.mjs@@if (raw.stdinExpands) for@@if (false) for@@MQ: guard exit 2 — unquoted heredoc substitution runs@@Sprint 5 track P2
 MQ05@@hooks/contract-hooks.mjs@@srcs.forEach((s) => path(under(dest,@@srcs.forEach((s) => (under(dest,@@MQ: guard exit 2 — cp a .studio-policy.json into the root@@Sprint 5 track P2
-MQ06@@hooks/contract-hooks.mjs@@if (into && isDir(w.v.pat, here, G.teamDir[0])) {@@if (false) {@@MQ: guard exit 2 — cp into docs/team/@@Sprint 5 track P2
+MQ06@@hooks/contract-hooks.mjs@@if (into && heres().some((h) => isDir(w.v.pat, h, G.teamDir[0]))) {@@if (false) {@@MQ: guard exit 2 — cp into docs/team/@@Sprint 5 track P2
 MQ07@@hooks/contract-hooks.mjs@@(tree ? segsRel : segsHit)(q, toSegs(g))@@segsHit(q, toSegs(g))@@MQ: guard exit 2 — rm -rf docs/team@@Sprint 5 track P2
 MQ08@@hooks/contract-hooks.mjs@@if (['rm', 'mv', 'restore', 'checkout', 'switch'].includes(sub))@@if (false)@@MQ: guard exit 2 — git restore the profile@@Sprint 5 track P2
 MQ09@@hooks/contract-hooks.mjs@@if (!out1 && !pl[0]) {@@if (false) {@@MQ: guard exit 2 — patch from a file on stdin@@Sprint 5 track P2
@@ -412,7 +412,7 @@ MQ10@@hooks/contract-hooks.mjs@@texts.forEach((t) => patchPaths(t).map(at).forEa
 MQ11@@hooks/contract-hooks.mjs@@if (pure(cmdWords[0])) refuse(@@if (false) refuse(@@MQ: guard exit 2 — a bare "$@" verb@@Sprint 5 track P2
 MQ12@@hooks/contract-hooks.mjs@@positionals.some((w) => WILD.test(w.v.pat))@@false@@MQ: guard exit 2 — board.mjs with a computed subcommand@@Sprint 5 track P2
 MQ13@@hooks/contract-hooks.mjs@@part('sub', ''); return j + 1; } // C4G-L1@@part('q', ''); return j + 1; } // C4G-L1@@MQ: guard exit 2 — ANSI-C quoted subcommand@@Sprint 5 track P2
-MQ14@@hooks/contract-hooks.mjs@@if ([...roots, DOT].some((w) => hits(w.v.pat, here, G.transcripts, true)))@@if (false)@@MQ: guard exit 2 — grep -r from home@@Sprint 5 track P2
+MQ14@@hooks/contract-hooks.mjs@@if ([...roots, DOT].some((w) => hitsH(w.v.pat, G.transcripts, true)))@@if (false)@@MQ: guard exit 2 — grep -r from home@@Sprint 5 track P2
 MQ15@@hooks/contract-hooks.mjs@@const DARWIN = process.platform === 'darwin';@@const DARWIN = false;@@MQ: guard exit 2 — docs/Team case variant (macOS)@@Sprint 5 track P2
 MQ16@@hooks/contract-hooks.mjs@@const ps = p.some((s) => WILD.test(s)) ? [p] : [p, toSegs(realish(`/${p.join('/')}`))];@@const ps = [p];@@MQ: guard exit 2 — an absolute path through a symlinked dir@@Sprint 5 track P2
 MQ17@@hooks/contract-hooks.mjs@@if (script === 'audit-anchor.mjs' && after.some((w) => w.v.text === 'create'))@@if (false)@@MQ: guard exit 2 — audit-anchor.mjs create@@Sprint 5 track P2
@@ -462,6 +462,24 @@ MT28@@hooks/contract-hooks.mjs@@if (name === 'openssl')@@if (false)@@MT: guard e
 MT29@@hooks/contract-hooks.mjs@@'scp', 'ditto'].includes(name)@@'scp'].includes(name)@@MT: guard exit 2 — writer: ditto@@Sprint 6 track Q2
 MT30@@hooks/contract-hooks.mjs@@if (/^(bsd|g)?tar$/.test(name) &&@@if (/^tar$/.test(name) &&@@MT: guard exit 2 — writer: bsdtar@@Sprint 6 track Q2
 MT31@@hooks/contract-hooks.mjs@@vars.PWD = hereAbs() ? lit(hereAbs()).v : { text: '', pat: ANY };@@vars.PWD = { text: '', pat: ANY };@@MT: guard exit 0 — cd src && rm -rf "$PWD/build"@@Sprint 6 track Q2
+MU01@@hooks/contract-hooks.mjs@@if (!chained && pend) { if (!pend.sure || orElse) alts = [...alts, ...pend.cwds]; pend = null; }@@if (!chained && pend) { pend = null; }@@MU: guard exit 2 — cd /nonexistent; rm evidence@@PR46 review
+MU02@@hooks/contract-hooks.mjs@@else if (ch === ')') { if (stack.length) ({ here, alts, pend, pwd: vars.PWD } = stack.pop()); }@@else if (ch === ')') { stack.pop(); }@@MU: guard exit 2 — (cd /tmp); rm -rf evidence@@PR46 review
+MU03@@hooks/contract-hooks.mjs@@if (!pend.sure || orElse)@@if (!pend.sure)@@MU: guard exit 2 — cd /tmp || rm the token registry@@PR46 review
+MU04@@hooks/contract-hooks.mjs@@abs && (abs.includes('/mktemp.anon') || (existsSync(abs)@@abs && ((existsSync(abs)@@MU: guard exit 0 — T=$(mktemp -d); cd "$T"; git checkout .@@PR46 review
+MU05@@hooks/block-shared-tree-destructive-git.sh@@if (index(WV[w], " " W[i] " ")) i++@@if (0) i++@@MU: dirty tree blocks a wrapped git: sudo -u me git clean -fdx@@PR46 review
+MU06@@hooks/block-shared-tree-destructive-git.sh@@for (k = WP[w]; k > 0 && i <= nw; k--) i++@@for (k = 0; k > 0 && i <= nw; k--) i++@@MU: dirty tree blocks a wrapped git: timeout 30 git reset --hard@@PR46 review
+MU07@@hooks/contract-hooks.mjs@@'.studio-policy.json', 'docs/team/actors.json', '.studio-stop'];@@'.studio-policy.json'];@@MU: guard exit 2 — echo > .studio-stop@@PR46 review
+MU08@@hooks/contract-hooks.mjs@@const head = (headLine(report).match(/^(DONE|BLOCKED):\s*([^\s*_]+)/) || []);@@const head = (report.match(/^(DONE|BLOCKED):\s*([^\s*_]+)/m) || []);@@MU: a report whose BLOCKED: is not its first line is held to the DONE contract@@PR46 review
+MU09@@scripts/lib/contract.mjs@@.replace(/^[\s*_#>]+/, '').trim();@@.trim();@@MU: ...and **BLOCKED: APP-1** as the first line is a BLOCKED report@@PR46 review
+MU10@@hooks/require-review-verdict.sh@@sub(/^[ \t\r*_#>]+/, "");@@sub(/^[ \t\r]+/, "");@@MU: the reviewer hook takes a leading-newline **BLOCKED: APP-001** as the refusal@@PR46 review
+MU11@@scripts/lib/evidence.mjs@@if (qa) return QA_DOCS.test(f);@@if (false) return QA_DOCS.test(f);@@MU: the QA- fast path takes the test plan, bugs, evidence, daily and journeys@@PR46 review
+MU12@@hooks/contract-hooks.mjs@@?.owner === role)) allow();@@?.owner === role)) {}@@MU: product-manager clarifying APP-1 (an ios-developer ticket) is not policed as ticket work@@PR46 review
+MU13@@hooks/contract-hooks.mjs@@? String(input.path || cwd) : '';@@? String(input.path || '') : '';@@MU: Grep with no path from an ancestor of ~/.claude/projects is refused@@PR46 review
+MU14@@hooks/guard-gate-writes.sh@@case $_P in *'"agent_id"'*) ;; *) exit 0 ;; esac@@:@@MU: a main-session tool call never starts node in guard-gate-writes@@PR46 review
+MU15@@scripts/wave-integrate.mjs@@const tokenFor = (role, id) => inlineTokenFlag(ROOT, role, id);@@const tokenFor = (role, id) => ` --token "$(${BOARD_CLI} actor mint --role ${role} --ticket ${id})"`;@@MU: wave-integrate and ship-gate print the mint through inlineTokenFlag, not a copy@@PR46 review
+MU16@@scripts/lib/evidence.mjs@@inlineTokenFlag(f.root ? resolve(String(f.root)) : evidenceRoot(),@@inlineTokenFlag(evidenceRoot(),@@MU: evidence.mjs token-flag --root reads that project's policy@@PR46 review
+MU17@@scripts/lib/evidence.mjs@@if (mergedHead && !(mergedHead === head || isAncestor(git, mergedHead, head))) return fail(@@if (false) return fail(@@MU: a journey PASS on an ancestor made before the ticket's merged commit is refused@@PR46 review
+MU18@@scripts/wave-integrate.mjs@@if (isQaDocs(t)) continue;@@if (/^QA-/i.test(t.id)) continue;@@MU: wave-integrate takes a code-changing QA- ticket at qa into the wave@@PR46 review
 CATALOGUE
 }
 

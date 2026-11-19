@@ -146,9 +146,19 @@ function pos(A, na, P,    j, np, dd) {
 }
 function anywhole(P, np,    j) { for (j = 1; j <= np; j++) if (whole(P[j])) return 1; return 0 }
 
-# First word that is actually run: past env assignments and shell keywords/wrappers.
-function cmdat(W, nw,    i) {
-  for (i = 1; i <= nw && (W[i] ~ /^[A-Za-z_][A-Za-z0-9_]*=/ || W[i] in SKIP); i++) ;
+# First word that is actually run: past env assignments, shell keywords, and wrapper commands WITH
+# their flags, flag values and leading operands (PR46-2: `timeout 30 git …`, `env -i git …`,
+# `sudo -u me git …`, `xargs -n1 git …`, `flock /tmp/l git …` all run git).
+function cmdat(W, nw,    i, w, k) {
+  i = 1
+  while (i <= nw) {
+    if (W[i] ~ /^[A-Za-z_][A-Za-z0-9_]*=/ || W[i] in SKIP) { i++; continue }
+    w = W[i]; sub(/^.*\//, "", w)
+    if (!(w in WRAP)) break
+    for (i++; i <= nw && (W[i] ~ /^-/ || (w == "env" && W[i] ~ /^[A-Za-z_][A-Za-z0-9_]*=/)); i++)
+      if (index(WV[w], " " W[i] " ")) i++
+    for (k = WP[w]; k > 0 && i <= nw; k--) i++
+  }
   return i
 }
 
@@ -377,7 +387,18 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k) {
   }
 }
 
-BEGIN { split("command exec nohup time env sudo then do else elif if while until ! { }", t, " "); for (k in t) SKIP[t[k]] = 1 }
+BEGIN {
+  split("then do else elif if while until ! { }", t, " "); for (k in t) SKIP[t[k]] = 1
+  split("command exec nohup time env sudo doas nice timeout gtimeout xargs stdbuf ionice chrt caffeinate flock builtin", t, " "); for (k in t) WRAP[t[k]] = 1
+  # Wrapper flags that take a separate value, and how many operands come before the command.
+  WV["env"] = " -u -C -S --unset --chdir --split-string "; WV["exec"] = " -a "
+  WV["sudo"] = " -u -g -C -h -p -D -r -t -U --user --group --host --prompt --chdir --role --type --other-user "
+  WV["doas"] = " -u -C "; WV["nice"] = " -n --adjustment "; WV["timeout"] = " -s -k --signal --kill-after "
+  WV["gtimeout"] = WV["timeout"]; WV["xargs"] = " -n -I -J -L -P -d -s -E -a -R -S --max-args --replace --max-lines --max-procs --delimiter --max-chars --eof --arg-file "
+  WV["stdbuf"] = " -i -o -e --input --output --error "; WV["ionice"] = " -c -n -p --class --classdata --pid "
+  WV["caffeinate"] = " -t -w "; WV["flock"] = " -w -E --timeout --conflict-exit-code "
+  WP["timeout"] = 1; WP["gtimeout"] = 1; WP["chrt"] = 1; WP["flock"] = 1
+}
 { s = s (NR > 1 ? "\n" : "") $0 }
 END { parse(s, base) }
 ')

@@ -42,13 +42,11 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 # requires tokens — a shell variable minted in one Bash call does not survive to the next.
 # C3W-8: only the orchestrator's OWN role (tech-manager) is printed with a mint. An agent role's token
 # comes in its composed prompt; printing a mint for it is the self-attestation tokens exist to stop.
+# PR46-10: the mint form is lib/actor.mjs's inlineTokenFlag (via evidence.mjs token-flag), never a copy of it.
 token_for() {  # <role> <ticket>
+  if [ "$1" = tech-manager ]; then node "$HERE/lib/evidence.mjs" token-flag --root "$ROOT" --role "$1" --ticket "$2" 2>/dev/null; return 0; fi
   grep -q '"requireActorTokens"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null || return 0
-  if [ "$1" = tech-manager ]; then
-    printf ' --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role %s --ticket %s)"' "$1" "$2"
-  else
-    printf ' --token "<the %s token for %s from its composed prompt — none? re-spawn the agent with a freshly composed prompt>"' "$1" "$2"
-  fi
+  printf ' --token "<the %s token for %s from its composed prompt — none? re-spawn the agent with a freshly composed prompt>"' "$1" "$2"
 }
 
 BLOCKERS=""

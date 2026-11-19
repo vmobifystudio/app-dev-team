@@ -40,14 +40,20 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { contractFor, gateHeaderOf } from '../scripts/lib/contract.mjs';
+import { contractFor, gateHeaderOf, headLine } from '../scripts/lib/contract.mjs';
 import { redact } from '../scripts/lib/redact.mjs';
+import { key, parseEventLog, reduce } from '../scripts/lib/events.mjs';
 
 // The scripts this hook runs. It lives in hooks/ so the plugin's script count stays what it says.
 const HERE = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
 const allow = () => process.exit(0);
 const block = (msg) => { process.stderr.write(`${msg.trimEnd()}\n`); process.exit(2); };
 const REVIEW_ROLES = new Set(['code-reviewer']);
+// PR46-6: roles whose every board-naming spawn is ticket work. The others (product-manager, ux-architect,
+// product-designer, …) are spawned for planning too — "clarify the AC of APP-003" — so for them a
+// prompt is ticket work only when it CLAIMS a ticket (compose's own first line) or names one they own.
+const TICKET_ROLES = new Set(['qa-engineer', 'verification-engineer']);
+const CLAIMS_TICKET = /^(Work|Review|Design QA|Verify) ticket /;
 // An ID with its suffix segments (`QA-1-w1`, `APP-001-analytics`); boardTickets cuts it back to the
 // longest board ID it spells, so a verdict file name `APP-001-cycle-0` still resolves to APP-001.
 const ID_RE = /\b[A-Z][A-Z0-9]*-\d+(?:-[A-Za-z0-9]+)*/g;
@@ -118,6 +124,11 @@ function preSpawn() {
   const prompt = String(input.prompt || '');
   const tickets = boardTickets(root, prompt);
   if (!tickets.length) allow();
+  if (contract?.tier !== 'code' && !REVIEW_ROLES.has(role) && !TICKET_ROLES.has(role) && !CLAIMS_TICKET.test(headLine(prompt))) {
+    let board = new Map();
+    try { board = reduce(parseEventLog(readFileSync(join(root, 'docs', '31-board-events.jsonl'), 'utf8')).events).tickets; } catch { /* unreadable: police */ }
+    if (board.size && !tickets.some((t) => board.get(key(t))?.owner === role)) allow();
+  }
 
   const gate = spawnSync('sh', [join(HERE, 'spawn-gate.sh'), role], { cwd: root, encoding: 'utf8' });
   if (gate.status === 1) block(`BLOCKED — spawn-gate refused this ${role} spawn:\n${gate.stdout}`);
@@ -153,7 +164,8 @@ function subagentStop() {
   const report = String(payload.last_assistant_message || lastAssistantText(payload.agent_transcript_path) || '').trim();
   if (!report) allow();
 
-  const head = (report.match(/^(DONE|BLOCKED):\s*(\S+)/m) || []);
+  // PR46-4: the FIRST line decides — a `BLOCKED:` quoted further down does not exempt the report.
+  const head = (headLine(report).match(/^(DONE|BLOCKED):\s*([^\s*_]+)/) || []);
   const ticket = head[2] || (report.match(/^Ticket:\s*(\S+)/m) || [])[1] || boardTickets(root, report)[0] || '';
   const dir = join(root, 'docs', 'team', 'reports');
   const stamp = new Date().toISOString().replace(/[-:.]/g, '');
@@ -219,9 +231,10 @@ function shellCommands(src) {
   const heredocs = [];
   let cur = [];
   let word = null;
+  let ops = ''; // PR46-1: the operators (`;` `&&` `||` `(` `)` `|` newline) between the last command and the next
   const part = (t, s) => { word ||= { parts: [] }; word.parts.push(t === 'var' ? { t, name: s } : t === 'sub' ? { t, body: s } : { t, s }); };
   const endWord = () => { if (word) cur.push(word); word = null; };
-  const endCmd = () => { endWord(); if (cur.length) cmds.push(cur); cur = []; };
+  const endCmd = () => { endWord(); if (cur.length) { cur.ops = ops; ops = ''; cmds.push(cur); cur = []; } };
   // $( … ) / ` … ` / ${ … } body, balanced well enough for a guard: returns [body, next index].
   const balanced = (i, open, close) => {
     let depth = 1; let j = i;
@@ -261,7 +274,7 @@ function shellCommands(src) {
     if (c === '#' && !word) { const j = src.indexOf('\n', i); i = j < 0 ? src.length : j; continue; }
     if (/[ \t]/.test(c)) { endWord(); i++; continue; }
     if (c === '\n' && heredocs.length) { // each heredoc body belongs to the command that opened it
-      endCmd();
+      endCmd(); ops += '\n';
       let pos = i + 1;
       for (const d of heredocs.splice(0)) {
         const body = [];
@@ -278,12 +291,12 @@ function shellCommands(src) {
       i = pos; continue;
     }
     if (c === '|' && src[i + 1] !== '|') { // a pipe: remember who feeds the next command
-      endCmd(); const from = cmds[cmds.length - 1]; cur.pipedFrom = from; i += src[i + 1] === '&' ? 2 : 1; continue;
+      endCmd(); ops += '|'; const from = cmds[cmds.length - 1]; cur.pipedFrom = from; i += src[i + 1] === '&' ? 2 : 1; continue;
     }
-    if (c === '|') { endCmd(); i += 2; continue; }
+    if (c === '|') { endCmd(); ops += '||'; i += 2; continue; }
     if (/[;&\n()]/.test(c)) {
       if (c === '&' && src[i + 1] === '>') { endWord(); cur.push({ op: '>' }); i += src[i + 2] === '>' ? 3 : 2; continue; }
-      endCmd(); i++; continue;
+      endCmd(); ops += c; i++; continue;
     }
     if ((c === '>' || c === '<') && src[i + 1] === '(') { const [b, j] = balanced(i + 2, '(', ')'); part('sub', b); i = j; continue; } // <(…) runs
     if (c === '>' || c === '<') {
@@ -502,7 +515,7 @@ function writeTargets(name, rest, ctx) {
   return out;
 }
 
-const GUARDED_NAMES = ['team/evidence', 'project-profile.json', 'risk-policy.json', 'capabilities.json', '.studio-policy.json',
+const GUARDED_NAMES = ['team/evidence', 'project-profile.json', 'risk-policy.json', 'capabilities.json', '.studio-policy.json', 'actors.json', '.studio-stop',
   'actor-tokens.jsonl', '31-board-events.jsonl', '-result.json', 'ship-gate-verdict.json', 'audit-anchor.json'];
 const WRITE_CALL = /\b(writeFile(?:Sync)?|appendFile(?:Sync)?|createWriteStream|copyFile(?:Sync)?|cpSync|cp|rename(?:Sync)?|rmSync|rm|unlink(?:Sync)?|truncate(?:Sync)?|symlink(?:Sync)?|write_text|write_bytes|shutil\.\w+|os\.(?:remove|rename|replace|unlink|symlink)|open|File\.write|IO\.write|file_put_contents)\s*\(([^)]*)\)?/g;
 /** A call's argument text split at its top-level commas (quotes and brackets respected). */
@@ -621,7 +634,8 @@ function guardGateWrites() {
   const input = payload.tool_input || {};
   const cwd = realish(resolve(payload.cwd || process.cwd()));
   const TOKENS = 'docs/team/actor-tokens.jsonl';
-  const CONTROL = ['docs/team/project-profile.json', 'docs/team/risk-policy.json', 'docs/team/capabilities.json', '.studio-policy.json'];
+  // PR46-3: actors.json (the actor registry and its HMAC keys) and .studio-stop (the spawn kill switch) are control files too.
+  const CONTROL = ['docs/team/project-profile.json', 'docs/team/risk-policy.json', 'docs/team/capabilities.json', '.studio-policy.json', 'docs/team/actors.json', '.studio-stop'];
   // Evidence, tokens and results live under the studio root (evidenceRoot) — an agent's own worktree copy is not them.
   const R = realish(resolve(root));
   let common = '';
@@ -656,6 +670,12 @@ function guardGateWrites() {
     const vars = { HOME: lit(homedir()).v, TMPDIR: lit(process.env.TMPDIR || tmpdir()).v, PWD: lit(cwd).v };
     const fileBodies = {}; // `cat > x.py <<EOF` earlier in this command: what x.py will hold
     let here = toSegs(cwd);
+    // PR46-1: a `cd` that may not have run or may have failed (inside `( … )`, after `&&`/`||`, to a
+    // directory that does not exist) cannot MOVE the guard: what runs after its and-or list is checked
+    // against every cwd it could be in (`alts`), so an uncertain cd only ever adds refusals.
+    let alts = []; let pend = null; const stack = [];
+    const heres = () => [here, ...alts];
+    const hitsH = (pat, guards, tree = false) => heres().some((h) => hits(pat, h, guards, tree));
     const hereAbs = () => (here.some((s) => WILD.test(s)) ? '' : `/${here.join('/')}`);
     const read = (w) => {
       if (!w) return null;
@@ -666,19 +686,31 @@ function guardGateWrites() {
     const checkWrites = (targets) => {
       for (const { w, tree, into } of targets) {
         // `cp x docs/team/`: docs/team/ is the studio's machine state (profile, policy, tokens, results) — nothing is copied into it.
-        if (into && isDir(w.v.pat, here, G.teamDir[0])) {
+        if (into && heres().some((h) => isDir(w.v.pat, h, G.teamDir[0]))) {
           refuse('copy or move a file into docs/team/ — the studio\'s machine state (profile, policy, tokens, results)');
         }
         for (const [key, what] of WRITE_WHAT) {
-          if (hits(w.v.pat, here, G[key], tree)) {
+          if (hitsH(w.v.pat, G[key], tree)) {
             refuse(tree ? `${what.replace(/^write /, 'remove, move or overwrite ')} — not even by sweeping the directory that holds it` : what);
           }
         }
       }
     };
     const queue = shellCommands(src);
+    queue.forEach((c) => { c.top = true; });
     while (queue.length) {
       const raw = queue.shift();
+      let chained = false; let orElse = false; // runs only if the one before it succeeded (`&&`) / failed (`||`)
+      if (raw.top) {
+        for (const ch of raw.ops.replace(/&&|\|\|/g, (m) => (m === '&&' ? 'A' : 'O'))) {
+          if (ch === '(') stack.push({ here, alts, pend, pwd: vars.PWD });
+          else if (ch === ')') { if (stack.length) ({ here, alts, pend, pwd: vars.PWD } = stack.pop()); }
+          else { chained = ch === 'A'; orElse = ch === 'O'; }
+        }
+        // A cd's list has ended: its old cwds stay possible unless it surely ran (`cd x || y` — y runs only if it did not).
+        if (!chained && pend) { if (!pend.sure || orElse) alts = [...alts, ...pend.cwds]; pend = null; }
+        if (alts.length) vars.PWD = { text: '', pat: ANY };
+      }
       // Everything that RUNS is read as commands: $(…), backticks, <(…) — and, in a heredoc whose delimiter is unquoted, its $(…).
       for (const w of raw) for (const p of w.parts || []) if (p.t === 'sub' && p.body) queue.push(...shellCommands(p.body));
       if (raw.stdinExpands) for (const c of shellCommands(`"${raw.stdin.replace(/"/g, '\\"')}"`)) for (const w of c) for (const p of w.parts || []) if (p.t === 'sub' && p.body) queue.push(...shellCommands(p.body));
@@ -729,9 +761,12 @@ function guardGateWrites() {
       }
       if (name === 'cd' || name === 'pushd') {
         const t = cmdWords[1];
-        if (!t) here = toSegs(homedir());
-        else if (t.v.text === '-') here = [ANY];
-        else here = patSegs(t.v.pat.includes(ANY) || /[\u0001\u0002]/.test(t.v.pat) ? t.v.pat : t.v.text, here);
+        const before = heres();
+        const to = (h) => (!t ? toSegs(homedir()) : t.v.text === '-' ? [ANY] : patSegs(t.v.pat.includes(ANY) || /[\u0001\u0002]/.test(t.v.pat) ? t.v.pat : t.v.text, h));
+        [here, ...alts] = before.map(to);
+        const abs = hereAbs();
+        const exists = abs && (abs.includes('/mktemp.anon') || (existsSync(abs) && statSync(abs).isDirectory()));
+        pend = { cwds: [...(pend?.cwds || []), ...before], sure: !pend && raw.top && !chained && Boolean(exists) };
         vars.PWD = hereAbs() ? lit(hereAbs()).v : { text: '', pat: ANY };
         continue;
       }
@@ -802,13 +837,13 @@ function guardGateWrites() {
         || (/^(grep|egrep|fgrep|ls)$/.test(name) && rest.some((w) => /^(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive|--dereference-recursive)$/.test(w.v.text)));
       if (recursive) {
         const roots = rest.filter((w) => !w.v.text.startsWith('-'));
-        if ([...roots, DOT].some((w) => hits(w.v.pat, here, G.transcripts, true))) refuse('search a directory that holds Claude Code session transcripts (~/.claude/projects)');
+        if ([...roots, DOT].some((w) => hitsH(w.v.pat, G.transcripts, true))) refuse('search a directory that holds Claude Code session transcripts (~/.claude/projects)');
       }
       // Paths: any word naming the anchor or the transcripts.
       for (const w of cmdWords) {
         const { pat } = w.v;
-        if (hits(pat, here, G.transcripts)) refuse('read Claude Code session transcripts under ~/.claude/projects');
-        if (hits(pat, here, G.anchor)) refuse('touch the board anchor under <git dir>/studio/');
+        if (hitsH(pat, G.transcripts)) refuse('read Claude Code session transcripts under ~/.claude/projects');
+        if (hitsH(pat, G.anchor)) refuse('touch the board anchor under <git dir>/studio/');
       }
       // find: -delete sweeps its start paths; -exec/-execdir/-ok run a command on each `{}` — read that command too.
       if (name === 'find') {
@@ -816,10 +851,10 @@ function guardGateWrites() {
         for (const w of rest) { if (/^[-(!]/.test(w.v.text)) break; starts.push(w); }
         const start = starts[0] || DOT;
         if (rest.some((w) => w.v.text === '-delete')) starts.concat(starts.length ? [] : [DOT]).forEach((w) => {
-          for (const [key, what] of WRITE_WHAT) if (hits(w.v.pat, here, G[key], true)) refuse(what);
+          for (const [key, what] of WRITE_WHAT) if (hitsH(w.v.pat, G[key], true)) refuse(what);
         });
         rest.forEach((w, i) => {
-          if (/^-(fprint0?|fprintf|fls)$/.test(w.v.text) && rest[i + 1]) for (const [key, what] of WRITE_WHAT) if (hits(rest[i + 1].v.pat, here, G[key])) refuse(what);
+          if (/^-(fprint0?|fprintf|fls)$/.test(w.v.text) && rest[i + 1]) for (const [key, what] of WRITE_WHAT) if (hitsH(rest[i + 1].v.pat, G[key])) refuse(what);
           if (!/^-(exec|execdir|ok|okdir)$/.test(w.v.text)) return;
           const cmd = [];
           for (let j = i + 1; j < rest.length && !/^[;+]$/.test(rest[j].v.text); j++) {
@@ -856,7 +891,7 @@ function guardGateWrites() {
         if (writes) {
           const pi = rest.findIndex((w) => /^(-[a-zA-Z]*[ecE]|--eval|--print)$/.test(w.v.text));
           for (const w of rest.filter((x, i) => !x.v.text.startsWith('-') && !(pi >= 0 && i === pi + 1))) {
-            for (const [key, what] of WRITE_WHAT) if (hits(w.v.pat, here, G[key])) refuse(`${what} — not by handing its path to a program that writes`);
+            for (const [key, what] of WRITE_WHAT) if (hitsH(w.v.pat, G[key])) refuse(`${what} — not by handing its path to a program that writes`);
           }
         }
       }
@@ -869,7 +904,8 @@ function guardGateWrites() {
   const base = tilde(String(input.path || '')) || cwd;
   // C4G-L5: a Glob pattern may itself start with ~ or be absolute.
   const withBase = (p) => { const t = tilde(String(p)); return isAbsolute(t) ? t : join(base, t); };
-  const candidates = [input.file_path, input.notebook_path, input.path,
+  const searchFrom = ['Grep', 'Glob'].includes(payload.tool_name) ? String(input.path || cwd) : ''; // PR46-7: no path = the cwd
+  const candidates = [input.file_path, input.notebook_path, input.path || searchFrom,
     input.pattern && payload.tool_name === 'Glob' ? withBase(input.pattern) : '',
     input.glob ? withBase(input.glob) : ''].filter(Boolean).map((p) => String(p).replace(/\\/g, '/'));
   if (!candidates.length) allow();
@@ -880,8 +916,8 @@ function guardGateWrites() {
   };
   for (const c of candidates) if (hits(asPat(c), [], G.transcripts)) refuse('read Claude Code session transcripts under ~/.claude/projects');
   // A recursive search FROM an ancestor (`Grep path: ~/.claude`) walks into the transcripts too.
-  if (['Grep', 'Glob'].includes(payload.tool_name) && input.path) {
-    const dir = realish(resolve(cwd, tilde(String(input.path))));
+  if (searchFrom) {
+    const dir = realish(resolve(cwd, tilde(searchFrom)));
     if (G.transcripts.some((t) => t.startsWith(`${dir.replace(/\/$/, '')}/`))) refuse('search a directory that holds Claude Code session transcripts (~/.claude/projects)');
   }
   if (!['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(payload.tool_name)) allow();

@@ -80,9 +80,14 @@ export const GATE_HEADERS = {
   'release-auditor': ['RELEASE AUDIT:'],
 };
 
+/** A report's first non-blank line with leading markdown (`**`, `_`, `#`, `>`) stripped — the only line a header is read from (PR46-4/8). */
+export function headLine(text) {
+  return (String(text).split('\n').find((l) => l.trim()) || '').replace(/^[\s*_#>]+/, '').trim();
+}
+
 /** The gate header `text` STARTS with (first non-blank line) for this role, or ''. */
 export function gateHeaderOf(role, text) {
-  const first = (String(text).split('\n').find((l) => l.trim()) || '').trim();
+  const first = headLine(text);
   return (GATE_HEADERS[role] || []).find((h) => first.startsWith(h)) || '';
 }
 

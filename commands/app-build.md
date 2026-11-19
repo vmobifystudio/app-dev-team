@@ -464,8 +464,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    the integration branch (`build-loop-branches.md` §Step 5 — the QA ticket). `closed` is refused
    without a `qa_passed`. After a `RUNTIME GATE: FAIL` no row in the wave gets a `qa_passed` at all.
 
-   **The `QA-` ticket is docs-only** — `docs/` prose outside `docs/team/`, plus `docs/team/journeys/<journey-id>.json`;
-   anything else (control files, build manifests, `.mdx`, files outside `docs/`) takes the review
+   **The `QA-` ticket is docs-only** — `docs/50-test-plan.md`, `docs/51-bugs.md`, `docs/54-evidence/`, `docs/daily/`, `docs/team/journeys/<journey-id>.json`;
+   anything else (any other doc, control files, build manifests, files outside `docs/`) takes the review
    path. Its return gets report-check, `done_reported`, `verify-done.sh <branch> "$BASE" --docs-only`
    and the fragment check; no `Branch:` is **REJECTED**. Review it inline (no `code-reviewer`), then
    `merged` and `closed` with `<TOKEN>` for the `QA-` ID — nobody QAs the QA pass. **Then** land its
