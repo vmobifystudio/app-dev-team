@@ -79,6 +79,14 @@ if [ -n "$ONLY" ]; then
 fi
 PASS=0
 FAIL=0
+# Fixtures commit. A CI runner has no git identity and no GECOS name ("fatal: empty ident name"),
+# so a fixture that skipped `git config user.name` passed on a laptop and died on ubuntu. A
+# default identity is set only when git cannot form one (the env vars would override a fixture's own
+# `git config`, so a machine that has an identity is left exactly as it was).
+if ! git var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
+  export GIT_AUTHOR_NAME=studio-test GIT_AUTHOR_EMAIL=studio-test@example.invalid
+  export GIT_COMMITTER_NAME=studio-test GIT_COMMITTER_EMAIL=studio-test@example.invalid
+fi
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
