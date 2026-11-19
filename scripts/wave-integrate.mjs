@@ -305,15 +305,22 @@ if (!TEST_CMD) {
 }
 
 process.stdout.write(`\n  running the wave suite ONCE on the merged tree: ${TEST_CMD}\n`);
+const headBefore = gitTry(['rev-parse', 'HEAD'], { cwd: WT }).out;
 const test = spawnSync('sh', ['-c', `. "${resolve(HERE, 'build-env.sh')}" && ${TEST_CMD}`], { cwd: WT, encoding: 'utf8' });
 const testOut = `${test.stdout || ''}${test.stderr || ''}`;
+// Codex on PR #46: a suite that rewrites tracked files (or moves HEAD) tested bytes the wave commit
+// does not contain, so its green is not the commit's — the same rule as lib/evidence.mjs's runs.
+const waveDirty = gitTry(['rev-parse', 'HEAD'], { cwd: WT }).out !== headBefore
+  || Boolean(gitTry(['status', '--porcelain', '--untracked-files=no'], { cwd: WT }).out);
 
 // The SAME three-way split every other gate here uses, and for the same reason: a missing toolchain
 // and a failing assertion are different sentences, and conflating them sends developers to fix bugs
 // that do not exist (DR4-001). ONE definition, shared with verify-done.sh: lib/test-evidence.mjs —
 // which runner shapes count (W1: Jest, Vitest, pytest, go test, Gradle) and why zero tests or a
 // bare keyword is never green (G-F5).
-const run = classifyTestRun(test.status, testOut);
+const run = waveDirty
+  ? { verdict: 'cannot-run', why: 'the suite changed tracked files (or moved HEAD) in the wave tree — it tested code that is not the wave commit. Make the suite leave tracked files alone, then re-run' }
+  : classifyTestRun(test.status, testOut);
 const cannotRun = run.verdict === 'cannot-run';
 const green = run.verdict === 'green';
 
@@ -364,7 +371,7 @@ function candidatesFor(output) {
 const EVIDENCE = green
   ? writeTestEvidence(ROOT, {
     producedBy: 'wave-integrate.mjs', branch: WAVE_BRANCH, base: BASE, head: gitTry(['rev-parse', WAVE_BRANCH]).out,
-    mode: 'tests', command: TEST_CMD, commandSource: flags['test-command'] ? 'caller' : 'profile', exitCode: test.status, output: testOut,
+    mode: 'tests', command: TEST_CMD, commandSource: flags['test-command'] ? 'caller' : 'profile', exitCode: test.status, output: testOut, dirty: waveDirty,
   })
   : '';
 // W2-10: printed commands are runnable as printed — the plugin path, and under requireActorTokens

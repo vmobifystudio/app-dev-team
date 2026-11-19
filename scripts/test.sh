@@ -11886,6 +11886,23 @@ MUW="$MU/wave"; mkdir -p "$MUW/docs/team" "$MUW/docs/53-reviews"
 grep -q 'qa/QA-1-w1' "$TMP/muw.txt" && ok "MU: wave-integrate takes a code-changing QA- ticket at qa into the wave" \
   || bad "MU: wave-integrate takes a code-changing QA- ticket at qa into the wave" "$(head -5 "$TMP/muw.txt")"
 
+# Codex (PR #46) — a wave whose suite rewrites tracked files tested bytes the wave commit lacks.
+MUWD="$MU/wave-dirty"; cp -R "$MUW" "$MUWD"; MUWC="$MU/wave-clean"; cp -R "$MUW" "$MUWC"
+( cd "$MUWD" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command "echo changed > harness.sh; printf '# tests 1\n# pass 1\n'" ) >"$TMP/muwd.txt" 2>&1
+[ $? = 2 ] && grep -q 'changed tracked files' "$TMP/muwd.txt" && ok "MU: a wave suite that rewrites a tracked file is CANNOT EVALUATE, not GREEN" \
+  || bad "MU: a wave suite that rewrites a tracked file is CANNOT EVALUATE, not GREEN" "$(grep -E 'WAVE RESULT|Why' "$TMP/muwd.txt" | head -3)"
+( cd "$MUWC" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command "printf '# tests 1\n# pass 1\n'" ) >"$TMP/muwc.txt" 2>&1
+[ $? = 0 ] && grep -q 'WAVE RESULT: GREEN' "$TMP/muwc.txt" && ok "MU: ...and a suite that leaves tracked files alone is GREEN" \
+  || bad "MU: ...and a suite that leaves tracked files alone is GREEN" "$(grep -E 'WAVE RESULT|Why' "$TMP/muwc.txt" | head -3)"
+
+# Codex (PR #46) — the board's integration branch is the DECLARED one, not develop-if-it-exists.
+MUIB="$MU/ib"; mkdir -p "$MUIB/docs"
+( cd "$MUIB" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m i && git branch develop ) >/dev/null 2>&1
+muib() { ( cd "$MUIB" && node -e 'import(process.argv[1]).then((m) => process.stdout.write(m.integrationBase(m.gitAt(process.cwd())) || "-"))' "$HERE/lib/integration.mjs" ); }
+[ "$(muib)" = develop ] && ok "MU: with no strategy doc the board's integration branch is still develop-first" || bad "MU: with no strategy doc the board's integration branch is still develop-first" "$(muib)"
+printf 'Integration branch: main\n' > "$MUIB/docs/23-git-strategy.md"
+[ "$(muib)" = main ] && ok "MU: a declared 'Integration branch: main' wins over an existing develop branch" || bad "MU: a declared 'Integration branch: main' wins over an existing develop branch" "$(muib)"
+
 # --- Sprint 6 track Q2: the guard's cheap writes, the reviewer's $T idiom, QA close, case folds ---
 # C5G-1 (QA- close with code added after merged), C5G-2 (redirects with no command word, `<>`),
 # C5G-3 / FB5-3 (inline programs: argv paths, path-not-content), C5G-4 (writers), C5G-5 (classifier

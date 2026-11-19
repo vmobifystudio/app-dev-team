@@ -6,9 +6,12 @@
  * `closed` (is the code actually integrated). Three readers with three matchers would disagree on
  * the first ticket whose branch name is unusual, so the matcher lives here.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** A git runner bound to `cwd`: stdout trimmed on exit 0, null on any failure. */
 export function gitAt(cwd) {
@@ -18,9 +21,20 @@ export function gitAt(cwd) {
   };
 }
 
-/** `develop`, then `main`, then `master` — the flagship model integrates on develop. '' when none. */
+/**
+ * The branch DECLARED in docs/23-git-strategy.md (or 20-architecture.md), resolved by the one
+ * resolver wave-integrate lands on (integration-branch.sh) — else `develop`, then `main`, then
+ * `master`. Codex on PR #46: a project declaring `main` that still had a `develop` branch got its
+ * waves landed on main while `closed` checked develop and refused. '' when none.
+ */
 export function integrationBase(git, explicit = '') {
   if (explicit) return explicit;
+  const top = git(['rev-parse', '--show-toplevel']);
+  if (top) {
+    const r = spawnSync('sh', [resolve(HERE, '..', 'integration-branch.sh')], { cwd: top, encoding: 'utf8' });
+    const name = (r.stdout || '').trim();
+    if (r.status === 0 && name && /\(declared in /.test(r.stderr || '')) return name;
+  }
   for (const candidate of ['develop', 'main', 'master']) {
     if (git(['rev-parse', '--verify', '--quiet', candidate]) !== null) return candidate;
   }

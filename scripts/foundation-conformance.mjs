@@ -23,6 +23,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// A CI runner has no git identity ("fatal: empty ident name"), and the scripts these sandboxes run
+// commit. Set one only when git cannot form its own, so a configured machine is left as it was
+// (same rule as scripts/test.sh).
+try { execFileSync('git', ['var', 'GIT_COMMITTER_IDENT'], { stdio: 'ignore' }); } catch {
+  Object.assign(process.env, { GIT_AUTHOR_NAME: 'studio-test', GIT_AUTHOR_EMAIL: 'studio-test@example.invalid', GIT_COMMITTER_NAME: 'studio-test', GIT_COMMITTER_EMAIL: 'studio-test@example.invalid' });
+}
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const only = process.argv.slice(2).filter((a) => /^I-\d+$/.test(a));

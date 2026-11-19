@@ -480,6 +480,8 @@ MU15@@scripts/wave-integrate.mjs@@const tokenFor = (role, id) => inlineTokenFlag
 MU16@@scripts/lib/evidence.mjs@@inlineTokenFlag(f.root ? resolve(String(f.root)) : evidenceRoot(),@@inlineTokenFlag(evidenceRoot(),@@MU: evidence.mjs token-flag --root reads that project's policy@@PR46 review
 MU17@@scripts/lib/evidence.mjs@@if (mergedHead && !(mergedHead === head || isAncestor(git, mergedHead, head))) return fail(@@if (false) return fail(@@MU: a journey PASS on an ancestor made before the ticket's merged commit is refused@@PR46 review
 MU18@@scripts/wave-integrate.mjs@@if (isQaDocs(t)) continue;@@if (/^QA-/i.test(t.id)) continue;@@MU: wave-integrate takes a code-changing QA- ticket at qa into the wave@@PR46 review
+MU19@@scripts/wave-integrate.mjs@@const run = waveDirty@@const run = false@@MU: a wave suite that rewrites a tracked file is CANNOT EVALUATE, not GREEN@@PR46 review
+MU20@@scripts/lib/integration.mjs@@if (r.status === 0 && name && /\(declared in /.test(r.stderr || '')) return name;@@void name;@@MU: a declared 'Integration branch: main' wins over an existing develop branch@@PR46 review
 CATALOGUE
 }
 
