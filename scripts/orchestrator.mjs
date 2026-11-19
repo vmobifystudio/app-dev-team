@@ -67,6 +67,7 @@ import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import { parseEventLog, reduce, validate, key } from './lib/events.mjs';
 import { ROLES_IN_MATRIX } from './lib/capabilities.mjs';
 import { BUILD_SPAWNABLE_OWNERS } from './lib/board.mjs';
+import { routeFiles } from './lib/risk.mjs';
 
 const HERE_SCRIPTS = dirname(fileURLToPath(import.meta.url));
 
@@ -231,6 +232,18 @@ function cmdExplain() {
     process.stdout.write(`    ${o.gated ? 'GATE ' : '     '}${o.event.padEnd(17)} by ${who}\n`);
     if (o.earned_by) process.stdout.write(`         ${' '.repeat(17)}    earned by: ${o.earned_by}\n`);
   }
+  // W2-10: under requireActorTokens every GATE line above needs a token minted in the SAME command.
+  let tokens = false;
+  try { tokens = JSON.parse(readFileSync(resolve(ROOT, '.studio-policy.json'), 'utf8')).requireActorTokens === true; } catch { /* no policy */ }
+  // C3W-8: a mint is printed for the orchestrator's own role only. An agent role's token is in its
+  // composed prompt; one that lacks it is re-spawned with a fresh compose, never handed a mint.
+  if (tokens && options.some((o) => o.gated)) {
+    process.stdout.write('\n  every GATE event above needs a --token:\n' +
+      '    by tech-manager (you, the orchestrator) — minted in the same command:\n' +
+      `      --token "$(node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket ${state.id})"\n` +
+      '    by an agent role — the token in that agent\'s composed prompt. An agent without one is re-spawned\n' +
+      '      with a freshly composed prompt (spawn-prompt.mjs compose); never mint for it.\n');
+  }
 
   // WHY SOMETHING IS *NOT* LEGAL IS THE MORE USEFUL HALF. An agent that knows the next step still
   // does not know why the step it wanted was refused, and that is where the loop actually stalls.
@@ -319,7 +332,11 @@ function movement(tickets, events) {
     // that looks identical to a careful one, round after round, with a friendly note about it.
     //
     // Round one is unaffected: nothing has ten events behind it yet.
-    const lastIndex = events.map((e, i) => (key(e.ticket) === key(t.id) ? i : -1)).filter((i) => i >= 0).pop();
+    // C4W-5: the clock starts at the LATER of the ticket's own last event and its dependencies' last
+    // event — a dependent becomes ready the moment its last dependency reaches qa/done, and counting
+    // from its own `created` reported it STALLED in the very round it became claimable.
+    const mine = new Set([key(t.id), ...(t.dependsOn || []).map(key)]);
+    const lastIndex = events.map((e, i) => (mine.has(key(e.ticket)) ? i : -1)).filter((i) => i >= 0).pop();
     const since = lastIndex === undefined ? events.length : events.length - 1 - lastIndex;
     if (since >= STALL_EVENTS && !deps.length) {
       stalled.push({ id: t.id, status: isUnclaimed ? 'never claimed' : t.status, since });
@@ -380,8 +397,17 @@ function cmdRound() {
     // file's own header argues against. Its headline rides along, so CLEAR never stands in for
     // CANNOT EVALUATE without saying which it was.
     const headline = (r.stdout || '').split('\n').find((l) => /^[A-Z ]+STATUS: /.test(l.trim()));
-    const carried = code === 0 && headline && !/: PASS\b/.test(headline) ? ` — ${headline.trim()} (advisory: this project has not armed it)` : '';
-    lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}` : code === 2 ? ` — ${s.unknown}` : carried}`);
+    // C3W-10: the step's OWN reason rides along — its first stderr line, else the first detail line
+    // after its headline (`gh run list failed: …`, `no integration branch declared`, the RESULT line).
+    // A generic "could not be asked" sent the operator re-running the step to learn what it said.
+    const out = (r.stdout || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    const detail = out.find((l) => /^RESULT: (BLOCKED|CANNOT EVALUATE)/.test(l))
+      || out.slice(headline ? out.indexOf(headline.trim()) + 1 : 0).find((l) => !/^(PASS|CLEAR)\b/.test(l));
+    // C5W-11: the WHOLE stderr reason, not its first line — "could not be resolved:" alone cut off the remedy.
+    const reason = (r.stderr || '').split('\n').map((l) => l.trim()).filter(Boolean).join(' ') || detail || '';
+    const why = reason ? ` [${reason.slice(0, 600)}]` : '';
+    const carried = code === 0 && headline && !/: PASS\b/.test(headline) ? ` — ${headline.trim()} (advisory: this project has not armed it)${why}` : '';
+    lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}${why}` : code === 2 ? ` — ${s.unknown}${why}` : carried}`);
   }
 
   process.stdout.write('ROUND PRECONDITIONS\n\n' + lines.join('\n') + '\n\n');
@@ -497,6 +523,26 @@ function cmdRound() {
     }
   }
 
+  // UNROUTED RISK (W2-14). `board.mjs add` derives risk only when risk-policy.json already exists,
+  // so tickets planned before /app-init wrote the policy carry `risk: null` — and review_requested's
+  // high/critical guard and the reviewer model choice treat null as harmless. The merge still routes
+  // the actual diff (board.mjs mergeRisk); this names the tickets that ran blind until then.
+  {
+    let policy = null;
+    try { policy = JSON.parse(readFileSync(resolve(ROOT, 'docs/team/risk-policy.json'), 'utf8')); } catch { /* none: nothing to route against */ }
+    if (policy && Array.isArray(policy.rules)) {
+      const unrouted = [...tickets.values()].filter((t) => !TERMINAL.has(t.status) && !t.meta?.risk);
+      if (unrouted.length) {
+        process.stdout.write(`  RISK — ${unrouted.length} ticket(s) have no planned risk (created before risk-policy.json existed, or with no --file):\n`);
+        for (const t of unrouted.slice(0, 10)) {
+          const r = (t.meta?.files || []).length ? routeFiles(policy, t.meta.files) : null;
+          process.stdout.write(`    ${t.id}  ${r ? `would route ${r.risk} (${r.because}) — needs ${r.approvals.join(' + ') || 'no approval'}` : 'declares no files — routed only at merge, from its diff'}\n`);
+        }
+        process.stdout.write('    Treat a would-route high/critical ticket as such now (invariants, tech-lead review, runtime at the wave);\n    the merge enforces the diff\'s tier either way.\n\n');
+      }
+    }
+  }
+
   // INTENT DRIFT, REPORTED IN THE ROUND THAT CREATES IT (EE-009).
   //
   // `trace.mjs` walks goal -> outcome -> requirement -> criterion -> ticket -> test -> analytics and
@@ -569,6 +615,12 @@ function cmdRound() {
  *   the human submission      I-12. No executable path submits or publishes, and this is a
  *                             read-only reporter, not an exception to that.
  */
+/** C4W-13: the RESULT line names every non-clear step by state, so "CANNOT EVALUATE" (worst wins) never hides a BLOCKED one. */
+function stepTally(byState) {
+  const part = (code, label) => (byState[code].length ? `${label}: ${byState[code].join(', ')}` : '');
+  return [part(1, 'BLOCKED'), part(2, 'CANNOT EVALUATE')].filter(Boolean).join('; ');
+}
+
 function cmdShip() {
   const steps = [
     { name: 'board', argv: [resolve(HERE_SCRIPTS, 'board-doctor.mjs'), resolve(ROOT, 'docs/31-board.md')],
@@ -584,6 +636,7 @@ function cmdShip() {
 
   let worst = 0;
   const lines = [];
+  const byState = { 0: [], 1: [], 2: [] };
   for (const s of steps) {
     const isShell = s.argv[0].endsWith('.sh');
     const r = isShell
@@ -595,7 +648,20 @@ function cmdShip() {
     const code = r.status === 0 ? 0 : r.status === 1 ? 1 : 2;
     worst = Math.max(worst, code);
     const state = code === 0 ? 'CLEAR' : code === 1 ? 'BLOCKED' : 'CANNOT EVALUATE';
+    byState[code].push(s.name);
     lines.push(`  ${state.padEnd(16)} ${s.name}${code === 1 ? ` — ${s.blocked}` : code === 2 ? ` — ${s.unknown}` : ''}`);
+    // W2-20: relay the sub-gate's OWN reason lines — "read its lines verbatim" is useless when
+    // nobody printed them. Only the lines that state a non-pass, capped so one gate cannot bury the rest.
+    if (code !== 0) {
+      const why = `${r.stdout || ''}\n${r.stderr || ''}`.split('\n')
+        .filter((l) => /BLOCKED|STALE|CANNOT|UNKNOWN|FAIL|MISSING|REFUSED|DIRTY/.test(l) && !/^\s*(VERDICT|RESULT):/.test(l))
+        .slice(0, 12);
+      for (const l of why) lines.push(`      | ${l.trim()}`);
+    }
+    // C5W-1: a waived gate must never look like a passed one — its WAIVED line is relayed even on CLEAR.
+    for (const l of `${r.stdout || ''}`.split('\n').filter((x) => /WAIVED/.test(x) && (code === 0 || !/BLOCKED|STALE|CANNOT|UNKNOWN|FAIL|MISSING|REFUSED|DIRTY/.test(x))).slice(0, 6)) {
+      lines.push(`      | ${l.trim()}`);
+    }
   }
 
   process.stdout.write('SHIP PRECONDITIONS\n\n' + lines.join('\n') + '\n\n');
@@ -604,8 +670,8 @@ function cmdShip() {
       ? '  All CLEAR. Still to do by hand: the runtime gate, and the human submission decision.\n' +
         '  Nothing here submits or publishes anything — that boundary is constitutional (I-12).\n'
       : worst === 1
-        ? '  RESULT: BLOCKED — do not release. Fix what is named above.\n'
-        : '  RESULT: CANNOT EVALUATE — a precondition could not be checked. This is NOT a pass.\n'
+        ? `  RESULT: BLOCKED (${stepTally(byState)}) — do not release. Fix what is named above.\n`
+        : `  RESULT: CANNOT EVALUATE (worst wins — ${stepTally(byState)}) — a precondition could not be checked. This is NOT a pass;${byState[1].length ? ' fix the BLOCKED step(s) too, they fail whatever the unknown one says.' : ''}\n`
   );
   process.exit(worst);
 }

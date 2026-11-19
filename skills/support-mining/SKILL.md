@@ -1,9 +1,11 @@
 ---
 name: support-mining
-description: Use when turning store reviews, support threads, crash clusters or feedback into ranked product findings — by data-analyst post-launch, and by product-researcher when existing user evidence is the question. A review-mining pass, not a standing role.
+description: On an app-dev-team project, use to turn store reviews, support threads, crash clusters or feedback into ranked product findings. Used by data-analyst post-launch and by product-researcher.
 ---
 
 # Support mining
+
+A review-mining pass, not a standing role.
 
 Users describe symptoms, in their own words, having already worked around the problem. This is the
 pass that turns that into something the board can act on — and the discipline that keeps it from
@@ -31,7 +33,7 @@ becoming a list of the loudest complaints.
 4. **Separate a defect from a missing feature from a misunderstanding.** All three arrive as "it
    doesn't work" and they route to three different people. A misunderstanding is a
    `content-design` finding, not a bug.
-5. **Check each cluster against `knowledge/failure-corpus.md`.** A cluster matching a known class
+5. **Check each cluster against `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md`.** A cluster matching a known class
    that already has a shipped rule is a **recurrence** — the rule did not work, and that is a
    strictly more valuable finding than the incident.
 

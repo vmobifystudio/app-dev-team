@@ -1,6 +1,6 @@
 ---
 name: policy-checker
-description: Validate project privacy, security, licensing, accessibility, release, and waiver policies with explicit evidence.
+description: On an app-dev-team project, use when a change touches privacy, security, licensing, accessibility, release or waiver policy (.studio-policy.json), to check it with explicit evidence. Used by code-reviewer before approving such a diff.
 ---
 
 # Policy checker

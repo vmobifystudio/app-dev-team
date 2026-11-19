@@ -1,4 +1,13 @@
+---
+description: Open or update a production/release-health incident on the append-only ledger, and activate incident-commander for sev1/sev2
+argument-hint: [open | update | resolve | verify] [--severity sev1..sev4] [--title "..."]
+allowed-tools: Read, Bash, Task, Agent
+---
+
 # /app-incident — record operational incidents
+
+Arguments: $ARGUMENTS — they fill the `<...>` placeholders below; a path argument replaces the
+default path shown.
 
 Use the incident ledger for production or release-health events, not a normal ticket completion:
 

@@ -17,6 +17,12 @@
  * marks `high`/`critical` cannot reach `review_requested` without at least one `--invariant`
  * recorded at creation (see `validateTransition`'s `review_requested` case in lib/events.mjs).
  *   board.mjs move  <ID> <event> --by <role> [--detail "..."]
+ *   board.mjs move  <ID> corrected --by tech-manager [--invariant "I1; I2"] [--test-profile]
+ *
+ * TEST COMMANDS ARE FROZEN (C3G-3, design C): the first gate event stamps the profile's test.fast /
+ * test.full (+ the profile's sha) on the log; a later gate event under a profile that declares
+ * different commands is refused until the orchestrator runs `corrected --test-profile`.
+ * `merged` records the commit it is about (`merged_head`); `closed` checks that commit (C3G-8).
  *   board.mjs assign <ID> --to <role> [--by <role>]
  *   board.mjs show  [ID] [--json]
  *   board.mjs render
@@ -26,7 +32,10 @@
  *
  * Events: created · claimed · assigned · done_reported · verified · verified_static · rejected ·
  *         review_requested · started · approved · changes · merged · qa_passed · qa_failed ·
- *         blocked · unblocked · closed
+ *         blocked · unblocked · reopened · closed
+ *
+ * `reopened` is founder-only (`--by founder`): blocked/review -> in_progress with one more review
+ * cycle on top of the cap.
  *
  * `verified_static` is `verified`'s honest sibling: the branch, the commits and the changed files
  * check out and every non-executable check passed, but the test suite DID NOT RUN. It unlocks
@@ -39,8 +48,8 @@
  *   2  cannot evaluate — the log or board is missing or unreadable
  */
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, realpathSync, renameSync } from 'node:fs';
+import { resolve, dirname, basename, join } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
@@ -48,7 +57,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { withFileLock } from './lib/atomic.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
-import { resolveActor } from './lib/actor.mjs';
+import { resolveActor, verifyActorToken, mintActorToken, revokeActorToken, listActorTokens, TOKEN_REGISTRY, inlineTokenFlag, founderConfirms } from './lib/actor.mjs';
+import { GATE_EVENTS } from './lib/capabilities.mjs';
+import { verifyTestEvidence, verifyQaEvidence, currentTestProfile, frozenTestProfile, sameCommands, docsOnlyDiff } from './lib/evidence.mjs';
+import { RANK, routeFiles } from './lib/risk.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
 import {
@@ -62,8 +74,14 @@ import {
   dependentsOf,
   renderBoard,
   deriveMetrics,
+  isQaDocs,
+  anchorPath,
+  checkAnchor,
+  writeAnchor,
 } from './lib/events.mjs';
 import { VERDICT_EVENTS, readVerdict } from './lib/verdict.mjs';
+import { checkApprovals } from './lib/approval.mjs';
+import { gitAt, integrationBase, ticketTip, isAncestor } from './lib/integration.mjs';
 
 const DEFAULT_LOG = 'docs/31-board-events.jsonl';
 const DEFAULT_BOARD = 'docs/31-board.md';
@@ -107,6 +125,10 @@ const die = (code, message) => {
   process.exit(code);
 };
 
+/** The ids on this board — so a branch goes to the LONGEST id it matches (lib/integration.mjs). */
+let BOARD_IDS = [];
+const boardIds = () => BOARD_IDS;
+
 /** Resolve an ID the user typed to the one on the board, whatever case either is in. */
 function resolveId(tickets, id) {
   const state = tickets.get(key(id));
@@ -141,10 +163,11 @@ const VALUE_FLAGS = new Set([
   'title', 'feature', 'owner', 'depends', 'estimate', 'spec', 'acceptance', 'notes',
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
   'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root', 'base', 'actor', 'actor-token',
-  'evidence', 'context', 'run', 'attempt', 'lease-seconds', 'verdict',
+  'evidence', 'context', 'run', 'attempt', 'lease-seconds', 'verdict', 'head',
+  'token', 'role', 'ticket', 'ttl-minutes', 'token-id',
 ]);
 
-const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die });
+const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die, listFlags: { file: ',', depends: ',', invariant: ';' } });
 
 /**
  * Every free-text field an agent supplies, filtered through the credential patterns before it is
@@ -216,8 +239,11 @@ function loadLog(logPath, { required = true } = {}) {
         `  Recover the log from version control (git checkout -- ${logPath}), then re-run.`
     );
   }
+  const anchored = checkAnchor(logPath, text, chain);
+  if (!anchored.ok) die(2, anchored.reason);
   return { events };
 }
+
 
 /**
  * Append one event, chained to everything already in the log.
@@ -306,13 +332,19 @@ function append(logPath, event) {
   // Added at the append boundary rather than at each call site, because a field every writer must
   // remember is a field some writer will forget — the lesson of `assign` dropping the idempotency
   // key three commits ago.
+  const anchored = checkAnchor(logPath, existing, chain);
+  if (!anchored.ok) die(2, `refusing to append: ${anchored.reason}`);
+  const anchor = anchorPath(logPath);
   const enveloped = {
     schema: 'board-event/v1',
     event_id: randomUUID(),
     ...event,
+    ...(anchor ? { anchored: true } : {}),
   };
   const sep = existing && !existing.endsWith('\n') ? '\n' : '';
-  appendFileSync(logPath, `${sep}${JSON.stringify({ ...enveloped, hash: chainHash(chain.tip, enveloped) })}\n`);
+  const hash = chainHash(chain.tip, enveloped);
+  appendFileSync(logPath, `${sep}${JSON.stringify({ ...enveloped, hash })}\n`);
+  if (anchor) writeAnchor(logPath, chain.chained + 1, hash);
 }
 
 /**
@@ -335,6 +367,107 @@ function stampActor(paths, flags, ticket, eventName) {
   // event into the real chain while attestation was on and the registry was intact. `root.mjs`
   // exists precisely to answer "which project is this, authoritatively" — and it was not on this
   // path at all.
+  const { root, policy } = studioPolicy();
+  const token = typeof flags.token === 'string' ? flags.token : '';
+  const role = String(flags.by || '');
+  const gate = GATE_EVENTS.has(eventName);
+  // C3W-8 / design D: only the orchestrator's own role (tech-manager) is shown an inline mint. For an
+  // AGENT role, printing a mint was an instruction to self-attest — the agent would mint the token
+  // that is supposed to prove the orchestrator sent it.
+  const refuseToken = (r) => die(r.code, `refusing ${eventName} on ${ticket}: ${r.reason}\n` +
+    (role === 'tech-manager'
+      ? '  A gate event needs --token. The orchestrator mints its own inline, in the same command:\n' +
+        `    node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move ${ticket} ${eventName} --by tech-manager${inlineTokenFlag(root, 'tech-manager', ticket) || ` --token "$(node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket ${ticket})"`} …`
+      : role === 'founder'
+        ? '  A founder token is minted by the human founder at their own terminal (actor mint --role founder).'
+        : `  A gate event by ${role || 'an agent role'} needs the --token from THAT agent's spawn prompt. Agents never mint:\n` +
+          '  the orchestrator composes the prompt (spawn-prompt.mjs compose), which mints the token. If you are the\n' +
+          '  agent, return BLOCKED naming this refusal. If you are the orchestrator, re-spawn the agent with a\n' +
+          '  freshly composed prompt.'));
+  // G2-12: THE POLICY FLOOR IS RECORDED ON EVERY EVENT, not inferred from the first gate event — so
+  // deleting requireActorTokens (or requireApprovalBinding) before any gate was written is refused
+  // as well. A board with no event yet has no floor: that is the stated bound.
+  const floor = RATCHETED.filter((k) => policy[k] === true);
+  const lowered = gate ? ratchetedOff(paths.log, policy) : [];
+  if (lowered.length) {
+    die(2, `refusing ${eventName} on ${ticket}: this board recorded ${lowered.join(' and ')} on earlier events, and\n` +
+      '  .studio-policy.json no longer sets it. Turning a gate off mid-board is a downgrade an agent could\n' +
+      `  make by editing one file, so it is refused. Restore ${lowered.map((k) => `"${k}": true`).join(', ')}.`);
+  }
+  const withFloor = (actor) => (floor.length ? { ...actor, policy_floor: floor } : actor);
+  // G2-14: a founder token opens ONE override. A token_id already on the log is spent.
+  const spent = (r) => {
+    if (r.ok && r.actor.single_use && logHasToken(paths.log, r.actor.token_id)) {
+      die(1, `refusing ${eventName} on ${ticket}: founder token ${r.actor.token_id} was already used — it is single-use. Mint a new one at your terminal.`);
+    }
+    return r;
+  };
+  // G-F1: PER-SPAWN TOKENS. Required on gate events; verified (and stamped) wherever one is given.
+  if (policy.requireActorTokens === true) {
+    if (gate || token) {
+      const r = spent(verifyActorToken({ root, token, role, ticket, required: true }));
+      if (!r.ok) refuseToken(r);
+      return withFloor(r.actor);
+    }
+    return withFloor({ schema: 'actor/v1', actor_id: 'unattested', role, mode: 'work-unattested', session: process.env.STUDIO_SESSION_ID || null });
+  }
+  // THE RATCHET. A board that ever recorded a token-required gate cannot have that requirement
+  // dropped by editing .studio-policy.json — the edit an agent with Write would make.
+  if (gate && tokenModeWasRequired(paths.log)) {
+    die(2, `refusing ${eventName} on ${ticket}: this board recorded gate events under requireActorTokens, and\n` +
+      '  .studio-policy.json no longer requires them. Turning attestation off mid-board is a downgrade an\n' +
+      '  agent could make by editing one file, so it is refused. Restore "requireActorTokens": true.');
+  }
+  if (token) {
+    const r = spent(verifyActorToken({ root, token, role, ticket, required: false }));
+    if (!r.ok) refuseToken(r);
+    return withFloor(r.actor);
+  }
+  const result = resolveActor({
+    root,
+    role: String(flags.by || ''),
+    ticket,
+    event: eventName,
+    ts: '',
+    token: typeof flags['actor-token'] === 'string' ? flags['actor-token'] : '',
+    actorId: typeof flags.actor === 'string' ? flags.actor : '',
+    requireAttested: policy.requireAttestedActors === true,
+  });
+  if (!result.ok) {
+    die(result.code, `refusing ${eventName} on ${ticket}: ${result.reason}\n` +
+      '  requireAttestedActors is on, so a role must be GRANTED to an actor in docs/team/actors.json\n' +
+      '  and proven with a token, not merely spelled correctly in --by.');
+  }
+  return withFloor(result.actor);
+}
+
+/** Policy keys that, once recorded on a board, cannot be switched off for it (G2-12). */
+const RATCHETED = ['requireActorTokens', 'requireApprovalBinding'];
+function ratchetedOff(logPath, policy) {
+  if (!existsSync(logPath)) return [];
+  const seen = new Set();
+  for (const l of readFileSync(logPath, 'utf8').split('\n')) {
+    if (!l.includes('"policy_floor"')) continue;
+    try { for (const k of JSON.parse(l).actor?.policy_floor || []) seen.add(k); } catch { /* parse errors are loadLog's */ }
+  }
+  return RATCHETED.filter((k) => seen.has(k) && policy[k] !== true);
+}
+function logHasToken(logPath, tokenId) {
+  if (!existsSync(logPath)) return false;
+  return readFileSync(logPath, 'utf8').split('\n').some((l) => l.includes(tokenId) && (() => { try { return JSON.parse(l).actor?.token_id === tokenId; } catch { return false; } })());
+}
+
+/** Did any event on this log carry an actor stamped under requireActorTokens? */
+function tokenModeWasRequired(logPath) {
+  if (!existsSync(logPath)) return false;
+  return readFileSync(logPath, 'utf8').split('\n').some((l) => {
+    if (!l.includes('"required":true')) return false;
+    try { const e = JSON.parse(l); return e.actor?.mode === 'token' && e.actor?.required === true; } catch { return false; }
+  });
+}
+
+/** The project root (from the resolver, never from --log) and its .studio-policy.json ({} if none). */
+function studioPolicy() {
   const resolved = resolveProjectRoot({});
   if (!resolved.ok) die(2, explainRootFailure(resolved));
   const root = resolved.root;
@@ -347,33 +480,16 @@ function stampActor(paths, flags, ticket, eventName) {
   // EVALUATE and refuses; actor.mjs argues for exactly that one layer down, about the registry.
   // The identity gate was the one place a corrupt config was a downgrade instead of a refusal.
   const policyPath = resolve(root, '.studio-policy.json');
-  let requireAttested = false;
+  let policy = {};
   if (existsSync(policyPath)) {
-    let policy;
-    try { policy = JSON.parse(readFileSync(policyPath, 'utf8')); }
+    try { policy = JSON.parse(readFileSync(policyPath, 'utf8')) || {}; }
     catch (e) {
       die(2, `.studio-policy.json exists but is unreadable (${e.message}).\n` +
              '  Refusing rather than assuming the permissive default: an unparseable policy must not\n' +
              '  be able to turn attestation off. Fix the file, or delete it deliberately.');
     }
-    requireAttested = policy.requireAttestedActors === true;
   }
-  const result = resolveActor({
-    root,
-    role: String(flags.by || ''),
-    ticket,
-    event: eventName,
-    ts: '',
-    token: typeof flags['actor-token'] === 'string' ? flags['actor-token'] : '',
-    actorId: typeof flags.actor === 'string' ? flags.actor : '',
-    requireAttested,
-  });
-  if (!result.ok) {
-    die(result.code, `refusing ${eventName} on ${ticket}: ${result.reason}\n` +
-      '  requireAttestedActors is on, so a role must be GRANTED to an actor in docs/team/actors.json\n' +
-      '  and proven with a token, not merely spelled correctly in --by.');
-  }
-  return result.actor;
+  return { root, policy };
 }
 
 function writeView(boardPath, tickets) {
@@ -534,7 +650,7 @@ function cmdAdd(id, flags, paths, idempotencyKey = '') {
     const blocked = {
       ...event,
       event: 'blocked',
-      detail: detail.notes || scrub('--reason', flags.reason || '') || 'created blocked',
+      detail: scrub('--reason', flags.reason || '') || detail.notes || 'created blocked',
     };
     append(paths.log, blocked);
     appended.push(blocked);
@@ -601,15 +717,31 @@ function claimLease(ticket, flags, paths) {
  * commit can no longer be assumed from `cwd`. `--commit <sha>` makes it explicit instead of
  * ambient; omitting it keeps the old cwd-relative behavior for a caller that really is inside the
  * right worktree.
+ *
+ * W5: the reviewer runs from the project root, on main, and its prose never passed --commit — so
+ * every approval bound main's HEAD and the merge gate refused it forever. The default is now the
+ * TICKET'S BRANCH TIP (the one branch named for the ticket, lib/integration.mjs — the matcher
+ * merge-reconcile uses). HEAD is used only when no branch is named for the ticket at all (work
+ * committed straight onto the current branch), and the detail says which one was bound.
  */
-function bindApprovalEvidence(flags) {
+function bindApprovalEvidence(flags, ticket, state) {
   let commit;
+  let commitSource = 'explicit --commit';
   if (typeof flags.commit === 'string' && flags.commit) {
     try { commit = execFileSync('git', ['rev-parse', '--verify', `${flags.commit}^{commit}`], { encoding: 'utf8' }).trim(); }
     catch { return { ok: false, code: 2, reason: `--commit ${flags.commit} does not resolve to a real commit` }; }
   } else {
-    try { commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); }
-    catch { return { ok: false, code: 2, reason: 'cannot resolve HEAD — is this a git repository, and if not run from inside the reviewed worktree, pass --commit <sha>?' }; }
+    const tip = ticketTip(gitAt(process.cwd()), ticket, boardIds());
+    if (tip.ambiguous.length) {
+      return { ok: false, code: 1, reason: `several branches are named for ${ticket} (${tip.ambiguous.join(', ')}) — delete the stale one, or pass --commit <sha> naming the one you reviewed` }; // C3W-9: a decidable refusal, not CANNOT EVALUATE
+    }
+    if (tip.sha) {
+      commit = tip.sha;
+      commitSource = `tip of ${tip.branch}`;
+    } else {
+      try { commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); commitSource = `HEAD (no branch is named for ${ticket})`; }
+      catch { return { ok: false, code: 2, reason: 'cannot resolve HEAD — is this a git repository, and if not run from inside the reviewed worktree, pass --commit <sha>?' }; }
+    }
   }
   // THE APPROVAL'S SUBJECT IS THE WHOLE CANDIDATE, NOT ONE COMMIT.
   //
@@ -625,10 +757,14 @@ function bindApprovalEvidence(flags) {
   // candidate is every commit the branch adds. `--base` overrides it. When no integration branch is
   // resolvable we fall back to `${commit}^` and SAY SO in the recorded detail, rather than silently
   // narrowing the subject back to one commit.
+  // W2-5 / R2-3: the base is the merge-base with the INTEGRATION branch (develop on the flagship
+  // model), the same branch compose's Range and verify-done measure from. Hard-coding main/master
+  // made every develop-model Scope disagree with the bound base, so the first approval was refused.
   let base = typeof flags.base === 'string' ? flags.base : '';
   let baseSource = 'explicit --base';
   if (!base) {
-    for (const ref of ['main', 'master', 'origin/main', 'origin/master']) {
+    const integration = integrationBase(gitAt(process.cwd()));
+    for (const ref of [integration, 'origin/main', 'origin/master'].filter(Boolean)) {
       try {
         const mb = execFileSync('git', ['merge-base', ref, commit], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
         if (mb && mb !== commit) { base = mb; baseSource = `merge-base with ${ref}`; break; }
@@ -656,18 +792,30 @@ function bindApprovalEvidence(flags) {
   catch { /* recorded as empty; the diff hash is still authoritative */ }
   if (!flags.evidence) return { ok: false, reason: '--bind requires --evidence <path to the evidence the review used>' };
   if (!flags.context) return { ok: false, reason: '--bind requires --context <path to the context the review used>' };
-  const evidencePath = resolve(process.cwd(), String(flags.evidence));
-  const contextPath = resolve(process.cwd(), String(flags.context));
-  if (!existsSync(evidencePath)) return { ok: false, reason: `no evidence file at ${flags.evidence}` };
-  if (!existsSync(contextPath)) return { ok: false, reason: `no context file at ${flags.context}` };
+  // G2-6: --evidence is a record under docs/team/evidence/ that RE-DERIVES for this ticket and ran
+  // on exactly the commit being approved (a --static record when the ticket is verified_static);
+  // --context is a context-manifest/v2. Any file at all (/etc/hosts) used to be hashed and accepted.
+  const { root } = studioPolicy();
+  const ev = verifyTestEvidence(root, flags.evidence, { ticket, allowStatic: Boolean(state?.verifiedStatic), exactHead: commit });
+  if (!ev.ok) return { ok: false, code: ev.code, reason: `--evidence: ${ev.reason}` };
+  const evidencePath = resolve(root, ev.detail.evidence);
+  const contextPath = existsSync(resolve(process.cwd(), String(flags.context))) ? resolve(process.cwd(), String(flags.context)) : resolve(root, String(flags.context));
+  if (!existsSync(contextPath)) return { ok: false, code: 2, reason: `no context file at ${flags.context}` };
+  let manifest = null;
+  try { manifest = JSON.parse(readFileSync(contextPath, 'utf8')); } catch { /* refused below */ }
+  if (!manifest || manifest.schema !== 'context-manifest/v2' || !Array.isArray(manifest.sources)) {
+    return { ok: false, reason: `--context ${flags.context} is not a context-manifest/v2 (context-manifest.mjs create writes docs/team/context-manifest.json) — the context a review used is a manifest of hashed sources, not any file` };
+  }
   return {
     ok: true,
     detail: {
       commit,
+      commit_source: commitSource,
       base,
       base_source: baseSource,
       files,
       diff_hash: createHash('sha256').update(diff).digest('hex'),
+      evidence: ev.detail.evidence,
       evidence_hash: createHash('sha256').update(readFileSync(evidencePath)).digest('hex'),
       context_snapshot: createHash('sha256').update(readFileSync(contextPath)).digest('hex'),
     },
@@ -679,6 +827,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
   const { events } = loadLog(paths.log);
   const { tickets } = reduce(events);
   const ticket = resolveId(tickets, id);
+  BOARD_IDS = [...tickets.values()].map((t) => t.id);
 
   const event = {
     ts: new Date().toISOString(),
@@ -704,11 +853,28 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     if (result.force) {
       const forced = { ...event, event: result.force.event, detail: result.force.detail, by: flags.by || '' };
       append(paths.log, forced);
+      syncLease(ticket, forced, [...events, forced], flags, paths);
       const next = reduce([...events, forced]);
       writeView(paths.board, next.tickets);
       process.stderr.write(`  -> ${ticket} moved to blocked instead: ${result.force.detail}\n`);
       reportCascade(next.tickets, ticket);
     }
+    process.exit(1);
+  }
+
+  // C3W-7: `corrected --invariant "I1; I2"` records invariants (same spelling as `add`).
+  if (name === 'corrected' && typeof flags.invariant === 'string') {
+    let base = event.detail;
+    if (typeof base === 'string' && base.trim().startsWith('{')) { try { base = JSON.parse(base); } catch { /* kept as a note */ } }
+    const invariants = flags.invariant.split(';').map((s) => scrub('--invariant', s.trim())).filter(Boolean);
+    event.detail = { ...(typeof base === 'object' && base ? base : base ? { note: base } : {}), invariants };
+  }
+
+  // C3G-3 / design C: THE TEST COMMANDS ARE FROZEN AT THE FIRST GATE EVENT; changing them is an
+  // orchestrator decision (`corrected --test-profile`), never a file edit.
+  const profileBlock = freezeTestProfile(name, ticket, flags, event, paths);
+  if (profileBlock) {
+    process.stderr.write(`board: refused ${ticket} ${name} — ${profileBlock}\n`);
     process.exit(1);
   }
 
@@ -745,17 +911,116 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
   }
 
   if (name === 'approved' && flags.bind) {
-    const bound = bindApprovalEvidence(flags);
+    const bound = bindApprovalEvidence(flags, ticket, tickets.get(key(ticket)));
     if (!bound.ok) {
       process.stderr.write(`board: refused ${ticket} approved — ${bound.reason}\n`);
       process.exit(bound.code || 1);
+    }
+    // G-F4: THE VERDICT'S `Scope:` MUST BE THE CANDIDATE THAT WAS BOUND. A verdict reading
+    // `Scope: main..HEAD` written on main, or naming last cycle's tip, approves a range that is not
+    // the commit this approval pins.
+    // G2-5: lib/verdict.mjs guarantees EXACTLY two sides (it refuses `a..b..c`), so this comparison
+    // is never skipped — it used to be, whenever the split did not give two parts.
+    const scope = String(event.detail?.reviewed_scope || '').split('..');
+    {
+      const g = gitAt(process.cwd());
+      const to = g(['rev-parse', '--verify', `${scope[1]}^{commit}`]);
+      const from = g(['rev-parse', '--verify', `${scope[0]}^{commit}`]);
+      const problem = !to || !from
+        ? `the verdict's Scope ${scope.join('..')} does not resolve to two commits here`
+        : to !== bound.detail.commit
+          ? `the verdict's Scope ends at ${to.slice(0, 12)} but the approval binds ${bound.detail.commit.slice(0, 12)} (${bound.detail.commit_source}) — the review read a different candidate`
+          : !(from === bound.detail.base || isAncestor(g, from, bound.detail.base))
+            ? `the verdict's Scope starts at ${from.slice(0, 12)}, after the candidate's base ${bound.detail.base.slice(0, 12)} — part of what is being approved was never in the reviewed range`
+            : '';
+      if (problem) {
+        process.stderr.write(`board: refused ${ticket} approved — ${problem}\n  Write "Scope: ${bound.detail.base}..${bound.detail.commit}" (the range you read).\n`);
+        process.exit(1);
+      }
+    }
+    // C3G-13: an APPROVE must name at least one path from the bound diff. "I did not read the diff"
+    // under `## Not checked` satisfied every structural check; a verdict that mentions none of the
+    // files it approves was not written by anyone who looked at them. BOUND: naming a path proves
+    // the reviewer saw the file list, not that they read the hunks.
+    if (bound.detail.files.length) {
+      let vtext = '';
+      try { vtext = readFileSync(resolve(process.cwd(), String(flags.verdict)), 'utf8'); } catch { /* readVerdict already opened it */ }
+      if (!bound.detail.files.some((f) => vtext.includes(f))) {
+        process.stderr.write(`board: refused ${ticket} approved — the verdict ${flags.verdict} names none of the ${bound.detail.files.length} file(s) in the bound diff (${bound.detail.files.slice(0, 5).join(', ')}${bound.detail.files.length > 5 ? ', …' : ''}).\n` +
+          '  An approval says what it read: cite the paths you reviewed (and what you found in each).\n');
+        process.exit(1);
+      }
     }
     event.detail = typeof event.detail === 'object' && event.detail
       ? { ...event.detail, ...bound.detail }
       : { note: event.detail || undefined, ...bound.detail };
   }
 
+  // G-F4: THE EVIDENCE A GATE CITES IS RE-DERIVED, NOT READ. `verified` names the record
+  // verify-done wrote; the board re-hashes its raw log, re-runs the classifier over it and checks it
+  // ran on (a descendant of) the ticket's branch tip. `qa_passed` names a journey-gate result or a
+  // post-merge test run, re-derived the same way.
+  // C3W-4: `verified_static --evidence <the --static record>` is recorded (validated as a static
+  // record for this ticket's exact tip), so the reviewer has a record to --bind to. Optional: a
+  // static verification with no record still unlocks review, and --bind then has nothing to cite.
+  if (name === 'verified' || name === 'qa_passed' || (name === 'verified_static' && flags.evidence)) {
+    const { root } = studioPolicy();
+    const ev = name === 'verified_static'
+      ? verifyTestEvidence(root, flags.evidence, { ticket, staticOnly: true })
+      : name === 'verified'
+      ? verifyTestEvidence(root, flags.evidence, { ticket })
+      : verifyQaEvidence(root, flags.evidence, { ticket, mergedTs: events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'merged')?.ts || '', mergedHead: recordedMergeHead(events, ticket),
+        failedTs: events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'qa_failed')?.ts || '' });
+    if (!ev.ok) {
+      process.stderr.write(`board: refused ${ticket} ${name} — ${ev.reason}\n` +
+        (name === 'verified_static'
+          ? '  `verified_static --evidence` cites the --static record verify-done printed (docs/team/evidence/test-*.json).\n'
+          : name === 'verified'
+          ? '  `verified` needs --evidence <the record verify-done.sh printed> (docs/team/evidence/test-*.json).\n'
+          : '  `qa_passed` needs --evidence docs/team/journey-result.json (a journey-gate PASS), or a verify-done record of a run on the merged tree.\n'));
+      process.exit(ev.code || 1);
+    }
+    event.detail = typeof event.detail === 'object' && event.detail
+      ? { ...event.detail, ...ev.detail }
+      : { note: event.detail || undefined, ...ev.detail };
+  }
+
+  const gitBlock = gitRefusal(name, ticket, flags, events, tickets.get(key(ticket)));
+  if (gitBlock) {
+    process.stderr.write(`board: refused ${ticket} ${name} — ${gitBlock}\n`);
+    process.exit(1);
+  }
+
+  // C3G-8: `merged` RECORDS the commit it is about, so `closed` checks that and not a caller's --head.
+  if (name === 'merged') {
+    const g = gitAt(process.cwd());
+    const subj = g(['rev-parse', '--git-dir']) === null ? { error: 'no repository' } : mergeSubject(g, ticket, flags);
+    if (!subj.error) {
+      // C4G-G2: a docs-only QA- merge also records the base its docs-only proof was taken against.
+      const qaBase = isQaDocs(tickets.get(key(ticket))) ? docsOnlyDiff(g, subj.sha, { qa: true }).base : '';
+      const rec = { merged_head: subj.sha, ...(qaBase ? { merge_base: qaBase } : {}) };
+      event.detail = typeof event.detail === 'object' && event.detail
+        ? { ...event.detail, ...rec }
+        : { note: event.detail || undefined, ...rec };
+    }
+  }
+
+  // G-F7: RISK FROM THE DIFF, at the merge it governs.
+  if (name === 'merged') {
+    const risk = mergeRisk(ticket, tickets.get(key(ticket)), paths, flags);
+    if (risk.refusal) {
+      process.stderr.write(`board: refused ${ticket} merged — ${risk.refusal}\n`);
+      process.exit(1);
+    }
+    if (risk.detail) {
+      event.detail = typeof event.detail === 'object' && event.detail
+        ? { ...event.detail, merge_risk: risk.detail }
+        : { note: event.detail || undefined, merge_risk: risk.detail };
+    }
+  }
+
   append(paths.log, event);
+  syncLease(ticket, event, [...events, event], flags, paths);
   const next = reduce([...events, event]);
   writeView(paths.board, next.tickets);
   const state = next.tickets.get(key(ticket));
@@ -767,6 +1032,285 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     );
   }
   if (name === 'blocked') reportCascade(next.tickets, ticket);
+  if (name === 'closed' && isQaDocs(state)) printQaLanding(ticket, events);
+}
+
+/**
+ * C4W-2: a docs-only QA- ticket never rides a wave (wave-integrate skips QA-), so its files reach
+ * the integration branch by ONE documented command — the fast-forward the destructive-git hook
+ * allows. Printed after `closed`; running it before `closed` works too (closed diffs the merge-base
+ * recorded at merged).
+ */
+function printQaLanding(ticket, events) {
+  const g = gitAt(process.cwd());
+  const base = integrationBase(g);
+  const head = recordedMergeHead(events, ticket);
+  if (!base || !head) return;
+  if (isAncestor(g, head, base)) { process.stdout.write(`  ${ticket}'s files are already on ${base}.\n`); return; }
+  const tip = ticketTip(g, ticket, boardIds());
+  const branch = tip.sha === head ? tip.branch : head;
+  process.stdout.write(
+    `  Land ${ticket}'s documents on ${base} (docs-only, reviewed inline — a fast-forward, no merge commit):\n` +
+    `    git checkout ${base} && git merge --ff-only ${branch}\n` +
+    (isAncestor(g, g(['rev-parse', base]) || '', head) ? ''
+      : `  ${base} has moved since the QA branch was cut, so that is not a fast-forward yet. Rebase it first (documents only, nothing to re-review):\n` +
+        `    git rebase ${base} ${branch} && git checkout ${base} && git merge --ff-only ${branch}\n`)
+  );
+}
+
+/**
+ * C3G-3 / design C. Returns a refusal, or '' (stamping `event.test_profile` when it freezes).
+ *   - a gate event on a board with nothing frozen, once the profile declares a test command: the
+ *     profile's commands + sha are stamped on THIS event — that is the freeze;
+ *   - a gate event whose profile commands differ from the frozen ones: refused;
+ *   - `corrected --test-profile` by tech-manager (token-proven under requireActorTokens — and agents
+ *     cannot mint): re-freezes to the profile as it is now. The board reads the file; the caller
+ *     names no command.
+ * BOUND: before the first gate event nothing is frozen (lib/evidence.mjs frozenTestProfile).
+ */
+function freezeTestProfile(name, ticket, flags, event, paths) {
+  const { root } = studioPolicy();
+  const cur = currentTestProfile(root);
+  const frozen = frozenTestProfile(paths.log);
+  if (name === 'corrected' && flags['test-profile']) {
+    if (event.by !== 'tech-manager') return 'only the orchestrator (--by tech-manager) re-freezes the test commands';
+    if (studioPolicy().policy.requireActorTokens === true && event.actor?.mode !== 'token') {
+      return `re-freezing the test commands needs the orchestrator's token:${inlineTokenFlag(root, 'tech-manager', ticket)}`;
+    }
+    if (!Object.keys(cur.commands).length) return `the project profile (read from ${cur.source}) declares no test command to freeze`;
+    event.test_profile = { commands: cur.commands, sha: cur.sha, at: event.ts };
+    return '';
+  }
+  if (!GATE_EVENTS.has(name)) return '';
+  if (!frozen.commands) {
+    if (Object.keys(cur.commands).length) event.test_profile = { commands: cur.commands, sha: cur.sha, at: event.ts };
+    return '';
+  }
+  if (sameCommands(frozen.commands, cur.commands)) return '';
+  const show = (c) => JSON.stringify(c || {});
+  return `docs/team/project-profile.json (${cur.source === 'working tree' ? 'working tree' : `as committed on ${cur.source}`}) declares test commands ${show(cur.commands)}, but this board froze ${show(frozen.commands)}.\n` +
+    '  A test command is what a green means, and the profile is a file anyone with Write can edit, so the board\n' +
+    '  keeps the frozen set until the orchestrator records the change. Restore the profile, or (orchestrator) run:\n' +
+    `    node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move ${ticket} corrected --by tech-manager --test-profile${inlineTokenFlag(root, 'tech-manager', ticket)}`;
+}
+
+/**
+ * The two gates that need git, so they live here and not in lib/events.mjs (which stays pure).
+ * Returns the refusal reason, or '' to proceed.
+ *
+ *   merged  (G-F3) under requireApprovalBinding the board runs approval-check's own logic
+ *           (lib/approval.mjs) against the ticket's branch tip: the approval must be bound to
+ *           EXACTLY that commit. The tip is resolved from the one branch named for the ticket;
+ *           `--head <sha>` is required only when there is no such branch (or several), and a
+ *           `--head` that disagrees with a resolvable tip is refused — the tip is what merges.
+ *   closed  (G-F10) when a branch is named for the ticket and an integration branch exists, one
+ *           of the ticket's branches must be an ancestor of it — merge-reconcile's question,
+ *           asked before `done` instead of a round after. No branch / no integration branch:
+ *           unknown, and unchanged.
+ */
+function gitRefusal(name, ticket, flags, events, state) {
+  if (name !== 'merged' && name !== 'closed') return '';
+  const git = gitAt(process.cwd());
+  if (git(['rev-parse', '--git-dir']) === null) return ''; // no repository: no commit to bind (stated bound)
+  const recorded = name === 'closed' ? recordedMergeHead(events, ticket) : '';
+  // C3G-8: `closed` is about the commit RECORDED at `merged`, never a caller's --head.
+  if (recorded && flags.head) process.stderr.write(`board: --head ${flags.head} ignored — ${ticket} is closed against the commit recorded at merged (${recorded.slice(0, 12)})\n`);
+  // Design decision 1 + design B: a docs-only QA- ticket closes from merged without integration —
+  // but only while GIT still proves its branch changes documents only, re-derived at merged and
+  // closed against the integration branch (a code commit added after `verified` ends the fast path).
+  // C4G-G2 / C4W-2: `closed` diffs against the merge-base RECORDED at `merged`, so the documented
+  // `git merge --ff-only qa/<ID>` works before or after `closed` (after the fast-forward,
+  // merge-base(integration, tip) is the tip itself and the branch "changed no files").
+  if (state && isQaDocs(state)) {
+    const subj = recorded ? { sha: recorded } : mergeSubject(git, ticket, flags);
+    if (subj.error) return `${subj.error} — the QA- docs-only fast path must know which commit it is about.`;
+    const d = docsOnlyDiff(git, subj.sha, { qa: true, base: name === 'closed' ? recordedMergeBase(events, ticket) : '' });
+    if (!d.ok) return `${ticket} is on the QA- docs-only fast path, but ${d.reason}. A QA ticket that changes code takes the normal path (review_requested -> approved -> merged).`;
+    // C5G-1: the docs-only proof is about the commit recorded at merged — a code commit added AFTER it and
+    // fast-forwarded onto the integration branch rode in unreviewed, exactly as on the normal path.
+    const base = name === 'closed' && recorded ? integrationBase(git) : '';
+    return base ? landedAfterMerge(git, ticket, recorded, base) : '';
+  }
+  const binding = studioPolicy().policy.requireApprovalBinding === true;
+  if (name === 'closed') {
+    const base = integrationBase(git);
+    if (!base) return '';
+    // G2-8: the subject must be known — the merged commit recorded at `merged` (C3G-8), or, for a
+    // ticket merged before that was recorded, the branch tip / --head.
+    const subj = recorded ? { sha: recorded, source: 'the commit recorded at merged' } : mergeSubject(git, ticket, flags);
+    if (subj.error) return `${subj.error} — "done" asserts integrated code, and which code is unknown.`;
+    if (!isAncestor(git, subj.sha, base)) {
+      return `${subj.source} (${subj.sha.slice(0, 12)}) is not merged into ${base} — "done" would claim integrated code that is not on the integration branch. Merge it (or land the wave) first.`;
+    }
+    // C3G-8: commits added to the ticket's branch AFTER `merged` must not be on the integration
+    // branch — they rode in unreviewed. BOUND: checkable only while the branch still exists; once it
+    // is deleted, a commit on the integration branch cannot be attributed to the ticket.
+    const landed = recorded ? landedAfterMerge(git, ticket, recorded, base) : '';
+    if (landed) return landed;
+    // G2-9: what merged must be WHAT WAS APPROVED. Ancestry alone let commits pushed after the
+    // `merged` event ride into `done` unreviewed.
+    if (binding) {
+      const { counted, issues } = checkApprovals(events, { ticket, head: subj.sha, cwd: process.cwd() });
+      if (!counted.length) return `requireApprovalBinding is on and ${ticket} carries no bound approval to close against`;
+      if (issues.length) return `the code being closed (${subj.sha.slice(0, 12)}) is not the approved code:\n  ${issues.join('\n  ')}`;
+    }
+    return '';
+  }
+  if (!binding) return '';
+  const subj = mergeSubject(git, ticket, flags);
+  if (subj.error) return `requireApprovalBinding is on and ${ticket}'s branch tip is unknown: ${subj.error}`;
+  const { issues } = checkApprovals(events, { ticket, head: subj.sha, cwd: process.cwd() });
+  return issues.length ? `the approval is not bound to ${subj.sha}:\n  ${issues.join('\n  ')}` : '';
+}
+
+/**
+ * C3G-8 / C5G-1: commits added to the ticket's branch AFTER `merged` recorded `recorded` that are now on
+ * `base` rode in unreviewed — the refusal, or ''. BOUND: checkable only while the branch still exists.
+ */
+function landedAfterMerge(git, ticket, recorded, base) {
+  const tip = ticketTip(git, ticket, boardIds());
+  if (!tip.sha || tip.sha === recorded) return '';
+  const beyond = (git(['rev-list', tip.sha, `^${recorded}`]) || '').split('\n').filter(Boolean);
+  const landed = beyond.filter((c) => isAncestor(git, c, base));
+  return landed.length ? `${tip.branch} gained ${landed.length} commit(s) after ${ticket} merged (${landed.slice(0, 3).map((c) => c.slice(0, 12)).join(', ')}), and they are on ${base} — they were never reviewed. Revert them, or reopen the ticket and review them.` : '';
+}
+
+/** C4G-G2: the merge-base the last `merged` of a docs-only QA- ticket recorded ('' when none). */
+function recordedMergeBase(events, ticket) {
+  const m = events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'merged');
+  return (m && typeof m.detail === 'object' && m.detail && m.detail.merge_base) || '';
+}
+
+/** C3G-8: the commit the last `merged` on this ticket recorded ('' when none was recorded). */
+function recordedMergeHead(events, ticket) {
+  const m = events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'merged');
+  return (m && typeof m.detail === 'object' && m.detail && m.detail.merged_head) || '';
+}
+
+/**
+ * The commit a `merged` / `closed` is ABOUT (G2-7, G2-8): the one branch named for the ticket, or
+ * --head (or --commit) when no branch is. A --head that disagrees with a resolvable tip is refused —
+ * the tip is what merges. `{sha, source}` or `{error}`.
+ */
+function mergeSubject(git, ticket, flags) {
+  const tip = ticketTip(git, ticket, boardIds());
+  const given = typeof flags.head === 'string' && flags.head ? flags.head : typeof flags.commit === 'string' ? flags.commit : '';
+  if (!given) {
+    if (tip.sha) return { sha: tip.sha, source: `the tip of ${tip.branch}` };
+    return { error: `${tip.ambiguous.length ? `several branches are named for ${ticket} (${tip.ambiguous.join(', ')})` : `no branch is named for ${ticket}`}. Pass --head <sha> of the commit being merged` };
+  }
+  const sha = git(['rev-parse', '--verify', `${given}^{commit}`]);
+  if (!sha) return { error: `--head ${given} does not resolve to a commit` };
+  if (tip.sha && sha !== tip.sha) return { error: `--head ${given} is not the tip of ${tip.branch} (${tip.sha}) — the tip is what merges, so the approval is checked against it` };
+  if (tip.ambiguous.length && !tip.ambiguous.some((b) => git(['rev-parse', `${b}^{commit}`]) === sha)) {
+    return { error: `--head ${given} is not the tip of any branch named for ${ticket} (${tip.ambiguous.join(', ')})` };
+  }
+  return { sha, source: tip.sha ? `the tip of ${tip.branch}` : `--head ${given}` };
+}
+
+/**
+ * G-F7: the risk the ticket's DIFF carries, against risk-policy.json's path rules, and the
+ * approvals and `required_evidence` the higher of (planned, diff) tier demands — checked here, at
+ * the merge, with the missing list in the refusal.
+ *
+ * Unknown diff (no branch named for the ticket, or no integration branch) falls back to the planned
+ * decision and SAYS so in the recorded detail; no policy file means nothing to enforce.
+ */
+const EVIDENCE_CHECKS = {
+  // An approval by a role that did not work on it — events.mjs already refuses a merge without one.
+  review: (st) => st.approvals.length > 0,
+  'security-review': (st) => st.approvals.some((a) => a.by === 'security-reviewer'),
+  'migration-plan': (st) => Boolean(String(st.meta?.rollback || '').trim()),
+};
+const RUNTIME_KINDS = new Set(['runtime-gate', 'runtime-evidence']);
+function mergeRisk(ticket, state, paths, flags = {}) {
+  const policyPath = resolve(dirname(paths.log), 'team', 'risk-policy.json');
+  if (!state) return {};
+  if (isQaDocs(state)) return { detail: { planned: null, diff: 'docs-only QA ticket', effective: null } };
+  if (!existsSync(policyPath)) {
+    // G2-18: a DELETED policy enforces nothing, so it is refused, not read as "no policy yet": the
+    // board recorded a decision from it, or the integration branch still carries it.
+    const g0 = gitAt(process.cwd());
+    const base0 = integrationBase(g0);
+    const committed = base0 && g0(['cat-file', '-e', `${base0}:docs/team/risk-policy.json`]) !== null;
+    if (state.meta?.policy_decision || committed) {
+      return { refusal: `docs/team/risk-policy.json is missing, but ${state.meta?.policy_decision ? `${ticket} was planned under it` : `${base0} still carries it`} — restore it; a deleted policy enforces nothing.` };
+    }
+    return {};
+  }
+  let policy;
+  try { policy = JSON.parse(readFileSync(policyPath, 'utf8')); } catch (e) { return { refusal: `risk-policy.json is unreadable (${e.message}) — cannot tell what this merge requires` }; }
+  if (policy.schema !== 'risk-policy/v1' || !Array.isArray(policy.rules)) return { refusal: 'risk-policy.json is not risk-policy/v1 — cannot tell what this merge requires' };
+  const g = gitAt(process.cwd());
+  // G2-7: the diff is the SUBJECT's — the ticket's branch tip, or --head when no branch is named for
+  // it. An unknown diff is a refusal, never "no risk": a branch named without the ticket id used to
+  // skip escalation entirely.
+  const subj = mergeSubject(g, ticket, flags);
+  if (subj.error) return { refusal: `${subj.error}\n  risk-policy.json is in force, so the merge must know which files it lands.` };
+  const tip = { sha: subj.sha };
+  const base = integrationBase(g);
+  if (!base) return { refusal: 'risk-policy.json is in force and no integration branch (develop/main/master) exists, so the diff — and the risk it carries — is unknown' };
+  const mb = g(['merge-base', base, tip.sha]);
+  const files = mb ? (g(['diff', '--name-only', mb, tip.sha]) || '').split('\n').filter(Boolean) : null;
+  if (files === null) return { refusal: `cannot diff ${tip.sha.slice(0, 12)} against ${base} — the diff, and the risk it carries, is unknown` };
+  const planned = state.meta?.policy_decision || null;
+  const diff = files && files.length ? routeFiles(policy, files) : null;
+  const plannedRank = planned?.risk ? RANK[planned.risk] : -1;
+  const escalated = Boolean(diff && RANK[diff.risk] > plannedRank);
+  const approvals = [...new Set([...(planned?.required_approvals || []), ...(escalated ? diff.approvals : [])])];
+  const evidence = [...new Set([...(planned?.required_evidence || []), ...(escalated ? diff.required_evidence : [])])];
+  const workers = new Set([state.owner, ...state.events.filter((e) => e.event === 'claimed' || e.event === 'done_reported').map((e) => e.by)].filter(Boolean));
+  const have = new Set(state.approvals.map((a) => a.by).filter((b) => b && !workers.has(b)));
+  const missing = [
+    ...approvals.filter((r) => !have.has(r)).map((r) => `approval by ${r}`),
+    // Decision 6 / W2-3: runtime evidence is checked at the WAVE (wave-integrate runs runtime-gate.sh
+    // on the merged wave tree before a high/critical ticket lands), not before `merged`. It stays in
+    // required_evidence on the merged event, which is what the wave reads.
+    ...evidence.filter((k) => !RUNTIME_KINDS.has(k)).filter((k) => !(EVIDENCE_CHECKS[k] && EVIDENCE_CHECKS[k](state)))
+      .map((k) => (EVIDENCE_CHECKS[k] ? `evidence "${k}"` : `evidence "${k}" (no checker exists for this kind — fix risk-policy.json)`)),
+  ];
+  const detail = {
+    planned: planned?.risk || null,
+    diff: diff ? diff.risk : files ? 'none' : 'unknown',
+    because: diff?.because || null,
+    effective: escalated ? diff.risk : planned?.risk || null,
+    files_considered: files ? files.length : null,
+    required_approvals: approvals,
+    required_evidence: evidence,
+  };
+  if (missing.length) {
+    return {
+      refusal: `${ticket}'s merge requires ${detail.effective || 'its planned'} risk${escalated ? ` (escalated from ${detail.planned || 'unplanned'}: the diff touches ${diff.because})` : ''} — missing: ${missing.join('; ')}.\n` +
+        '  How each is earned: approval by <role> = that role\'s `approved`; "security-review" = an `approved` by security-reviewer;\n' +
+        '  "migration-plan" = `add --rollback` on the ticket. "runtime-gate" is checked at the WAVE: wave-integrate runs runtime-gate.sh\n' +
+        '  on the merged wave tree before a high/critical ticket lands.',
+      detail,
+    };
+  }
+  return { detail };
+}
+
+/**
+ * C4: keep the run-ledger lease `claimed` opened in step with the board. A lease nobody completed
+ * read as an orphan after 15 minutes, so run-doctor flagged every claim and /app-recover stopped.
+ * merged/closed/blocked/rejected end the attempt (`complete`); any other move by the lease holder
+ * is a `heartbeat`. Best effort: the board event is already appended, and a lease that is already
+ * terminal (or was never taken) is not an error here.
+ */
+const LEASE_ENDS = new Set(['merged', 'closed', 'blocked', 'rejected']);
+function syncLease(ticket, event, events, flags, paths) {
+  if (event.event === 'claimed') return;
+  const claim = events.findLast((e) => key(e.ticket) === key(ticket) && e.event === 'claimed');
+  const run = claim?.detail?.run_id;
+  const attempt = claim?.detail?.attempt_id;
+  if (!run || !attempt) return;
+  const ends = LEASE_ENDS.has(event.event);
+  if (!ends && event.by !== claim.by) return;
+  const args = [ends ? 'complete' : 'heartbeat', '--ledger', resolve(dirname(paths.log), 'team', 'runs.jsonl'),
+    '--run', String(run), '--attempt', String(attempt)];
+  if (ends) args.push('--detail', `board: ${event.event}`);
+  else if (flags['lease-seconds']) args.push('--lease-seconds', String(flags['lease-seconds']));
+  spawnSync(process.execPath, [RUN_LEDGER, ...args], { encoding: 'utf8' });
 }
 
 /** The derived status as a human reads it — `qa` alone hides that nothing was ever executed. */
@@ -853,6 +1397,36 @@ function cmdShow(id, flags, paths) {
  * Runs in CI. Exit 1 is "the history was rewritten", which is a different fact from "the board is
  * in a state a rule dislikes" (board-doctor's job) and must never be reported as the same thing.
  */
+/**
+ * `adopt`: anchor a COMMITTED log in a checkout that has no anchor for it (Codex on PR #46: a fresh
+ * clone, or a moved project, refused every read — the anchor lives in .git and is keyed by the
+ * log's real path, and "delete the anchor" cannot recover an anchor that is already absent).
+ * Founder-only by the same rule as a founder token: a human at a terminal types ADOPT. The chain
+ * must verify intact; adoption trusts the log's CONTENT as of now, which is the decision the
+ * founder is asked to make. BOUND: a log rewritten and re-hashed before the clone is adopted as-is.
+ */
+function cmdAdopt(paths) {
+  if (!existsSync(paths.log)) die(2, `no event log at ${paths.log} — nothing to adopt`);
+  const text = readFileSync(paths.log, 'utf8');
+  const chain = verifyChain(text);
+  if (!chain.ok) die(2, `the audit chain of ${paths.log} is broken at line ${chain.line} (${chain.reason}) — a broken log is restored, never adopted.`);
+  const at = anchorPath(paths.log);
+  if (!at) die(2, `${paths.log} is not in a git repository — there is no anchor to write.`);
+  const current = checkAnchor(paths.log, text, chain);
+  if (current.ok && existsSync(at)) {
+    process.stdout.write(`board: ${paths.log} already matches its anchor (${chain.chained} chained line(s)) — nothing to adopt\n`);
+    return;
+  }
+  const c = founderConfirms('ADOPT');
+  if (!c.ok) {
+    die(1, `refusing adopt: ${c.reason.replace(/actor mint --role founder --ticket ADOPT[\s\S]*/, 'board.mjs adopt')}\n` +
+      '  adopt re-trusts the committed log as it stands. Only the human founder decides that, at their own terminal:\n' +
+      `    ! node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" adopt`);
+  }
+  writeAnchor(paths.log, chain.chained, chain.tip);
+  process.stdout.write(`board: adopted ${paths.log} — ${chain.chained} chained line(s), anchored at ${at}\n`);
+}
+
 function cmdVerify(paths) {
   if (!existsSync(paths.log)) die(2, `no event log at ${paths.log} — nothing to verify`);
   const text = readFileSync(paths.log, 'utf8');
@@ -867,6 +1441,11 @@ function cmdVerify(paths) {
     );
     process.exit(1);
   }
+  const anchored = checkAnchor(paths.log, text, chain);
+  if (!anchored.ok) {
+    process.stdout.write(`AUDIT CHAIN: does NOT match its anchor\n  ${anchored.reason.split('\n').join('\n  ')}\n`);
+    process.exit(1);
+  }
   process.stdout.write(
     `AUDIT CHAIN: intact — ${chain.chained} chained line(s)` +
       (chain.unchained
@@ -875,6 +1454,45 @@ function cmdVerify(paths) {
         : '.\n')
   );
   process.exit(0);
+}
+
+/**
+ * `board.mjs actor mint|revoke|list` — the per-spawn capability tokens (lib/actor.mjs header).
+ * mint is run by the ORCHESTRATOR; the plaintext token is printed once, to stdout, and only its
+ * sha256 is kept. A spawned agent must never run it (Track B's hook refuses it from subagents).
+ */
+function cmdActor(sub, flags) {
+  const { root } = studioPolicy();
+  const regPath = resolve(root, TOKEN_REGISTRY);
+  if (sub === 'mint') {
+    const r = withFileLock(regPath, () => mintActorToken({ root, role: String(flags.role || ''), ticket: typeof flags.ticket === 'string' ? flags.ticket : '', ttlMinutes: flags['ttl-minutes'] || 240 }), { die });
+    if (!r.ok) die(1, `actor mint: ${r.reason}`);
+    process.stderr.write(`board: minted token ${r.record.token_id} for ${r.record.role} on ${r.record.ticket}, expires ${r.record.expires_at}.\n` +
+      // C4W-13: the orchestrator's own inline `--token "$(… mint --role tech-manager …)"` is not a
+      // spawn — telling it to put the token in an agent's prompt sent it looking for an agent.
+      (r.record.role === 'tech-manager'
+        ? '  Orchestrator token: use it on this one board command (the inline --token "$(…)" form). It is not stored anywhere; mint again if lost.\n'
+        : "  Put it in THAT agent's spawn prompt only. It is not stored anywhere; mint again if lost.\n"));
+    process.stdout.write(`${r.token}\n`);
+    return;
+  }
+  if (sub === 'revoke') {
+    const r = withFileLock(regPath, () => revokeActorToken({ root, tokenId: String(flags['token-id'] || '') }), { die });
+    if (!r.ok) die(1, `actor revoke: ${r.reason}`);
+    process.stdout.write(`revoked ${flags['token-id']}\n`);
+    return;
+  }
+  if (sub === 'list') {
+    const r = listActorTokens(root);
+    if (!r.ok) die(2, r.reason);
+    const revoked = new Set(r.records.filter((x) => x.kind === 'revoke').map((x) => x.token_id));
+    for (const x of r.records.filter((y) => y.kind === 'mint')) {
+      const state = revoked.has(x.token_id) ? 'revoked' : Date.parse(x.expires_at) <= Date.now() ? 'expired' : 'live';
+      process.stdout.write(`${x.token_id}  ${x.role.padEnd(22)} ${x.ticket.padEnd(14)} ${state.padEnd(8)} minted ${x.minted_at}\n`);
+    }
+    return;
+  }
+  die(1, 'actor needs mint --role R --ticket T [--ttl-minutes N] | revoke --token-id ID | list');
 }
 
 function cmdRender(paths) {
@@ -1054,6 +1672,12 @@ function cmdMigrate(pathArg, flags, paths) {
   const lines = events.map((e) => JSON.stringify(e)).join('\n');
   const out = typeof flags.out === 'string' ? resolve(process.cwd(), flags.out) : null;
   if (out) {
+    // C3G-14: --out never overwrites. Pointed at the live log it replaced the chained, anchored
+    // history with an unchained inferred one in one command; pointed at any other file it destroyed
+    // that. A migration writes a NEW file, which a human then moves into place deliberately.
+    if (existsSync(out) || out === paths.log) {
+      die(1, `migrate --out ${flags.out}: ${out === paths.log ? 'that is the live event log' : 'the file exists'} — migrate writes a new file and never overwrites one. Choose a path that does not exist.`);
+    }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, `${lines}\n`);
   } else {
@@ -1095,6 +1719,8 @@ const EXPECTED_POSITIONALS = {
   show: { max: 1, usage: 'show [ID] [--json]' },
   render: { max: 0, usage: 'render' },
   verify: { max: 0, usage: 'verify' },
+  adopt: { max: 0, usage: 'adopt   (founder, at a terminal: anchor a committed log in this checkout)' },
+  actor: { max: 1, usage: 'actor mint --role R --ticket T [--ttl-minutes N] | actor revoke --token-id ID | actor list' },
   migrate: { max: 1, usage: 'migrate [path/to/31-board.md] [--out log.jsonl]' },
 };
 
@@ -1183,17 +1809,33 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
       return cmdRender(paths);
     case 'verify':
       return cmdVerify(paths);
+    case 'adopt':
+      return withFileLock(paths.log, () => cmdAdopt(paths));
     case 'migrate':
       return cmdMigrate(rest[0], flags, paths);
+    case 'actor':
+      return cmdActor(rest[0], flags);
     default:
       process.stderr.write(
         `board: unknown command "${command ?? ''}"\n` +
           '  add <ID> --title T [--owner R] [--depends A,B] [--status todo|blocked] ...\n' +
           '  move <ID> <event> --by <role> [--detail "..."]\n' +
+          '  move <ID> merged --by <role> [--head <sha>]   --head only when no branch is named for <ID>\n' +
+          '  move <ID> closed --by <role>    checked against the commit recorded at merged (--head only for a legacy merge)\n' +
+          '  move <ID> verified_static --by <role> [--evidence <the --static record verify-done printed>]\n' +
+          '  move <ID> corrected --by tech-manager --invariant "I1; I2"   record a ticket\'s invariants\n' +
+          '  move <ID> corrected --by tech-manager --test-profile [--token T]   re-freeze the profile\'s test commands\n' +
+          '  move <ID> reopened --by founder  blocked|review -> in_progress, +1 review cycle over the cap\n' +
           '  assign <ID> --to <role>\n' +
           '  show [ID] [--json]\n' +
           '  render\n' +
           '  verify                          the audit chain — was this log rewritten?\n' +
+          '  adopt                           founder, at a terminal: anchor a committed log in a fresh clone\n' +
+          '  move <ID> verified --by <role> --evidence <record verify-done printed> [--token T]\n' +
+          '  move <ID> qa_passed --by <role> --evidence docs/team/journey-result.json|<post-merge record> [--token T]\n' +
+          '  actor mint --role R --ticket T [--ttl-minutes N]   orchestrator only: prints a per-spawn token once\n' +
+          '  actor mint --role founder --ticket T   the human founder, at a terminal (TTY): single-use, 30 min\n' +
+          '  actor revoke --token-id ID | actor list\n' +
           '  migrate [board.md] [--out log.jsonl]\n' +
           `  events: ${[...EVENTS].join(' ')}\n`
       );

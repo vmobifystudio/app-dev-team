@@ -1,119 +1,31 @@
 ---
 name: agent-isolation
-description: Use before spawning any agent that writes files, and by every developer/fixer agent as its first and last action. Gives each agent its own git worktree, forbids blanket staging, and requires confirming a mutation actually landed. Triggers from /app-build, /app-audit, parallel-orchestrator, and any parallel agent launch. Prevents parallel agents corrupting each other's work.
+description: On an app-dev-team project, use before spawning any agent that writes files, and as every IC's first and last action — one git worktree per writer, explicit-path staging, confirm the mutation landed. Used by the /app-build orchestrator and every IC.
 ---
 
 # Agent isolation
 
-Parallel agents that share one working tree corrupt each other. Not "might" — *do*.
+Parallel agents that share one working tree corrupt each other, silently: every agent reports
+`DONE`, the tests pass, and the review reads a diff that contains someone else's changes. A
+read-only agent is not exempt — one `git add -A` ships whatever another agent left in the tree.
 
-The default developer method is: write the files, then `git checkout -b feat/APP-NNN` and commit.
-Run two of those concurrently in one tree and the sequence is:
+Everything below applies to every agent. The spawning half (leases, the `spawn-gate.sh` check,
+reaping, which shared-tree
+writes are safe, a project that cannot use worktrees) is `references/orchestrator.md` — the
+`/app-build` loop already runs its commands, so read it only when one of those questions comes up.
 
-```
-dev A writes  ui/TodoListUiState.kt          (on main, untracked)
-dev B writes  data/InMemoryTodoRepository.kt (on main, untracked)
-dev A runs    git checkout -b feat/APP-001   -> B's file comes along
-dev A runs    git add . && git commit        -> A ships B's half-finished work
-dev B runs    git checkout -b feat/APP-002   -> from A's branch, inheriting A's commit
-```
+## Rule 1 — work only in the worktree you were given
 
-Both branches are now wrong, and neither agent can tell. Worse, this is silent: every agent
-reports `DONE`, tests pass, and the review reads a diff that contains someone else's changes.
+Your spawn prompt names your worktree (`.agent-wt/<owner>-<n>`). It is your **project root**; never
+leave it. Before you write anything, cut the ticket's branch from the integration branch the prompt
+names: `git checkout -b feat/APP-NNN-short-slug <integration branch>` (a `QA-` ticket: the
+`qa/QA-<sprint>-w<n>` branch the prompt prints). Given no worktree? Say so in
+your first line, branch in the repo root, and treat Rule 5 as live.
 
-**A read-only agent is not exempt.** A verification agent sharing a working tree once left a
-billing file with its guest-purchase guard deleted. Only explicit-path staging kept it out of the
-commit. One `git add -A` ships a removed billing guard.
-
-## Rule 1 — one worktree per WRITING AGENT, always
-
-Before spawning any agent that writes, the orchestrator leases its slot:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001,APP-002
-```
-
-The agent is given that path — `.agent-wt/ios-developer` — as its **project root** and never leaves
-it. Its `git` commands are confined there. It cuts `feat/APP-001-short-slug`, commits, then cuts
-`feat/APP-002-short-slug` from the same base and commits: **one branch per ticket, unchanged**.
-Parallel agents cannot see each other's uncommitted state, because they do not share a tree.
-
-**The slot is keyed by the WRITER, and it used to be keyed by the ticket. That was a contradiction,
-not a preference.** `parallel-orchestrator` step 2 says one agent invocation per owner, batched;
-step 3 says each agent's prompt names *its* worktree path, singular. An `ios-developer` owning three
-tickets was spawned once, given three worktrees, and told to stand in one path that did not exist.
-Working all three in one of them makes every branch carry its siblings' files, which `code-reviewer`
-check 9 rejects — sending `tech-manager` to hunt a shared-tree collision the orchestrator caused.
-
-Two agents in one tree corrupt each other. One agent working three tickets one after another in its
-own tree corrupts nobody. The writer was always the unit; the ticket never was. As a bonus, disk is
-now bounded by the parallelism cap rather than by the backlog.
-
-Cleanup — on **every** terminal outcome, not only after a merge:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer
-node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
-```
-
-**"After the merge" was the whole leak.** Removal was specified in three places and all three were
-the merge path, so a `rejected`, a cap-converted `blocked`, a `BLOCKED:` return or a crashed round
-left its tree behind forever — no cap, no disk budget, no reaper. Measured in this plugin's own
-repository, which contains no application code at all: 12 worktrees, 88 MB. An iOS project's
-worktrees also carry their own DerivedData.
-
-`worktree-reap.mjs` derives liveness from the board (`in_progress`/`review`) so it cannot disagree
-with it, and it **never** runs `--force`. A worktree with uncommitted changes is reported loudly and
-left exactly where it is: one `git stash` in a shared tree already cost 22 files of live work
-(DR4-027), and an automatic cleanup is that move with better manners.
-
-Build caches live **outside** the slots (`scripts/build-env.sh` → `.studio-cache/`), so reaping a
-slot never throws away a warm build, and the next ticket does not start from cold.
-
-`.agent-wt/` sits inside the repo and **must be in `.gitignore`** — `/app-init` adds it for new
-projects. On an existing project, add it yourself before the first spawn: an un-ignored worktree
-directory shows up as untracked noise in every agent's `git status` and invites exactly the blanket
-`git add` this skill bans.
-
-**Verifiers and auditors get one too.** "Read-only" describes the intent, not the guarantee.
-
-### The rule is not "never touch the shared tree" — it is "never touch a path another agent could"
-
-Some artifacts genuinely belong outside a feature branch. A review verdict has to survive the branch
-being rejected; a findings register spans tickets. Forbidding all shared writes would push those
-back into ephemeral messages, which is the failure this whole design exists to stop.
-
-The real test is **collision**, not location:
-
-| Artifact | Where | Why |
-|---|---|---|
-| all source and test code | **worktree only** | two agents on the same file is the corruption case |
-| `docs/daily/<today>-<role>-<ticket>.md` | **worktree**, committed on the branch | reaches `main` at merge; a fragment for unmerged work should not appear in the standup |
-| `docs/53-reviews/APP-NNN-cycle-N.md` | shared tree — **safe** | the path is unique per (ticket, cycle); no other agent can target it, and it must outlive a rejected branch |
-| `docs/31-board.md` | shared tree — **generated, CLI-only** | do not append to it. `board.mjs` regenerates the whole file from `docs/31-board-events.jsonl` on every event, so a hand-appended row is silently overwritten by the next writer — mutate it with `board.mjs move`, never with an editor |
-| `docs/31-board-events.jsonl`, `docs/team/messages.jsonl` | shared tree — **append-only, via their CLI** | `board.mjs` / `team-message.sh` validate then append; never edit an existing line, and appends from different agents merge cleanly. Their Markdown views (`docs/31-board.md`, `docs/team/messages.md`) are GENERATED — a hand edit is overwritten by the next render |
-
-A shared write is safe when **no other agent can write that same path**. Uniquely-named files and
-append-only logs qualify. Anything else — source, tests, a doc two roles both edit — is worktree-only.
-
-Observed: a developer wrote its daily fragment to the repo root instead of its worktree, because the
-orchestrator's prompt named a repo-root path. The fragment then sat on `main` describing work that
-was still on an unmerged branch. Name the worktree-relative path when you spawn.
-
-If the project genuinely cannot use worktrees (not a git repo, or a tool that needs the canonical
-path), then agents that write **must be serialized** — one at a time, each committing before the
-next starts. Never run parallel writers in one tree. Say in the daily fragment that you serialized
-and why.
-
-**The orchestrator does not get to claim it remembered.** Before the launch message:
-
-```bash
-sh "${CLAUDE_PLUGIN_ROOT}/scripts/spawn-gate.sh" APP-001 APP-002
-```
-
-Exit 1 = REFUSED, spawn nobody; it names which tickets lack a worktree and prints the command to
-create each. Exit 0 with one ticket = the serialized path, stated in the output so it reaches the
-standup. See `parallel-orchestrator` step 2a.
+Shared-tree files are the exception, and only these: your review verdict
+(`docs/53-reviews/APP-NNN-cycle-N.md`, unique per ticket and cycle) and the append-only logs written
+through their CLI. `docs/31-board.md` is **generated, CLI-only** — never edit it; `board.mjs move`
+is its only writer.
 
 ## Rule 2 — never stage blindly, and never run a repo-wide destructive command
 
@@ -125,99 +37,59 @@ git reset         git stash        git checkout -- .    git clean
 ```
 
 The top row attributes someone else's work to your ticket. The bottom row **destroys** it, and none
-of those four can be undone from inside your run. DR4-027: one `git stash` + `git reset`, run by an
-agent that only wanted a clean tree for a check, discarded 22 files and 332 insertions of another
-agent's in-progress work. It survived only because it happened to land in the stash; `git checkout
--- .` would have made all 22 unrecoverable.
+of those can be undone from inside your run — one `git stash` + `git reset` for "a clean tree"
+once discarded 22 files of another agent's live work.
 
 **If you need a clean tree to test, copy the repo to a temp dir and dirty that** — `cp -R . "$TMP"`,
 or `git worktree add` a scratch worktree. Never clean the tree you are standing in.
 
-Stage by explicit path, every time:
+Stage by explicit path, every time, then look at what you staged before committing:
 
 ```bash
 git add android/app/src/main/java/com/sandbox/todo/ui/TodoListScreen.kt \
         android/app/src/test/java/com/sandbox/todo/ui/TodoListViewModelTest.kt
-```
-
-Then look at what you actually staged before committing:
-
-```bash
 git diff --cached --numstat
 ```
 
-If a path you didn't touch appears, stop and unstage it. Another agent's work, or your own
-accidental edit, is about to be attributed to your ticket.
+If a path you didn't touch appears, stop and unstage it.
 
 ## Rule 3 — confirm the mutation landed
 
-Never believe an edit worked because the tool returned success. Between "I ran the edit" and "the
-file changed" sits every silent no-op: a pattern that didn't match, a path that didn't exist, a
-write to a stale worktree.
+Never believe an edit worked because the tool returned success. A pattern that didn't match, a path
+that didn't exist, a write to a stale worktree — all look identical to success.
 
 ```bash
 git diff --numstat            # something changed, and it is what you think
 git diff -- <the one file>    # the change is the change you intended
 ```
 
-A refactor that silently matched nothing looks *identical* to a refactor that succeeded, and the
-test suite that then passes is proving nothing. This is how a pass gets read as evidence.
-
-Corollary for destructive checks: **prefer deleting a guarded call to renaming it.** A rename is a
-compile error the moment it is wrong. A deletion still compiles, the test runs, and `0 failures`
-looks exactly like success.
+For destructive checks, **prefer deleting a guarded call to renaming it**: a rename is a compile
+error the moment it is wrong; a deletion still compiles and `0 failures` looks like success.
 
 ## Rule 4 — verify agents by running their work, not by reading their reports
 
-An agent's report is a claim about work, produced by the same agent that did the work. Reports are
-consistently more confident than the work justifies.
-
 - A developer's `DONE` is checked with `verify-done.sh` — branch, commits, files, test exit code.
-- A rule, guard, or test an agent wrote is checked by **making it fail on purpose** — see the
-  `defect-hunting` skill. A rule that cannot fail reports success forever.
-- An audit finding is checked by reproducing it, not by re-reading the finding.
+- A rule, guard, or test an agent wrote is checked by **making it fail on purpose**
+  (`defect-hunting` §3).
+- An audit finding is checked by reproducing it, not by re-reading it.
 
 ## Rule 5 — if HEAD moved under you, stop and report
 
-You may be running without a worktree — the orchestrator failed to make one, or the project cannot
-use them. That is a supported state, and it is the state in which this rule is the only thing
-standing between you and another agent's lost work.
-
 If `HEAD` is not where you left it, or files you did not write have appeared, **stop.** Do not
-`git reset --hard`, do not `git checkout -- .`, do not `git stash drop`, do not delete an untracked
-file to "clean up". Another agent's uncommitted work may be in that tree, and none of those
-commands can be undone from inside your run.
+`git reset --hard`, `git checkout -- .`, `git stash drop`, or delete an untracked file to "clean
+up" — another agent's uncommitted work may be in that tree. Write a `blocker` naming what moved and
+let `tech-manager` resolve it. A stalled ticket is cheap; a discarded working tree is not
+recoverable.
 
-Write a `blocker` naming what moved and let `tech-manager` resolve it. A stalled ticket is cheap; a
-discarded working tree is not recoverable.
+## Rule 6 — you never compose or mint
 
-## Orchestrator checklist
-
-Before a parallel launch:
-
-- [ ] `spawn-gate.sh <the ticket IDs>` exits 0 — not "I believe each has a worktree", the gate said so
-- [ ] Each writing agent has its own worktree, created before spawn
-- [ ] Each agent's prompt names **its worktree path** as the project root, not the repo root
-- [ ] No two agents are assigned the same file (if unavoidable, serialize those tickets)
-- [ ] Agents are told: explicit-path staging only, and confirm the mutation landed
-
-After each agent returns:
-
-- [ ] `verify-done.sh` before believing `DONE`
-- [ ] `git diff --cached --numstat` on the branch shows only that ticket's paths
-- [ ] Worktree removed after merge
+`spawn-prompt.mjs compose` and `board.mjs actor mint` are the orchestrator's; your token is the one
+in your spawn prompt. A token refusal, or a hook saying a prompt must be composed → stop and return
+`BLOCKED:` naming it; the orchestrator re-spawns you with a freshly composed prompt. Never work
+around it.
 
 ## Output contract
 
-Developer/fixer agents report their isolation state so the orchestrator can check it:
-
-```
-DONE: APP-NNN
-Worktree: .agent-wt/APP-NNN
-Branch: feat/APP-NNN-short-slug
-Staged (explicit paths): <list>
-Mutation confirmed: git diff --numstat -> <N files, +A/-B>
-Files: <list>
-Tests: <count> added, <command run>, exit 0
-Next: code-reviewer
-```
+Report `Worktree: .agent-wt/<owner>-<n>`, `Branch:`, `Staged (explicit paths):` and `Mutation
+confirmed:` inside your role's output contract (`spawn-prompt.mjs` inlines it; `team-protocol` is
+the reference).

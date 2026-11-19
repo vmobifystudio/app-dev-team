@@ -3,8 +3,64 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-08-06 · **Branch:** `feat/review-verdict-contract` (PR #30, all CI green)
-**Suite:** 1240 assertions · **Invariants:** 12/12 · **Version:** 3.0.0
+**Last updated:** 2026-11-19 · **Branch:** `fix/e2e-review-sweep` (on top of `main` at `3bedced`, #44)
+**Suite:** 2272 passed, 0 failed · **Mutation sample:** all caught · **Eval lab:** passes · **Invariants:** 12/12 · **Version:** 3.1.0
+
+## 2026-11-17 — the end-to-end review (`fix/e2e-review-sweep`)
+
+An end-to-end walk of `/app-run` → init → plan → build → ship, each defect reproduced against a
+scratch project before it was fixed. What it found, plainly:
+
+- **The review-verdict hook never fired.** Claude Code names plugin agents `app-dev-team:code-reviewer`
+  and the hook matched only `code-reviewer`. It also disarmed itself on its own refusal text and let a
+  hand-typed verdict line through. Fixed; a verdict now has to pass `board.mjs verify`.
+- **The build loop stalled after round one.** Preflight went stale after the first board move and the
+  first merge, and `project-profile.json` was never filled in. `/app-build` now re-snapshots every
+  round, and `/app-plan` hands the profile to `devops-engineer`.
+- **`/app-ship` could never pass.** Nothing wrote the runtime result its readiness check reads.
+  `runtime-gate.sh --record` writes it, and `/app-ship` now re-checks the built candidate before the
+  release audit.
+- **The merge gate checked the wrong commit.** `approval-check --ticket` with the branch tip.
+- **No agent could actually use a skill** — none had the `Skill` tool. All 30 do now; spawners gain
+  `Agent`, five reviewers gain `Write`.
+- **Prose that pointed at nothing:** a nonexistent `run-ledger.mjs list`, "increment Cycles", a
+  promise that `release-manager` uploads (it never does), a deleted role's name.
+- **The docs caught up:** README, HANDBOOK, CONTRIBUTING, CHANGELOG and `knowledge/README.md` now
+  match the tree (30 roles · 27 commands · 32 skills · 9 packs, both dashboards, both corpora).
+- **More fixed in the same pass:** the destructive-git hook now tokenises the command (quoted text,
+  heredocs, `-C`/`-c`, `cd X &&`, chains) instead of substring-matching it, so it stops blocking
+  `grep "git add -A"` and commit-message heredocs and starts blocking `git -C . reset --hard`,
+  `git push origin +main` and friends; the cross-worktree hook resolves symlinks and `..`; the kill
+  switch is seen from worktrees and subdirectories; `decisions.md` is append-only rather than
+  immutable; brownfield gets a founder record; `qa-engineer` declares the P0 journeys; audit
+  findings reach the register `ship-gate` reads; `security-reviewer` has its utility privacy mode.
+- **2026-11-18 five-lens expert review** (`docs/reviews/2026-11-18-expert-review.md`, every
+  finding): a literal agent still could not reach Gate 2. Fixed in Phase 1 — Jest/Vitest/pytest/go/
+  Gradle now count as a suite that ran and zero tests never pass; app-init creates the repo, ignores
+  the studio's operational files and commits the planning docs; dirty checks ignore those files;
+  approvals bind the ticket branch tip, only the latest per role counts, a later commit needs a
+  re-review, and `merged` enforces it itself; the default risk policy needs only code-reviewer;
+  `QA-` tickets close from `merged`; founder `reopened` past the cycle cap; `closed` needs the code
+  on main; leases complete; the review hook wants this cycle's verdict; the orchestrator runs the
+  merge gate inline (no tech-manager spawn); tech-manager/code-reviewer cut ~35%; skill
+  descriptions <=255 chars; all commands have frontmatter.
+  **Phase 2 (done 2026-11-18/19, see below):** split the big shared skills into short cores (IC
+  spawn ~15k -> ~4k words); hooks that enforce the spawn/report contracts and persist reports;
+  machine-produced gate evidence + signed actors; spec excerpts and a reviewer template in
+  spawn-prompt; risk from the actual diff; renumber colliding doc numbers (16/17/72/73).
+- **2026-11-18/19 — Phase 2 and six sprints** (register with every finding and its outcome:
+  `docs/reviews/2026-11-18-sprint-2.md`). Phase 2 shipped: short skill cores, hooks that enforce the
+  spawn/report contracts and persist reports, per-spawn actor tokens (hashes only on disk), gate
+  evidence the CLI re-derives itself in a cold worktree, risk from the merged diff, spec excerpts in
+  spawn prompts, colliding doc numbers renumbered. A five-lens re-audit (136 findings) and three
+  confirmation passes (a literal agent driving every script, plus an adversarial gate probe) drove
+  sprints 3–6. Final state: a literal run reaches Gate 2, survives qa_failed -> BUG-fix, lands QA
+  tickets on main, and reaches a ship candidate, including a browserless web app with a versioned
+  journey waiver; a confused subagent cannot close a ticket without tests that ran and a bound
+  review. Accepted bounds are listed in HANDBOOK "What the gates prove and what they don't".
+- **Still open:** the new destructive-git tokenizer was only exercised under macOS awk — CI on
+  ubuntu is its first mawk run. And everything here was proven by driving the CLI and the hooks,
+  not by an agent following the commands end to end; that still needs a real spawned run.
 
 ## THE NUMBER THAT MATTERS MOST, AND WHY IT IS AT THE TOP
 
@@ -78,7 +134,7 @@ months and never practised.
 | `docs/25-engineering-rules.md` | The ten rules, each naming its enforcing mechanism **or stating it has none** |
 | `docs/research/2026-07-29-dry-run-4-findings.md` | The register from the first real end-to-end run. Historical; every finding has a reproduction |
 | `docs/2026-07-29-studio-os-plan.md` | The current plan: review of two improvement plans, position changes, phase order |
-| `knowledge/failure-corpus.md` | The six defect classes this codebase actually produces, and the *tell* for each |
+| `knowledge/failure-corpus.md` | The seven defect classes this codebase actually produces, and the *tell* for each |
 | `docs/2026-07-29-revamp-master-plan.md` | The earlier register (RV-NNN) — historical, mostly closed |
 
 ---

@@ -1,7 +1,7 @@
 ---
 name: product-researcher
 description: Use for independent evidence-gathering on new-product work — user evidence, competitor observation, and the market facts a PRD assumes. Conditional role, activated for new-product or repositioning work. Produces docs/16-research.md, in which fact, user evidence, competitor observation, hypothesis and agent inference are labelled separately and never merged.
-tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
+tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch, Skill
 model: sonnet
 ---
 
@@ -64,11 +64,11 @@ that answers everything answered nothing.
 
 # Output
 
-You may be spawned by `/app-build` as a ticket owner. Return the **DOC profile** from
-`team-protocol` verbatim — every field, in its order: `DONE:` · `Worktree:` · `Branch:` · `Files:` ·
-`Mutation confirmed:` · `Daily fragment:` · `Assumptions & open questions:` ·
-`Shared surfaces touched:` · `Next:`. `Branch:` is required even on a docs-only
-ticket. For `Shared surfaces touched:`, yours is `docs/16-research.md`.
+You may be spawned by `/app-build` as a ticket owner. Return the output block your spawn
+prompt prints, verbatim, `DONE:` first, every field filled. `Branch:` is required even on a
+docs-only ticket. For `Shared surfaces touched:`, yours is `docs/16-research.md`.
+Its labels, for reference: `DONE:` · `Worktree:` · `Branch:` · `Files:` · `Mutation confirmed:` ·
+`Daily fragment:` · `Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`.
 
 If blocked, return `team-protocol`'s `BLOCKED:` block instead.
 

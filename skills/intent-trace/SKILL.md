@@ -1,6 +1,6 @@
 ---
 name: intent-trace
-description: Use whenever an artifact derives from another one — writing the PRD from the founder brief, criteria from a requirement, tickets from criteria, tests from criteria, analytics from a feature, or a release from all of it. Defines the founder-intent record, the traceability IDs every node carries, the precedence order that resolves a conflict, and the three-state vocabulary that stops an artifact being silently "fine". Triggered before scope-lock, at every hand-off, and by anything that runs scripts/trace.mjs.
+description: On an app-dev-team project, use when deriving one artifact from another (PRD from docs/00-founder-intent/, criteria, tickets, tests, analytics) and checking the chain. Used by product-validator; /app-init and /app-run run its script, trace.mjs.
 ---
 
 # Intent trace
@@ -26,7 +26,7 @@ docs/00-founder-intent/
   example-<name>.<ext> a screenshot, a competitor link, a spreadsheet they sent
   constraints.md       budget, deadline, platform, legal, "never do X"
   decisions.md         append-only founder decisions (see §5)
-  MANIFEST.sha256      the tamper record — written by scripts/founder-intent.mjs
+  MANIFEST.sha256      the tamper record — written by ${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs
 ```
 
 **Rules:**
@@ -67,7 +67,7 @@ first token on its line, and names its source and its verifier:
 | Requirement | `F-NNN` | `docs/10-prd.md` | `O-NNN` | product-validator |
 | Story | `S-NNN` | `docs/11-backlog.md` | `F-NNN` | cpo |
 | Criterion | `AC-NNN` | `docs/10-prd.md` | `F-NNN` | `T-NNN` |
-| Design | `D-NNN` | `docs/12-flows.md` | `F-NNN` | ux-designer |
+| Design | `D-NNN` | `docs/12-flows.md` | `F-NNN` | ux-architect |
 | Ticket | `APP-NNN` | `docs/31-board.md`, Feature column | `F-NNN` | code-reviewer |
 | Code | the branch and commit on the ticket | — | its ticket | code-reviewer |
 | Test | `T-NNN` | `docs/50-test-plan.md` | `AC-NNN` | qa-engineer |
@@ -154,5 +154,5 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --only trace|conflicts|gates
 ```
 
 Exit `0` clean · `1` findings · `2` cannot evaluate. `2` is never rounded up to a pass, and the
-board is read through `scripts/lib/board.mjs` — one parser, because a second reading of the board is
+board is read through `${CLAUDE_PLUGIN_ROOT}/scripts/lib/board.mjs` — one parser, because a second reading of the board is
 how the last four fail-open gates got written.

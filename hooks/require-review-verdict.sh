@@ -38,8 +38,8 @@
 #
 # RESIDUAL, STATED LIMITATION: correlating "this stop event" to "this review" still uses a ticket ID
 # extracted from the transcript, because the SubagentStop payload carries no ticket ID at all. A real
-# event for that ticket ID, from ANY point in the ticket's history (not provably from THIS session),
-# satisfies the check. This closes the demonstrated exploit (prose can never forge a real log entry)
+# event for that ticket ID written after the reviewer's latest `started` on it (not provably from THIS
+# session) satisfies the check. This closes the demonstrated exploit (prose can never forge a real log entry)
 # without claiming to prove which session wrote it — narrower and honest, over a wider claim this
 # script cannot actually back.
 #
@@ -52,8 +52,8 @@
 # did it just stop, the way the incident above did.
 #
 # CONTRACT
-#   stdin  : the SubagentStop payload (JSON) — reads `agent_type`, `transcript_path`, `cwd`,
-#            `last_assistant_message`
+#   stdin  : the SubagentStop payload (JSON) — reads `agent_type`, `agent_transcript_path` (else
+#            `transcript_path`), `cwd`, `last_assistant_message`, `agent_id`, `stop_hook_active`
 #   exit 0 : allow the stop
 #   exit 2 : BLOCK, with the reason and what is missing on stderr
 #
@@ -90,44 +90,94 @@ extract_field() {
 }
 
 AGENT_TYPE=$(extract_field "agent_type")
-TRANSCRIPT=$(extract_field "transcript_path")
+# The SUBAGENT's own transcript, when the harness sends it; `transcript_path` is the main session's,
+# which names every ticket the orchestrator ever touched (W2-7).
+TRANSCRIPT=$(extract_field "agent_transcript_path")
+[ -n "$TRANSCRIPT" ] || TRANSCRIPT=$(extract_field "transcript_path")
 CWD=$(extract_field "cwd")
 LAST_MSG=$(extract_field "last_assistant_message")
+AGENT_ID=$(extract_field "agent_id")
+STOP_ACTIVE=0
+printf '%s' "$PAYLOAD" | tr -d ' \n\t' | grep -q '"stop_hook_active":true' && STOP_ACTIVE=1
+
+# ONCE PER SUBAGENT, like persist-ic-report (W2-7, C2-25): a stop already continued by a stop hook
+# (stop_hook_active) is let through, and so is a second stop of the same agent_id (a marker beside
+# the persisted reports). Never block forever; the missing verdict still shows on the board.
+block_once() {
+  [ "$STOP_ACTIVE" = 1 ] && exit 0
+  if [ -n "$AGENT_ID" ] && [ -n "${ROOT:-}" ]; then
+    _m="$ROOT/docs/team/reports/.blocked/rv-$(printf '%s' "$AGENT_ID" | cksum | cut -d' ' -f1)"
+    [ -e "$_m" ] && exit 0
+    mkdir -p "$(dirname "$_m")" 2>/dev/null && : > "$_m" 2>/dev/null
+  fi
+  cat >&2
+  exit 2
+}
 
 # Belt-and-braces beyond hooks.json's own "code-reviewer" matcher: a fail-CLOSED hook misfiring on
 # the wrong role (developer, tech-lead, qa-engineer — none of which ever write docs/53-reviews/) is
 # the worst possible blast radius for a matcher assumption this script never itself verified. If
 # agent_type is present and is not code-reviewer, this hook has nothing to do with this subagent.
-if [ -n "$AGENT_TYPE" ] && [ "$AGENT_TYPE" != "code-reviewer" ]; then
+#
+# PLUGIN AGENTS ARE NAMESPACED. Claude Code reports this plugin's reviewer as
+# `app-dev-team:code-reviewer`, not `code-reviewer`. Comparing the raw string made this hook exit 0
+# for the only reviewer it exists to police — it enforced nothing. Compare the unqualified name.
+if [ -n "$AGENT_TYPE" ] && [ "${AGENT_TYPE##*:}" != "code-reviewer" ]; then
   exit 0
 fi
 
 # A documented BLOCKED refusal (e.g. self-review) is a legitimate third outcome — code-reviewer.md's
 # own format is `BLOCKED: APP-NNN` at the start of the response. It produces neither a review file nor
 # a board.mjs verdict event by design, and it is self-explaining, unlike the silent idle-out this hook
-# exists to catch. `last_assistant_message` is part of the documented SubagentStop payload; the
-# transcript-scan fallback below is defensive in case a given invocation omits or truncates it.
-BLOCKED=0
-case "$LAST_MSG" in
-  *BLOCKED:*) BLOCKED=1 ;;
+# exists to catch. ANCHORED to the start of the final message, and ONLY that message: an unanchored
+# `*BLOCKED:*` let "I was not BLOCKED: anything" through, and the old transcript-tail scan matched
+# this hook's OWN refusal text below (which quotes `BLOCKED: APP-NNN`) — the self-disarm v2 was
+# written to remove, reintroduced one layer down.
+#
+# BY MODE, NOT ROLE (R2-8): a code-reviewer spawned for the design-qa gate (`Design QA ticket X.`,
+# when ux-architect is off) returns `DESIGN QA: PASS | FAIL` and records nothing — the orchestrator
+# records a FAIL. Same anchoring.
+# PR46-8: the first non-blank line, with leading whitespace and markdown (`**`, `_`, `#`, `>`) stripped —
+# `**BLOCKED: APP-001**` is the same refusal. Still the first line only.
+HEAD_LINE=$(printf '%s\n' "$LAST_MSG" | awk '/[^ \t\r]/ { sub(/^[ \t\r*_#>]+/, ""); print; exit }')
+case "$HEAD_LINE" in
+  BLOCKED:*|"DESIGN QA:"*) exit 0 ;;
 esac
-if [ "$BLOCKED" = 0 ] && [ -n "$TRANSCRIPT" ] && [ -r "$TRANSCRIPT" ]; then
-  tail -20 "$TRANSCRIPT" 2>/dev/null | grep -q 'BLOCKED:' && BLOCKED=1
-fi
-[ "$BLOCKED" = 1 ] && exit 0
 
 # Everything past here needs the transcript ONLY to find a candidate ticket ID — never to decide
 # whether the review actually happened. A false claim in the transcript cannot forge a log line.
 [ -n "$TRANSCRIPT" ] && [ -r "$TRANSCRIPT" ] || exit 0
 
-LOG="${CWD:-.}/docs/31-board-events.jsonl"
+# The reviewer usually stands in its own linked worktree, whose docs/ is a stale committed copy;
+# board.mjs (lib/root.mjs) writes the MAIN tree's log. Read the log where it is written, or a real
+# verdict looks missing and the reviewer is trapped on every stop.
+ROOT=${CWD:-.}
+COMMON=$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && ROOT=$(dirname "$COMMON")
+LOG="$ROOT/docs/31-board-events.jsonl"
 [ -r "$LOG" ] || exit 0
 
-# Ticket IDs this subagent's transcript mentions — the studio's own convention, `[A-Z]+-[0-9]+`
-# (APP-001, OPS-014, ...). Deduplicated candidates only; order doesn't matter, one real match is enough.
-CANDIDATES=$(grep -oE '[A-Z]{2,}-[0-9]+' "$TRANSCRIPT" 2>/dev/null | sort -u)
-[ -n "$CANDIDATES" ] || {
-  cat >&2 <<'EOF'
+# WHICH ticket this review was for (W2-7, W2-16, C2-25). Any ID anywhere in the transcript used to
+# do: a reviewer of APP-002 whose transcript merely mentioned APP-001 stopped on APP-001's verdict,
+# and `[A-Z]{2,}-[0-9]+` read `QA-1-w1` as `QA-1` and `APP-001-analytics` as `APP-001`. Now:
+#   1. the ticket the prompt names — spawn-prompt's own first line, `Review ticket <ID>.` — and the
+#      verdict's `Ticket: <ID>` line in the final message;
+#   2. only if neither exists (a hand-written prompt), every ID the transcript mentions;
+# and every mention is cut back to the LONGEST ID the board actually carries (whole IDs only).
+board_id() {  # <mention> -> the board's spelling of the longest board ID it spells, or nothing
+  _t=$1
+  while :; do
+    _hit=$(grep -oiF "\"ticket\":\"$_t\"" "$LOG" 2>/dev/null | head -1)
+    [ -n "$_hit" ] && { printf '%s\n' "$_hit" | sed 's/^"ticket":"//; s/"$//'; return 0; }
+    case $_t in *-*-*) _t=${_t%-*} ;; *) return 0 ;; esac
+  done
+}
+ID_ERE='[A-Z][A-Z0-9]*-[0-9]+(-[A-Za-z0-9]+)*'
+MENTIONS=$( { grep -oE "Review ticket $ID_ERE" "$TRANSCRIPT" 2>/dev/null | sed 's/^Review ticket //'
+              printf '%s\n' "$LAST_MSG" | sed -n 's/^Ticket:[[:space:]]*\([^[:space:]]*\).*/\1/p'; } | sort -u)
+[ -n "$MENTIONS" ] || MENTIONS=$(grep -oE "$ID_ERE" "$TRANSCRIPT" 2>/dev/null | sort -u)
+CANDIDATES=$(for _m in $MENTIONS; do board_id "$_m"; done | sort -u)
+[ -n "$CANDIDATES" ] || [ -n "$MENTIONS" ] || {
+  block_once <<'EOF'
 BLOCKED — this review subagent is stopping and its transcript names no ticket ID at all.
 
 Nothing to check a verdict against. If this truly is not a per-ticket review, that is unusual for
@@ -144,7 +194,15 @@ for id in $CANDIDATES; do
   # piping grep -F/-E stages (each narrowing the SAME candidate lines further) requiring all four
   # substrings cannot be satisfied by unrelated lines or by separate events that merely share a
   # substring across different tickets.
-  LINE=$(grep -F "\"ticket\":\"$id\"" "$LOG" 2>/dev/null | grep -E '"event":"(approved|changes)"' | grep '"by":"code-reviewer"' | grep -F '"verdict_path"' | tail -1)
+  LINE=$(grep -nF "\"ticket\":\"$id\"" "$LOG" 2>/dev/null | grep -E '"event":"(approved|changes)"' | grep '"by":"code-reviewer"' | grep -F '"verdict_path"' | tail -1)
+  # G-F9: the verdict must be NEWER than the reviewer's latest `started` on this ticket. An old
+  # cycle's verdict is not this cycle's — without this, a reviewer re-spawned for cycle 2 could
+  # stop having recorded nothing, satisfied by cycle 1's line. `grep -n` gives log line numbers;
+  # the log is append-only, so a larger number is a later event.
+  STARTED=$(grep -nF "\"ticket\":\"$id\"" "$LOG" 2>/dev/null | grep '"event":"started"' | grep '"by":"code-reviewer"' | tail -1)
+  if [ -n "$LINE" ] && [ -n "$STARTED" ] && [ "${LINE%%:*}" -lt "${STARTED%%:*}" ]; then
+    LINE=""
+  fi
   if [ -n "$LINE" ]; then
     RECORDED=1
     MATCHED_TICKET="$id"
@@ -152,12 +210,24 @@ for id in $CANDIDATES; do
   fi
 done
 
+# A matching line is only ground truth if board.mjs wrote it. One `echo >> log` from the reviewer's
+# own Bash tool forges all four substrings; the hash chain is what it cannot forge. `verify` fails on
+# any line appended without the CLI. No node means board.mjs could not have run either — keep the grep.
+if [ "$RECORDED" = 1 ] && command -v node >/dev/null 2>&1; then
+  BOARD="$(dirname "$0")/../scripts/board.mjs"
+  if [ -r "$BOARD" ] && ! (cd "$ROOT" && node "$BOARD" verify >/dev/null 2>&1); then
+    { echo "BLOCKED — the board event log's audit chain is broken (node scripts/board.mjs verify)."
+      echo "A verdict line that board.mjs did not write is not a recorded verdict."; } | block_once
+    exit $?   # the pipeline ran block_once in a subshell: its exit is the verdict
+  fi
+fi
+
 [ "$RECORDED" = 1 ] && exit 0
 
 {
   echo "BLOCKED — this review subagent is stopping with no recorded verdict."
   echo ""
-  echo "  candidate ticket(s) mentioned : $(printf '%s' "$CANDIDATES" | tr '\n' ' ')"
+  echo "  candidate ticket(s) mentioned : $(printf '%s' "${CANDIDATES:-$MENTIONS (none of them on the board)}" | tr '\n' ' ')"
   echo "  a real approved|changes event, by code-reviewer, with a verdict_path, exists for any of them: NO"
   echo ""
   echo "This is checked against docs/31-board-events.jsonl directly — the board's own append-only"
@@ -167,5 +237,5 @@ done
   echo "\`board.mjs move APP-NNN approved|changes --verdict <that file>\` and confirm it exits 0."
   echo "If you cannot review this ticket at all (e.g. self-review), say so explicitly:"
   echo "\`BLOCKED: APP-NNN\` with the reason."
-} >&2
-exit 2
+} | block_once
+exit $?

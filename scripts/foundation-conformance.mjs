@@ -23,6 +23,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// A CI runner has no git identity ("fatal: empty ident name"), and the scripts these sandboxes run
+// commit. Set one only when git cannot form its own, so a configured machine is left as it was
+// (same rule as scripts/test.sh).
+try { execFileSync('git', ['var', 'GIT_COMMITTER_IDENT'], { stdio: 'ignore' }); } catch {
+  Object.assign(process.env, { GIT_AUTHOR_NAME: 'studio-test', GIT_AUTHOR_EMAIL: 'studio-test@example.invalid', GIT_COMMITTER_NAME: 'studio-test', GIT_COMMITTER_EMAIL: 'studio-test@example.invalid' });
+}
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const only = process.argv.slice(2).filter((a) => /^I-\d+$/.test(a));
@@ -45,7 +52,7 @@ function invariant(id, title, critical, fn) {
 function sandbox(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'fc-'));
   try {
-    run('git', ['init', '-q', '.'], dir);
+    run('git', ['init', '-q', '-b', 'main', '.'], dir); // -b: CI's git defaults to master, and fixtures name main
     return fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -67,11 +74,57 @@ function run(cmd, args, cwd) {
  * caller did not, keeping each invariant's subject visible. An invariant that fails because a
  * fixture forgot a fixture file is a harness fault reported as a product fault (DR4-001).
  */
+/**
+ * `verified` / `qa_passed` require --evidence a SCRIPT wrote (lib/evidence.mjs). Supplied the same
+ * honest way a team would: verify-done.sh run on a real branch — the ticket's own when exactly one
+ * is named for it, else a fixture branch made with plumbing so no working tree moves.
+ */
+function evidenceFor(cwd, ticket) {
+  const git = (a) => run('git', ['-c', 'user.name=fc', '-c', 'user.email=fc@localhost', ...a], cwd);
+  if (git(['rev-parse', '--verify', '-q', 'HEAD']).code !== 0) git(['commit', '-q', '--allow-empty', '-m', 'base']);
+  const named = git(['branch', '--format=%(refname:short)']).out.split('\n').filter((b) => b && b.toLowerCase().includes(ticket.toLowerCase()));
+  let branch;
+  let base;
+  if (named.length === 1) {
+    branch = named[0];
+    base = git(['merge-base', 'main', branch]).out.trim() || `${branch}^`;
+  } else {
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd, input: `fixture ${ticket}\n`, encoding: 'utf8' }).trim();
+    const tree = execFileSync('git', ['mktree'], { cwd, input: `100644 blob ${blob}\tev-fixture.txt\n`, encoding: 'utf8' }).trim();
+    base = git(['rev-parse', 'HEAD']).out.trim();
+    const commit = git(['commit-tree', tree, '-p', base, '-m', 'evidence fixture']).out.trim();
+    branch = `evfixture-${Date.now()}`;
+    git(['update-ref', `refs/heads/${branch}`, commit]);
+  }
+  // `verified` needs a run of a command the project profile DECLARES (lib/evidence.mjs, G2-3), so a
+  // fixture with no profile gets one declaring test.fast, as a team's bootstrap would.
+  const profile = join(cwd, 'docs/team/project-profile.json');
+  if (!existsSync(profile)) {
+    mkdirSync(join(cwd, 'docs/team'), { recursive: true });
+    writeFileSync(profile, `${JSON.stringify({ schema: 'project-profile/v1', test: { fast: 'echo "Executed 1 tests, with 0 failures"' } })}\n`);
+  }
+  const vd = run('sh', [join(ROOT, 'scripts/verify-done.sh'), branch, base, 'fast'], cwd);
+  return (vd.out.match(/^ {2}Evidence: (\S+)/m) || [])[1] || '';
+}
 const board = (args, cwd) => {
+  if ((args.includes('verified') || args.includes('qa_passed')) && args[0] === 'move' && !args.includes('--evidence')) {
+    const ev = evidenceFor(cwd, args[1]);
+    if (ev) args = [...args, '--evidence', ev];
+  }
   if ((args.includes('approved') || args.includes('changes')) && !args.includes('--verdict')) {
     const word = args.includes('approved') ? 'APPROVE' : 'REQUEST CHANGES';
     const path = join(cwd, '.conformance-verdict.md');
-    writeFileSync(path, `REVIEW VERDICT: ${word}\nScope: base..head\n\n## Not checked\nNothing — conformance fixture.\n`);
+    // Under --bind the Scope must be the bound candidate (board.mjs, G-F4), so name it.
+    let scope = 'base..head';
+    let read = '';
+    if (args.includes('--bind')) {
+      const head = run('git', ['rev-parse', 'HEAD'], cwd).out.trim();
+      const base = run('git', ['merge-base', 'main', head], cwd).out.trim();
+      scope = `${base}..${head}`;
+      // C3G-13: a bound APPROVE names at least one file of the bound diff.
+      read = run('git', ['diff', '--name-only', base, head], cwd).out.trim().split('\n').join(', ');
+    }
+    writeFileSync(path, `REVIEW VERDICT: ${word}\nScope: ${scope}\n\nRead: ${read}\n\n## Not checked\nNothing — conformance fixture.\n`);
     args = [...args, '--verdict', path];
   }
   return run('node', [join(ROOT, 'scripts/board.mjs'), ...args], cwd);
@@ -90,7 +143,7 @@ invariant('I-01', 'One project boundary', true, () => sandbox((outer) => {
   // repository — the one failure no downstream gate can undo, because the write already landed.
   const inner = join(outer, 'vendor/inner');
   mkdirSync(inner, { recursive: true });
-  run('git', ['init', '-q', '.'], inner);
+  run('git', ['init', '-q', '-b', 'main', '.'], inner);
   const r = board(['add', 'I-001', '--title', 'inner', '--owner', 'ios-developer'], inner);
   const wroteInner = existsSync(join(inner, 'docs/31-board-events.jsonl'));
   const outerCount = logLines(outer).length;
@@ -193,7 +246,26 @@ invariant('I-04', 'Authenticated authority', true, () => sandbox((dir) => {
   const stamped = logLines(dir).some((l) => { try { return JSON.parse(l).actor?.mode === 'attested'; } catch { return false; } });
   if (!stamped) return { state: 'FAIL', detail: 'the accepted event carries no actor/v1 mode — history cannot distinguish proven from asserted' };
 
-  return { state: 'PASS', detail: 'a role must be granted to an actor and proven per-assertion; the regime is stamped on the event' };
+  // 5. PER-SPAWN TOKENS (G-F1), the mode a new project defaults to: the registry holds hashes, so
+  //    READING it proves nothing. A gate event with --by alone, or with a token minted for another
+  //    role, is refused; the token minted for this role on this ticket is accepted.
+  const tokens = sandbox((t) => {
+    writeFileSync(join(t, '.studio-policy.json'), JSON.stringify({ requireActorTokens: true }));
+    board(['add', 'K-001', '--title', 'x', '--owner', 'ios-developer'], t);
+    board(['move', 'K-001', 'claimed', '--by', 'ios-developer'], t);
+    board(['move', 'K-001', 'done_reported', '--by', 'ios-developer'], t);
+    const mint = (role) => run('node', [join(ROOT, 'scripts/board.mjs'), 'actor', 'mint', '--role', role, '--ticket', 'K-001'], t).out.trim();
+    if (board(['move', 'K-001', 'rejected', '--by', 'tech-lead'], t).code === 0) return 'a gate event with --by alone was accepted under requireActorTokens';
+    if (board(['move', 'K-001', 'rejected', '--by', 'tech-lead', '--token', mint('ios-developer')], t).code === 0) return 'a token minted for ios-developer cleared a tech-lead gate';
+    const reg = readFileSync(join(t, 'docs/team/actor-tokens.jsonl'), 'utf8');
+    const good = mint('tech-lead');
+    if (reg.includes(good)) return 'the token registry stores the plaintext token — reading it would mint any role';
+    const r = board(['move', 'K-001', 'rejected', '--by', 'tech-lead', '--token', good], t);
+    return r.code === 0 ? '' : `the correctly minted token was refused: ${r.out.trim().split('\n')[0]}`;
+  });
+  if (tokens) return { state: 'FAIL', detail: tokens };
+
+  return { state: 'PASS', detail: 'a role must be granted to an actor and proven per-assertion (HMAC, or a per-spawn token whose plaintext is on no disk); the regime is stamped on the event' };
 }));
 
 // ---------------------------------------------------------------------------------------------
@@ -213,21 +285,22 @@ invariant('I-05', 'Complete work identity', true, () => sandbox((dir) => {
   writeFileSync(join(dir, 'a.txt'), 'base\n');
   run('git', ['add', '-A'], dir); run('git', ['commit', '-qm', 'base'], dir);
   run('git', ['branch', '-M', 'main'], dir);
-  run('git', ['checkout', '-q', '-b', 'feat/x'], dir);
+  run('git', ['checkout', '-q', '-b', 'feat/A-001-x'], dir);
   writeFileSync(join(dir, 'f1.txt'), 'one\n');
   run('git', ['add', '-A'], dir); run('git', ['commit', '-qm', 'c1'], dir);
   writeFileSync(join(dir, 'f2.txt'), 'two\n');
   run('git', ['add', '-A'], dir); run('git', ['commit', '-qm', 'c2'], dir);
-  writeFileSync(join(dir, 'ev.txt'), 'evidence\n');
-  writeFileSync(join(dir, 'ctx.txt'), 'context\n');
 
   board(['add', 'A-001', '--title', 'x', '--owner', 'ios-developer'], dir);
   for (const [e, by] of [['claimed', 'ios-developer'], ['done_reported', 'ios-developer'],
     ['verified', 'verification-engineer'], ['review_requested', 'ios-developer'], ['started', 'code-reviewer']]) {
     board(['move', 'A-001', e, '--by', by], dir);
   }
+  // --bind re-derives its evidence (a verify-done record for exactly this tip) and reads a
+  // context-manifest/v2 (board.mjs, G2-6) — any file at all used to be hashed and accepted.
+  run('node', [join(ROOT, 'scripts/context-manifest.mjs'), 'create', '--source', 'a.txt'], dir);
   const bind = board(['move', 'A-001', 'approved', '--by', 'code-reviewer', '--bind',
-    '--evidence', 'ev.txt', '--context', 'ctx.txt'], dir);
+    '--evidence', evidenceFor(dir, 'A-001'), '--context', 'docs/team/context-manifest.json'], dir);
   if (bind.code !== 0) return { state: 'CANNOT_EVALUATE', detail: `could not bind an approval: ${bind.out.trim().split('\n')[0]}` };
 
   const events = logLines(dir).map((l) => { try { return JSON.parse(l); } catch { return {}; } });
@@ -284,13 +357,25 @@ invariant('I-07', 'Enforced risk route', true, () => sandbox((dir) => {
     schema: 'risk-policy/v1',
     default: { risk: 'low', model: 'sonnet', approvals: [], required_evidence: [] },
     rules: [{ match: { path: '**/billing/**' }, risk: 'critical', model: 'opus',
-      approvals: ['code-reviewer', 'security-reviewer'], required_evidence: ['threat-model'] }],
+      approvals: ['code-reviewer', 'security-reviewer'], required_evidence: ['security-review'] }],
   }));
   board(['add', 'PAY-001', '--title', 'billing change', '--owner', 'ios-developer',
     '--file', 'src/billing/Checkout.swift', '--invariant', 'totals never negative'], dir);
+  // The merge reads the ticket's DIFF (board.mjs, G2-7: an unknown diff is refused, never "no
+  // risk"), so the fixture carries the ticket's branch, as a real one would.
+  const g = (a) => run('git', ['-c', 'user.name=fc', '-c', 'user.email=fc@localhost', ...a], dir);
+  g(['commit', '-q', '--allow-empty', '-m', 'base']);
+  g(['checkout', '-q', '-b', 'feat/PAY-001-billing']);
+  mkdirSync(join(dir, 'src/billing'), { recursive: true });
+  writeFileSync(join(dir, 'src/billing/Checkout.swift'), 'let total = 0\n');
+  g(['add', 'src']); g(['commit', '-q', '-m', 'billing']); g(['checkout', '-q', '-']);
   for (const [e, by] of [['claimed', 'ios-developer'], ['done_reported', 'ios-developer'],
     ['verified', 'verification-engineer'], ['review_requested', 'ios-developer'],
-    ['started', 'code-reviewer'], ['approved', 'code-reviewer']]) board(['move', 'PAY-001', e, '--by', by], dir);
+    ['started', 'code-reviewer'], ['approved', 'code-reviewer']]) {
+    const m = board(['move', 'PAY-001', e, '--by', by], dir);
+    // A setup move that fails makes the merge refusal below meaningless — say which one, and why.
+    if (m.code !== 0) return { state: 'FAIL', detail: `fixture move ${e} --by ${by} was refused: ${m.out.trim().split('\n').slice(0, 3).join(' / ')}` };
+  }
 
   // The generic review is present and the separation rule is satisfied. Only the SPECIALIST the
   // risk route demanded is missing — the requirement that used to be printed and discarded.

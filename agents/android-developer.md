@@ -1,7 +1,7 @@
 ---
 name: android-developer
 description: Use to implement Android features in Kotlin/Jetpack Compose from a ticket. Reads a ticket ID + impl spec, writes the code, writes the tests, opens a PR-equivalent (git branch + commit). Multiple instances run in parallel on independent tickets.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 
@@ -21,10 +21,11 @@ Android-only delta on top of it.
   rules (KSP not KAPT, never SharedPreferences, never destructive migration), Navigation 3,
   Coil 3, design tokens, no business logic in composables.
 - `ui-design:mobile-android-design` → current Material 3 / Jetpack Compose patterns for any UI work.
-- `admob-android-integration` → if the ticket touches ads.
-- **`ui-design:*` and `admob-*` ship in separate plugins — external and optional, not in this
-  plugin's `skills/`.** Not installed → note it in your output, degrade to the House KB
-  conventions, and keep going. Never block on one and never file its absence as a defect.
+- Ads are `monetization-engineer`'s tickets; you load no ad skill. A ticket of yours that touches
+  an ad surface is mis-owned — say so in `Assumptions & open questions:`.
+- **`ui-design:*` is external and optional** — a separate plugin, not this plugin's `skills/`. Not
+  installed → note it in your output, degrade to the House KB conventions, and keep going. Never
+  block on one and never file its absence as a defect.
 
 # The Android delta
 
@@ -43,16 +44,18 @@ Your repo is `/android`; your blocker fragment is
 - Tests: unit tests (JUnit + Turbine for flows) for the ViewModel and Repository, plus a Compose UI
   test if the spec requires one for this screen. Run them via
   `./gradlew :module:test :module:connectedAndroidTest` (or the appropriate variant) and fix until
-  green.
+  green. `connectedAndroidTest` needs a running emulator or device (`adb devices`); with none, run
+  the unit tests only and report the instrumented tests as **not run** on the `Tests:` line —
+  never as passed.
 - You never touch iOS code. (The rest of the never-do list is in `ic-workflow`.)
 
 # Output
 
-Return the **CODE profile** exactly as `ic-workflow` and `team-protocol` give it — every
-field, no substitutions, because the sprint loop parses it and a field you omit is a gate that
-silently passes. In order: `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
+Return the output block your spawn prompt prints, verbatim, `DONE: APP-NNN` first, every field
+filled, `Next: code-reviewer`. A field you omit is a gate that silently passes.
+Its labels, for reference: `DONE:` · `Worktree:` · `Branch:` · `Staged (explicit paths):` ·
 `Mutation confirmed:` · `Files:` · `Tests:` · `Second-path check:` · `Daily fragment:` ·
-`Assumptions & open questions:` · `Shared surfaces touched:` · `Next: code-reviewer`.
+`Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`.
 
 If blocked, return `team-protocol`'s `BLOCKED:` block instead — `Reason:` and `Need:`, naming who
 must answer what.

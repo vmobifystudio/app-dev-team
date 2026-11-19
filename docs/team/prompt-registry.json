@@ -10,303 +10,303 @@
   "entries": [
     {
       "id": "android-developer",
-      "version": "1.0.2",
+      "version": "1.0.6",
       "owner": "android-developer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
+      "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.1",
-      "content_hash": "f1c27470b79c12d96f559067b6896350a4ac594d652b632179b28c242784e130"
+      "rollback_version": "1.0.5",
+      "content_hash": "11119bb58026e1252a989c0a6596104c8b5dd02ef4dda0c4e8f857f0a76406ae"
     },
     {
       "id": "aso-specialist",
-      "version": "1.0.0",
+      "version": "1.0.4",
       "owner": "aso-specialist",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "a740c9c8eff4e3fbd522b6b7b1ea662df7ce0c2708ae6c37f2466e94b3725241"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.3",
+      "content_hash": "e3221a0f7ee56eb433efd52a597189970b4bc58a39ffb405896dfecea88fb2da"
     },
     {
       "id": "backend-developer",
-      "version": "1.0.0",
+      "version": "1.0.4",
       "owner": "backend-developer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "2e55aebac6525aa378b04eb70e4633565cc1da4e52821ce152435bc84b0cbbe5"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.3",
+      "content_hash": "5457b4e41d59b711cd447650b9ddf32d02eaedf8e29137d62b181e15eac6ec39"
     },
     {
       "id": "ceo",
-      "version": "1.0.0",
+      "version": "1.0.4",
       "owner": "ceo",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "cb4895802535500439e7007221ca7209f16fd6c14f2b865b9a78b552d3561fa8"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.3",
+      "content_hash": "ce82969804045ce3a13162f695ba6112d6ee60a1efab30388af123d4050b03c4"
     },
     {
       "id": "chief-of-staff",
-      "version": "1.0.0",
+      "version": "1.0.2",
       "owner": "chief-of-staff",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "0d6f879611fef4da39b37e643bbb6e70c154eb1e27731dbe08b85600d266d4e4"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.1",
+      "content_hash": "a91ac99abe61a6970d99b7816102249c035784f78beebfa17edcdc15dbe25970"
     },
     {
       "id": "code-reviewer",
-      "version": "1.0.6",
+      "version": "1.0.14",
       "owner": "code-reviewer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-10",
+      "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.5",
-      "content_hash": "8a06b47ff71360ed5f8e25c0b7ba4f08933d75a674f665a5322289e20b98bcbd"
+      "rollback_version": "1.0.13",
+      "content_hash": "2b2c2ba0981b9192fcc1e17210f51d910d729f04b0cec3386d03f6e2b33ab8ad"
     },
     {
       "id": "cpo",
-      "version": "1.0.0",
+      "version": "1.0.5",
       "owner": "cpo",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "7ae479dde87d2a837604781bbbb5560dbf7d07c522490fd42b1404cbfec361e3"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.4",
+      "content_hash": "f82e0b1948864345e48b3988e6276af0e1816673c21ce99866754c3b9f39d926"
     },
     {
       "id": "cto",
-      "version": "1.0.0",
+      "version": "1.0.4",
       "owner": "cto",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "3375e4dbd48f3baab587f17cb7f9decc151a025164879de9219876912815cebe"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.3",
+      "content_hash": "f7e9c56a3d943776772e54b89251c6bc2e1b09370d831679f9807642854cce95"
     },
     {
       "id": "data-analyst",
-      "version": "1.0.0",
+      "version": "1.0.4",
       "owner": "data-analyst",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "b9e718a246c363fa62b35bcc7f95624dee173353434a57b88a30bb27004a275c"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.3",
+      "content_hash": "3c23fba3289970ac5ddab90c478a51afc3edf3442a3de4df52d9830eb67abd57"
     },
     {
       "id": "devops-engineer",
-      "version": "1.0.1",
+      "version": "1.0.11",
       "owner": "devops-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-02",
+      "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.0",
-      "content_hash": "1bc28fb77e5dcba933fb33f350350ba3076ba82857e11a4139a4e230ac6cd061"
+      "rollback_version": "1.0.10",
+      "content_hash": "b1e6bd594b3ef092fb4fd76548266bb5af15c502707d23c619754f2de5f6b435"
     },
     {
       "id": "ios-developer",
-      "version": "1.0.0",
+      "version": "1.0.4",
       "owner": "ios-developer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "c2c1d47e7d8ed5d9ff8bba8d6b2352ddc4be9df8a14b396e8537cc2dc91f68d0"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.3",
+      "content_hash": "99f8430fdeb47a27e8b3c5e92965820df62a131fef4999245090b416caae97e9"
     },
     {
       "id": "monetization-engineer",
-      "version": "1.0.0",
+      "version": "1.0.4",
       "owner": "monetization-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "d1776e5f9bfc27606bd70525ada803e22f6f8b935b449b2cbaf38e53d1a7ef60"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.3",
+      "content_hash": "3ce6b4419a720875152f78ac6ae39eafd78109803a74b8f71f6b42b20507fe84"
     },
     {
       "id": "privacy-reviewer",
-      "version": "1.0.0",
+      "version": "1.0.5",
       "owner": "privacy-reviewer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "78cb1bba4741f9a463dc9fe9b8638d1f152b2d82d4a7925cde911083fb0a6cd9"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.4",
+      "content_hash": "a0c104e9fac3d0f01bc114f694985afa404e46b6dbf365cd3c30f9545ab813b6"
     },
     {
       "id": "product-designer",
-      "version": "1.0.0",
+      "version": "1.0.5",
       "owner": "product-designer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "f119bfa747419eb3cef7acfe1bf5b890b62a58e98ed6687c6e6a7e56280a0407"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.4",
+      "content_hash": "88715301ad76f3c1238d448c8f316e0cd9f650749c92b9f6c61ca75959a5f3f2"
     },
     {
       "id": "product-manager",
-      "version": "1.0.0",
+      "version": "1.0.3",
       "owner": "product-manager",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "69046c796f2a4f5727e9cd230133f61bd5e47bb60eda88c05c71e23c2f9ab2bd"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.2",
+      "content_hash": "f3c817429e44d9bd919d7b1e02c2ffe12671f741e35cceaf595e3d0933913913"
     },
     {
       "id": "product-researcher",
-      "version": "1.0.0",
+      "version": "1.0.3",
       "owner": "product-researcher",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "db7c004fc5844ac0ffee2641fd2241d24eb1263c7de9b0e8e53ce21df529328e"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.2",
+      "content_hash": "d118ed0d9fb8efcf580f37388f8a7ec965d1e408db340ada33ebee4ece691111"
     },
     {
       "id": "product-validator",
-      "version": "1.0.0",
+      "version": "1.0.2",
       "owner": "product-validator",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "eeabb9d5b550b2e043bb32dd275829849cbaebefb675097097187db0756e75cc"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.1",
+      "content_hash": "45699bc52737b307cf890f0bd5bc83e29bf04ccccfdc9d99c1fb18bdaa2b73a8"
     },
     {
       "id": "qa-engineer",
-      "version": "1.0.3",
+      "version": "1.0.14",
       "owner": "qa-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-07",
+      "validated_on": "2026-11-19",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.2",
-      "content_hash": "0e9f4e96cc41d1144895c24d4933468d69f82344123d97c684904d83ecbef18e"
+      "rollback_version": "1.0.13",
+      "content_hash": "27b5280acc074bfd78ba2d92d9f8d76fd20807fffdee56898b89f720a051e799"
     },
     {
       "id": "red-team-agent",
-      "version": "1.0.0",
+      "version": "1.0.2",
       "owner": "red-team-agent",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "cbefcf7c9f06ac71732fe51bf95046151add5c915ba0f799b1b4f3ba9d789010"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.1",
+      "content_hash": "3afc44edd79e5ae78ac5798aeff8ecaf76fc407bea93c9e86a0add0a28292dea"
     },
     {
       "id": "release-auditor",
-      "version": "1.0.0",
+      "version": "1.0.3",
       "owner": "release-auditor",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "5f81669fb84aaa57139e7b4378fb66c7d65883ee8c194cd401ed191ba2ecb31e"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.2",
+      "content_hash": "3fe133a5f1d162e8c250e0140a1dd055fb0239cd4c884f23be66bda6e3c9aa85"
     },
     {
       "id": "release-manager",
-      "version": "1.0.5",
+      "version": "1.0.10",
       "owner": "release-manager",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
+      "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.4",
-      "content_hash": "94a51549713862a13b5a91cf127f601858ff7f312151f72c831e71c0fc781b1c"
+      "rollback_version": "1.0.9",
+      "content_hash": "f8a6360405d2ceb9301a0e467a692b8a7b7da87870db7965d901dee1e8a9e935"
     },
     {
       "id": "reliability-engineer",
-      "version": "1.0.0",
+      "version": "1.0.2",
       "owner": "reliability-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "63f7e6b6feadddc50e742601bddfc33ba974c3da67582a5b721afa54fac495d1"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.1",
+      "content_hash": "9c4194b1cabd1bda93bd147d2398eff1395d967bfcdb9e4babdbaf68f93021ff"
     },
     {
       "id": "security-reviewer",
-      "version": "1.0.0",
+      "version": "1.0.6",
       "owner": "security-reviewer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "bdd32fc5104b7f1cca6b29870b342b26e853f043bc6224a3f4d11f0fba70848f"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.5",
+      "content_hash": "cf382bd25f1c6c1795df7e964998a9825a21fb62ed9b17dabe440140b6b3ca1a"
     },
     {
       "id": "tech-lead",
-      "version": "1.0.1",
+      "version": "1.0.8",
       "owner": "tech-lead",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-10",
+      "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.0",
-      "content_hash": "7c94e742399831543a298ff48d3c82fff82d4e9a5fa7db5d7410d931dca34ad8"
+      "rollback_version": "1.0.7",
+      "content_hash": "0bad5f44c31a3f004c2bb3d5baac9257426ace9eb10ebb7027b2c76629350c3c"
     },
     {
       "id": "tech-manager",
-      "version": "1.0.6",
+      "version": "1.0.13",
       "owner": "tech-manager",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-10",
+      "validated_on": "2026-11-18",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.5",
-      "content_hash": "000ced14b031ac7eac5f828bc88fe2380f709cc7086d1a54f9edd0c1e535baf3"
+      "rollback_version": "1.0.12",
+      "content_hash": "0017131fac4a27ee277de16c12048b5170b906a93b3be55088db1042b5cea7ae"
     },
     {
       "id": "test-automation-engineer",
-      "version": "1.0.0",
+      "version": "1.0.3",
       "owner": "test-automation-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "d35de003c14a3683540eea02b07db4e4802e70f39ef5f14e48a5ec8df7b6fc55"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.2",
+      "content_hash": "3b40311da6777deace21b9cdb73a460b88d7c9555918f535be55ebd873611086"
     },
     {
       "id": "ux-architect",
-      "version": "1.0.0",
+      "version": "1.0.5",
       "owner": "ux-architect",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "7114e4f0327bf9f988c715b23cb505f79a696978636ea45629ad6054e9d7b9da"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.4",
+      "content_hash": "c372c1450f711d3ba168d5fe8e37e85dfd0896f5b22c1138465de547400feb36"
     },
     {
       "id": "verification-engineer",
-      "version": "1.0.0",
+      "version": "1.0.4",
       "owner": "verification-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "c5117eae819c62a6e7e784c4b28ca6e41c40ce2a30473acfac0699b8a5102930"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.3",
+      "content_hash": "03800199cadb75814ffe1b2fe98a1007fe55f17306a1dd72ac60da052f97ac2d"
     },
     {
       "id": "web-developer",
-      "version": "1.0.0",
+      "version": "1.0.3",
       "owner": "web-developer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "2ce144e931c6664d6153c141fff3f060b2e4f66e78e2f97cd6623b4db4e7a139"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.2",
+      "content_hash": "d1612afaba8a83cdf1220d53f9dc80b6149927cdeceaed16e5a4a660ea15aec2"
     },
     {
       "id": "incident-commander",
-      "version": "1.0.0",
+      "version": "1.0.4",
       "owner": "incident-commander",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-08-01",
-      "change_reason": "initial registration",
-      "rollback_version": "0.0.0",
-      "content_hash": "6445ec11f8655dc005557b0817cecc185a43a62b884063e6ee0052e109d8687d"
+      "validated_on": "2026-11-18",
+      "change_reason": "agent file content changed",
+      "rollback_version": "1.0.3",
+      "content_hash": "438b9679e998b0070223978b42c5047c461f3630db5f36d470065c418791d9f3"
     }
   ]
 }

@@ -49,6 +49,8 @@ const PATTERNS = [
   ['private-key-block', /-----BEGIN (?:RSA |EC |OPENSSH |PGP |DSA )?PRIVATE KEY-----/g],
   ['jwt', /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g],
   ['bearer-token', /\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*/g],
+  // C5G-8: this studio's own role tokens (lib/actor.mjs: `st_` + 24 random bytes, base64url).
+  ['studio-actor-token', /\bst_[A-Za-z0-9_-]{32,}/g],
   // DELIBERATELY ABSENT: Apple app-specific passwords (`abcd-efgh-ijkl-mnop`). The shape is four
   // lowercase quads, which also matches ordinary hyphenated English ("this-that-when-then") and
   // every kebab-case identifier of that length. A pattern that fires on prose gets the whole

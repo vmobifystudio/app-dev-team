@@ -95,6 +95,7 @@ function cmdCheck() {
 
   let blocked = 0;
   let unevaluable = 0;
+  let missingBuild = '';
   process.stdout.write(`PROJECT PROFILE — ${p.platform || 'platform unstated'}\n\n`);
 
   for (const t of tools) {
@@ -124,19 +125,52 @@ function cmdCheck() {
     process.stdout.write(`  PASS             ${t.tool}${t.expect ? ` (${t.expect})` : ''}\n`);
   }
 
+  // W2-13: a web project's runtime gate and release artifact both start from `npm run build`.
+  // With no build script there is no build output to gate or bind — UNPROVEN, not "nothing to build".
+  if (/\bweb\b/.test(String(p.platform || ''))) {
+    let scripts = null;
+    let why = '';
+    try { scripts = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).scripts || {}; }
+    catch (e) { why = e.code === 'ENOENT' ? `no package.json at ${ROOT}` : `package.json does not parse (${e.message})`; }
+    if (scripts?.build) process.stdout.write(`  PASS             package.json build script (${scripts.build})\n`);
+    else {
+      // C3W-11: say WHICH of the two it is, and that it is not a tool — the RESULT line used to
+      // count it as "declared tool(s) are absent", which sent the reader hunting a missing binary.
+      missingBuild = why || 'package.json has no "build" script';
+      process.stdout.write(`  CANNOT EVALUATE  ${missingBuild} — add the \`build\` script that writes the deployable output (e.g. "build": "vite build" → dist/), and commit package.json\n`);
+    }
+  }
+
   const test = p.test || {};
   process.stdout.write(`\n  test.fast  ${test.fast || 'UNSTATED — every ticket will pay for the full suite'}\n`);
   process.stdout.write(`  test.full  ${test.full || 'UNSTATED — nothing states what must pass before merge'}\n`);
 
+  // C4G-G7: verify-done runs the suite in a FRESH detached worktree of the tip (design E), which has
+  // no node_modules — `npm test` there is cannot-run on every ticket. A JS test command must install
+  // its own dependencies from the lockfile first: `npm ci && …`, `pnpm install --frozen-lockfile && …`,
+  // `yarn install --frozen-lockfile && …` (or --immutable), `bun install --frozen-lockfile && …`.
+  // ponytail: chosen over symlinking node_modules into the run tree — a link would test the
+  // developer's installed deps, not the lockfile the commit names.
+  const coldDeps = [];
+  for (const scope of ['fast', 'full']) {
+    const cmd = typeof test[scope] === 'string' ? test[scope].trim() : '';
+    if (!cmd || !/(^|[\s;&|(])(npm|npx|pnpm|yarn|bun|bunx)\s/.test(`${cmd} `)) continue;
+    if (/^(npm ci|pnpm (i|install) --frozen-lockfile|yarn (install )?(--frozen-lockfile|--immutable)|bun install --frozen-lockfile)\b[^;|]*&&/.test(cmd)) continue;
+    coldDeps.push(scope);
+    process.stdout.write(`  BLOCKED          test.${scope} "${cmd}" — runs in a fresh worktree with no node_modules; prefix the lockfile install: "npm ci && ${cmd}" (or pnpm install --frozen-lockfile && …)\n`);
+  }
+  blocked += coldDeps.length;
+
   if (blocked) {
-    process.stdout.write(`\nRESULT: BLOCKED — ${blocked} tool(s) are the wrong version. This project will not build correctly here.\n`);
+    process.stdout.write(`\nRESULT: BLOCKED — ${blocked - coldDeps.length ? `${blocked - coldDeps.length} tool(s) are the wrong version` : ''}${blocked - coldDeps.length && coldDeps.length ? '; ' : ''}${coldDeps.length ? `test.${coldDeps.join('/test.')} cannot install its dependencies in verify-done's fresh worktree` : ''}. This project will not build correctly here.\n`);
     process.exit(1);
   }
-  if (unevaluable) {
-    process.stdout.write(
-      `\nRESULT: CANNOT EVALUATE — ${unevaluable} declared tool(s) are absent, so the toolchain is UNPROVEN here.\n` +
-      '  This is NOT a pass. Install them, or run on a machine that has them.\n'
-    );
+  if (unevaluable || missingBuild) {
+    process.stdout.write(`\nRESULT: CANNOT EVALUATE — ${[
+      unevaluable ? `${unevaluable} declared tool(s) are absent, so the toolchain is UNPROVEN here` : '',
+      missingBuild ? `web build script missing: ${missingBuild}` : '',
+    ].filter(Boolean).join('; ')}.\n` +
+      `  This is NOT a pass. ${unevaluable ? 'Install the absent tools, or run on a machine that has them. ' : ''}${missingBuild ? 'Add package.json "scripts.build".' : ''}\n`);
     process.exit(2);
   }
   process.stdout.write('\nRESULT: CLEAR — every declared tool is present at its declared version.\n');

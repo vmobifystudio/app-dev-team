@@ -15,11 +15,15 @@ agent in this plugin reads before working.
 | `analytics.md` | Consent-gated analytics, event naming, funnels, PII rules |
 | `aso.md` | Screenshots, store listings, Play Data Safety, store readiness |
 | `git-workflow.md` | Branch model, commits, versioning, releases, CI, secrets |
+| `web-conventions.md` | Web apps: `package.json` script contract, headers/CSP, cookies, SEO, budgets — replaces the mobile packs for a browser surface |
 | `failure-corpus.md` | **The defect classes this codebase actually produces** — one entry per class, with its tell, its dated instances, and the rule that now catches it |
+| `product-failure-corpus.md` | **The defect classes the apps produce** (PF-001…) — each marked MECHANISED, PARTIAL or REVIEWER-ONLY; `silent-fallback-scan.mjs`, run by `ship-gate.sh`, mechanises one |
 
-`failure-corpus.md` is the odd one out and deliberately so: every other pack learns from apps that
-**shipped**, so the KB only ever learned from success. The corpus learns from failure, is read by
-`code-reviewer` and `verification-engineer` as prior information about what goes wrong here, and is
+The two corpora are the odd ones out and deliberately so: every other pack learns from apps that
+**shipped**, so the KB only ever learned from success. They learn from failure —
+`failure-corpus.md` from the studio's own defects, `product-failure-corpus.md` from the apps'.
+`failure-corpus.md` is read
+by `code-reviewer` and `verification-engineer` as prior information about what goes wrong here, and is
 fed by `/app-learn`'s failure pass. Its single most valuable output is a class that **recurs after
 its rule shipped** — `team-doctor` fails on that, because it is proof the rule does not work.
 

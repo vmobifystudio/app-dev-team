@@ -1,17 +1,36 @@
 {
   "schema": "schema-registry/v1",
   "schemas": {
-    "actor/v1": {
+    "actor-token/v1": {
       "files": [
         "scripts/lib/actor.mjs"
       ],
+      "reader": "scripts/lib/actor.mjs verifyActorToken — board.mjs gate events under requireActorTokens"
+    },
+    "actor/v1": {
+      "files": [
+        "scripts/board.mjs",
+        "scripts/lib/actor.mjs"
+      ],
       "reader": null
+    },
+    "assertion-census/v1": {
+      "files": [
+        "scripts/assertion-census.mjs"
+      ],
+      "reader": "scripts/lib/evidence.mjs verifyTestEvidence — the board refuses `verified` when a branch's changed tests assert nothing (G2-22)"
     },
     "audit-anchor/v1": {
       "files": [
         "scripts/audit-anchor.mjs"
       ],
       "reader": null
+    },
+    "board-anchor/v1": {
+      "files": [
+        "scripts/lib/events.mjs"
+      ],
+      "reader": "scripts/lib/events.mjs checkAnchor — board.mjs on every read and append of the event log (G2-10)"
     },
     "board-event/v1": {
       "files": [
@@ -30,7 +49,7 @@
       "files": [
         "scripts/ci-status.mjs"
       ],
-      "reader": "scripts/orchestrator.mjs \u2014 the `ci` round precondition; /app-build step 0 surfaces it"
+      "reader": "scripts/orchestrator.mjs — the `ci` round precondition; /app-build step 0 surfaces it"
     },
     "context-manifest/v2": {
       "files": [
@@ -59,9 +78,11 @@
     },
     "gate-result/v1": {
       "files": [
+        "scripts/board.mjs",
         "scripts/evidence-check.mjs",
         "scripts/foundation-conformance.mjs",
         "scripts/journey-gate.mjs",
+        "scripts/lib/evidence.mjs",
         "scripts/lib/readiness.mjs"
       ],
       "reader": null
@@ -171,6 +192,7 @@
     },
     "risk-policy/v1": {
       "files": [
+        "scripts/board.mjs",
         "scripts/foundation-conformance.mjs",
         "scripts/risk-router.mjs",
         "scripts/team-bootstrap.mjs"
@@ -226,11 +248,17 @@
       ],
       "reader": "scripts/register.mjs, reducing its own append-only log to current state"
     },
+    "test-evidence/v1": {
+      "files": [
+        "scripts/lib/evidence.mjs"
+      ],
+      "reader": "scripts/lib/evidence.mjs verifyTestEvidence — board.mjs `verified` / `qa_passed`"
+    },
     "worktree-reap/v1": {
       "files": [
         "scripts/worktree-reap.mjs"
       ],
-      "reader": "scripts/orchestrator.mjs \u2014 the `worktree pool` round precondition; /app-build step 4a applies it"
+      "reader": "scripts/orchestrator.mjs — the `worktree pool` round precondition; /app-build step 4a applies it"
     },
     "worktree-slots-list/v1": {
       "files": [

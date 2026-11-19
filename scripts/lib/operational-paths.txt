@@ -1,0 +1,35 @@
+# The studio's OWN operational files: written by the loop while it runs, never part of the release
+# candidate. A dirty-tree check excludes exactly these (W3 / G-F6) — every other change, source
+# above all, still makes the tree dirty. One git pathspec per line, relative to the project root;
+# read by lib/readiness.mjs, runtime-gate.sh and ship-gate.sh. Never add a glob or a source path.
+# G2-18: NOT the whole of docs/team. Project CONTROL files there (risk-policy.json,
+# project-profile.json, journeys/, capabilities.json, prompt-registry.json, ...) are real changes.
+docs/31-board-events.jsonl
+docs/31-board.md
+# C5W-4: the loop's own renderings and the register it writes every round (step 1 / step 6).
+docs/32-board-view.md
+docs/33-rounds.jsonl
+docs/53-reviews
+docs/54-evidence
+docs/90-register.jsonl
+docs/90-register.md
+docs/daily
+docs/team/actor-tokens.jsonl
+docs/team/actors.json
+docs/team/audit-anchor.json
+docs/team/evidence
+docs/team/incidents.jsonl
+docs/team/journey-result.json
+docs/team/memory.jsonl
+docs/team/message-log.md
+docs/team/messages.jsonl
+docs/team/messages.md
+docs/team/release-candidates.jsonl
+docs/team/reports
+docs/team/runs.jsonl
+docs/team/runtime-result.json
+docs/team/schedule.json
+docs/team/ship-gate-verdict.json
+docs/team/worktree-slots.json
+.agent-wt
+.studio-stop

@@ -1,17 +1,14 @@
 ---
 name: process-tiering
-description: Use when sizing a ticket at planning time, and when calibrating how much review ceremony a diff needs. Maps the studio's existing XS/S/M/L/XL estimate to how much process a ticket carries — a one-line fix should not walk the same PRD-to-impl-spec pipeline as a multi-screen feature. Triggers from sprint-planner (at ticket creation) and code-reviewer (at review time).
+description: On an app-dev-team project, use when sizing a ticket at planning time and when deciding how much review ceremony a diff needs — maps the XS–XL estimate to the process a ticket carries. Used by sprint-planner, tech-lead and code-reviewer.
 ---
 
 # Process tiering
 
-Mined from studying `rsmdt/the-startup` (tiered Direct/Standard/Factory dispatch) and
-`olehsvyrydov/AI-development-team` (`change_classes` → `track` mapping) — both scale process weight
-to task size instead of running the same ceremony on everything. This studio already has the input
-those systems built new fields for: `cpo`'s backlog already estimates every item **XS/S/M/L/XL**
-(`agents/cpo.md`), and `board.mjs add --estimate` already carries it onto the ticket. This skill is
-the mapping from that existing field to how much process the ticket actually needs — no new field,
-no new ticket state.
+Scale process weight to task size. The input already exists: `cpo`'s backlog estimates every item
+**XS/S/M/L/XL** (`agents/cpo.md`) and `board.mjs add --estimate` carries it onto the ticket. This
+skill maps that field to how much process the ticket needs — no new field, no new ticket state.
+`code-reviewer` carries its own projection of this table; keep the two in step.
 
 ## The tiers
 
@@ -48,11 +45,6 @@ starting. Apply the table above. **State which track you applied, in the verdict
 "findings discipline" reasoning as everywhere else in `defect-hunting`: an unstated calibration
 reads as full ceremony having been applied, when it wasn't.
 
-## Why this is guidance, not a hard gate — for now
+## Guidance, not a gate
 
-Everything mechanically enforced elsewhere in this plugin (`verify-done.sh`, `board-doctor.mjs`,
-the board state machine's `closed` refusal) earned that by being proven against a real, measured
-failure first. This hasn't been dry-run yet — there's no evidence yet that letting XS tickets skip
-anything actually saves meaningful cost without also letting something real slip through. Treat this
-as the studio's stated intent, verify it earns a script the same way everything else here did, and
-do not cite "process-tiering" as an enforced gate until it has one.
+Nothing enforces this yet. Do not cite "process-tiering" as an enforced gate until a script does.

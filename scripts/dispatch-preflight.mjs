@@ -6,7 +6,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
 const die = (code, message) => { process.stderr.write(`dispatch-preflight: ${message}\n`); process.exit(code); };
-const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root', 'context', 'schedule', 'capability', 'risk', 'role', 'operation', 'path', 'file', 'change', 'ticket']), die });
+const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root', 'context', 'schedule', 'capability', 'risk', 'role', 'operation', 'path', 'file', 'change', 'ticket']), die,
+  // C5W-3: repeated --file / --path accumulate (as board.mjs add does), never last-wins.
+  listFlags: { file: ',', path: ',' } });
 /**
  * ALL MISSING ARGUMENTS AT ONCE, AND A USAGE ERROR IS NOT A CANNOT-EVALUATE.
  *
@@ -26,12 +28,14 @@ const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root'
  * distinct from both "blocked" and "could not evaluate". A caller that degrades on 2 must not
  * degrade on this.
  */
-const REQUIRED = ['root', 'context', 'schedule', 'capability', 'risk', 'role', 'operation', 'path', 'file', 'ticket'];
+// C2-28: --path/--file are optional. Omitted, they come from the files the ticket DECLARED on the
+// board; a ticket that declares none has no path to check, and saying so beats a made-up one.
+const REQUIRED = ['root', 'context', 'schedule', 'capability', 'risk', 'role', 'operation', 'ticket'];
 const missing = REQUIRED.filter((name) => !flags[name]);
 if (missing.length) {
   die(64,
     `missing required argument(s): ${missing.map((m) => `--${m}`).join(' ')}\n` +
-    `  usage: dispatch-preflight.mjs ${REQUIRED.map((r) => `--${r} <value>`).join(' ')} [--change <kind>]\n` +
+    `  usage: dispatch-preflight.mjs ${REQUIRED.map((r) => `--${r} <value>`).join(' ')} [--path P --file F] [--change <kind>]\n` +
     '  This is a malformed invocation (exit 64), NOT a gate that could not evaluate (exit 2).\n' +
     '  Do not degrade or proceed without preflight on this exit code — fix the call.');
 }
@@ -42,8 +46,22 @@ function run(script, args) {
 }
 const context = run('context-manifest.mjs', ['verify', '--root', root, '--manifest', resolve(root, String(flags.context))]);
 const schedule = run('scheduler.mjs', ['--plan', resolve(root, String(flags.schedule))]);
-const capability = run('capability-check.mjs', ['--manifest', resolve(root, String(flags.capability)), '--role', String(flags.role), '--operation', String(flags.operation), '--path', resolve(root, String(flags.path))]);
-const risk = run('risk-router.mjs', ['--policy', resolve(root, String(flags.risk)), '--file', String(flags.file), '--change', String(flags.change || '')]);
+let declared = [];
+if (!flags.path || !flags.file) {
+  try {
+    const { parseEventLog, reduce, key } = await import('./lib/events.mjs');
+    const t = reduce(parseEventLog(readFileSync(resolve(root, 'docs/31-board-events.jsonl'), 'utf8')).events).tickets.get(key(String(flags.ticket)));
+    declared = (t?.meta?.files || []).map(String);
+  } catch { declared = []; }
+}
+const paths = flags.path ? String(flags.path).split(',').filter(Boolean) : declared;
+const fileArg = flags.file ? String(flags.file) : declared.join(',');
+const capability = paths.length
+  ? paths.map((p) => run('capability-check.mjs', ['--manifest', resolve(root, String(flags.capability)), '--role', String(flags.role), '--operation', String(flags.operation), '--path', resolve(root, p)])).join('\n')
+  : `CAPABILITY: NOT CHECKED — ${flags.ticket} declares no files and no --path was given (contention reports the same gap below)`;
+const risk = fileArg
+  ? run('risk-router.mjs', ['--policy', resolve(root, String(flags.risk)), '--file', fileArg, '--change', String(flags.change || '')])
+  : 'null';
 
 // CONTENTION IS COMPOSED HERE, because a detector nobody calls is FC-002 with extra steps.
 //
@@ -82,7 +100,7 @@ try {
 // the caller's own belief that its ticket is ready.
 const scheduleResult = JSON.parse(schedule);
 const ticket = String(flags.ticket);
-if (!scheduleResult.ready.includes(ticket)) {
+if (!scheduleResult.ready.some((id) => String(id).toUpperCase() === ticket.toUpperCase())) { // C4W-3: as the board's key()
   die(
     1,
     `ticket ${ticket} is not in the scheduler's ready set — ready: [${scheduleResult.ready.join(', ') || 'none'}], ` +

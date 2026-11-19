@@ -26,7 +26,7 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 
 **Management**
 - tech-lead — per-platform impl specs, patterns, hands-on senior
-- tech-manager — sprint plan, board, daily report, merge gate, standups, pod coordination
+- tech-manager — sprint plan, board, daily report, standups, escalations, pod coordination (the merge gate and wave integration are run inline by the `/app-build` orchestrator)
 
 **Build**
 - ios-developer — Swift/SwiftUI implementation, routes through Axiom skills (multiple in parallel)
@@ -56,7 +56,7 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 - reliability-engineer — offline, retries, idempotency, sync conflict, state restoration, recovery
   (flagship, conditional)
 - red-team-agent — attacks the product *and* the studio's own assumptions (flagship, conditional)
-- release-manager — version, signing, store upload, release notes
+- release-manager — version, signing, submission checklist, release notes (the founder uploads)
 - release-auditor — independently reviews the evidence bundle and the gate record, and can block the
   release. `release-manager` cannot satisfy it — separation of duties
 - incident-commander — owns coordination, containment, and resolution for an open sev1/sev2 incident

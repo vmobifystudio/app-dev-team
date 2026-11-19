@@ -31,10 +31,56 @@
  * script is counted documentary, which understates behaviour slightly — the conservative direction,
  * because a census that flattered the suite would be the exact self-deception it exists to prevent.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
+/**
+ * THE SECOND JOB: A PROJECT'S CHANGED TEST FILES (G2-22). `verified` used to accept any green run,
+ * so a ticket whose new tests assert nothing — `func testLogin() { _ = LoginView() }` — verified
+ * exactly like one whose tests pin behaviour. lib/evidence.mjs runs `censusTestFiles` over the test
+ * files a branch adds or modifies and the board refuses `verified` when they declare tests and
+ * contain ZERO assertions between them.
+ *
+ * FALSE BLOCKS ARE KEPT LOW ON PURPOSE: it fires only on the WHOLE changed set (one file of
+ * helpers that assert on the others' behalf is enough to pass), and the assertion vocabulary is
+ * wide (any assert*, expect, XCTAssert, #expect/#require, should, t.Error/Fatal, require.X,
+ * verify(, fail(). A false pass is the cheap direction here: this catches the assert-NOTHING suite,
+ * not a weak one.
+ */
+const TEST_PATH = /(^|\/)(tests?|__tests__|spec|specs|androidTest|[A-Za-z]+Tests)\/|[._-](test|spec)s?\.[a-z]+$|Tests?\.(swift|kt|java)$|(^|\/)test_[^/]*\.py$/;
+const SOURCE_EXT = /\.(swift|kt|kts|java|m|mm|js|jsx|ts|tsx|mjs|cjs|py|go|rs|rb|dart|cs)$/;
+export const isTestFile = (path) => TEST_PATH.test(path) && SOURCE_EXT.test(path);
+
+const TEST_DECL = [
+  /\bfunc\s+test\w*\s*\(/g,                                // XCTest
+  /@Test\b/g,                                               // Swift Testing, JUnit, kotlin.test
+  /\b(?:it|test|specify)(?:\.only|\.skip|\.each\([^)]*\))?\s*\(\s*['"`]/g, // mocha / jest / vitest / node:test
+  /\bdef\s+test_?\w*\s*\(/g,                               // pytest / unittest
+  /\bfunc\s+Test\w+\s*\(\s*\w+\s+\*testing\.T/g,             // go
+  /#\[(?:tokio::)?test\]/g,                                 // rust
+];
+const ASSERTION = /\b(?:XCTAssert\w*|XCTFail|XCTUnwrap|assert\w*|expect\w*|should\w*|verify\w*|fail)\s*[(!.\s]|#expect\b|#require\b|\bt\.(?:Error|Errorf|Fatal|Fatalf|Fail|FailNow)\b|\brequire\.\w+|\.to(?:Be|Equal|Throw|Match|Contain|Have)\w*\s*\(|\bpytest\.raises\b|\bpanic!\s*\(/g;
+
+/** @param {{path: string, text: string}[]} files  @returns census of the changed test files */
+export function censusTestFiles(files) {
+  let tests = 0;
+  let assertions = 0;
+  const per = files.map(({ path, text }) => {
+    const t = TEST_DECL.reduce((n, re) => n + (String(text).match(re) || []).length, 0);
+    const a = (String(text).match(ASSERTION) || []).length;
+    tests += t; assertions += a;
+    return { path, tests: t, assertions: a };
+  });
+  return {
+    schema: 'assertion-census/v1', tests, assertions,
+    assert_nothing: tests > 0 && assertions === 0,
+    files: per.filter((f) => f.tests > 0).map((f) => f.path),
+    per_file: per,
+  };
+}
+
+function suiteCensus() {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const suite = resolve(HERE, 'test.sh');
 const lines = readFileSync(suite, 'utf8').split('\n');
@@ -77,3 +123,19 @@ if (pct >= 25) {
 // Always exit 0: this is a MEASUREMENT, not a gate. A threshold here would invite gaming the
 // classifier instead of writing behavioural tests, and the number is more useful un-gamed.
 process.exit(0);
+}
+
+// CLI: no arguments -> the census of this repo's own scripts/test.sh (unchanged).
+//      --files <path>...  -> the census of those test files; exit 1 when they assert nothing.
+// The guard never throws: under `node -e` argv[1] is an ordinary argument, not a path.
+const isMain = () => { try { return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href; } catch { return false; } };
+if (process.argv[1] && isMain()) {
+  const at = process.argv.indexOf('--files');
+  if (at === -1) suiteCensus();
+  else {
+    const paths = process.argv.slice(at + 1);
+    const c = censusTestFiles(paths.map((path) => ({ path, text: (() => { try { return readFileSync(path, 'utf8'); } catch { return ''; } })() })));
+    process.stdout.write(`${JSON.stringify(c)}\n`);
+    process.exit(c.assert_nothing ? 1 : 0);
+  }
+}

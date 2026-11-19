@@ -1,7 +1,7 @@
 ---
 description: Plan the next sprint — tech-manager turns backlog + impl specs into a parallelizable board
 argument-hint: [sprint number or feature focus, optional]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 ---
 
 # /app-plan — Plan the next sprint
@@ -46,6 +46,52 @@ Focus (optional): $ARGUMENTS
    backstop for that project exactly as it was before. Neither is an error state: a project with no
    board at all is the normal greenfield case, and step 2 creates its log from nothing.
 
+1b. **Bootstrap the dispatch manifests — before the first ticket, or the sprint cannot start at all.**
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs" --root .
+   ```
+
+   `/app-build` runs `dispatch-preflight` before spawning any owner, and four of its required inputs
+   are manifests in `docs/team/`. **On a freshly planned project that directory does not exist**, so
+   preflight fails on the first one, `/app-build`'s own rule ("a failed or unavailable check stops
+   the spawn") stops the round, and every ticket sits at `created`.
+
+   That is not hypothetical. Measured 2026-08-06 across every recorded run: **11 of 19 tickets ended
+   at `created`** — never claimed, never blocked, never refused. It was never agent diligence; the
+   loop was structurally unable to dispatch. It is FC-005 from `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md`, "the
+   check whose own input nobody writes", sitting under the most important gate in the loop.
+
+   It runs **before step 2** because `board.mjs add` reads `docs/team/risk-policy.json` to set each
+   ticket's risk: a ticket added before the policy exists is planned with no risk tier, and its
+   high-risk second approval never fires. It refuses to overwrite existing manifests — a project's edited policy is not something a
+   re-plan resets. `--force` for a deliberate reset.
+
+   **Then read what it wrote, and edit it.** The defaults are the safe end of each contract, not
+   decisions anyone made for this project: developer roles may write source, document roles may
+   write documents, nobody may touch `docs/team/actors.json`, and risk defaults to medium needing
+   only the `code-reviewer` approval. A project with a backend, a payments surface or an unusual layout will
+   need more than that, and it is better to widen it deliberately than to discover mid-sprint that
+   the gate was never going to allow the work.
+
+   **`docs/team/project-profile.json` is scaffolded UNSTATED and nothing else fills it**, so
+   `orchestrator round` returns CANNOT EVALUATE ("toolchain UNPROVEN") on round 1 of every new
+   project. Spawn `devops-engineer` to work out `platform`, `toolchain` (one `{tool, args, expect}` per
+   tool pinned in `docs/20-architecture.md` / `${CLAUDE_PLUGIN_ROOT}/knowledge/stack-defaults.md`) and `test.fast` /
+   `test.full` (until `test.fast` is declared no code ticket can reach `verified`); it returns the JSON
+   and **you** write the file (the guard refuses a subagent writing it), commit it (step 4a's loop — the board freezes the committed profile), then confirm it holds. A web profile's test commands install from the lockfile (`npm ci && npm test`): each run is a fresh worktree with no `node_modules`. **The test commands freeze at the first gate event**: the board snapshots
+   `test.fast`/`test.full` and the profile's sha onto it, and every later `verified` must have run
+   the frozen command. Changing them afterwards is an orchestrator decision, re-frozen with
+   `board.mjs move <ID> corrected --by tech-manager --test-profile` plus the inline tech-manager
+   `--token`; until then every gate event is refused with that command.
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/project-profile.mjs" check --root .
+   ```
+
+   A tool that is genuinely not installed here is reported, not guessed around — that is a blocker
+   for the user, stated before the sprint starts rather than discovered when the first build breaks.
+
 2. **Spawn the `tech-manager` agent** with the `sprint-planner` skill. It produces
    `docs/30-sprint-plan.md`, and creates every ticket through the CLI — one call per ticket, never a
    hand-written table row:
@@ -53,11 +99,21 @@ Focus (optional): $ARGUMENTS
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add APP-001 \
      --title "..." --feature F-001 --owner ios-developer --depends APP-000 \
-     --estimate M --spec "prd#F-001" --acceptance "Given ..., When ..., Then ..." --by tech-manager
+     --estimate M --spec "prd#F-001" --acceptance "Given ..., When ..., Then ..." \
+     --file ios/App/Auth/SessionStore.swift \
+     --invariant "a signed-out user never sees another account's data; a token is never logged" \
+     --by tech-manager
    ```
 
+   **Every ticket the risk router rates `high`/`critical` (auth, privacy, credentials, migrations,
+   billing, release) carries at least one `--invariant`** (`;`-separated), or `review_requested`
+   is refused later and the ticket can never be reviewed. Missed one? Fix it in place — the
+   sanctioned route, never a re-add:
+   `board.mjs move APP-001 corrected --by tech-manager --invariant "I1; I2"` (it replaces the list).
+
    Each `add` re-renders `docs/31-board.md`, so the board exists as a side effect of the tickets
-   existing. A duplicate ID is **refused** (exit 1) rather than silently written twice — read the
+   existing. Every `APP-NNN-analytics` ticket is owned per the roster: `data-analyst` where it is
+   active, otherwise (utility) the feature's own IC — never an `off` role. A duplicate ID is **refused** (exit 1) rather than silently written twice — read the
    refusal, it is telling you the ticket is already planned.
 
    On a project that fell through to the legacy path at step 1a, `tech-manager` writes the table by
@@ -68,7 +124,8 @@ Focus (optional): $ARGUMENTS
    ambiguous ticket in `docs/team/messages.jsonl`, and answers what it can in the same run — it wrote
    the specs, so most answers are one line — folding each answer back into the impl spec.
 
-   Print the questions raised and the ones answered. Anything still open becomes a `tech-manager`
+   It files every question first and then answers as the spec's owner — filing is never skipped
+   because the answer is known. Print the questions raised and the ones answered. Anything still open becomes a `tech-manager`
    action item under the unanswered-question rule in `team-protocol`; it does not block the sprint.
 
    This runs **after** the board exists and **before** `/app-build` spawns anyone. Measured across
@@ -77,31 +134,34 @@ Focus (optional): $ARGUMENTS
 
 4. **Print the sprint goal, the per-track assignment, and dependency edges.** Show what's parallel and what's serial.
 
-4b. **Bootstrap the dispatch manifests — without these the sprint cannot start at all.**
+4a. **Re-snapshot the context, then commit what the pod will read — before anyone is spawned.** The
+   plan and the spec-critic fold-back changed planning documents after step 1b's snapshot:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs" --root . --context-only
    ```
 
-   `/app-build` runs `dispatch-preflight` before spawning any owner, and four of its required inputs
-   are manifests in `docs/team/`. **On a freshly planned project that directory does not exist**, so
-   preflight fails on the first one, `/app-build`'s own rule ("a failed or unavailable check stops
-   the spawn") stops the round, and every ticket sits at `created`.
+   Every IC works in a leased git worktree, and a worktree sees only committed files — and the wave
+   push fast-forwards only over a clean, committed base. Commit **every** planning document and
+   everything `devops-engineer` wrote, by explicit path, never a blanket add:
 
-   That is not hypothetical. Measured 2026-08-06 across every recorded run: **11 of 19 tickets ended
-   at `created`** — never claimed, never blocked, never refused. It was never agent diligence; the
-   loop was structurally unable to dispatch. It is FC-005 from `knowledge/failure-corpus.md`, "the
-   check whose own input nobody writes", sitting under the most important gate in the loop.
+   ```bash
+   sh -c 'for f in docs/*.md docs/team/messages.jsonl docs/team/capabilities.json docs/team/risk-policy.json \
+            docs/team/schedule.json docs/team/context-manifest.json docs/team/project-profile.json \
+            .gitignore CLAUDE.md .github fastlane \
+            package.json package-lock.json pnpm-lock.yaml yarn.lock .nvmrc */package.json \
+            Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
+            settings.gradle settings.gradle.kts */build.gradle */build.gradle.kts gradle gradlew; do
+     [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
+   done; true'   # true: an absent last path is no failure. sh, not zsh: zsh aborts the loop on an unmatched */ glob
+   git diff --cached --name-only    # confirm only those landed
+   git commit -m "docs: sprint plan and specs from /app-plan"
+   git status --short               # anything left is a file nobody committed: commit it or say why
+   ```
 
-   It refuses to overwrite existing manifests — a project's edited policy is not something a
-   re-plan resets. `--force` for a deliberate reset.
-
-   **Then read what it wrote, and edit it.** The defaults are the safe end of each contract, not
-   decisions anyone made for this project: developer roles may write source, document roles may
-   write documents, nobody may touch `docs/team/actors.json`, and risk defaults to medium needing a
-   tech-manager approval. A project with a backend, a payments surface or an unusual layout will
-   need more than that, and it is better to widen it deliberately than to discover mid-sprint that
-   the gate was never going to allow the work.
+   The board log and its rendering (`docs/31-board-events.jsonl`, `docs/31-board.md`) and
+   `docs/team/actors.json` are gitignored on purpose and stay in the main checkout (`check-ignore`
+   skips them); the spawn prompt carries each IC its ticket.
 
 5. **Hand off.** When a human invoked `/app-plan` directly, ask "ready to launch the pod with
    `/app-build`?" and do not auto-launch.

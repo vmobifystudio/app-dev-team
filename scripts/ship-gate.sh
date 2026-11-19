@@ -38,6 +38,16 @@ BUGS="$ROOT/docs/51-bugs.md"
 PLAN="$ROOT/docs/50-test-plan.md"
 RELEASES="$ROOT/docs/60-releases.md"
 HERE=$(cd "$(dirname "$0")" && pwd)
+# W2-10: a printed next-step board command carries the inline-mint --token when the project
+# requires tokens — a shell variable minted in one Bash call does not survive to the next.
+# C3W-8: only the orchestrator's OWN role (tech-manager) is printed with a mint. An agent role's token
+# comes in its composed prompt; printing a mint for it is the self-attestation tokens exist to stop.
+# PR46-10: the mint form is lib/actor.mjs's inlineTokenFlag (via evidence.mjs token-flag), never a copy of it.
+token_for() {  # <role> <ticket>
+  if [ "$1" = tech-manager ]; then node "$HERE/lib/evidence.mjs" token-flag --root "$ROOT" --role "$1" --ticket "$2" 2>/dev/null; return 0; fi
+  grep -q '"requireActorTokens"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null || return 0
+  printf ' --token "<the %s token for %s from its composed prompt — none? re-spawn the agent with a freshly composed prompt>"' "$1" "$2"
+}
 
 BLOCKERS=""
 NOTES=""
@@ -59,65 +69,16 @@ unknown() { UNKNOWNS="${UNKNOWNS}  UNKNOWN  $1
 # converts a non-pass into a ship was pure improvisation — precisely what this file was written to
 # replace everywhere else in the command. It is read here, and held to its own stated shape.
 #
-# canonical_version — the LAST `## vX.Y.Z` heading in docs/60-releases.md (mirrors
-# version-consistency-check.mjs's own "last heading wins" rule), or nothing if this project has
-# never declared one. Used below to scope a waiver to the release it was actually written for.
-canonical_version() {
-  [ -f "$RELEASES" ] || return 1
-  awk '
-    /^##[ \t]+v[0-9]+\.[0-9]+\.[0-9]+/ {
-      line = $0
-      sub(/^##[ \t]+v/, "", line)
-      split(line, a, /[ \t]/)
-      v = a[1]
-    }
-    END { if (v != "") print v; else exit 1 }
-  ' "$RELEASES"
-}
-
-# waiver_for <artifact> — prints "<who> — <reason>" and returns 0 when a well-formed waiver names
-# exactly this artifact; returns 1 otherwise. The separator is the em dash /app-ship writes, with
-# `--` accepted as its ASCII spelling. All three fields must be present and non-empty: "WAIVED:
-# docs/51-bugs.md" on its own is a record that someone skipped a gate, not a decision anyone can be
-# held to, and a waiver nobody signed is indistinguishable from a check that was never there.
-#
-# SHIP-P0-005 (external audit, 2026-08-01): waivers used to be scanned with no version binding
-# whatsoever — an old waiver written for v0.1.0 satisfied a check run against v9.0.0. Reproduced.
-# Once a project has declared a canonical version (`## vX.Y.Z` in docs/60-releases.md), a waiver
-# must name it as a fourth field to count: `WAIVED: <artifact> — <who> — <reason> — vX.Y.Z`. A
-# project that has never declared a version (nothing to bind to yet) keeps the three-field form —
-# this is additive, not a breaking change to every waiver ever written.
-waiver_for() {
-  [ -f "$RELEASES" ] || return 1
-  CANON=$(canonical_version 2>/dev/null || true)
-  awk -v want="$1" -v canon="$CANON" '
-    function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
-    /WAIVED:/ {
-      line = $0
-      sub(/^.*WAIVED:/, "", line)
-      gsub(/--/, "—", line)
-      n = split(line, f, "—")
-      if (n < 3) next
-      if (trim(f[1]) != want) next
-      who = trim(f[2]); why = trim(f[3])
-      if (who == "" || why == "") next
-      if (canon != "") {
-        if (n < 4) next
-        ver = trim(f[4]); sub(/^v/, "", ver)
-        if (ver != canon) next
-      }
-      print who " — " why
-      found = 1
-      exit
-    }
-    END { exit (found ? 0 : 1) }
-  ' "$RELEASES"
-}
+# canonical_version and waiver_for live in lib/waiver.sh — ONE parser, shared with readiness.mjs
+# (C5W-1), which runs the same file standalone to read a journey/runtime gate waiver.
+. "$HERE/lib/waiver.sh"
 
 # unknown_unless_waived <artifact> <unknown-message> — the missing input still gets named either
 # way. A waived gate must never look like a skipped one, so a waiver is REPORTED, not silent.
 unknown_unless_waived() {
-  W=$(waiver_for "$1") && { note "WAIVED: $1 by $W"; return 0; }
+  # G2-19: a waiver is a FOUNDER decision. The <who> field is reported, not authenticated here;
+  # trace.mjs --only gates (run by /app-ship) refuses a WAIVED: line with no founder decision record.
+  W=$(waiver_for "$1") && { note "WAIVED: $1 by $W — founder-only: trace.mjs --only gates must find the founder's decision record"; return 0; }
   if [ -f "$RELEASES" ] && grep -q "WAIVED:.*$1" "$RELEASES" 2>/dev/null; then
     CANON=$(canonical_version 2>/dev/null || true)
     if [ -n "$CANON" ]; then
@@ -277,7 +238,11 @@ if [ -f "$ROOT/.studio-policy.json" ]; then
       unknown "requireApprovalBinding is on, but $ROOT is not a git repository (or has no commits),
            so no approval can be checked against the candidate being shipped. Approval binding is
            UNKNOWN here, not clear."
-    elif [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]; then
+    # The studio's own operational files (lib/operational-paths.txt — the board log, docs/team/,
+    # reviews) are excluded: they are written by the loop running this gate, so counting them made
+    # the honest path permanently UNKNOWN (W3). A git error counts as dirty, never as clean.
+    # shellcheck disable=SC2046
+    elif ! _st=$(git -C "$ROOT" status --porcelain -- ':(top)' $(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(exclude)/' "$HERE/lib/operational-paths.txt") 2>/dev/null) || [ -n "$_st" ]; then
       # Three distinct states, three distinct messages. The first version of this cleared SHIP_HEAD
       # to skip the detector and then fell through to the `else`, so a DIRTY repo was reported as
       # "not a git repository" as well — two UNKNOWNs for one cause, one of them false. Caught by
@@ -285,8 +250,8 @@ if [ -f "$ROOT/.studio-policy.json" ]; then
       # point turned back on the person who wrote it.
       unknown "requireApprovalBinding is on and HEAD is $SHIP_HEAD, but the working tree is DIRTY —
            uncommitted or untracked changes mean the tree being released is not the commit any
-           approval was bound to. Approval binding is UNKNOWN, not clear. Commit or stash the
-           changes (\`git -C $ROOT status\` lists them) and re-run."
+           approval was bound to. Approval binding is UNKNOWN, not clear. Commit (or delete) the
+           changes — never stash, a stash hides them from every gate — (\`git -C $ROOT status\` lists them) and re-run."
     else
       run_detector "approval-check" node "$HERE/approval-check.mjs" --log "$ROOT/docs/31-board-events.jsonl" \
         --policy "$ROOT/.studio-policy.json" --head "$SHIP_HEAD"
@@ -356,7 +321,7 @@ else
     else
       block "$TID is verified_static — its test suite has NEVER RUN, so 'tests green' is unproven.
            Run the suite and append the real verdict:
-             board.mjs move $TID verified --by <role> --detail \"<what ran>\"
+             board.mjs move $TID verified --by <role> --detail \"<what ran>\"$(token_for "<role>" "$TID")
            Or waive it deliberately in docs/60-releases.md:
              WAIVED: $TID — <who waived it> — <reason>"
     fi
@@ -445,11 +410,56 @@ fi
 # giving QA a structured, one-line verdict the gate can key on instead of reading prose: a plan with
 # no verdict line is CANNOT EVALUATE, same as every other missing-input case in this file, not a
 # silent pass.
+# MARKDOWN EMPHASIS IS STRIPPED FIRST. `QA VERDICT: **HOLD**` and `**QA VERDICT:** HOLD` missed the
+# HOLD pattern, so an earlier cycle's plain `QA VERDICT: GO` in the same plan won and the gate
+# passed a release QA had held. Any HOLD line, however it is emphasised, outranks every GO.
+# G2-19: WITH AN EVENT LOG, THE GO COMES FROM THE BOARD, NOT FROM MARKDOWN. A hand-typed
+# `QA VERDICT: GO` is a sentence anyone can write; a `qa_passed` event is appended by qa-engineer
+# through the board's gate (and, under requireActorTokens, carries a token minted for that spawn).
+# So every merged/done non-QA ticket's LATEST QA event must be a qa_passed by qa-engineer — token-
+# stamped when tokens are required. A markdown HOLD still blocks: QA may hold a whole sprint.
+QA_EVENTS=""
+if [ -f "$LOG" ]; then
+  QA_EVENTS=$(node -e '
+const [lib, log, policy] = process.argv.slice(1);
+const fs = require("node:fs");
+let tokens = false; try { tokens = JSON.parse(fs.readFileSync(policy, "utf8")).requireActorTokens === true; } catch {}
+import(lib).then(({ parseEventLog }) => {
+  const { events } = parseEventLog(fs.readFileSync(log, "utf8"));
+  const last = new Map(); const landed = new Set();
+  for (const e of events) {
+    if (/^QA-/i.test(e.ticket)) continue;
+    if (e.event === "merged" || e.event === "closed") landed.add(e.ticket);
+    if (e.event === "qa_passed" || e.event === "qa_failed") last.set(e.ticket, e);
+    if (e.event === "reopened") { last.delete(e.ticket); landed.delete(e.ticket); }
+  }
+  const out = [];
+  for (const t of landed) {
+    const e = last.get(t);
+    if (!e) out.push(`${t} has no qa_passed event — QA never recorded exercising it`);
+    else if (e.event === "qa_failed") out.push(`${t}: its latest QA event is qa_failed`);
+    else if (e.by !== "qa-engineer") out.push(`${t}: qa_passed was recorded by ${e.by || "nobody"}, not qa-engineer`);
+    else if (tokens && e.actor?.mode !== "token") out.push(`${t}: qa_passed carries no actor token, and requireActorTokens is on`);
+  }
+  process.stdout.write(out.join("\n"));
+}).catch((err) => { process.stdout.write(`UNREADABLE ${err.message}`); });' \
+    "$HERE/lib/events.mjs" "$LOG" "$ROOT/.studio-policy.json" 2>/dev/null)
+  case "$QA_EVENTS" in
+    UNREADABLE*) unknown "the QA events in $LOG could not be read (${QA_EVENTS#UNREADABLE }) — QA's verdict is UNKNOWN." ;;
+    ?*) block "QA has not passed every landed ticket on the board:
+$(printf '%s\n' "$QA_EVENTS" | sed 's/^/             /')
+           qa-engineer records each with: board.mjs move <ID> qa_passed --by qa-engineer$(token_for qa-engineer "<ID>")" ;;
+  esac
+fi
 if [ -f "$PLAN" ]; then
-  if grep -qE '^QA VERDICT:[[:space:]]*HOLD\b' "$PLAN" 2>/dev/null; then
-    block "$(grep -E '^QA VERDICT:[[:space:]]*HOLD\b' "$PLAN" | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
-  elif grep -qE '^QA VERDICT:[[:space:]]*GO\b' "$PLAN" 2>/dev/null; then
+  # G2-24: the plan is read only once it is known to exist.
+  QAV=$(tr -d '*_' < "$PLAN" | grep -iE '^[[:space:]]*QA VERDICT:' || true)
+  if printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD\b'; then
+    block "$(printf '%s\n' "$QAV" | grep -iE 'QA VERDICT:[[:space:]]*HOLD\b' | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
+  elif printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*GO\b'; then
     :
+  elif [ -f "$LOG" ]; then
+    : # the board's qa_passed events above ARE the verdict; a missing GO line is not a gap
   else
     unknown_unless_waived "qa-verdict" \
       "docs/50-test-plan.md has no 'QA VERDICT: GO' or 'QA VERDICT: HOLD — <reason>' line — whether qa-engineer is willing to ship is UNKNOWN, not clear. Have qa-engineer add the verdict line, then re-run."
@@ -536,6 +546,13 @@ $(printf '%s' "$INSTALLS" | sed 's/^/             /')
   fi
 done
 
+# --- 6. journey/runtime gate waivers are echoed, never silent (C5W-1) -------------------------------
+# readiness.mjs applies these (same lib/waiver.sh parser) only when that gate ran on this candidate
+# and could not evaluate; this gate repeats any valid one so the release summary cannot omit it.
+for _g in "journey gate" "runtime gate" "runtime gate (ios)" "runtime gate (android)" "runtime gate (web)"; do
+  W=$(waiver_for "$_g") && note "WAIVED: $_g by $W — readiness applies it only to a CANNOT EVALUATE result on this candidate"
+done
+
 # --- verdict ---------------------------------------------------------------------------------------
 echo "SHIP GATE"
 if [ -n "$UNKNOWNS" ]; then printf '%s' "$UNKNOWNS"; fi
@@ -560,5 +577,8 @@ if [ -n "$BLOCKERS" ]; then
 fi
 echo
 echo "RESULT: CLEAR — preconditions met. Proceed to the parallel readiness agents."
+# G-F13: every scanner above replays a defect class someone already found. CLEAR is not "no defects".
+echo "        LIMIT: the scanners only replay KNOWN defect classes; unknown defects are covered by"
+echo "        red-team-agent and defect-hunting, not by this gate."
 record_verdict CLEAR
 exit 0

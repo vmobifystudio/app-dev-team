@@ -1,6 +1,6 @@
 ---
 name: runtime-gate
-description: Use before advancing a ticket past QA and before any release — builds the app and launches it, then drives the P0 journey where UI automation exists. Triggers from /app-build's QA wave, /app-ship, qa-engineer and verification-engineer, and any moment someone is about to certify that an app works without having run it.
+description: On an app-dev-team project, use before advancing a wave past QA and before any release — builds and launches the app (iOS, Android or web), then drives the P0 journey where UI automation exists. Run by /app-build and /app-ship; used by qa-engineer and verification-engineer.
 ---
 
 # Runtime gate
@@ -16,18 +16,28 @@ This is `defect-hunting` §2 — *never certify by reading, execute it* — poin
 ## Run it
 
 ```bash
-sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" [--platform ios|android|auto] [--project-root .]
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record \
+  [--platform ios|android|web|auto] [--scheme <name>]
 ```
+
+**Always pass `--record`.** It writes the verdict to `docs/team/runtime-result.json`, the file the
+readiness reducer (`orchestrator ship`) reads; a run without it leaves readiness CANNOT EVALUATE no
+matter what the gate found. It is opt-in in the script only so the plugin's own fixture runs do not
+grow a `docs/team/`. `--scheme` names the shipping Xcode scheme when the project has more than one
+shared scheme — without it an ambiguous project is CANNOT EVALUATE, never a guess.
 
 | Exit | Meaning | What to do |
 |---|---|---|
-| `0` | PASS — built **and** launched | Record the evidence path. Continue. |
+| `0` | PASS — built **and** launched (web: built, `test` script green, then the e2e suite or the served build answering `GET /` with a body) | Record the evidence path. Continue. |
 | `1` | FAIL — does not build, or does not launch | **Blocks the row.** Re-spawn the developer with the compiler output the gate printed, verbatim. |
 | `2` | CANNOT EVALUATE — the toolchain is not on this machine | **Not a pass.** Report it as CANNOT EVALUATE in the standup and in the verdict block. |
 
 **Exit 2 is the point of the script.** A machine without Xcode is a normal state — a CI runner, a
 Linux box, an Android-only project. It is not an error and it is not a pass. The gate prints what
 was missing and what would make it evaluable; surface those lines rather than paraphrasing them.
+A wave that ends CANNOT EVALUATE is never recorded as launched, and `/app-ship` re-runs the gate on
+the release candidate. `backend-service`, `cli` and `library` are outside its detection: record
+`N/A` and run the type's equivalent, as `/app-ship` step 1b describes.
 
 Two traps it already closes, so do not re-open them by hand: `command -v xcodebuild` succeeds on a
 Command-Line-Tools-only Mac where every invocation fails, and a build that compiles is **not** a
@@ -42,9 +52,11 @@ gives far more, and you should route to it:
 - `axiom:simulator-tester` — drives the running app, captures screenshots, reads the log for
   crashes and errors. This is what turns "it launched" into "the journey works".
 - `axiom:test-runner` — runs XCUITests and parses the `.xcresult` for real failure detail.
-- XcodeBuildMCP (the `xcodebuildmcp` skill) — build, install, launch and UI automation as tools.
+- XcodeBuildMCP (a user-level `xcodebuildmcp` skill, if installed) — build, install, launch and UI
+  automation as tools.
 
-All three are **external and optional** — separate plugins, not this one's `skills/`. Their absence
+All three are **external and optional** — another plugin or a user-level skill, not this one's
+`skills/`. Their absence
 is normal; it is never a defect to file.
 
 Absent toolchain → **degrade to the plain script and say so**. Never silently skip a step: an
@@ -68,8 +80,8 @@ A journey that cannot be driven is stated as not driven, with the reason.
 
 ## Evidence discipline
 
-The script writes `docs/evidence/runtime-<date>-<platform>.png` on a successful launch. Anything
-you drive beyond that writes its own artifact to `docs/evidence/` too — a screenshot, or a log
+The script writes `docs/54-evidence/runtime/runtime-<date>-<platform>.png` on a successful launch. Anything
+you drive beyond that writes its own artifact to `docs/54-evidence/runtime/` too — a screenshot, or a log
 excerpt for a step with nothing visual to show.
 
 **Reference the artifact by path in the DONE report, the QA verdict, or the ship summary.** A claim

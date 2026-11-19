@@ -21,6 +21,10 @@
  */
 
 import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+
+import { gitAt } from './integration.mjs';
 
 import { MAX_REVIEW_CYCLES } from './board.mjs';
 import { checkCapability } from './capabilities.mjs';
@@ -55,8 +59,28 @@ const EVENTS = new Set([
   'qa_failed',
   'blocked',
   'unblocked',
+  // `reopened` — the founder hands a ticket back to its developer from `blocked` (typically the
+  // review-cycle cap) or `review`, with ONE more review cycle on top of the cap. Without it the
+  // cap's only exit was `approved`: blocked -> unblocked -> review, where another REQUEST CHANGES
+  // is refused again (G-F8). Founder-only: lib/capabilities.mjs HUMAN_GATES.
+  'reopened',
   'closed',
 ]);
+
+/**
+ * QA tickets (`QA-…`) ARE the QA. Routing them through the `qa` stage asked qa-engineer to
+ * `qa_passed` its own ticket, which NOT_ON_OWN_TICKET refuses and nobody else was told to do, so
+ * the ticket never closed (W8). After `merged` they close directly.
+ */
+const isQaTicket = (state) => /^QA-/i.test(String(state?.id ?? ''));
+
+/**
+ * Design decision 1: a QA- ticket whose verification was a --docs-only record IS reviewed inline by
+ * the orchestrator — it goes verified -> merged with no review_requested/approved, and closes from
+ * merged without being on the integration branch. Scoped strictly: a QA- ticket that changed code
+ * (its evidence is a test run, or static) takes the normal path.
+ */
+const isQaDocs = (state) => isQaTicket(state) && state.verified && state.verifiedMode === 'docs-only';
 
 /**
  * `assigned` is the one event beyond the vocabulary the plan decided, and it is here because the
@@ -99,20 +123,22 @@ function legalEvents(state) {
       // legal list were dead code. Two checks for one rule, one of which could never run.
       // mutate.sh found it: M09 was the single surviving mutation of sixteen, because breaking a
       // guard nothing reaches breaks no assertion.
-      return withCorrection(['review_requested', 'done_reported', 'blocked', 'assigned']);
+      return withCorrection(['review_requested', 'done_reported', 'blocked', 'assigned', ...(isQaDocs(state) ? ['merged'] : [])]);
     case 'review':
-      return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned']);
+      return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned', 'reopened']);
     case 'qa':
       // `verified` is legal here so a ticket merged on a STATIC verification can be upgraded once
       // the executable suite finally runs. Without that there is no path from `qa (static only)` to
       // `done` except lying, and a sprint would have to close by hand — which is what happened.
-      return state.qaPassed
+      // C4G-G3: `corrected` too — the comment above says EVERY state, and the test-profile refusal
+      // prints `corrected --test-profile` to a ticket that may well be sitting here.
+      return withCorrection(state.qaPassed || isQaTicket(state)
         ? ['closed', 'verified', 'qa_failed', 'blocked']
-        : ['qa_passed', 'verified', 'qa_failed', 'blocked'];
+        : ['qa_passed', 'verified', 'qa_failed', 'blocked']);
     case 'done':
       return withCorrection([]);
     case 'blocked':
-      return withCorrection(['unblocked']);
+      return withCorrection(['unblocked', 'reopened']);
     default:
       return withCorrection([]);
   }
@@ -246,6 +272,67 @@ function verifyChain(text) {
   return { ok: true, chained, unchained, tip: previous === null ? sha(text) : previous };
 }
 
+/**
+ * G2-10: TAMPER EVIDENCE THAT HOLDS AGAINST A RECOMPUTED CHAIN, BY DEFAULT.
+ *
+ * The chain alone proves nothing against an editor who recomputes every hash after the line they
+ * changed — it has no secret. So every append also writes the chain's head (line count + tip hash)
+ * to an ANCHOR OUTSIDE THE WORKING TREE: `<git common dir>/studio/board-anchor-<log id>.json`,
+ * shared by every worktree of the repository. A read or append whose chain does not end exactly at
+ * the anchored head — rewritten, truncated, deleted, or lines appended without the CLI — is CANNOT
+ * EVALUATE. Events written while anchoring carry `anchored: true`, so deleting the anchor of an
+ * anchored log is refused too.
+ *
+ * WHY THIS AND NOT AN HMAC. A key "the orchestrator mints into the main session" lives in the
+ * session's environment, which every subagent inherits; the key would be exactly as reachable as
+ * the log. The anchor's real property is LOCATION: Write/Edit on project files never touch .git,
+ * and the subagent guard hook refuses writes into .git/. THE BOUND: the same OS user can rewrite
+ * the log AND the anchor with Bash outside the guard; a project with no git repository has no
+ * anchor (the chain alone, as before). A legacy log is anchored on first use (trust on first use).
+ * C3G-12, stated: the guard matches command TEXT, so anything that reaches this module's exports
+ * without naming board.mjs — `node -e "import('…/lib/events.mjs')…writeAnchor(…)"` — or names
+ * the git dir indirectly (`.gi?/studio`, `$D/studio`) re-anchors a rewritten log. The hook lists
+ * events.mjs among the guarded imports and refuses globs/variables near `.git`; past that the
+ * anchor detects a confused or careless rewrite, not a deliberate one by the same OS user.
+ */
+function anchorPath(logPath) {
+  const dir = dirname(logPath);
+  if (!existsSync(dir)) return '';
+  const common = gitAt(dir)(['rev-parse', '--path-format=absolute', '--git-common-dir']);
+  if (!common) return '';
+  let real;
+  try { real = join(realpathSync(dir), basename(logPath)); } catch { real = resolve(logPath); }
+  return join(common, 'studio', `board-anchor-${createHash('sha256').update(real).digest('hex').slice(0, 16)}.json`);
+}
+function checkAnchor(logPath, text, chain) {
+  const at = anchorPath(logPath);
+  if (!at) return { ok: true };
+  const recover = '  The anchor lives outside the tree (G2-10). Restore the log from a backup that matches it;\n' +
+    '  if the log is genuinely the record (a fresh clone, a moved project, or an anchor that is wrong),\n' +
+    '  that is a human decision: the founder runs, at their own terminal,\n' +
+    '    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" adopt\n' +
+    '  knowing it re-trusts whatever the log now says.';
+  if (!existsSync(at)) {
+    if (/"anchored":true/.test(text)) return { ok: false, reason: `${logPath} was written under an anchor, and the anchor (${at}) is gone — the log cannot be shown to be the one that was written.\n${recover}` };
+    return { ok: true };
+  }
+  let a;
+  try { a = JSON.parse(readFileSync(at, 'utf8')); } catch (e) { return { ok: false, reason: `the board anchor ${at} is unreadable (${e.message})\n${recover}` }; }
+  if (a.chained === chain.chained && a.tip === chain.tip) return { ok: true };
+  const what = chain.chained < a.chained ? `has ${chain.chained} chained line(s), the anchor recorded ${a.chained} — lines were deleted or the log was replaced`
+    : chain.chained > a.chained ? `has ${chain.chained} chained line(s), the anchor recorded ${a.chained} — lines were appended without the CLI`
+      : 'ends at a different hash than the anchor recorded — the history was rewritten and re-hashed';
+  return { ok: false, reason: `the board log ${logPath} ${what}.\n${recover}` };
+}
+function writeAnchor(logPath, chained, tip) {
+  const at = anchorPath(logPath);
+  if (!at) return;
+  mkdirSync(dirname(at), { recursive: true });
+  const tmp = `${at}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify({ schema: 'board-anchor/v1', log: logPath, chained, tip, at: new Date().toISOString() })}\n`);
+  renameSync(tmp, at);
+}
+
 const REVIEWER_IN_DETAIL = /(?:->|→)\s*([\w-]+)/;
 
 function blankTicket(id) {
@@ -255,6 +342,8 @@ function blankTicket(id) {
     owner: '',
     reviewer: '',
     cycles: 0,
+    // Review cycles the founder granted beyond MAX_REVIEW_CYCLES, one per `reopened`.
+    extraCycles: 0,
     approvals: [],
     dependsOn: [],
     verified: false,
@@ -343,6 +432,9 @@ function reduce(events) {
         // needed. The list of correctable fields was the list I thought of, not the list the work
         // requires.
         if (Array.isArray(fields.files)) state.meta.files = fields.files.map(String);
+        // C3W-7: invariants are correctable too. A high-risk ticket created without --invariant
+        // could never reach review, and nothing could add one. (`corrected --invariant "I1; I2"`.)
+        if (Array.isArray(fields.invariants)) state.meta.invariants = fields.invariants.map(String).filter(Boolean);
         // `owner` is corrigible because a mis-assigned ticket is a real and common mistake, and
         // leaving it wrong forces the hand-edit this event exists to replace.
         if (typeof fields.owner === 'string' && fields.owner) state.owner = fields.owner;
@@ -373,14 +465,19 @@ function reduce(events) {
       case 'verified':
         state.verifyPending = false;
         state.verified = true;
+        state.verifiedMode = (detail && typeof detail === 'object' && detail.evidence_mode) || '';
         state.verifiedStatic = false;
         state.staticUnrun = '';
         break;
       case 'verified_static':
         state.verifyPending = false;
         state.verified = true;
+        state.verifiedMode = 'static';
         state.verifiedStatic = true;
-        state.staticUnrun = String(detail || '').trim() || 'the executable test suite';
+        // C3W-13: a FIXED phrase, never the caller's --detail. This string is echoed in banners,
+        // refusals and dashboards every later reader sees; free text there is a prompt-injection
+        // channel and a place to misstate what did not run. The detail stays on the event.
+        state.staticUnrun = 'the executable test suite';
         break;
       case 'rejected':
         state.verifyPending = false;
@@ -428,6 +525,13 @@ function reduce(events) {
       case 'unblocked':
         state.status = state.prevStatus || 'todo';
         break;
+      case 'reopened':
+        // Back to the developer, as `changes` does: the old verification was of the old DONE.
+        state.status = 'in_progress';
+        state.extraCycles += 1;
+        state.verified = false;
+        state.verifyPending = false;
+        break;
       default:
         break;
     }
@@ -448,11 +552,49 @@ function reduce(events) {
 function validate(tickets, candidate) {
   const transition = validateTransition(tickets, candidate);
   if (!transition.ok) return transition;
+  // G-F1: SEPARATION BY TOKEN, not only by role name. Under per-spawn tokens one token is one
+  // spawned agent; the token that claimed, reported, verified or approved this ticket may not be the
+  // one that clears its review or its QA.
+  const tokenId = candidate.actor?.token_id;
+  if (tokenId && TOKEN_SEPARATED.has(candidate.event)) {
+    const state = tickets.get(key(candidate.ticket));
+    const prior = (state?.events || []).find((e) => e.actor?.token_id === tokenId && e.event !== candidate.event);
+    if (prior) {
+      return {
+        ok: false,
+        reason: `token ${tokenId} already wrote "${prior.event}" on ${candidate.ticket} — the agent that did that may not also write "${candidate.event}". Spawn the gate's own role with its own token.`,
+        legal: legalEvents(state).filter((e) => e !== candidate.event),
+      };
+    }
+  }
   // Capability runs LAST, so every older refusal keeps its own words. The self-approval message
   // ("a role does not gate its own work") is the one a reviewer needs to read, and it must not be
   // replaced by a generic capability refusal just because this check is newer.
-  return checkCapability(tickets.get(key(candidate.ticket)), candidate, legalEvents(tickets.get(key(candidate.ticket)) || { status: 'todo' }));
+  const state = tickets.get(key(candidate.ticket));
+  const capable = checkCapability(state, candidate, legalEvents(state || { status: 'todo' }));
+  if (!capable.ok || !state) return capable;
+  // G2-13 runs after capability, so a role that may not write the event at all hears THAT.
+  const sod = separation(state, candidate);
+  return sod ? { ...sod, legal: legalEvents(state).filter((e) => e !== candidate.event) } : capable;
 }
+
+/**
+ * G2-13: separation of duties across gates. With tech-lead in `verified`, `approved`, `merged` and
+ * `closed`, one role could clear the whole gate alone. So: the role that VERIFIED a ticket may not
+ * approve it, and the role that APPROVED it may not merge or close it. The orchestrator's honest
+ * path is untouched — tech-manager verifies, merges and closes, and never approves.
+ */
+function separation(state, { event: name, by }) {
+  if (name === 'approved' && wroteOn(state, by, ['verified', 'verified_static'])) {
+    return { ok: false, reason: `${by} verified ${state.id} — the role that certified the run may not also approve the change. Have another reviewer approve it.` };
+  }
+  if ((name === 'merged' || name === 'closed') && wroteOn(state, by, ['approved'])) {
+    return { ok: false, reason: `${by} approved ${state.id} — the role that approved a change may not also write "${name}" on it. The orchestrator (tech-manager) merges and closes.` };
+  }
+  return null;
+}
+
+const TOKEN_SEPARATED = new Set(['approved', 'qa_passed']);
 
 /**
  * Everyone who actually DID work on this ticket.
@@ -488,6 +630,12 @@ function workedOn(state) {
     if (WORK.has(e.event) && e.by) who.add(e.by);
   }
   return who;
+}
+
+/** Did `by` write any of `names` on this ticket? */
+function wroteOn(state, by, names) {
+  const who = String(by || '').trim();
+  return Boolean(who) && (state.events || []).some((e) => names.includes(e.event) && String(e.by || '').trim() === who);
 }
 
 function validateTransition(tickets, candidate) {
@@ -581,7 +729,7 @@ function validateTransition(tickets, candidate) {
       if (['high', 'critical'].includes(state.meta?.risk) && !(state.meta?.invariants?.length > 0)) {
         return {
           ok: false,
-          reason: `${id} is ${state.meta.risk}-risk and was created with no --invariant — a reviewer has nothing to check the change against`,
+          reason: `${id} is ${state.meta.risk}-risk and has no invariant recorded — a reviewer has nothing to check the change against. Record them: board.mjs move ${id} corrected --by tech-manager --invariant "I1; I2"`,
           legal: legal.filter((e) => e !== 'review_requested'),
         };
       }
@@ -598,6 +746,7 @@ function validateTransition(tickets, candidate) {
       return { ok: true };
     }
     case 'merged': {
+      if (isQaDocs(state) && state.status === 'in_progress') return { ok: true };
       const workers = workedOn(state);
       const external = state.approvals.filter((a) => a.by && !workers.has(a.by));
       if (!external.length) {
@@ -636,17 +785,17 @@ function validateTransition(tickets, candidate) {
       return { ok: true };
     }
     case 'changes':
-      if (state.cycles + 1 > MAX_REVIEW_CYCLES) {
+      if (state.cycles + 1 > MAX_REVIEW_CYCLES + state.extraCycles) {
         return {
           ok: false,
-          reason: `${id} has spent its ${MAX_REVIEW_CYCLES} review cycles — a 3rd rejection is an escalation, not another loop`,
+          reason: `${id} has spent its ${MAX_REVIEW_CYCLES + state.extraCycles} review cycles — another rejection is an escalation, not another loop (only the founder can grant more: "reopened --by founder")`,
           legal: ['approved', 'blocked'],
           force: { event: 'blocked', detail: `review cycle cap (${MAX_REVIEW_CYCLES}) reached` },
         };
       }
       return { ok: true };
-    case 'closed':
-      if (!state.qaPassed) {
+    case 'closed': {
+      if (!state.qaPassed && !isQaTicket(state)) {
         return {
           ok: false,
           reason: `${id} has no "qa_passed" — QA has not exercised the acceptance criteria`,
@@ -667,6 +816,7 @@ function validateTransition(tickets, candidate) {
         };
       }
       return { ok: true };
+    }
     default:
       return { ok: true };
   }
@@ -851,6 +1001,10 @@ function deriveMetrics(events) {
 }
 
 export {
+  anchorPath,
+  checkAnchor,
+  writeAnchor,
+  isQaDocs,
   EVENTS,
   STATUS_PRESERVING,
   key,

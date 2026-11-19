@@ -1,5 +1,19 @@
 #!/usr/bin/env node
-/** Deterministic context provenance and freshness checker. No summarisation, no hidden retrieval. */
+/**
+ * Deterministic context provenance and freshness checker. No summarisation, no hidden retrieval.
+ *
+ * WHAT `verify` PROVES (C11, 2026-11-18): that every declared source — the planning documents an
+ * agent's context is built from — still hashes the same as when the plan was made. A changed PRD or
+ * impl spec is STALE: work dispatched from the old text is work against a spec that no longer says
+ * that. A moved git HEAD is NOT, by itself: every wave merge moves HEAD without touching a planning
+ * document, so treating it as stale forced /app-build to re-snapshot every round, right before the
+ * check — a check that then could never fail. HEAD movement is reported; `--strict-head` restores
+ * the old refusal for a caller that really means "nothing at all changed".
+ *
+ * token_estimate is bytes/4 over the declared SOURCES, i.e. what an agent would pay to read them all.
+ * What an agent is actually handed is measured by `spawn-prompt.mjs compose`, which prints the
+ * composed prompt's word count and warns above the role's budget.
+ */
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -10,7 +24,9 @@ const die = (code, message) => { process.stderr.write(`context-manifest: ${messa
 const { flags, positional } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root', 'out', 'manifest', 'ticket', 'role', 'source', 'reason', 'omit']), die });
 const command = positional[0] || 'create';
 const root = resolve(String(flags.root || '.'));
-const output = resolve(String(flags.out || 'docs/team/context-manifest.json'));
+// `--manifest` is accepted on create too (team-bootstrap passes it), and the default is under
+// --root, not the caller's cwd — before, `create --root X --manifest Y` silently wrote ./docs/team/.
+const output = resolve(root, String(flags.out || flags.manifest || 'docs/team/context-manifest.json'));
 const LAYERS = ['constitutional', 'role', 'project', 'ticket', 'retrieved'];
 const PRECEDENCE = Object.fromEntries(LAYERS.map((layer, index) => [layer, index]));
 function repeated(name) {
@@ -43,14 +59,16 @@ function sources() {
 function verify(manifest) {
   if (!manifest || manifest.schema !== 'context-manifest/v2' || !Array.isArray(manifest.sources) || !Array.isArray(manifest.precedence)) die(2, 'invalid layered context manifest');
   const currentHead = git(['rev-parse', 'HEAD']);
-  if (manifest.git?.head && currentHead && manifest.git.head !== currentHead) die(1, `STALE: git HEAD changed from ${manifest.git.head} to ${currentHead}`);
+  const moved = manifest.git?.head && currentHead && manifest.git.head !== currentHead;
+  if (moved && flags['strict-head']) die(1, `STALE: git HEAD changed from ${manifest.git.head} to ${currentHead}`);
   for (const source of manifest.sources) {
     if (!LAYERS.includes(source.layer) || source.precedence !== PRECEDENCE[source.layer]) die(2, `invalid layer metadata for ${source.path}`);
     const absolute = resolve(root, source.path);
     if (!existsSync(absolute)) die(1, `STALE: source removed: ${source.path}`);
     if (hash(absolute) !== source.sha256) die(1, `STALE: source changed: ${source.path}`);
   }
-  console.log(`CONTEXT MANIFEST: FRESH — ${manifest.sources.length} source(s), snapshot ${manifest.snapshot_id}`);
+  console.log(`CONTEXT MANIFEST: FRESH — ${manifest.sources.length} source(s), snapshot ${manifest.snapshot_id}` +
+    (moved ? ` (git HEAD moved since the snapshot; no declared source changed)` : ''));
 }
 if (command === 'verify') {
   const path = resolve(String(flags.manifest || output));

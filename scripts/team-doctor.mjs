@@ -56,7 +56,7 @@ if (agents.length === 0 || commands.length === 0) {
 const frontmatterName = (text, fallback) => (text.match(/^name:\s*(.+)$/m) || [, fallback])[1].trim();
 
 const roles = new Map(agents.map((a) => [frontmatterName(a.text, basename(a.path, '.md')), a]));
-const skillNames = new Set(skills.map((s) => frontmatterName(s.text, basename(dirname(s.path)))));
+const skillNames = new Set(skills.filter((s) => s.path.endsWith('SKILL.md')).map((s) => frontmatterName(s.text, basename(dirname(s.path)))));
 const roleNames = [...roles.keys()];
 
 const appBuild = commands.find((c) => c.rel.endsWith('app-build.md'));
@@ -142,7 +142,6 @@ for (const [list, fields, tier] of [
 
 // Every spawnable owner must be in exactly one tier, or a new role slips through uncovered.
 for (const owner of BUILD_SPAWNABLE_OWNERS) {
-  if (owner === 'verification-engineer') continue; // returns a VERIFICATION verdict, not a DONE
   if (!CODE_ROLES.includes(owner) && !ARTIFACT_ROLES.includes(owner)) {
     add(findings, 'contract_tier_missing', 'scripts/team-doctor.mjs',
       `"${owner}" can own a ticket but belongs to neither contract tier, so nothing checks what it reports.`,
@@ -560,14 +559,14 @@ const DOC_WRITERS = new Map([
   ['docs/13-design-tokens.md',          ['agents/product-designer.md']],
   ['docs/14-components.md',             ['agents/product-designer.md']],
   ['docs/15-aso.md',                    ['agents/aso-specialist.md']],
-  ['docs/16-intent-validation.md',      ['agents/product-validator.md']],
+  ['docs/04-intent-validation.md',      ['agents/product-validator.md']],
   ['docs/16-research.md',               ['agents/product-researcher.md']],
   ['docs/17-founder-inbox.md',          ['agents/chief-of-staff.md']],
   // The formal-artifact series (P3a). Each is created by `scripts/messages.mjs artifact <TYPE>`,
   // which writes the file AND registers it on the team channel in one step — the file alone is a
   // document nobody knows exists, the message alone is a claim with no content.
-  ['docs/16-pdr/',                      ['agents/cpo.md']],
-  ['docs/17-ddr/',                      ['agents/ux-architect.md', 'agents/product-designer.md']],
+  ['docs/18-pdr/',                      ['agents/cpo.md']],
+  ['docs/19-ddr/',                      ['agents/ux-architect.md', 'agents/product-designer.md']],
   ['docs/20-architecture.md',           ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
   ['docs/21-engineering-principles.md', ['agents/cto.md', 'skills/architecture-builder/SKILL.md']],
   // One artifact per platform, so every `docs/22-impl-spec-<anything>` folds into this row.
@@ -576,7 +575,7 @@ const DOC_WRITERS = new Map([
   // The server-side controls. Written by devops, read by security-reviewer before ship — the one
   // artifact in the set whose contents nothing in this plugin can enforce, which is why a role has
   // to go and look.
-  ['docs/24-repository-controls.md',    ['agents/devops-engineer.md']],
+  ['docs/26-repository-controls.md',    ['agents/devops-engineer.md']],
   ['docs/24-adr/',                      ['agents/cto.md']],
   // The assumption register. An assumption carries an owner, a confidence and a validation date;
   // one past its date is reported by board-doctor, because a belief with a timestamp is not a fact.
@@ -617,8 +616,8 @@ const DOC_WRITERS = new Map([
   ['docs/60-releases.md',               ['agents/release-manager.md']],
   ['docs/70-security-review.md',        ['agents/security-reviewer.md']],
   ['docs/71-verification.md',           ['agents/verification-engineer.md']],
-  ['docs/72-release-audit.md',          ['agents/release-auditor.md']],
-  ['docs/73-privacy-review.md',         ['agents/privacy-reviewer.md']],
+  ['docs/76-release-audit.md',          ['agents/release-auditor.md']],
+  ['docs/77-privacy-review.md',         ['agents/privacy-reviewer.md']],
   ['docs/74-red-team.md',               ['agents/red-team-agent.md']],
   ['docs/75-reliability-review.md',     ['agents/reliability-engineer.md']],
   // A waiver carries an expiry and an EXPIRED WAIVER IS A FINDING — the exemption was granted for a
@@ -627,7 +626,7 @@ const DOC_WRITERS = new Map([
   ['docs/73-incidents/',                ['agents/release-manager.md']],
   ['docs/80-audit.md',                  ['commands/app-audit.md']],
   ['docs/81-findings.md',               ['commands/app-audit.md']],
-  ['docs/90-learnings.md',              ['commands/app-ship.md', 'commands/app-run.md']],
+  ['docs/92-learnings.md',              ['commands/app-ship.md', 'commands/app-run.md']],
 ]);
 
 // A generated projection of a file that already has readers. It exists to be LOOKED at by a human,
@@ -723,9 +722,14 @@ const CANONICAL_PATHS = [
   'docs/team/messages.jsonl',                // the channel — the source of truth (schema v1)
   'docs/team/messages.md',                   // ...and its generated human view
   'docs/53-reviews/APP-NNN-cycle-N.md',      // a review verdict
+  'docs/53-reviews/APP-NNN-cycle-N-tech-lead.md',     // tech-lead's second approval (high risk)
+  'docs/53-reviews/APP-NNN-cycle-N-security.md',      // security-reviewer's ticket review (critical)
+  'docs/53-reviews/APP-NNN-cycle-N-verification.md',  // verification-engineer's per-ticket certification
+  'docs/team/incidents.jsonl',               // the incident ledger (incident-ledger.mjs)
   'docs/team/ship-gate-verdict.json',        // ship-gate.sh --record's last verdict
   'docs/team/memory.jsonl',                  // memory-curator.mjs's proposed/reviewed ledger
   'docs/team/journeys/README.md',            // the journey-declaration contract journey-gate reads
+  'docs/team/journeys/<journey-id>.json',    // one declared P0 journey — qa-engineer writes, journey-gate reads
   // ADDED 2026-08-06 when the wiring pass discovered these were read by CODE but unknown to this
   // list, so any command that named them was reported as a variant spelling. The check was right —
   // one spelling per artifact — and its list was simply behind the gates that had been added since.
@@ -746,12 +750,18 @@ const CANONICAL_PATHS = [
   'docs/team/risk-policy.json',              // the blast-radius router dispatch-preflight consults
   'docs/team/schedule.json',                 // scheduler overrides; the ready set derives from the board
   'docs/team/context-manifest.json',         // the hashed context an agent was actually given
+  'docs/team/runs.jsonl',                    // the run ledger: leases and attempts (run-ledger, run-doctor, board.mjs)
+  'docs/team/worktree-slots.json',           // worktree-slot.mjs's lease state (gitignored, main checkout only)
+  'docs/team/actor-tokens.jsonl',            // per-spawn actor token hashes (lib/actor.mjs) — script-written only
+  'docs/team/evidence/',                     // re-derivable test/gate evidence (lib/evidence.mjs) — script-written only
+  'docs/team/reports/<ticket>-<UTC>.md',     // IC final reports saved by hooks/persist-ic-report.sh
 ];
 // Structural references that name no artifact: the directories themselves, the glob the standup
 // reads a day's fragments with, and the archive consumed fragments are moved to.
 const STRUCTURAL_PATHS = new Set([
   'docs/daily', 'docs/daily/', 'docs/daily/<today>-*.md', 'docs/daily/.fragments/',
   'docs/team', 'docs/team/', 'docs/53-reviews', 'docs/53-reviews/',
+  'docs/team/reports', 'docs/team/reports/', 'docs/team/reports/APP-NNN-*.md',
 ]);
 const ALLOWED_PATHS = new Set([...CANONICAL_PATHS, ...STRUCTURAL_PATHS]);
 

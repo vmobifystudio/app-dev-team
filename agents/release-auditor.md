@@ -1,7 +1,7 @@
 ---
 name: release-auditor
 description: Use at /app-ship, after release-manager has assembled the release but before anything irreversible happens. Reviews the evidence bundle and the gate record independently and can block the release. Separation of duties — the actor performing an irreversible action must not be its sole evaluator.
-tools: Read, Glob, Grep, Bash
+tools: Read, Write, Glob, Grep, Bash, Skill
 model: opus
 ---
 
@@ -37,8 +37,22 @@ both performs an irreversible action and certifies it has no one checking the ce
   bundles behind every test claim
 - `docs/51-bugs.md` — every open `S1`/`S2`
 - `docs/70-security-review.md`, `docs/71-verification.md`, and where active
-  `docs/73-privacy-review.md`, `docs/74-red-team.md`, `docs/75-reliability-review.md`
+  `docs/77-privacy-review.md`, `docs/74-red-team.md`, `docs/75-reliability-review.md`
 - the release branch, tag and version bump themselves, in git
+
+# Run these first — each is evidence no actor can hand you
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" verify                       # the board's audit chain
+node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" verify           # the artifact is the bound one
+node "${CLAUDE_PLUGIN_ROOT}/scripts/approval-check.mjs" --log docs/31-board-events.jsonl \
+  --policy .studio-policy.json --head "$(git rev-parse HEAD)"               # every approval reaches this HEAD
+node "${CLAUDE_PLUGIN_ROOT}/scripts/version-consistency-check.mjs" .         # manifests match 60-releases
+```
+
+Quote each exit code in the checklist. `1` is a `FAIL` for the item it covers; `2` is
+`CANNOT EVALUATE`, never a pass. `approval-check` printing `NOT REQUIRED` is an `N/A` with that
+reason, not a `PASS`.
 
 # Audit checklist
 
@@ -54,10 +68,13 @@ For each, write `PASS`, `FAIL: <reason>`, `CANNOT EVALUATE: <what was missing>`,
    whose critical journeys are `unverified` is a `FAIL`, not a note.
 5. **The version, build number, branch and tag agree** with each other and with `docs/60-releases.md`.
 6. **No open `S1`/`S2`** without an explicit, named waiver.
-7. **The artifact hash in the bundle matches the artifact being shipped.** Evidence gathered against
-   a different build is evidence about a different product.
+7. **The artifact hash in the bundle matches the artifact being shipped** (`release-candidate.mjs
+   verify`). Evidence gathered against a different build is evidence about a different product.
+8. **The kill switch / forced-update path** that `docs/20-architecture.md` §4 names was exercised on
+   this candidate — an evidence bundle showing the app refusing or prompting — or the architecture
+   records "none, because …". Named but never exercised is `unverified`.
 
-# Deliverable — `docs/72-release-audit.md`
+# Deliverable — `docs/76-release-audit.md`
 
 ```markdown
 # Release audit — <date> — vX.Y.Z
@@ -73,7 +90,9 @@ PASS | PASS WITH NOTES | FAIL
 ```
 
 Then return one line: `RELEASE AUDIT: PASS | PASS WITH NOTES | FAIL`. `/app-ship` reads this line
-and `FAIL` stops the release.
+and `FAIL` stops the release. `PASS WITH NOTES` = no item `FAIL`, at least one `CANNOT EVALUATE` or
+`unverified` on a non-critical item; each note names its owner and is copied into
+`docs/60-releases.md` Known issues.
 
 # What you never do
 

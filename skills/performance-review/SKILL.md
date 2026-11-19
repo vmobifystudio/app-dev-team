@@ -1,14 +1,17 @@
 ---
 name: performance-review
-description: Use as a review dimension on any diff that could cost startup time, frames, memory, battery, bandwidth or bundle size — by code-reviewer during review and by web-developer and test-automation-engineer before claiming a UI or harness ticket done. The studio's position is that this is a dimension with existing auditors behind it, not a standing role.
+description: On an app-dev-team project, use as a review dimension on any diff that could cost startup, frames, memory, battery, bandwidth or bundle size. Used by code-reviewer, web-developer, backend-developer and test-automation-engineer.
 ---
 
 # Performance review
 
+This is a review dimension with existing auditors behind it, not a standing role.
+
 Performance is a budget, and a budget only exists if something can exceed it. The budgets live in
 `docs/20-architecture.md` §8; if that section is empty, that is the finding.
 
-Spawn the platform auditor first and fold its findings in — `axiom:swiftui-performance-analyzer`,
+The reviewer or orchestrator (a role whose tools include `Task`/`Agent`) runs the platform auditor
+and folds its findings in — an IC never spawns one. `axiom:swiftui-performance-analyzer`,
 `axiom:swift-performance-analyzer`, `axiom:memory-auditor`, `axiom:energy-auditor` on Apple
 platforms. **All external and optional** (separate plugins) — missing → record
 `N/A: <tool> — not installed`, walk the list below by hand, never file the absence as a defect.

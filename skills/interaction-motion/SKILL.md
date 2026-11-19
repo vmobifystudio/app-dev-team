@@ -1,6 +1,6 @@
 ---
 name: interaction-motion
-description: Use when specifying or reviewing motion and interaction feel — transitions, gestures, feedback timing, loading and progress. Invoked by product-designer while composing screens and by any IC implementing an animated surface. Triggers whenever something moves, and whenever something takes long enough that the user must be told.
+description: On an app-dev-team project, use when specifying or reviewing motion and interaction feel — transitions, gestures, feedback timing, loading and progress. Used by product-designer.
 ---
 
 # Interaction and motion

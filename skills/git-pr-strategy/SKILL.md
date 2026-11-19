@@ -1,12 +1,12 @@
 ---
 name: git-pr-strategy
-description: Apply safe branching, commits, conflict resolution, review ownership, merge, rollback, and release-tag rules.
+description: Use when branching, committing, resolving a conflict, merging, rolling back or tagging a release on an app-dev-team project. Used by devops-engineer, code-reviewer, tech-manager and the /app-build orchestrator.
 ---
 
 # Git and PR strategy
 
 Use for every code or documentation change that will be reviewed, merged, released, reverted, or
-shared with another agent. Read `knowledge/git-workflow.md` and `agent-isolation` first.
+shared with another agent. Read `${CLAUDE_PLUGIN_ROOT}/knowledge/git-workflow.md` and `agent-isolation` first.
 
 ## Lifecycle
 
@@ -19,7 +19,9 @@ shared with another agent. Read `knowledge/git-workflow.md` and `agent-isolation
 5. The reviewer owns the verdict; the author fixes findings. No self-approval, no merge on a summary,
    and no merge while required checks are unknown.
 6. Resolve conflicts by reading both sides and the governing spec. Never choose “ours” or “theirs”
-   blindly. If the conflict changes behavior or contract, escalate to the owner of that contract.
+   blindly. A textual conflict in a wave merge is resolved by the `/app-build` orchestrator, which
+   owns `wave-integrate.mjs`. If the conflict changes behavior or contract, escalate to the owner of
+   that contract as a ticket.
 7. Record the merge commit/tag, checks, evidence bundle, and rollback/revert path in the release record.
 
 ## Communication

@@ -1,18 +1,12 @@
 ---
 name: house-conventions
-description: Use before writing any code, spec, or store asset on a Mobify Studio app — loads the relevant House Knowledge Base pack(s) so output matches the studio's established conventions instead of generic defaults. Every IC invokes this first; execs invoke it when their document names a platform, version, library, or store surface.
+description: Use before writing any code, spec or store asset on a Mobify Studio app, to load the House Knowledge Base packs that apply. Every IC loads it first; execs load it when a document names a platform, version, library or store.
 ---
 
 # House conventions
 
-The plugin ships a House Knowledge Base under `knowledge/` mined from our internal shipped
-apps. This skill is how an agent loads the right pack before working, so what it produces looks
-like the studio's other apps — same architecture, same monetization patterns, same store hygiene.
-
-## When to use
-
-Invoke this **before** the first edit/spec on any ticket, sprint, or asset. It costs one read
-and prevents a whole class of "this doesn't match how we build" rework.
+Load the House Knowledge Base pack (`knowledge/`, mined from our shipped apps) that matches your
+work **before** the first edit or spec, so what you produce matches the studio's other apps.
 
 ## Procedure
 
@@ -28,6 +22,7 @@ and prevents a whole class of "this doesn't match how we build" rework.
    | Pick stack / versions / libraries | `stack-defaults.md` |
    | Write or review iOS code | `ios-conventions.md` (+ `stack-defaults.md`) |
    | Write or review Android code | `android-conventions.md` (+ `stack-defaults.md`) |
+   | Write or review web code, web spec, web CI | `web-conventions.md` (not `stack-defaults.md`) |
    | Add ads, IAP, or a paywall | `monetization.md` |
    | Add analytics / events / KPIs | `analytics.md` |
    | Prepare store assets / submission | `aso.md` |
@@ -40,7 +35,7 @@ and prevents a whole class of "this doesn't match how we build" rework.
 
    **Tier:** default to the **Flagship** rules in each pack. If the project declares itself a
    *utility* app (in its `docs/` or `CLAUDE.md`), apply the **Utility** branch where a pack defines
-   one (e.g. ad-first monetization, leaner stack) — see `knowledge/README.md` §Tiers.
+   one (e.g. ad-first monetization, leaner stack) — see `${CLAUDE_PLUGIN_ROOT}/knowledge/README.md` §Tiers.
 
 2a. **Load only what the project has.** Read `docs/02-team-roster.md` (tier, product type,
    platforms) before the pack. Do not produce a section for a platform, role or capability the
@@ -53,39 +48,19 @@ and prevents a whole class of "this doesn't match how we build" rework.
    write one line to your per-run fragment (`docs/daily/<today>-<role>-<ticket>.md`) noting the
    divergence so the `tech-manager` can decide whether the KB or the project is wrong.
 
-   **No ticket?** A spec-writing exec has none, and that used to make this rule unfollowable for
-   exactly the roles whose divergences are largest. Use `docs/daily/<today>-<role>-spec.md` — same
-   directory, so the standup collects it with everything else.
+   **No ticket?** A spec-writing exec uses `docs/daily/<today>-<role>-spec.md` — same directory,
+   so the standup collects it.
 
 4. If you discover a genuinely new, reusable convention while working, add a `LEARNING:` line to
    that same fragment so `/app-learn` can fold it back into the KB after ship.
 
-5. **If you just wrote to a file OUTSIDE a leased worktree — a spec, the SRS, the PRD, the
-   backlog, an ADR/PDR/DDR, anything in the shared tree — commit it before you report done or hand
-   off.** `ic-workflow`'s branch-and-commit discipline is written for IC roles working inside a
-   worktree; it says nothing about the execs, `tech-lead`, `cpo`, and every other role that edits
-   `docs/` directly on the shared tree, and until this line existed nothing did. The failure is not
-   hypothetical: a `cpo` wrote a new requirement into the SRS/PRD and created a board ticket, a
-   `tech-lead` wrote the impl spec and handed off — neither committed — and the next command that
-   cut a fresh worktree for the developer (`git worktree add`, which snapshots the last COMMIT, not
-   the live working directory) produced a worktree missing both edits entirely. The developer
-   correctly `BLOCKED`, reporting a ticket and impl spec that "did not exist," because from git's
-   point of view they didn't yet. `git add <the files you touched> && git commit -m "..."` — explicit
-   paths, same rule `ic-workflow` gives ICs, for the same reason: a blanket `git add -A` from a
-   shared-tree role risks staging someone else's in-flight work.
+5. **If you wrote to a file OUTSIDE a leased worktree — a spec, the SRS, the PRD, the backlog, an
+   ADR/PDR/DDR, anything in the shared tree — commit it before you report done or hand off.**
+   `git worktree add` snapshots the last COMMIT, so an uncommitted spec or ticket does not exist in
+   the next developer's worktree. `git add <the files you touched> && git commit -m "..."` —
+   explicit paths only, the same rule `ic-workflow` gives ICs.
 
-6. **Read what your role names, not the whole tree.** `ic-workflow`'s input contract already scopes
-   a developer to exactly three things — the ticket row, the PRD/impl-spec sections it points to,
-   and its own subtree — for a reason: a role that re-reads the full PRD, every prior standup, and
-   every sibling ticket "to be safe" burns budget on context it was never going to use and makes the
-   next context-window compaction more likely mid-ticket. Read the pack this skill names, the doc
-   your input contract names, and nothing wider unless a specific question sends you looking for it.
-   This is not a license to skip house-conventions or defect-hunting's own required reads — it is
-   the same discipline pointed at everything *else*: a role file that grew barnacles ("also skim
-   the last five standups") over time is exactly the kind of accretion this rule exists to refuse.
-
-## Anti-patterns
-
-- Writing code first and checking conventions later — the rework is the cost you were avoiding.
-- Inventing a new architecture/pattern when a pack already specifies one.
-- Silently following the KB when the project doc says otherwise (or vice-versa) without flagging it.
+6. **Read what your role names, not the whole tree** — the pack this skill names, the docs your
+   input contract names, nothing wider unless a specific question sends you looking. Re-reading the
+   full PRD, every standup and every sibling ticket "to be safe" burns budget and invites a
+   mid-ticket compaction. This never licenses skipping a required read.

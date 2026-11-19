@@ -17,7 +17,10 @@
  * The board is read through scripts/lib/board.mjs. One parser: a second reading of the board is how
  * the last four fail-open gates in this repo got written.
  *
- * Usage:  node scripts/trace.mjs [--project-root <dir>] [--only trace|conflicts|gates] [--json]
+ * Usage:  node scripts/trace.mjs [--project-root <dir>] [--only trace|conflicts|gates] [--intent] [--json]
+ *   --intent  Gate 1 (W2-19): before /app-plan there is no board and no decision ledger, so the
+ *             ticket and decision halves are NOT APPLICABLE yet rather than CANNOT EVALUATE — the
+ *             goal -> requirement -> criterion -> test chain is still checked in full.
  * Exit:   0 clean · 1 findings · 2 cannot evaluate
  */
 
@@ -36,6 +39,7 @@ const value = (name, fallback) => {
 const ROOT = value('--project-root', '.');
 const ONLY = value('--only', 'all');
 const JSON_OUT = flag('--json');
+const INTENT = flag('--intent');
 
 if (!['all', 'trace', 'conflicts', 'gates'].includes(ONLY)) {
   process.stderr.write(`trace: --only takes trace|conflicts|gates, not "${ONLY}".\n`);
@@ -177,6 +181,8 @@ let tickets = [];
 const wantsTrace = ONLY === 'all' || ONLY === 'trace';
 if (!wantsTrace) {
   tickets = boardDoc ? parseBoard(boardDoc.text).rows : [];
+} else if (!boardDoc && INTENT) {
+  tickets = []; // Gate 1: no tickets exist yet, by design
 } else if (!boardDoc) {
   cannot('the ticket half of the graph', `${BOARD} does not exist, so no ticket, no shipped code and no analytics coverage can be checked.`);
 } else {
@@ -189,6 +195,10 @@ if (!wantsTrace) {
 // =================================================================================================
 // section: trace
 // =================================================================================================
+
+if (INTENT && wantsTrace && byKind('requirement').length === 0) {
+  cannot('the intent chain', 'no requirement node ([F-NNN]) is declared under docs/, so --intent has nothing to trace — an empty chain is not an unbroken one.');
+}
 
 if (ONLY === 'all' || ONLY === 'trace') {
   // Every material scope decision must point at the founder record. A goal sourced from a derived
@@ -327,7 +337,9 @@ if (ONLY === 'all' || ONLY === 'trace') {
   // guesses. "Reached an artifact" means the row names a doc path or a node ID that exists.
   const LEDGER = 'docs/team/messages.md';
   const ledgerDoc = docs.find((d) => d.rel === LEDGER);
-  if (!ledgerDoc) {
+  if (!ledgerDoc && INTENT) {
+    // Gate 1: no decisions have been recorded yet, so there is nothing to follow.
+  } else if (!ledgerDoc) {
     cannot('the decision half of the graph', `${LEDGER} does not exist, so no recorded decision can be followed to an artifact.`);
   } else {
     for (const msg of parseMessages(ledgerDoc.text)) {

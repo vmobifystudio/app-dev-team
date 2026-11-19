@@ -35,21 +35,25 @@
  *   journey-gate.mjs --root <project> [--journeys <dir>] [--driver <path>] [--only <id>]
  *   journey-gate.mjs --root <project> --list        # what is declared, without running anything
  *
- * THE DRIVER SEAM. Executing a step against a real device needs a platform driver (adb+uiautomator,
- * simctl+XCUITest). Those are not written yet, and pretending otherwise would be the exact
- * green-while-nothing-happened defect this repo tracks as FC-002. With no driver, every runnable
- * journey is CANNOT EVALUATE and says so by name. `--driver` points at an executable implementing
- * the contract in `docs/team/journeys/README.md`; the schema, the validation, the staleness rule
- * and the reporting are complete and testable today, which is what lets a driver be dropped in
- * without re-litigating any of it.
+ * THE DRIVER SEAM. Executing a step against a real device needs a platform driver: the plugin
+ * ships scripts/drivers/android.sh, ios.sh and web.sh, implementing the contract in
+ * `docs/team/journeys/README.md`. With no driver, every runnable journey is CANNOT EVALUATE and says
+ * so by name. `--driver` must name one of THOSE files (design F, C3G-6): any other path is CANNOT
+ * EVALUATE, and the result records the driver's path + sha256 so the board can refuse a verdict a
+ * different driver produced. BOUND: the plugin directory itself is trusted — an agent that can
+ * write into it can replace a driver (the result's sha then differs from a clean install's).
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
+import { treeDirty } from './lib/readiness.mjs';
+import { writeEvidenceLog } from './lib/evidence.mjs';
 
+const DRIVERS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), 'drivers');
 const die = (code, message) => { process.stderr.write(`journey-gate: ${message}\n`); process.exit(code); };
 const { flags } = parseArgs(process.argv.slice(2), {
   valueFlags: new Set(['root', 'journeys', 'driver', 'only', 'out']),
@@ -206,6 +210,20 @@ if (!selected.length) {
 // honest state today: the schema, validation and reporting are real and tested; execution against a
 // device is not written. Claiming otherwise is the defect this file's header names.
 const driver = typeof flags.driver === 'string' ? resolve(String(flags.driver)) : null;
+// C3G-6 / design F: ONLY THE PLUGIN'S OWN DRIVERS RUN. `--driver` used to execute any file, so a
+// four-line script echoing a PASS report (with a screenshot it also wrote) forged a journey PASS.
+// The driver's real path must be a file directly in the drivers/ directory beside this script; the
+// result records that path and its sha256, and the board's verifyJourney refuses any other. Run
+// through `sh`, so a driver checked out without its exec bit (web.sh, C3W-3) still runs.
+if (driver && existsSync(driver)) {
+  const real = realpathSync(driver);
+  if (dirname(real) !== realpathSync(DRIVERS_DIR) || !statSync(real).isFile()) {
+    process.stdout.write(`JOURNEY GATE: CANNOT EVALUATE — --driver ${driver} is not one of the plugin's drivers (${DRIVERS_DIR}/*).\n` +
+      '  Only a driver shipped with the plugin may produce a verdict: a driver is the thing that says PASS,\n' +
+      '  and one written for the occasion can say it about anything. Use drivers/android.sh | ios.sh | web.sh.\n');
+    process.exit(2);
+  }
+}
 if (!driver || !existsSync(driver)) {
   process.stdout.write('JOURNEY GATE: CANNOT EVALUATE — no journey driver available.\n\n');
   for (const j of selected) {
@@ -215,18 +233,23 @@ if (!driver || !existsSync(driver)) {
     `\n  ${driver ? `--driver ${driver} does not exist` : 'no --driver was supplied'}. A journey nobody ran is\n` +
     '  UNKNOWN, never a pass: an unrun journey and a passing journey are different facts, and the\n' +
     '  whole reason this gate exists is that they were being reported as the same one.\n' +
-    '  Driver contract: docs/team/journeys/README.md\n'
+    '  Drivers: --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh" | ios.sh | web.sh\n' +
+    '  (web.sh: Playwright from the project, app URL in STUDIO_WEB_URL). Contract: docs/team/journeys/README.md\n'
   );
   process.exit(2);
 }
 
 const results = [];
+const RAW = [];
 for (const j of selected) {
   const started = new Date().toISOString();
   let raw;
   try {
-    raw = execFileSync(driver, ['--root', root, '--journey', j._path], { encoding: 'utf8', timeout: 300000 });
+    // cwd = root, so relative evidence paths land (and are re-checked) in the project; one evidence-bundle dir (S2-25).
+    raw = execFileSync('sh', [driver, '--root', root, '--journey', j._path, '--evidence-dir', 'docs/54-evidence/journeys'], { cwd: root, encoding: 'utf8', timeout: 300000 });
+    RAW.push(`--- driver output: ${j.id}\n${raw}`);
   } catch (e) {
+    RAW.push(`--- driver output: ${j.id} (exit ${e.status})\n${e.stdout || ''}${e.stderr || ''}`);
     const out = `${e.stdout || ''}${e.stderr || ''}`.trim();
     // A driver that dies is not a product that failed. Distinguish them, or a broken harness reads
     // as a broken app and a developer is sent to fix a defect that does not exist (DR4-001).
@@ -316,44 +339,54 @@ function writeResultFile() {
   let head = '';
   let dirty = null;
   try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* not a repo */ }
-  try { dirty = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().length > 0; } catch { /* not a repo */ }
+  if (head) dirty = treeDirty(root); // studio operational files are not dirt (lib/operational-paths.txt)
   const payload = {
     schema: 'gate-result/v1',
     gate: 'journey-gate',
     // The SUBJECT. A verdict with no subject is a verdict about nothing in particular.
     subject: { head: head || null, dirty },
+    // Design F: which plugin driver produced the verdict, by name and content.
+    driver: { path: `scripts/drivers/${basename(driver)}`, sha256: createHash('sha256').update(readFileSync(driver)).digest('hex') },
     evaluated_at: new Date().toISOString(),
     result: results.some((r) => r.state === 'FAIL') ? 'FAIL'
       : results.some((r) => r.state === 'UNKNOWN') ? 'CANNOT_EVALUATE' : 'PASS',
     journeys: results.map((r) => ({ id: r.j.id, state: r.state, detail: r.detail || '', evidence: r.digests || [] })),
+    ...writeEvidenceLog(root, `journey-${(head || 'nohead').slice(0, 12)}-${Date.now()}`,
+      `${RAW.join('\n')}\n${LOG}GATE-DRIVER: scripts/drivers/${basename(driver)} ${createHash('sha256').update(readFileSync(driver)).digest('hex')}\nGATE-SUBJECT: ${head || 'null'}\n`),
   };
   try { mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, `${JSON.stringify(payload, null, 2)}\n`); }
   catch (e) { process.stderr.write(`journey-gate: could not write ${out}: ${e.message}\n`); }
 }
 
-process.stdout.write('JOURNEY GATE\n');
+// Everything printed from here on is also the RAW LOG the result file points at (G-F6): readiness
+// re-derives the verdict from it, so a hand-written journey-result.json cannot pass.
+let LOG = '';
+const say = (t) => { LOG += t; process.stdout.write(t); };
+say('JOURNEY GATE\n');
 for (const r of results) {
   const label = r.state === 'PASS' ? 'PASS   ' : r.state === 'FAIL' ? 'FAIL   ' : 'UNKNOWN';
-  process.stdout.write(`  ${label}  ${r.j.id}  ${r.detail}\n`);
+  say(`  ${label}  ${r.j.id}  ${r.detail}\n`);
   // The digest is PRINTED, not merely stored. A provenance record nobody can see is a record that
   // silently rots; showing it means a human reading two runs can tell whether the same bytes were
   // examined without going and hashing files themselves.
   (r.evidence || []).forEach((e, i) => {
     const d = (r.digests || [])[i];
-    process.stdout.write(`           evidence: ${e}${d ? `  sha256:${d.sha256.slice(0, 12)} (${d.bytes}B)` : ''}\n`);
+    say(`           evidence: ${e}${d ? `  sha256:${d.sha256.slice(0, 12)} (${d.bytes}B)` : ''}\n`);
   });
 }
 
 const anyFail = results.some((r) => r.state === 'FAIL');
 const anyUnknown = results.some((r) => r.state === 'UNKNOWN');
-process.stdout.write('\n');
-writeResultFile();
+say('\n');
 if (anyFail) {
-  process.stdout.write('RESULT: FAIL — a declared P0 journey did not complete. The product is wrong, not the harness.\n');
+  say('RESULT: FAIL — a declared P0 journey did not complete. The product is wrong, not the harness.\n');
+  writeResultFile();
   process.exit(1);
 }
 if (anyUnknown) {
-  process.stdout.write('RESULT: CANNOT EVALUATE — at least one journey was not exercised. This is NOT a pass.\n');
+  say('RESULT: CANNOT EVALUATE — at least one journey was not exercised. This is NOT a pass.\n');
+  writeResultFile();
   process.exit(2);
 }
-process.stdout.write(`RESULT: PASS — ${results.length} declared P0 journey(s) completed with their assertions holding.\n`);
+say(`RESULT: PASS — ${results.length} declared P0 journey(s) completed with their assertions holding.\n`);
+writeResultFile();

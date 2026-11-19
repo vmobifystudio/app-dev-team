@@ -40,6 +40,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { hashArtifact } from './artifact-hash.mjs';
+
 export const DOSSIER_PATH = 'docs/team/release-candidates.jsonl';
 
 /**
@@ -100,11 +102,11 @@ export function artifactEntry(root, head) {
   const rc = read.records.at(-1);
   const recorded = rc.commit || null;
 
-  if (rc.dirty === true) {
+  if (rc.dirty !== false) { // null = "could not tell", never clean (G2-11)
     return {
       gate,
       state: 'STALE',
-      detail: `artifact was built from a DIRTY tree at ${recorded ? recorded.slice(0, 12) : 'an unknown commit'} — it cannot be reproduced from any commit`,
+      detail: `artifact was built from a ${rc.dirty === true ? 'DIRTY' : 'not-known-clean'} tree at ${recorded ? recorded.slice(0, 12) : 'an unknown commit'} — it cannot be reproduced from any commit`,
       subject: recorded,
     };
   }
@@ -129,7 +131,7 @@ export function artifactEntry(root, head) {
       subject: recorded,
     };
   }
-  const now = hashFile(artifactPath);
+  const now = hashArtifact(artifactPath);
   if (now !== rc.sha256) {
     return {
       gate,

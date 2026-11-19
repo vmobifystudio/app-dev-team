@@ -2,6 +2,7 @@
 description: Recover an interrupted run — reconcile the ledger, the board, the worktrees and the wave, then restart from a known state
 argument-hint: [run id, optional — defaults to the newest non-terminal attempt]
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
+disable-model-invocation: true
 ---
 
 # /app-recover — recover an interrupted run
@@ -23,7 +24,6 @@ looking fine is cheap.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/run-doctor.mjs" --root .
-node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" list --root .
 ```
 
 - Exit `0` → no attempt is live. Continue.
@@ -77,7 +77,7 @@ deliberately. Only then:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
-node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner <role>   # per stale lease
+node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner <owner>-<n>   # per stale lease (the slot name)
 ```
 
 Never `git worktree remove --force` by hand. One `git stash` in a shared tree already cost 22 files
@@ -102,7 +102,9 @@ git branch -D integration/wave-<N>   # only once you know what it holds
 
 Re-running the same wave number is **refused**, on purpose: merging on top of a previous run's result
 and reporting it as a fresh integration is how a half-landed wave becomes an invisible one. Either
-delete the branch knowingly or use the next number.
+delete the branch knowingly or use the next number. The one exception is `--wave <N> --push`: it lands an existing wave branch
+whose tip is still the commit that run recorded green (`refs/studio/wave-green/<N>`) — and refuses
+one that has moved since.
 
 ## 5. Restart from a known state
 

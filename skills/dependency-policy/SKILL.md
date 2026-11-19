@@ -1,6 +1,6 @@
 ---
 name: dependency-policy
-description: Audit declared dependencies, lockfiles, tool versions, compatibility, licenses, and upgrade evidence before implementation or release.
+description: On an app-dev-team project, use when a ticket adds or upgrades a dependency, SDK, toolchain or lockfile, and before release — audits versions, compatibility, licenses and upgrade evidence. Used by ICs, code-reviewer and devops-engineer.
 ---
 
 # Dependency policy

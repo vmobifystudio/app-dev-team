@@ -3,6 +3,64 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed — Sprint 2 (2026-11-18 expert review, Phase 2)
+
+- **Remaining doc-number collisions (sprint 3):** `24-repository-controls.md` → `26-repository-controls.md`,
+  `33-messages-view.md` → `35-messages-view.md`, `90-learnings.md` → `92-learnings.md`; the phantom
+  `11-srs.md` dropped from the context candidates. Existing projects: `git mv` those that exist.
+- **Doc numbers no longer collide (R15).** `16-intent-validation.md` → `04-intent-validation.md`,
+  `16-pdr/` → `18-pdr/`, `17-ddr/` → `19-ddr/`, `72-release-audit.md` → `76-release-audit.md`,
+  `73-privacy-review.md` → `77-privacy-review.md`. Existing projects: `git mv` the five paths.
+- **Smaller spawns:** big skills split into short cores + `references/`; IC spawn ≈3.9k words (was
+  ≈12.5k), code-reviewer ≈7.5k (≈18.3k), `/app-build` ≈4.0k (≈7.5k). tech-manager, release-manager,
+  privacy-reviewer now run on sonnet.
+- **Contracts enforced by hooks:** spawn prompts checked before launch (`require-spawn-contract.sh`),
+  IC reports saved and checked at stop (`persist-ic-report.sh`), subagents cannot mint tokens or
+  hand-write evidence (`guard-gate-writes.sh`).
+- **Gates need proof:** per-spawn actor tokens (auto-minted by `spawn-prompt compose` under
+  `requireActorTokens`), `verified`/`qa_passed` need re-derivable evidence, gate-result files need
+  their raw log, risk is recomputed from the diff at `merged`.
+- **Web apps ship without a waiver:** runtime-gate web mode + web release candidates; one
+  parallelism cap (`scheduler.mjs cap`); ship-gate states its known-defects-only limit;
+  `/app-audit --yolo` defers risky fixes.
+
+### Fixed
+
+Found by an end-to-end review of the flow (`/app-run` → init → plan → build → ship), each reproduced
+against a scratch project before it was changed.
+
+- **`require-review-verdict` never fired.** Claude Code names plugin agents
+  `app-dev-team:code-reviewer`; the `SubagentStop` matcher was an exact `code-reviewer`. The matcher
+  is now `(^|:)code-reviewer$`. The same hook no longer disarms itself on its own refusal text (only
+  a final message *starting* with `BLOCKED:` counts), and a hand-appended verdict line no longer
+  passes: a match is confirmed with `board.mjs verify`, read from the main tree's log.
+- **The build loop could not advance.** `dispatch-preflight` went STALE after the first board move
+  and the first wave merge; `team-bootstrap --context-only` now re-snapshots at the top of every
+  `/app-build` round. `project-profile.json` was scaffolded and never filled, so round 1 was always
+  CANNOT EVALUATE; `/app-plan` now assigns it to `devops-engineer`.
+- **`orchestrator ship` could never exit 0.** Nothing wrote `runtime-result.json`;
+  `runtime-gate.sh --record` now does. `/app-ship` re-binds the built candidate and requires exit 0
+  before the release audit (new step 3b).
+- **The merge gate checked the wrong commit.** `approval-check` gains `--ticket`; `tech-manager`
+  passes the branch tip, not the checkout's `HEAD`.
+- **No agent could invoke a skill.** `Skill` added to all 30 agents' `tools:`; agents that spawn gain
+  `Agent` alongside `Task`; five reviewers that write their own report gain `Write`; `/app-status`
+  can now spawn `chief-of-staff`.
+- **Prose that pointed at nothing:** `/app-recover` called a nonexistent `run-ledger.mjs list`;
+  `/app-build` said "increment Cycles" (cycles are derived from `changes` events); `/app-team`
+  promised `release-manager` uploads to the store (it never does); `intent-trace` named the deleted
+  `ux-designer` role.
+- **The destructive-git hook refused its own safe alternatives.** Path-scoped staging and restores
+  of dotfiles (`.gitignore`, `.github/…`) and read-only `git merge-base` matched substring patterns
+  meant for the repo-wide forms; the patterns now have a boundary, and every destructive form stays
+  blocked.
+- **Docs caught up with the tree:** README, HANDBOOK, CONTRIBUTING, `knowledge/README.md` and
+  `docs/RESUME.md` — role/command/skill counts, the two dashboards, both failure corpora, the
+  event-sourced board and the project file layout, and the fact that nothing in the studio uploads
+  to a store.
+
 ## [3.1.0] — 2026-08-10
 
 No breaking changes — new gates, new skills, one real vulnerability found and closed in a gate
@@ -56,6 +114,14 @@ findings from the plugin's own `code-reviewer`, including an idempotency-key col
 silently dropped a retried transition instead of erroring) had been sitting unmerged since Aug 4.
 Both merge cleanly with current `main`; both are in now.
 
+**`hooks/block-cross-worktree-write.sh`** — a `PreToolUse` hook that refuses a `Write`/`Edit`/
+`MultiEdit` from one agent's worktree into a *sibling* agent's worktree, closing DR4-027's collision
+at the file layer as well as the git layer.
+
+**`knowledge/product-failure-corpus.md`** — the defect classes the *apps* produce (PF-001…), as
+distinct from the studio's own, each marked mechanised, partial or reviewer-only; the first one is
+mechanised by `silent-fallback-scan.mjs`, run from `ship-gate.sh`.
+
 **H9 — a real Android toolchain dry run**, proving the studio against a real (non-Node) platform
 for the first time: real JDK 21, real Android SDK, a real emulator, a five-role pipeline
 (`cpo → tech-lead → developer → reviewer → tech-manager`) running two tickets concurrently. Found
@@ -64,7 +130,7 @@ it: uncommitted shared-tree writes blocking a developer that correctly `BLOCKED`
 guessing, and a third RAN-evidence regex gap (AGP's own instrumented-test completion line, after
 two earlier TAP-format gaps). Full write-up: `docs/dry-runs/2026-08-09-h9-android-toolchain-and-full-pipeline.md`.
 
-## [Unreleased]
+### Also in 3.1.0 — merged before the release, previously filed here under a second "Unreleased"
 
 **EE-002 — the S1 the last review filed and this PR had not addressed.** `app-build.md`'s wave
 integration, worktree-reap, mid-sprint Q&A and CI sections repeated reasoning that already lives
@@ -492,7 +558,7 @@ each one was watched refuse before it was watched pass.
   Nothing subscribes, nothing is filed. `node scripts/messages.mjs channels` lists them. Same rule
   as the board's Markdown: a view may only show what the log can produce.
 - **Formal artifacts with IDs, writers and readers.** `ADR` (`docs/24-adr/`) · `PDR`
-  (`docs/16-pdr/`) · `DDR` (`docs/17-ddr/`) · `WAIVER` (`docs/72-waivers/`) · `INCIDENT`
+  (`docs/18-pdr/`) · `DDR` (`docs/19-ddr/`) · `WAIVER` (`docs/72-waivers/`) · `INCIDENT`
   (`docs/73-incidents/`) · `ASSUMPTION` (`docs/25-assumptions/`). One command
   (`messages.mjs artifact <TYPE>`) writes the file **and** registers it on the channel, because a
   file nobody knows exists and a claim with no content fail identically. Each has a `DOC_WRITERS`

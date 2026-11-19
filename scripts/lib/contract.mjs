@@ -13,6 +13,8 @@
  * branch and worktree discipline; a role that produces a uniquely-named document does not, but still
  * owes the orchestrator the fields its gates read.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 export const CODE_CONTRACT = [
   'Worktree:',
@@ -31,7 +33,11 @@ export const CODE_CONTRACT = [
 // seventh hand-typed field this file exists to prevent.
 export const CODE_CONTRACT_CHECKED = CODE_CONTRACT.filter((f) => f !== 'Branch:');
 
-export const ARTIFACT_CONTRACT = ['Worktree:', 'Daily fragment:', 'Assumptions & open questions:'];
+// An artifact ticket is still a branch (verify-done --docs-only checks branch, commits and files),
+// so the DOC profile owes `Branch:` and `Mutation confirmed:` too — a QA return without `Branch:`
+// was REJECTED downstream by a contract that never asked for it (C2-8, R2-7). Every artifact role
+// file already declares all six; team-doctor holds them to it.
+export const ARTIFACT_CONTRACT = ['Worktree:', 'Branch:', 'Mutation confirmed:', 'Daily fragment:', 'Assumptions & open questions:', 'Shared surfaces touched:'];
 
 /** Anything writing source or repo config (CI, signing, build flavors) is a code role. */
 export const CODE_ROLES = [
@@ -52,7 +58,38 @@ export const ARTIFACT_ROLES = [
   'qa-engineer',
   'data-analyst',
   'aso-specialist',
+  // Owns tickets (BUILD_SPAWNABLE_OWNERS). Certifying someone else's work it returns a
+  // `VERIFICATION:` line instead — GATE_HEADERS below, which the hooks read by mode.
+  'verification-engineer',
 ];
+
+/**
+ * Gate MODES, keyed by role: the first line a role returns when it judges someone else's work
+ * rather than owning a ticket. The hooks decide by this mode, not by role alone — a ux-architect
+ * returning `DESIGN QA: PASS` owes no DONE block, and its verdict is not a developer's report
+ * (C2-3, R2-8). A prompt that DEMANDS one of these (and is not `Work ticket X.`) is a gate spawn.
+ */
+export const GATE_HEADERS = {
+  'code-reviewer': ['REVIEW VERDICT:', 'DESIGN QA:'],
+  'tech-lead': ['REVIEW VERDICT:'],
+  'security-reviewer': ['REVIEW VERDICT:', 'SECURITY:', 'PRIVACY:'],
+  'ux-architect': ['DESIGN QA:'],
+  'data-analyst': ['ANALYTICS:'],
+  'aso-specialist': ['ASO READY', 'ASO BLOCKED'],
+  'verification-engineer': ['VERIFICATION:'],
+  'release-auditor': ['RELEASE AUDIT:'],
+};
+
+/** A report's first non-blank line with leading markdown (`**`, `_`, `#`, `>`) stripped — the only line a header is read from (PR46-4/8). */
+export function headLine(text) {
+  return (String(text).split('\n').find((l) => l.trim()) || '').replace(/^[\s*_#>]+/, '').trim();
+}
+
+/** The gate header `text` STARTS with (first non-blank line) for this role, or ''. */
+export function gateHeaderOf(role, text) {
+  const first = headLine(text);
+  return (GATE_HEADERS[role] || []).find((h) => first.startsWith(h)) || '';
+}
 
 const CODE_ROLE_SET = new Set(CODE_ROLES);
 const ARTIFACT_ROLE_SET = new Set(ARTIFACT_ROLES);
@@ -69,14 +106,14 @@ export function contractFor(role) {
  * fill in; nothing here is templated with real values, because a value this script invented would
  * be a claim nobody made — the same rule `report-check.mjs` applies at the other end.
  */
-export function contractBlock(role, { ticket = 'APP-NNN' } = {}) {
+export function contractBlock(role, { ticket = 'APP-NNN', branch = `feat/${ticket}-short-slug` } = {}) {
   const c = contractFor(role);
   if (!c) return null;
   if (c.tier === 'code') {
     return [
       `DONE: ${ticket}`,
       'Worktree: <the path you were given, or "none — shared tree">',
-      'Branch: feat/' + ticket + '-short-slug        (created BEFORE any file was written)',
+      `Branch: ${branch}        (created BEFORE any file was written)`,
       'Staged (explicit paths): <list>',
       'Mutation confirmed: git diff --numstat -> <N files, +A/-B>',
       'Files: <list>',
@@ -92,9 +129,12 @@ export function contractBlock(role, { ticket = 'APP-NNN' } = {}) {
   return [
     `DONE: ${ticket}`,
     'Worktree: <the path you were given, or "none — shared tree">',
+    `Branch: ${branch}        (created BEFORE any file was written)`,
+    'Mutation confirmed: git diff --numstat -> <N files, +A/-B>',
     'Files: <list>',
     `Daily fragment: docs/daily/<today>-${role}-${ticket}.md`,
     'Assumptions & open questions: <ledger row each, or "ASSUMED, NOT RAISED">',
+    'Shared surfaces touched: <shared docs or contracts other tickets read — or "none">',
     'Next: <the role/gate that consumes this artifact>',
   ].join('\n');
 }

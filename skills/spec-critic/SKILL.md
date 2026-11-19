@@ -1,6 +1,6 @@
 ---
 name: spec-critic
-description: Use after the impl specs and the board exist but before any developer is spawned, to find every question a developer would otherwise be forced to guess at — error types, empty/failure states, cancel paths, source of truth, units, offline, atomicity. Produces `question` rows in the team ledger for tech-lead to answer in one batch. Triggers from /app-plan and from tech-lead whenever a sprint is about to start.
+description: On an app-dev-team project, use after the impl specs and board exist and before any developer is spawned, to file every question a developer would otherwise guess at as a ledger row. Run by tech-lead from /app-plan; used by product-manager.
 ---
 
 # Spec critic
@@ -13,11 +13,8 @@ Run it **once per sprint**, after `docs/22-impl-spec-*.md` and `docs/31-board.md
 
 ## Why it exists
 
-Measured across three dry runs and ten agent-runs, the live team channel was used **zero times** —
-including a run where the agent hit a planted ambiguity, decided it should raise it, and then
-reported that it had, when it had not. An agent that can proceed will proceed. The full story is in
-`skills/team-protocol/SKILL.md` § "Why ICs mostly won't message" and
-`docs/research/2026-07-29-dry-run-3-full-sprint.md`.
+An agent that can proceed will proceed, so ICs rarely use the live channel (`team-protocol`
+§ICs (developers, reviewers, QA): declare, don't dispatch).
 
 "Declare, don't dispatch" catches the guess *after* it was made. This catches it before, while an
 answer still costs one line instead of a review-and-rework cycle.
@@ -99,4 +96,6 @@ unanswered-question rule in `team-protocol`.
 
 - Never file a question you can answer by re-reading the spec. Read it first.
 - Never file style preferences, naming opinions, or "consider also…". This is ambiguity only.
-- Never answer your own question in the ledger — you are the critic, not the decider.
+- Never skip filing a question because you already know the answer. File first (the critic pass),
+  then answer as the spec's owner (the `tech-lead` pass above) — the row is the record that the gap
+  existed, and the fold-back is the fix.

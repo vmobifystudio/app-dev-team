@@ -1,7 +1,8 @@
 ---
 description: Ship a release — runs security review, then release-manager, gating on QA sign-off and clean bug board
 argument-hint: [version override, e.g. 1.2.0, optional]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
+disable-model-invocation: true
 ---
 
 # /app-ship — Cut a release
@@ -20,11 +21,22 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
      --artifact <path to the built .ipa/.aab> --platform ios|android --variant release \
      --by release-manager
+   # web-app: the artifact is the build output DIRECTORY, hashed over every file in it
+   #   --artifact dist --platform web --variant release --by release-manager
    ```
 
    This step stays explicit because only you know the artifact path — guessing it would be inventing
    the subject of the whole release. A build from a dirty tree records as such and reads STALE
    forever after; that is not a bug to work around.
+
+   **On a first pass there is no release artifact yet** — `release-manager` builds it in step 3 — and
+   the runtime and journey results are produced in step 1b. So skip `record` when no release build
+   exists for this HEAD, and expect `orchestrator ship` below to exit `2` naming **only** the
+   `artifact`, `runtime` and `journey` gates — or exit `1` with `runtime`/`journey` **STALE**, when HEAD
+   moved after they last ran (the QA branch's fast-forward in `/app-build` step 5 does): re-run those
+   two on this HEAD (step 1b's commands) before going on. That is the expected shape here, not a pass:
+   step 3b re-runs this check after the build and it must be `0` there. Anything else it names (board
+   doctor, `ship-gate.sh`) is resolved in step 1a now.
 
    Then:
 
@@ -37,7 +49,11 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    ending in "read the exit code"; the discipline of running all three, every time, is exactly what
    a 328-line file erodes.
 
-   - Exit `0` → continue to the runtime gate below.
+   - Exit `0` → continue to the runtime gate below. A CLEAR `ship-gate.sh` ends with a `LIMIT:` line,
+     and it means what it says: ship-gate replays KNOWN defects only — each scanner encodes a class
+     somebody already found. A green ship-gate is not "no defects". The coverage for unknown defects
+     is `red-team-agent` (step 2) and the `defect-hunting` skill; quote the LIMIT line in the release
+     summary so nobody reads the gate as more than it is.
    - Exit `1` → **do not release.** It names which precondition. **STALE is not a failure** —
      nothing says the product is broken, it says nobody checked THIS candidate. Re-run the gates it
      names, or rebuild and re-record.
@@ -47,8 +63,9 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    Confirm the gate results still describe this candidate rather than last Tuesday's:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/evidence-check.mjs" \
-     --result docs/team/journey-result.json --head "$(git rev-parse HEAD)"
+   for r in docs/team/runtime-result.json docs/team/journey-result.json; do
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/evidence-check.mjs" --result "$r" --head "$(git rev-parse HEAD)"
+   done
    ```
 
    Every gate answers at a moment and then stops thinking. `journey-gate` says PASS, three commits
@@ -107,10 +124,16 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
       **A waiver is a founder decision, so it is recorded as one.** After the user approves it here,
       append the matching line to `docs/00-founder-intent/decisions.md`:
-      `<date> FOUNDER DECISION: waiver — <artifact>, <reason>. Approved by <who>.`
-      `scripts/trace.mjs --only gates` detects every `WAIVED:` line and stays red until that record
+      `<date> FOUNDER DECISION: waiver — <everything after "WAIVED:" on the release line, copied
+      verbatim> — Approved by <who>.`
+      The copy has to be verbatim: `trace.mjs` clears a waiver only when the decision line contains
+      the text that follows `WAIVED:` (its first 80 characters). A paraphrase — `<artifact>,
+      <reason>` — names the same waiver to a human and to the gate names nothing, so it stays red.
+      `${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs --only gates` detects every `WAIVED:` line and stays red until that record
       exists — which is the point: the release record says a gate was skipped, and only the founder
-      record says a human chose it.
+      record says a human chose it. Then re-record it — `--write` adds a new `decisions.md` and keeps
+      an append, and still refuses an edit to any recorded line:
+      `node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root . --write`.
 
    Asking this is not a third human gate: `/app-ship` **is** Gate 2, and produce-or-waive is part of
    the ship conversation the user is already in. Under `--yolo` from `/app-run`, do not auto-waive —
@@ -142,7 +165,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      This is a wider question than the bug count above, and deliberately so: an audit FINDING with no
      ticket was invisible to every other check here, because it is not a bug row and not a board row.
      Shipping with three `DEFERRED` S3 bugs is a fine release; shipping without knowing is the
-     failure. Give each one a decision and a reason — `node scripts/register.mjs status <ID>
+     failure. Give each one a decision and a reason — `node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" status <ID>
      DEFERRED --by <role> --reason "..."` — rather than a fix.
    - `docs/50-test-plan.md` — check the **exit criteria** QA wrote, and whether each row is marked
      executed or only reasoned. A test plan whose rows all say "not performed" is not a QA pass.
@@ -159,11 +182,15 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    closes, and no other precondition in this command would notice:
 
    ```bash
-   sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root .
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
    ```
 
-   - Exit `0` → the app builds and launches. Quote the evidence paths from
-     `docs/evidence/runtime-<date>-<platform>.png` in the release summary.
+   - Exit `0` → the app builds and launches. Quote the recorded verdict
+     (`docs/team/runtime-result.json`) and the screenshot it names
+     (`docs/54-evidence/runtime/runtime-<date>-<platform>.png`) in the release summary. For a `web-app` the
+     gate's `web` line is the evidence: `npm run build`, the `test` script, then the e2e suite
+     (`test:e2e`/`e2e` script or Playwright) or, without one, the build served and `GET /` answering
+     200 with a body. Quote that line.
    - Exit `1` → **stop.** Print the compiler/gradle output verbatim. There is no waiver for this
      one: an app that does not build or does not launch is not a release candidate, and no human is
      entitled to record that it is.
@@ -182,14 +209,20 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    # was CANNOT EVALUATE for a reason nobody could see. A detector nobody calls is FC-002 with extra
    # steps; this is the call.
    #
-   #   android  scripts/drivers/android.sh   drives adb + uiautomator; needs a device or emulator
-   #   ios      scripts/drivers/ios.sh       launches and screenshots; step execution needs XCUITest
+   #   android  ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh   drives adb + uiautomator; needs a device or emulator
+   #   ios      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/ios.sh       launches and screenshots; step execution needs XCUITest
+   #   web      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/web.sh       the project's Playwright against the served build (STUDIO_WEB_URL)
    #
-   # With no device attached either driver returns CANNOT EVALUATE naming the missing thing, which
+   # With no device (web: no Playwright, Chromium or URL) a driver returns CANNOT EVALUATE naming the missing thing, which
    # is the correct answer and NOT a pass.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
-     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh
+     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh, drivers/web.sh
    ```
+
+   **A `web-app`**: install the project's Playwright and Chromium, build the candidate, start it
+   (`npm run start`, or a static server on the build dir), and pass its URL as `STUDIO_WEB_URL` —
+   the exact commands are `build-loop-branches.md` §Step 5 — journey-gate drivers
+   (`${CLAUDE_PLUGIN_ROOT}/skills/parallel-orchestrator/references/`).
 
    Six dry runs measured the gates catching every process defect and **zero** product defects. An
    app that launches and sits there satisfies `runtime-gate.sh` exit `0` completely. This is the
@@ -203,19 +236,24 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      recorded differently:
      - **No journey declared** → this is a *planning* gap, not a tooling one. `ux-architect`'s
        screen-and-state inventory already names the ids. Declare at least one P0 journey (see
-       `docs/team/journeys/README.md`) and re-run — do not waive it, because the waiver would be
+       `${CLAUDE_PLUGIN_ROOT}/docs/team/journeys/README.md`; `qa-engineer` declares them) and re-run — do not waive it, because the waiver would be
        recording that nobody ever stated what this product must do.
-     - **No driver available** → follow step 1a's produce-or-waive rule: make it evaluable, or
-       record `WAIVED: journey gate — <who waived it> — <reason>` in `docs/60-releases.md` and
-       repeat it in the release summary and step 4's confirmation. **Drivers do not ship yet**, so
-       this is the expected path today and the waiver is the honest record of it.
+     - **No driver can run here** (no device or emulator; on web, no Playwright, Chromium or served
+       app) → follow step 1a's produce-or-waive rule: make it evaluable — the driver's CANNOT
+       EVALUATE line names the fix — or record `WAIVED: journey gate — <who waived it> — <reason>`
+       in `docs/60-releases.md` (with the `— vX.Y.Z` field once a version exists) and repeat it in
+       the release summary and step 4's confirmation. `readiness` then reports the gate `WAIVED`
+       (not blocking) and `orchestrator ship` relays the `WAIVED:` line — a malformed or
+       wrong-version waiver leaves it `CANNOT_EVALUATE`.
+       A waiver is the exception: android, ios and web drivers all ship.
 
    **Product types the script cannot see are N/A, not waived — and not unchecked.** `runtime-gate.sh`
-   detects iOS and Android only, so a `backend-service`, `web-app`, `cli` or `library` reaches exit
-   `2` structurally, every time, and waiving it every release would train everyone to waive it.
+   detects iOS, Android and `web-app` (a `web-app` is gated like the others — never N/A, never a
+   standing waiver). A `backend-service`, `cli` or `library` reaches exit `2` structurally, every
+   time, and waiving it every release would train everyone to waive it.
    Record `N/A: runtime gate — product type <type> is outside runtime-gate.sh's detection`, **then
    run the equivalent for that type and quote its output**: does the service start and answer a
-   health check, does the page render, does the CLI run `--help` and exit 0, does the library build
+   health check, does the CLI run `--help` and exit 0, does the library build
    and pass its own suite. Same three-state contract, same rule — nothing ships that nobody ran.
    (Extending the script's detection is the planned home for this; until then it is executed here
    and the evidence is quoted here, never assumed.)
@@ -241,7 +279,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      the release can actually fail. `VERIFICATION: FAIL` → stop. This is the gate that catches a
      mis-calibrated threshold and a green rule that cannot fail, neither of which any amount of
      reading will find.
-   - `privacy-reviewer` produces `docs/73-privacy-review.md` — data inventory, consent, retention,
+   - `privacy-reviewer` produces `docs/77-privacy-review.md` — data inventory, consent, retention,
      third-party sharing, regional obligation. `PRIVACY: FAIL` → stop. **On a utility project this
      role is `off` and the gate is NOT `N/A`:** `security-reviewer` runs it as its privacy *mode*
      and returns the `PRIVACY:` line as well (`role-activation` §Tier deltas). Utility means one
@@ -251,7 +289,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      is not a note.
    - `red-team-agent` produces `docs/74-red-team.md` — it attacks the product **and** the studio's
      own assumptions, including which gate should have caught the last defect in
-     `knowledge/failure-corpus.md`. `RED TEAM: FAIL` → stop.
+     `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md`. `RED TEAM: FAIL` → stop.
    - `aso-specialist` runs the store-readiness gate (`docs/15-aso.md`, screenshots, compliance).
      It returns `ASO READY` or `ASO BLOCKED` with the missing items — **or `ASO: CANNOT EVALUATE —
      docs/15-aso.md` when the doc does not exist**, which follows step 1a's produce-or-waive rule,
@@ -272,10 +310,30 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
 3. **Spawn `release-manager`** as a Task with the version (if given) and the precondition checklist. It either returns `SHIP CANDIDATE: vX.Y.Z` or `BLOCKED: ...`.
 
+3b. **Bind the candidate release-manager just built, then re-check it.** Its version bump moved
+   HEAD, so every gate result from step 1b now describes the previous commit and reads STALE. On
+   the candidate's HEAD:
+
+   ```bash
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
+     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or ios.sh / web.sh, as in 1b
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
+     --artifact <the .ipa/.aab path, or the web build dir, release-manager named> --platform ios|android|web --variant release \
+     --by release-manager
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" ship
+   ```
+
+   This `orchestrator ship` must exit `0` before step 3a. Exit `1`/`2` here is handled exactly as in
+   step 1, except that nothing is "expected" any more: the artifact exists and every gate has run.
+
 3a. **Spawn `release-auditor`** — *you* spawn it, **never `release-manager`**, and only after step 3
-   has assembled the candidate. It reads the artifacts, not the summaries: `docs/60-releases.md`,
-   `docs/50-test-plan.md`, `docs/54-evidence/`, `docs/51-bugs.md`, and every gate verdict above. It
-   writes `docs/72-release-audit.md` and returns `RELEASE AUDIT: PASS | PASS WITH NOTES | FAIL`.
+   has assembled the candidate, composed with `spawn-prompt.mjs compose --role release-auditor`. It
+   reads the artifacts, not the summaries: `docs/60-releases.md`, `docs/50-test-plan.md`, the evidence
+   bundles in `docs/54-evidence/`, the recorded gate verdicts (`docs/team/runtime-result.json`,
+   `docs/team/journey-result.json`, `docs/team/evidence/`), `docs/51-bugs.md`, and every gate verdict above. It writes
+   `docs/76-release-audit.md` and returns `RELEASE AUDIT: PASS | PASS WITH NOTES | FAIL`.
+   **`PASS WITH NOTES` is a pass** — every note goes into the release summary verbatim.
 
    **`release-manager` cannot satisfy this gate.** The actor performing an irreversible action must
    not be its sole evaluator, so:
@@ -307,7 +365,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
    ```bash
    { echo; echo "## Harvested $(date +%F) — <version>";
-     grep -r 'LEARNING:' docs/daily/ 2>/dev/null | sort -u; } >> docs/90-learnings.md
+     grep -r 'LEARNING:' docs/daily/ 2>/dev/null | sort -u; } >> docs/92-learnings.md
    ```
 
    Keep the `path:line` prefix `grep -r` emits — a learning with no source fragment cannot be

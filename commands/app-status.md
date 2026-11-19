@@ -1,6 +1,6 @@
 ---
 description: Show the current state of the project — vision, sprint goal, board, blockers, daily report
-allowed-tools: Read, Glob, Grep, Bash
+allowed-tools: Read, Glob, Grep, Bash, Task, Agent, Skill
 ---
 
 # /app-status — Where are we?
@@ -83,7 +83,7 @@ allowed-tools: Read, Glob, Grep, Bash
      disagrees with itself.
    - No `docs/31-board-events.jsonl` at all → print `SELF-METRICS: n/a — this project's board is
      hand-written; run /app-plan or /app-build once to migrate it`. Do not migrate from here:
-     `/app-status` is a read-only command and migration rewrites `docs/31-board.md`.
+     `/app-status` does not mutate the board, and migration rewrites `docs/31-board.md`.
 
 3bb. **Loop trend and budget** — what happened to the *loop*, which the event log cannot answer:
 

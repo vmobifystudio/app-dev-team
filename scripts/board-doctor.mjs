@@ -54,7 +54,7 @@ import {
   MAX_CHAIN,
   MAX_PER_TICKET,
 } from './lib/messages.mjs';
-import { parseEventLog, reduce as reduceEvents } from './lib/events.mjs';
+import { parseEventLog, reduce as reduceEvents, isQaDocs } from './lib/events.mjs';
 // --------------------------------------------------------------------------------------------
 // the cascade
 // --------------------------------------------------------------------------------------------
@@ -469,7 +469,7 @@ function diagnose(board, ledger, capabilities, messages = []) {
       });
     }
 
-    if (POST_REVIEW_STATUS.has(row.status) && approvals.length === 0) {
+    if (POST_REVIEW_STATUS.has(row.status) && approvals.length === 0 && !capabilities.qaDocs?.has(String(normalizeId(row.id)).toUpperCase())) {
       pushReview({
         code: 'done_without_review',
         ticketId: row.id,
@@ -506,10 +506,11 @@ function diagnose(board, ledger, capabilities, messages = []) {
       // Only while the ticket is still being worked. `status !== 'blocked'` meant a ticket that
       // legitimately used its two review cycles and then merged stayed a BLOCKING anomaly for the
       // life of the board, so the pre-spawn gate went permanently red on any real sprint.
-      if (effectiveCycles > MAX_REVIEW_CYCLES && ACTIVE_STATUS.has(row.status)) {
+      const cap = MAX_REVIEW_CYCLES + (capabilities.extraCycles?.get(String(normalizeId(row.id)).toUpperCase()) || 0);
+      if (effectiveCycles > cap && ACTIVE_STATUS.has(row.status)) {
         push(
           'cycle_cap_breached',
-          `Cycles = ${effectiveCycles} (cap is ${MAX_REVIEW_CYCLES}, breached above it) but status is "${row.status}", not blocked.`,
+          `Cycles = ${effectiveCycles} (cap is ${cap}, breached above it) but status is "${row.status}", not blocked.`,
           'Stop the loop for this ticket, set it blocked, and surface the full reviewer + developer history.'
         );
       }
@@ -710,6 +711,23 @@ function main() {
   // A finding the final exit discards is not a finding; it is a log line.
   const diverged = reportViewDivergence(boardPath, board);
 
+  // Review cycles the founder granted with `reopened` raise this ticket's cap; only the log knows them.
+  // C4W-1: a docs-only QA- ticket is reviewed INLINE (design decision 1) — `merged` re-proved from git
+  // that it changes documents only, so it has no ledger approval by design, and done_without_review
+  // on it blocked every round after the first QA ticket with a fix the board refuses.
+  const extraCycles = new Map();
+  const qaDocs = new Set();
+  try {
+    const logPath = join(dirname(boardPath), '31-board-events.jsonl');
+    if (existsSync(logPath)) {
+      for (const [id, t] of reduceEvents(parseEventLog(readFileSync(logPath, 'utf8')).events).tickets) {
+        if (t.extraCycles) extraCycles.set(id, t.extraCycles);
+        if (isQaDocs(t)) qaDocs.add(id);
+      }
+    }
+  } catch { /* an unreadable log is loadLog's problem */ }
+  capabilities.extraCycles = extraCycles;
+  capabilities.qaDocs = qaDocs;
   const result = diagnose(board, ledger, capabilities, channel.messages);
   if (!options.quiet || result.anomalies.length > 0) report(result, board, capabilities, options);
   if (diverged && !result.anomalies.length) {

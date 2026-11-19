@@ -74,14 +74,14 @@ const ARTIFACT_TYPES = {
     requires: [],
   },
   PDR: {
-    dir: 'docs/16-pdr/',
+    dir: 'docs/18-pdr/',
     label: 'product decision record',
     writers: ['cpo', 'ceo'],
     readers: ['tech-manager', 'tech-lead', 'qa-engineer'],
     requires: [],
   },
   DDR: {
-    dir: 'docs/17-ddr/',
+    dir: 'docs/19-ddr/',
     label: 'design decision record',
     writers: ['ux-architect', 'product-designer'],
     readers: ['ios-developer', 'android-developer', 'tech-lead'],

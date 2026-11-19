@@ -1,7 +1,7 @@
 ---
 description: Mine a shipped app's conventions into the living House Knowledge Base — adds net-new learnings to knowledge/*.md, harvests its failures into knowledge/failure-corpus.md, and flags conflicts for human decision
 argument-hint: <path to a shipped app> [more paths...] [--failures-only]   (defaults to the just-shipped project)
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 ---
 
 # /app-learn — Grow the House Knowledge Base
@@ -16,7 +16,7 @@ this command folds its real conventions back into the packs so future apps start
 1. **Resolve targets.** For each path, confirm it's a real app (has `CLAUDE.md`, `README.md`,
    `docs/ARCHITECTURE.md`, and/or build files). If none given, use the current project.
 
-1a. **Read the learnings inbox first — `docs/90-learnings.md`.** `/app-ship` harvests every
+1a. **Read the learnings inbox first — `docs/92-learnings.md`.** `/app-ship` harvests every
    `LEARNING:` line the team wrote during the run into it, each with the daily fragment it came
    from. These are the highest-value inputs here: they are conventions the team discovered while
    building, not conventions inferred afterwards from finished code. Treat each as a candidate
@@ -48,7 +48,7 @@ this command folds its real conventions back into the packs so future apps start
    ```
    Wait for the user's call on each before changing a conflicting rule.
 
-5. **The failure pass — harvest into `knowledge/failure-corpus.md`.** Steps 1–4 learn only from
+5. **The failure pass — harvest into `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md`.** Steps 1–4 learn only from
    things that went right: conventions mined from code that shipped. Nothing accumulated what went
    *wrong*, and a single day of running this system produced 27 dry-run findings and 16 review
    findings, every one of them in a document no agent reads as normative. Meanwhile the same defect
@@ -64,7 +64,7 @@ this command folds its real conventions back into the packs so future apps start
       tracker, not knowledge.
 
    2. **Classify, don't append.** For each finding, ask which existing class in
-      `knowledge/failure-corpus.md` it belongs to and read that class's **Shape** before deciding.
+      `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md` it belongs to and read that class's **Shape** before deciding.
       Then:
 
       - **It fits a class** → add ONE dated instance row, only if it says something the existing
@@ -103,8 +103,8 @@ this command folds its real conventions back into the packs so future apps start
    accumulates what the STUDIO ITSELF should do differently: a question that should have been
    asked earlier, an output format an operator had to manually rework, flow logic that had to be
    reordered mid-run, a missing or redundant gate, a missing or redundant role. That's a different
-   population from `knowledge/failure-corpus.md`'s and it lives in a different, already-governed
-   place — `scripts/memory-curator.mjs`'s `studio` class, proposed and reviewed the same way any
+   population from `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md`'s and it lives in a different, already-governed
+   place — `${CLAUDE_PLUGIN_ROOT}/scripts/memory-curator.mjs`'s `studio` class, proposed and reviewed the same way any
    other memory class is, never auto-promoted.
 
    Run this pass whenever a `docs/dry-runs/*.md` report (or an `/app-ship` retro) exists to read —
@@ -129,7 +129,7 @@ this command folds its real conventions back into the packs so future apps start
 
       This is a PROPOSAL, not a change. A human (or a dedicated reviewer role) runs
       `memory-curator.mjs review` to promote or reject it — the same governance every other memory
-      class already has. `/app-learn` never edits `agents/*.md`, `commands/*.md`, or `scripts/*`
+      class already has. `/app-learn` never edits `agents/*.md`, `commands/*.md`, or `${CLAUDE_PLUGIN_ROOT}/scripts/*`
       directly from this pass; it only proposes.
 
    3. **Surface what's pending.** After proposing, run:

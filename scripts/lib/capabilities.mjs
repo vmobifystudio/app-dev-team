@@ -44,7 +44,11 @@ const ROLE_GATES = {
   // Review verdicts. A developer cannot approve — not even someone else's ticket: review is a role,
   // not a favour. (The owner-approving-own-ticket rule is separate and older; it still fires first,
   // because its message is the one a reviewer needs to read.)
-  approved: ['code-reviewer', 'tech-lead', 'cto', 'security-reviewer', 'tech-manager'],
+  //
+  // tech-manager is NOT in `approved` (G-F1): it writes `merged` and `closed`, and a role that can
+  // approve AND merge clears the whole review gate alone. It keeps `changes`, which is how a
+  // verification or design-QA FAIL goes back to the developer.
+  approved: ['code-reviewer', 'tech-lead', 'cto', 'security-reviewer'],
   changes: ['code-reviewer', 'tech-lead', 'cto', 'security-reviewer', 'tech-manager'],
 
   // The merge. This is the row that stops a designer, a doc role or an ASO specialist from putting
@@ -52,9 +56,9 @@ const ROLE_GATES = {
   // "just landing a one-liner" is exactly the merge nobody reviewed.
   merged: ['tech-manager', 'tech-lead', 'devops-engineer', 'release-manager'],
 
-  // QA verdicts.
-  qa_passed: ['qa-engineer', 'verification-engineer', 'tech-manager'],
-  qa_failed: ['qa-engineer', 'verification-engineer', 'tech-manager'],
+  // QA verdicts. Not tech-manager: the role that merges does not also certify what it merged.
+  qa_passed: ['qa-engineer', 'verification-engineer'],
+  qa_failed: ['qa-engineer', 'verification-engineer'],
 
   closed: ['tech-manager', 'tech-lead'],
 };
@@ -72,7 +76,15 @@ const ROLE_GATES = {
  */
 const NOT_ON_OWN_TICKET = new Set(['approved', 'qa_passed', 'verified', 'verified_static']);
 
-const GATE_EVENTS = new Set(Object.keys(ROLE_GATES));
+/**
+ * Gates only the human may open. Kept OUT of ROLE_GATES on purpose: every role there must be an
+ * agent (team-doctor checks agents/<role>.md exists), and the founder is not one. `reopened` hands
+ * a capped or in-review ticket back to the developer with one more review cycle — overriding the
+ * cycle cap is a founder decision, never an agent's.
+ */
+const HUMAN_GATES = { reopened: ['founder'] };
+
+const GATE_EVENTS = new Set([...Object.keys(ROLE_GATES), ...Object.keys(HUMAN_GATES)]);
 
 /** Every role named anywhere in this file — team-doctor checks each one is a real agent. */
 const ROLES_IN_MATRIX = [...new Set(Object.values(ROLE_GATES).flat())].sort();
@@ -84,7 +96,7 @@ function checkCapability(state, candidate, legal) {
   const { event: name, by } = candidate;
   if (!GATE_EVENTS.has(name)) return { ok: true };
 
-  const allowed = ROLE_GATES[name];
+  const allowed = ROLE_GATES[name] || HUMAN_GATES[name];
   const actor = String(by || '').trim();
 
   if (!actor) {
@@ -129,4 +141,4 @@ function checkCapability(state, candidate, legal) {
   return { ok: true };
 }
 
-export { ROLE_GATES, GATE_EVENTS, NOT_ON_OWN_TICKET, ROLES_IN_MATRIX, checkCapability };
+export { ROLE_GATES, HUMAN_GATES, GATE_EVENTS, NOT_ON_OWN_TICKET, ROLES_IN_MATRIX, checkCapability };

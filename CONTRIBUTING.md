@@ -2,7 +2,8 @@
 
 Thanks for your interest. This plugin is a team of Claude Code agents, skills, and commands.
 Almost everything here is **Markdown** — agents, commands, and skills are prompt files with
-YAML frontmatter. No build step.
+YAML frontmatter. The gates are dependency-free Node and POSIX `sh`, so the plugin itself has no
+build step; only the optional `control-room/` UI has one, with its own `package.json`.
 
 ## Repo layout
 
@@ -12,7 +13,10 @@ agents/                      One Markdown file per role (the system prompt for t
 commands/                    Slash commands (/app-init, /app-run, ...)
 skills/                      Reusable procedures agents invoke
 knowledge/                   Mobify Studio house knowledge base (mined house conventions)
-scripts/                     The few checks that must be deterministic (see below)
+scripts/                     The checks that must be deterministic (see below); shared code in scripts/lib/
+hooks/                       Claude Code hooks (hooks.json + the scripts it runs)
+control-room/                Optional React UI over the same read layer — its own package.json
+.github/workflows/           CI: the suite, a mutation sample, the runtime gate
 docs/                        Design specs and plugin docs
 ```
 
@@ -20,8 +24,9 @@ docs/                        Design specs and plugin docs
 
 Almost everything here is Markdown, and it should stay that way. A script is justified only when
 **an agent checking its own work is the thing being fixed** — a correctness gate whose whole value
-is that it cannot be talked out of a verdict. Today that is eleven entries, plus `scripts/test.sh`,
-the suite that proves them, and `scripts/mutate.sh`, which proves the suite:
+is that it cannot be talked out of a verdict. Today `scripts/` holds 74 top-level scripts and 18
+shared libs — among them `scripts/test.sh`, the suite that proves the rest, and `scripts/mutate.sh`,
+which proves the suite. The ones the loop leans on hardest:
 
 - `scripts/board-doctor.mjs` — validates the board before any agent is spawned (Node, no deps)
 - `scripts/board-render.mjs` — renders the board for humans, through the same parser
@@ -36,7 +41,7 @@ the suite that proves them, and `scripts/mutate.sh`, which proves the suite:
 - `scripts/round-journal.mjs` — one JSONL line per round, and the loop's budget ceiling
 - `scripts/mutate.sh` — breaks each gate on purpose and reports which assertions failed to notice
 
-Eleven is not a licence to add a twelfth. Each one earned its place by being a rule an agent had
+The count is not a licence to add one more. Each one earned its place by being a rule an agent had
 already talked itself out of at least once — `spawn-gate.sh` most literally: the isolation rule was
 prose for a release, and then the person who wrote and defended that prose spawned two writers into
 one checkout and lost 22 files (DR4-027). **When a rule has been broken by the operator best placed
@@ -62,7 +67,7 @@ Rules for any script added here:
    branch fires before you ship it — and add the case to `scripts/test.sh`:
 
    ```bash
-   sh scripts/test.sh        # 410 assertions over committed fixtures, ~1 min, no network
+   sh scripts/test.sh        # the full assertion suite over committed fixtures, ~10 min, no network
    sh scripts/test.sh -v     # list every passing assertion
    ```
 
@@ -79,7 +84,7 @@ Rules for any script added here:
    ```bash
    sh scripts/mutate.sh --list        # the catalogue, and what it cannot test, and why
    sh scripts/mutate.sh --only M04    # break one gate, run the whole suite, see if it notices
-   sh scripts/mutate.sh               # all 16, ~1 min each
+   sh scripts/mutate.sh               # all 83, one full suite run each
    ```
 
    `CAUGHT (n assertions)` — the gate bites. `SURVIVED` — the gate can be broken and the suite stays
@@ -124,8 +129,8 @@ Rules for any script added here:
 
 ## Validating
 
-Run the `plugin-dev:plugin-validator` agent (or `/plugin-dev:create-plugin`) to lint structure
-before opening a PR.
+Run the `plugin-dev:plugin-validator` agent to lint structure, then `node scripts/metadata-check.mjs`,
+`node scripts/team-doctor.mjs` and `sh scripts/test.sh` before opening a PR.
 
 ## Commit style
 

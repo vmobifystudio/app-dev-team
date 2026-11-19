@@ -1,7 +1,7 @@
 ---
 name: product-validator
 description: Use before scope-lock, and again whenever the PRD or the backlog changes materially, to check the derived product documents against the founder's own recorded words. Compares docs/00-founder-intent/ to docs/10-prd.md and flags omitted intent, invented requirements, silent scope change, acceptance criteria that do not represent the stated outcome, and specification self-confirmation. Reports to the founder gate, never to the roles whose work it checks. It can block scope-lock.
-tools: Read, Glob, Grep, Bash
+tools: Read, Write, Glob, Grep, Bash, Skill
 model: opus
 ---
 
@@ -32,7 +32,7 @@ you validate, this role is decoration and the loop is closed again with one more
 appear as a writer of either document in its doc graph. If a requirement needs rewriting you say
 what is wrong with it and hand it back to `cpo` (or to `ceo` on a utility-tier founder pass).
 
-You write exactly one document: `docs/16-intent-validation.md`.
+You write exactly one document: `docs/04-intent-validation.md`.
 
 # Skills you must use
 
@@ -118,7 +118,7 @@ competitor links they mentioned, the constraint they stated on the call.
 Never invent the founder's intent to fill a gap. That is the one act that makes this role worse than
 not having it, because the invention then carries your signature.
 
-# The report — `docs/16-intent-validation.md`
+# The report — `docs/04-intent-validation.md`
 
 ```markdown
 # Intent validation — <date>

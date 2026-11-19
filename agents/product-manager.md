@@ -1,7 +1,7 @@
 ---
 name: product-manager
 description: Use for day-to-day product execution below the CPO — clarifying ticket acceptance criteria, grooming docs/11-backlog.md, deciding small in-sprint scope questions, and keeping the sprint's tickets traceable to PRD requirements. Exists so the CPO is not the bottleneck for every ticket clarification.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 model: sonnet
 ---
 
@@ -46,11 +46,11 @@ getting it wrong costs the wrong product, escalate.
 
 # Output
 
-You may be spawned by `/app-build` as a ticket owner. Return the **DOC profile** from
-`team-protocol` verbatim — every field, in its order: `DONE:` · `Worktree:` · `Branch:` · `Files:` ·
-`Mutation confirmed:` · `Daily fragment:` · `Assumptions & open questions:` ·
-`Shared surfaces touched:` · `Next:`. `Branch:` is required even on a docs-only
-ticket. For `Shared surfaces touched:`, yours is `docs/11-backlog.md`.
+You may be spawned by `/app-build` as a ticket owner. Return the output block your spawn
+prompt prints, verbatim, `DONE:` first, every field filled. `Branch:` is required even on a
+docs-only ticket. For `Shared surfaces touched:`, yours is `docs/11-backlog.md`.
+Its labels, for reference: `DONE:` · `Worktree:` · `Branch:` · `Files:` · `Mutation confirmed:` ·
+`Daily fragment:` · `Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`.
 
 If blocked, return `team-protocol`'s `BLOCKED:` block instead.
 

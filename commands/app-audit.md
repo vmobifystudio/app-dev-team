@@ -1,7 +1,7 @@
 ---
 description: Grade an existing app against the Mobify Studio House KB and Axiom standards — fan out the specialist auditors, produce a severity-ranked gap report, build a remediation backlog, then fix (safe fixes automatically, risky changes only with your approval)
-argument-hint: [dimension or "all" — e.g. security, monetization, ios, android; default = all]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+argument-hint: [dimension or "all" — e.g. security, monetization, ios, android; default = all] [--yolo]
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 ---
 
 # /app-audit — Grade the app, then close the gaps
@@ -17,7 +17,9 @@ Dimension (optional, default = all): $ARGUMENTS
 ## Steps
 
 1. **Fan out the auditors in parallel** (single message), matched to the detected platform(s). Each
-   checks ONE dimension against the House KB pack it owns and returns findings, read-only:
+   checks ONE dimension against the House KB pack it owns and returns findings, read-only. Tell every
+   code-reading auditor to run the `defect-hunting` skill (§1 data paths, §2 execute constants)
+   first — a screen-by-screen read misses the second writer:
    - **iOS** — `code-reviewer` grading against `ios-conventions.md`, always. The `axiom:*` auditors
      are **external and optional** (separate plugin, not this one's `skills/`) and are listed in
      exactly one place: the canonical auditor list in `agents/code-reviewer.md`. Read the roster and
@@ -69,9 +71,36 @@ Dimension (optional, default = all): $ARGUMENTS
    never scheduled, deferred, or even contradicted** — four review rounds missed it, because
    reviewers check what was done, not what was left out.
 
+   **Record every finding in the machine register too** — `ship-gate.sh` reads
+   `docs/90-register.jsonl`, never this Markdown table, so a finding written only here was invisible
+   to the one gate that blocks a release on an open S1/S2:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/register.mjs" add <ID> --kind finding --severity S1..S4 \
+     --title "<one-line description>" --by <the role that found it>
+   ```
+
+   When step 3 files the ticket, `register.mjs link <ID> --ticket AUDIT-NNN --by tech-manager`.
+
 3. **Build the remediation backlog.** Spawn `tech-manager` to turn findings into `AUDIT-NNN` tickets
-   on `docs/31-board.md`, prioritized by severity, each carrying its violated-rule + Safe/Risky tag.
-   Risky tickets also get a short written plan and are marked `needs-approval`.
+   through the board CLI — one `board.mjs add` per ticket, appended to the event log
+   `docs/31-board-events.jsonl`; never a hand-written row in the rendered board view (it is
+   regenerated from the log) — prioritized by severity, each carrying its violated-rule +
+   Safe/Risky tag in `--notes`:
+
+   ```bash
+   # Safe
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add AUDIT-NNN --title "..." --owner <role> \
+     --notes "rule: <violated rule> · Safe" --by tech-manager
+   # Risky — born blocked, so nothing can claim it until the founder approves it
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add AUDIT-NNN --title "..." --owner <role> \
+     --notes "rule: <violated rule> · Risky · plan: <the short written plan>" \
+     --status blocked --reason "needs-approval: Risky change, awaiting the founder at step 4" \
+     --by tech-manager
+   ```
+
+   `needs-approval` is that `blocked` state, not a label: a `blocked` ticket cannot be `claimed`, so
+   no developer starts a Risky change by accident.
 
    **Owner must be a role `/app-build` can spawn.** The roster is in `board-doctor`'s
    Manual-fallback check 4 — read it there, never from a copy. The copy that used to live in this
@@ -86,6 +115,34 @@ Dimension (optional, default = all): $ARGUMENTS
 4. **GATE — present the gap summary to the user.** Print the scorecard and the backlog grouped by
    severity and Safe/Risky. Ask which to fix (e.g. "all S1/S2", "safe-only", a specific set). Wait.
 
+   For every Risky ticket the user approves, record it and release it:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move AUDIT-NNN unblocked --by tech-manager \
+     --detail "approved by the founder at the /app-audit gate, <date>"
+   ```
+
+   A Risky ticket the user did not approve stays `blocked` with its `needs-approval:` reason.
+
+   **`--yolo` (passed through from `/app-run --yolo`) — the defer mechanism.** No question is asked,
+   and the answer is fixed: **approve every Safe ticket, approve nothing Risky.** Concretely:
+   - Safe tickets were born `todo` at step 3, so they are already claimable — step 5 fixes them.
+   - Risky tickets were born `blocked` with `--reason "needs-approval: ..."`. Under `--yolo` no
+     `unblocked` event is written for any of them, so none can be `claimed` — deferral is the board
+     refusing the claim, not an agent remembering not to.
+   - List the deferred set from the log (never from memory) and print it in the summary as
+     `DEFERRED (needs-approval): <ID> <title>`, one per line, plus the same in `docs/80-audit.md`:
+
+     ```bash
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" show --json | node -e '
+       const b = JSON.parse(require("fs").readFileSync(0, "utf8"));
+       for (const t of Object.values(b.tickets))
+         if (t.status === "blocked" && /· Risky/.test(t.notes || "")) console.log(`DEFERRED (needs-approval): ${t.id} ${t.title || ""}`);'
+     ```
+   - Their register rows become `DEFERRED(needs-approval)` — a terminal status for step 6, so the
+     re-audit loop ends instead of waiting on an approval nobody was asked for. Releasing one later
+     is the founder's `unblocked` event above, on a later run.
+
    This is `/app-run`'s Gate 1 for a brownfield project. **When `/app-audit` was invoked by
    `/app-run`, `/app-run` owns the gate — print the summary and return it rather than asking, so
    the user approves scope once.** Invoked directly, ask here.
@@ -93,7 +150,8 @@ Dimension (optional, default = all): $ARGUMENTS
 5. **Remediate** via the normal `/app-build` loop on the approved tickets:
    - **Safe** tickets are fixed automatically, gated by `code-reviewer` (+ Axiom audits on iOS) and
      the 2-cycle cap.
-   - **Risky** tickets execute only after the user approved them at the gate; the developer follows
+   - **Risky** tickets execute only after the user approved them at the gate (the `unblocked` event
+     above); the developer follows
      the ticket's plan, and migrations/data changes follow the House KB safe-migration rules.
 
 6. **Close the register, then re-audit.** Diff `docs/81-findings.md` against `docs/80-audit.md`

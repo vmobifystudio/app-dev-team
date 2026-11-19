@@ -1,7 +1,8 @@
 ---
 description: Start a new mobile app project — runs requirements intake, then CEO vision, then PRD + architecture in parallel
 argument-hint: [one-line idea, optional] [--yolo to skip the scope-lock gate] [--utility | --flagship to set the tier]
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
+disable-model-invocation: true
 ---
 
 # /app-init — Kick off a new app project
@@ -49,21 +50,63 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    Skip either if the roster has it `off`: on `utility` both are, `cpo` merged into `ceo` above and
    `cto` into `tech-lead` below.
 
-4. **Spawn the `active` roles among `ux-architect`, `product-designer`, `tech-lead`, and `devops-engineer` in parallel**
-   in a single message:
+3a. **When both ran, re-spawn `ceo` to arbitrate.** It reads `docs/10-prd.md` and
+   `docs/20-architecture.md`, resolves any conflict between them (a P0 the architecture prices at
+   months, a constraint the PRD ignores), and appends the resolution to `docs/00-vision.md` as an
+   addendum — or writes `no conflicts` there. `ceo.md` has always said it arbitrates after both
+   report back; no step ever brought it back, so conflicts reached Gate 1 unarbitrated.
+
+4. **Spawn the `active` roles among `ux-architect`, `tech-lead`, and `devops-engineer` in parallel**
+   in a single message, then **`product-designer` once `ux-architect` has returned** — it composes
+   the screen inventory `docs/12-flows.md` defines, so launching both together has the designer
+   composing screens that do not exist yet. **On `utility` tier `tech-lead` runs first and
+   `devops-engineer` is spawned after it returns**: there `tech-lead` writes the architecture
+   `devops-engineer` reads.
    - `ux-architect` reads PRD, writes docs/12-flows.md — flows and the screen-and-state inventory.
    - `product-designer` composes that inventory into docs/13-design-tokens.md and docs/14-components.md.
    - `tech-lead` reads architecture + PRD, writes per-platform impl specs — and on `utility` tier
      also writes `docs/20-architecture.md` + `docs/21-engineering-principles.md`, the technical pass
      `cto` would have run. Write only the impl specs for platforms the product type actually has:
-     a `backend-service` gets `22-impl-spec-backend.md` and no iOS or Android spec.
+     a `backend-service` gets `22-impl-spec-backend.md` and no iOS or Android spec; a `web-app` gets
+     `22-impl-spec-web.md` (what `web-developer` reads — it names the `build`, `start` and `test`
+     scripts; `devops-engineer`, or the first `web-developer` scaffold ticket, writes them into
+     `package.json`), plus `22-impl-spec-backend.md` only if a
+     backend is in scope.
    - `devops-engineer` reads architecture, writes `docs/23-git-strategy.md`, a platform
      `.gitignore`, and the CI workflow — seeded from the House KB `git-workflow.md`.
      The `.gitignore` **must include `.agent-wt/`** — that is where per-agent git worktrees live
      (`agent-isolation`), and an un-ignored worktree dir shows up as untracked noise in every
      agent's `git status`.
 
-5. **Bootstrap the project.** Generate, seeded from the House Knowledge Base (`knowledge/`) and the
+5. **Bootstrap the project.** First make it a git repository — every later step leases git
+   worktrees, and a worktree sees only what is committed:
+
+   ```bash
+   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || git init -b main
+   touch .gitignore
+   for p in .agent-wt/ .studio-stop docs/31-board-events.jsonl docs/31-board.md \
+            docs/team/runs.jsonl docs/team/runtime-result.json docs/team/journey-result.json \
+            docs/team/actors.json docs/team/actor-tokens.jsonl docs/team/reports/ \
+            docs/53-reviews/ docs/54-evidence/ docs/33-rounds.jsonl docs/team/evidence/ \
+            docs/team/worktree-slots.json docs/team/ship-gate-verdict.json \
+            docs/32-board-view.md docs/team/messages.md; do
+     grep -qxF "$p" .gitignore || printf '%s\n' "$p" >> .gitignore
+   done
+   ```
+
+   That list is the studio's own operational state, appended to whatever platform `.gitignore`
+   `devops-engineer` wrote (plus `docs/team/actors.json` and `docs/team/actor-tokens.jsonl`, which hold actor keys and
+   per-spawn tokens). Every entry is in `${CLAUDE_PLUGIN_ROOT}/scripts/lib/operational-paths.txt`;
+   review verdicts (`docs/53-reviews/`) and evidence records stay uncommitted in the main checkout,
+   where the board and the gates read them. The rest of that file (`docs/daily/`, the channel,
+   `schedule.json`, `memory.jsonl`, `incidents.jsonl`, `release-candidates.jsonl`,
+   `audit-anchor.json`, the register `docs/90-register.jsonl`) is tracked on purpose: dirty checks skip it, history keeps it. The
+   board log and its rendering live in the main checkout only — a
+   `git checkout` must not roll the board back, and ICs get their ticket through the spawn prompt,
+   not from the board file. `docs/team/messages.jsonl` and the dispatch manifests stay
+   **tracked**: they are project decisions and history a reviewer should be able to read.
+
+   Then generate, seeded from the House Knowledge Base (`${CLAUDE_PLUGIN_ROOT}/knowledge/`) and the
    docs just produced:
    - the target project's **`CLAUDE.md`** — chosen stack, build/run commands, the team's working
      rules, the picked commit convention, and canonical names (so agents never guess);
@@ -71,7 +114,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      are in scope per the architecture;
    - **the team channel `docs/team/messages.jsonl`, if it does not already exist** — an empty
      append-only event log (`team-protocol` defines the schema). `docs/team/messages.md` is
-     GENERATED from it by `scripts/messages.mjs` on the first send and must never be hand-written:
+     GENERATED from it by `${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs` on the first send and must never be hand-written:
 
      ```bash
      mkdir -p docs/team && [ -f docs/team/messages.jsonl ] || : > docs/team/messages.jsonl
@@ -92,17 +135,20 @@ You are starting a fresh app project. The user's one-liner (if any) is:
        "owner": "founder",
        "reviewedOn": "$(date -u +%Y-%m-%d)",
        "requireDurableRuns": true,
-       "requireApprovalBinding": true
+       "requireApprovalBinding": true,
+       "requireActorTokens": true
      }
      EOF
      ```
 
      Edit `owner` to the actual accountable role once one is decided; `ship-gate.sh`'s `policy-check`
-     only requires the field to be non-empty, not who it names.
+     only requires the field to be non-empty, not who it names. `requireActorTokens` (not one of the
+     five) is also on: `spawn-prompt.mjs compose` mints each spawned agent's token, so it needs
+     nothing before the first spawn.
 
      **Only these two default on.** Codex found (PR #15) that turning on all five here breaks the
      very first spawn: `requireAuditAnchor`, `requirePromptRegistry`, and `requireEvaluation` are all
-     composed into `dispatch-preflight.mjs`, which runs before *every* implementation spawn — and
+     composed into `dispatch-preflight.mjs`, which runs before *every* ticket claim — and
      each needs an artifact this step cannot produce yet. Reproduced directly against a fresh
      project directory: `audit-anchor.mjs verify` needs `docs/31-board-events.jsonl`, which does not
      exist until the first ticket is added (later, at planning); `prompt-registry.mjs sync` needs an
@@ -113,22 +159,49 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      worse than the opt-in gap they were meant to close. `requireDurableRuns` and
      `requireApprovalBinding` have no such ordering problem — `run-ledger.mjs` and
      `approval-check.mjs` degrade to CANNOT EVALUATE on an empty/absent log rather than erroring at
-     spawn time, and only `ship-gate.sh` (release time, by which point real activity exists) checks
-     them — so they default on safely. Turn the other three on explicitly, per project, once their
+     spawn time — so they default on safely. Neither is checked at spawn: `ship-gate.sh` checks both
+     at release, and the merge gate (`/app-build` step 4, run inline by the orchestrator) checks the
+     ticket's own approval, which is why `code-reviewer` approves with `--bind` on such a project. Turn the other three on explicitly, per project, once their
      prerequisite exists: `requireAuditAnchor` after the board has its first ticket and someone runs
      `audit-anchor.mjs create`; `requireEvaluation` once the project has its own `eval/manifest.json`;
      `requirePromptRegistry` is a studio-repo concept and does not apply to a shipped project at all.
+
+5a. **Commit the planning docs and everything `devops-engineer` wrote**, staging by explicit path —
+   never a blanket add:
+
+   ```bash
+   sh -c 'for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent/ docs/team/messages.jsonl \
+            docs/*.md .github fastlane \
+            package.json package-lock.json pnpm-lock.yaml yarn.lock .nvmrc */package.json \
+            Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
+            settings.gradle settings.gradle.kts */build.gradle */build.gradle.kts gradle gradlew; do
+     [ -e "$f" ] && ! git check-ignore -q "$f" && git add -- "$f"
+   done; true'   # true: an absent last path is no failure. sh, not zsh: zsh aborts the loop on an unmatched */ glob
+   git diff --cached --name-only    # confirm only those landed
+   git commit -m "docs: project plan from /app-init"
+   git status --short               # anything left is a file nobody committed: commit it or say why
+   ```
+
+   The platform manifests are in the list because a worktree without `package.json` /
+   `Package.swift` / the Gradle files cannot build, and the wave's fresh test worktree sees only
+   what is committed. Uncommitted docs are invisible to every worktree `/app-build` leases, so an IC would build
+   against no spec at all — and a dirty base makes the first wave push fail to fast-forward.
 
 6. **Print a summary**: list every doc produced, with one-line description each, and the suggested
    next command (`/app-run` for the mostly-autonomous flow, or `/app-plan` → `/app-build` for manual control).
 
 6a. **Validate intent against the record — before the gate, not after it.** Spawn
    `product-validator` (active per the roster). It reads `docs/00-founder-intent/` and the derived
-   documents, writes `docs/16-intent-validation.md`, and returns one line:
-   `INTENT: ALIGNED | DRIFTED | CANNOT EVALUATE`. Then run the graph:
+   documents, writes `docs/04-intent-validation.md`, and returns one line:
+   `INTENT: ALIGNED | DRIFTED | CANNOT EVALUATE`. This is the one `product-validator` spawn for
+   the run — `/app-run` reuses this result rather than spawning it again. Commit
+   `docs/04-intent-validation.md` (`git add -- docs/04-intent-validation.md && git commit -m "docs:
+   intent validation"`). Then run the intent half of the graph — there is no board yet, so the
+   ticket half is CANNOT EVALUATE by construction and runs after `/app-plan` (`--only trace`):
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root .
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root . --only conflicts
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root . --only gates
    ```
 
    **Both results go into the Gate 1 brief verbatim.** `DRIFTED` and `CANNOT EVALUATE` do not stop
@@ -168,12 +241,13 @@ docs/
   13-design-tokens.md
   14-components.md
   15-aso.md                  (if store work in scope)
-  16-intent-validation.md    (product-validator's verdict, read at GATE 1)
+  04-intent-validation.md    (product-validator's verdict, read at GATE 1)
   20-architecture.md
   21-engineering-principles.md
   22-impl-spec-ios.md        (product type ios-app / mobile-app)
   22-impl-spec-android.md    (product type android-app / mobile-app)
-  22-impl-spec-backend.md    (product type backend-service / web-app, or backend in scope)
+  22-impl-spec-web.md        (product type web-app)
+  22-impl-spec-backend.md    (product type backend-service, or backend in scope)
   23-git-strategy.md
   41-monetization.md         (if monetized)
   52-analytics.md

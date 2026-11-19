@@ -1,6 +1,6 @@
 ---
 name: requirements-intake
-description: Use at the very start of a new app project to convert a one-line idea or rough brief into a structured requirements document the CEO/CPO/CTO agents can act on. Triggers when the user says "build an app", "I have an idea for an app", or kicks off /app-init with a fuzzy prompt.
+description: On an app-dev-team project, use at the start of /app-init (and /app-run through it) to turn the founder's one-line idea or rough brief into docs/01-intake.md.
 ---
 
 # Requirements intake
@@ -29,9 +29,8 @@ You are converting fuzzy human intent into a structured intake doc. You are not 
    3. What kind of product is this — **iOS app, Android app, both, web app, backend service, CLI
       tool, or a library**? If more than one, which ships first?
 
-      This question used to ask "iOS, Android, or both", which could not describe a product that is
-      neither. `role-activation` reads its answer to decide which specialists exist at all, and a
-      product type it cannot read from here it has to guess at.
+      `role-activation` reads this answer to decide which specialists exist at all — record it
+      verbatim, so nothing has to guess the product type.
    4. What does success look like in 6 months? (numbers if possible)
    5. Anything that's explicitly out of scope?
 

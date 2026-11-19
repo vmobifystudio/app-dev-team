@@ -67,8 +67,20 @@ const VERDICT_LINE = /^REVIEW VERDICT:[ \t]*(APPROVE|REQUEST CHANGES)[ \t]*$/m;
 // A scope of `a..b` with both sides non-empty and neither containing whitespace. `main..HEAD` and a
 // sha pair both satisfy it; `Scope: the login screen` does not, and that refusal is the point —
 // a scope you cannot resolve to a range is a scope nobody can check you against.
-const SCOPE_LINE = /^Scope:[ \t]*(\S+)\.\.(\S+)[ \t]*$/m;
+// G2-5: EXACTLY two sides. `(\S+)\.\.(\S+)` accepted `nothing..was..read` (greedy), and board.mjs
+// then split it into three parts and skipped the bound-range comparison entirely.
+const SCOPE_LINE = /^Scope:[ \t]*(\S+)[ \t]*$/m;
 const NOT_CHECKED_HEADING = /^## Not checked[ \t]*$/m;
+// G2-26: an APPROVE whose `## Not checked` says "Everything" (or says nothing) approved nothing.
+const NOTHING_REVIEWED = /^(everything|all|all of it|the whole (diff|change|branch|thing)|n\/?a|tbd|todo|-+|—)\.?$/i;
+
+/** The body under `## Not checked`, up to the next heading of level 1-2. */
+function notCheckedBody(text) {
+  const at = text.search(NOT_CHECKED_HEADING);
+  const rest = text.slice(at).split('\n').slice(1);
+  const end = rest.findIndex((l) => /^#{1,2}\s/.test(l));
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n').trim();
+}
 
 /**
  * @param {unknown} path   the `--verdict` value, exactly as parsed
@@ -116,7 +128,9 @@ export function readVerdict(path, event, ticket) {
     };
   }
 
-  const scope = text.match(SCOPE_LINE);
+  const scopeLine = text.match(SCOPE_LINE);
+  const sides = scopeLine ? scopeLine[1].split('..') : [];
+  const scope = sides.length === 2 && sides[0] && sides[1] ? [scopeLine[0], sides[0], sides[1]] : null;
   if (!scope) {
     return { ok: false, reason: `${path} has no "Scope: <base>..<head>" line — what was reviewed is UNKNOWN, so nobody can tell a one-file review from a whole-app one.${how}` };
   }
@@ -130,6 +144,14 @@ export function readVerdict(path, event, ticket) {
         '\n  A verdict that silently omits the section is indistinguishable from a thorough one, which is' +
         '\n  how five product defects reached a human across six dry runs.',
     };
+  }
+
+  const body = notCheckedBody(text);
+  if (!body) {
+    return { ok: false, reason: `${path}: "## Not checked" is empty — write "Nothing" when nothing was skipped, or list what was. An empty section reads exactly like an omitted one.${how}` };
+  }
+  if (event === 'approved' && NOTHING_REVIEWED.test(body)) {
+    return { ok: false, reason: `${path}: "## Not checked" says "${body}" — an APPROVE that checked nothing is not a review. List what was skipped, or REQUEST CHANGES.` };
   }
 
   return {

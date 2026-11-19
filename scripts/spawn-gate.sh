@@ -76,6 +76,10 @@ fi
 # them — and saying otherwise would be a control believed to do more than it does.
 STOP_FILE=${APP_TEAM_STOP_FILE:-.studio-stop}
 STOP_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+# From inside a linked worktree, --show-toplevel is the WORKTREE; the stop file lives at the main
+# tree's root. Check there too, or a stop set by the operator is invisible to the agent spawning.
+MAIN_COMMON=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) &&
+  [ ! -e "$STOP_ROOT/$STOP_FILE" ] && [ -e "$(dirname "$MAIN_COMMON")/$STOP_FILE" ] && STOP_ROOT=$(dirname "$MAIN_COMMON")
 if [ -n "${APP_TEAM_STOP:-}" ]; then
   echo "REFUSED: EMERGENCY STOP is set (APP_TEAM_STOP=$APP_TEAM_STOP)"
   echo "Spawn nobody. Report what is unfinished and stop the loop."
@@ -99,6 +103,15 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 COUNT=$#
+# The same owner twice is two writers in ONE worktree — exactly the collision this gate exists to
+# refuse. Each name passed its own isolation check, so this printed "GO: 2 writing agents, each
+# isolated".
+DUP=$(printf '%s\n' "$@" | sort | uniq -d | tr '\n' ' ')
+if [ -n "$DUP" ]; then
+  echo "REFUSED: owner named more than once: $DUP"
+  echo "Two writers in one worktree collide. One agent per ticket at a time; serialize the second."
+  refuse
+fi
 HERE=$(git rev-parse --show-toplevel 2>/dev/null | { read -r p; cd "$p" 2>/dev/null && pwd -P; })
 
 # A worktree is a directory that is its own git top level and is NOT this repo's top level.
@@ -117,6 +130,15 @@ for id in "$@"; do
 done
 
 if [ "$COUNT" -eq 1 ]; then
+  # C5W-6: "serialize" is for a writer that was never given a slot. A LEASED slot (or a $DIR/<slot>
+  # path) with no worktree behind it means the IC would land in the shared checkout believing it is
+  # isolated — the prompt names a tree that does not exist.
+  SLOTS="${MAIN_COMMON:+$(dirname "$MAIN_COMMON")}"; SLOTS="${SLOTS:-$HERE}/docs/team/worktree-slots.json"
+  if [ -n "$missing" ] && { [ -e "$DIR/$1" ] || grep -q "\"$1\"[[:space:]]*:" "$SLOTS" 2>/dev/null; }; then
+    echo "REFUSED: $1 is a leased slot (or $DIR/$1 exists) but has no worktree"
+    echo "Re-lease it (worktree-slot.mjs lease) or release it and compose without a slot, then re-run this gate."
+    refuse
+  fi
   if [ -z "$missing" ]; then
     echo "GO: 1 writing agent, isolated in $DIR/$1"
   else
@@ -148,7 +170,7 @@ echo "parallel-orchestrator's 'one agent invocation per owner, batched' and 'eac
 echo "names ITS worktree path' both true at once — they could not both be true per ticket (OPS-005)."
 echo
 for id in $missing; do
-  echo "  node scripts/worktree-slot.mjs lease --owner $id --tickets APP-NNN,APP-NNN"
+  echo "  node \"\${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs\" lease --owner <role> --tickets APP-NNN   (one ticket per lease; slot names are <owner>-<n>)"
 done
 echo
 echo "For a project still keyed by ticket, the old shape still works and this gate still checks it:"

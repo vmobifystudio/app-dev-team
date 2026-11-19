@@ -1,4 +1,13 @@
+---
+description: Prove a warm (persistent) and a cold (respawned) manager reach the same state digest on one scenario
+argument-hint: [scenario path, default eval/manager-scenario.json]
+allowed-tools: Read, Bash
+---
+
 # /app-manager-harness — prove warm/cold manager interchangeability
+
+Arguments: $ARGUMENTS — they fill the `<...>` placeholders below; a path argument replaces the
+default path shown.
 
 Run the same persisted-state scenario in both modes:
 
