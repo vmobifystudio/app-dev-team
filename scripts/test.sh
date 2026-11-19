@@ -6178,6 +6178,7 @@ chain_args() {
     assign) echo "assign C-001 --to ios-developer --by tech-manager" ;;
     show)   echo "show C-001" ;;
     render) echo "render" ;;
+    adopt)  echo "adopt" ;;
     *)      echo "" ;;
   esac
 }
@@ -11924,6 +11925,34 @@ printf 'echo "runtime FAIL"; exit 1\n' > "$MU/rg-no.sh"
 ( cd "$MUR" && STUDIO_RUNTIME_GATE="$MU/rg-no.sh" node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command "printf '# tests 1\n# pass 1\n'" ) >"$TMP/mur.txt" 2>&1
 [ $? = 1 ] && grep -q 'WAVE NOT LANDABLE' "$TMP/mur.txt" && ok "MU: a medium ticket whose policy requires runtime-gate does not land on a failing runtime gate" \
   || bad "MU: a medium ticket whose policy requires runtime-gate does not land on a failing runtime gate" "$(grep -E 'RUNTIME|WAVE' "$TMP/mur.txt" | head -3)"
+
+# Codex P1 (PR #46) — a committed board log in a fresh clone has no anchor; the founder adopts it.
+MUA="$MU/adopt"; mkdir -p "$MUA/src"
+( cd "$MUA/src" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager \
+  && git add docs/31-board-events.jsonl && git commit -qm board && cd .. && git clone -q src clone ) >/dev/null 2>&1
+( cd "$MUA/clone" && node "$HERE/board.mjs" show ) >/dev/null 2>"$TMP/mua.txt"
+[ $? = 2 ] && grep -q 'board.mjs" adopt' "$TMP/mua.txt" && ok "MU: a fresh clone of a committed board refuses, naming board.mjs adopt as the recovery" \
+  || bad "MU: a fresh clone of a committed board refuses, naming board.mjs adopt as the recovery" "$(head -3 "$TMP/mua.txt")"
+( cd "$MUA/clone" && node "$HERE/board.mjs" adopt </dev/null ) >"$TMP/mua2.txt" 2>&1
+[ $? = 1 ] && ! ls "$MUA/clone/.git/studio/" 2>/dev/null | grep -q anchor && ok "MU: adopt without a terminal is refused and writes no anchor" \
+  || bad "MU: adopt without a terminal is refused and writes no anchor" "$(head -2 "$TMP/mua2.txt")"
+if command -v python3 >/dev/null 2>&1; then
+  ( cd "$MUA/clone" && python3 -c '
+import os, pty, sys
+pid, fd = pty.fork()
+if pid == 0: os.execvp("node", ["node", sys.argv[1], "adopt"])
+out = b""; sent = False
+while True:
+    try: d = os.read(fd, 1024)
+    except OSError: break
+    if not d: break
+    out += d
+    if not sent and b"Type the" in out: os.write(fd, b"ADOPT\n"); sent = True
+sys.exit(os.WEXITSTATUS(os.waitpid(pid, 0)[1]))' "$HERE/board.mjs" ) >/dev/null 2>&1
+  ( cd "$MUA/clone" && node "$HERE/board.mjs" show ) >/dev/null 2>&1 && ok "MU: ...and the founder typing ADOPT at a terminal makes the board readable again" \
+    || bad "MU: ...and the founder typing ADOPT at a terminal makes the board readable again"
+fi
 
 # --- Sprint 6 track Q2: the guard's cheap writes, the reviewer's $T idiom, QA close, case folds ---
 # C5G-1 (QA- close with code added after merged), C5G-2 (redirects with no command word, `<>`),

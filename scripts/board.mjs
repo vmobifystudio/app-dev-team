@@ -57,7 +57,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { withFileLock } from './lib/atomic.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
-import { resolveActor, verifyActorToken, mintActorToken, revokeActorToken, listActorTokens, TOKEN_REGISTRY, inlineTokenFlag } from './lib/actor.mjs';
+import { resolveActor, verifyActorToken, mintActorToken, revokeActorToken, listActorTokens, TOKEN_REGISTRY, inlineTokenFlag, founderConfirms } from './lib/actor.mjs';
 import { GATE_EVENTS } from './lib/capabilities.mjs';
 import { verifyTestEvidence, verifyQaEvidence, currentTestProfile, frozenTestProfile, sameCommands, docsOnlyDiff } from './lib/evidence.mjs';
 import { RANK, routeFiles } from './lib/risk.mjs';
@@ -1397,6 +1397,36 @@ function cmdShow(id, flags, paths) {
  * Runs in CI. Exit 1 is "the history was rewritten", which is a different fact from "the board is
  * in a state a rule dislikes" (board-doctor's job) and must never be reported as the same thing.
  */
+/**
+ * `adopt`: anchor a COMMITTED log in a checkout that has no anchor for it (Codex on PR #46: a fresh
+ * clone, or a moved project, refused every read — the anchor lives in .git and is keyed by the
+ * log's real path, and "delete the anchor" cannot recover an anchor that is already absent).
+ * Founder-only by the same rule as a founder token: a human at a terminal types ADOPT. The chain
+ * must verify intact; adoption trusts the log's CONTENT as of now, which is the decision the
+ * founder is asked to make. BOUND: a log rewritten and re-hashed before the clone is adopted as-is.
+ */
+function cmdAdopt(paths) {
+  if (!existsSync(paths.log)) die(2, `no event log at ${paths.log} — nothing to adopt`);
+  const text = readFileSync(paths.log, 'utf8');
+  const chain = verifyChain(text);
+  if (!chain.ok) die(2, `the audit chain of ${paths.log} is broken at line ${chain.line} (${chain.reason}) — a broken log is restored, never adopted.`);
+  const at = anchorPath(paths.log);
+  if (!at) die(2, `${paths.log} is not in a git repository — there is no anchor to write.`);
+  const current = checkAnchor(paths.log, text, chain);
+  if (current.ok && existsSync(at)) {
+    process.stdout.write(`board: ${paths.log} already matches its anchor (${chain.chained} chained line(s)) — nothing to adopt\n`);
+    return;
+  }
+  const c = founderConfirms('ADOPT');
+  if (!c.ok) {
+    die(1, `refusing adopt: ${c.reason.replace(/actor mint --role founder --ticket ADOPT[\s\S]*/, 'board.mjs adopt')}\n` +
+      '  adopt re-trusts the committed log as it stands. Only the human founder decides that, at their own terminal:\n' +
+      `    ! node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" adopt`);
+  }
+  writeAnchor(paths.log, chain.chained, chain.tip);
+  process.stdout.write(`board: adopted ${paths.log} — ${chain.chained} chained line(s), anchored at ${at}\n`);
+}
+
 function cmdVerify(paths) {
   if (!existsSync(paths.log)) die(2, `no event log at ${paths.log} — nothing to verify`);
   const text = readFileSync(paths.log, 'utf8');
@@ -1689,6 +1719,7 @@ const EXPECTED_POSITIONALS = {
   show: { max: 1, usage: 'show [ID] [--json]' },
   render: { max: 0, usage: 'render' },
   verify: { max: 0, usage: 'verify' },
+  adopt: { max: 0, usage: 'adopt   (founder, at a terminal: anchor a committed log in this checkout)' },
   actor: { max: 1, usage: 'actor mint --role R --ticket T [--ttl-minutes N] | actor revoke --token-id ID | actor list' },
   migrate: { max: 1, usage: 'migrate [path/to/31-board.md] [--out log.jsonl]' },
 };
@@ -1778,6 +1809,8 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
       return cmdRender(paths);
     case 'verify':
       return cmdVerify(paths);
+    case 'adopt':
+      return withFileLock(paths.log, () => cmdAdopt(paths));
     case 'migrate':
       return cmdMigrate(rest[0], flags, paths);
     case 'actor':
@@ -1797,6 +1830,7 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
           '  show [ID] [--json]\n' +
           '  render\n' +
           '  verify                          the audit chain — was this log rewritten?\n' +
+          '  adopt                           founder, at a terminal: anchor a committed log in a fresh clone\n' +
           '  move <ID> verified --by <role> --evidence <record verify-done printed> [--token T]\n' +
           '  move <ID> qa_passed --by <role> --evidence docs/team/journey-result.json|<post-merge record> [--token T]\n' +
           '  actor mint --role R --ticket T [--ttl-minutes N]   orchestrator only: prints a per-spawn token once\n' +

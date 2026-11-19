@@ -784,6 +784,10 @@ with the same access, and nothing here claims to be.
   board's own validation, tokens and re-derived evidence are the gate.
 - **A TTY can be faked.** The founder mint asks for an interactive terminal and the ticket typed
   back; that proves a terminal, not a human — a pseudo-terminal satisfies it.
+- **A fresh clone trusts the committed log once.** The board anchor lives in `.git/studio/`, so a
+  clone or a moved project has none and refuses every board read. The founder runs
+  `board.mjs adopt` at a terminal (typing `ADOPT`); it accepts a log whose hash chain is intact and
+  anchors it as it stands, so a log rewritten and re-hashed before the clone is adopted as-is.
 - **Tests and journeys prove what they ran.** The suite runs in a fresh detached worktree of the
   exact tip, with the test commands frozen at the first gate event; journeys run only through the
   plugin's `scripts/drivers/*` (path and sha recorded). Neither proves more than the project's

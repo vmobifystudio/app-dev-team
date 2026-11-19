@@ -308,8 +308,10 @@ function checkAnchor(logPath, text, chain) {
   const at = anchorPath(logPath);
   if (!at) return { ok: true };
   const recover = '  The anchor lives outside the tree (G2-10). Restore the log from a backup that matches it;\n' +
-    '  if the log is genuinely the record and the anchor is wrong, that is a human decision — the\n' +
-    `  founder deletes ${at} by hand, knowing it re-trusts whatever the log now says.`;
+    '  if the log is genuinely the record (a fresh clone, a moved project, or an anchor that is wrong),\n' +
+    '  that is a human decision: the founder runs, at their own terminal,\n' +
+    '    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" adopt\n' +
+    '  knowing it re-trusts whatever the log now says.';
   if (!existsSync(at)) {
     if (/"anchored":true/.test(text)) return { ok: false, reason: `${logPath} was written under an anchor, and the anchor (${at}) is gone — the log cannot be shown to be the one that was written.\n${recover}` };
     return { ok: true };
