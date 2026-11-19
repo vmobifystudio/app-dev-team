@@ -52,7 +52,7 @@ function invariant(id, title, critical, fn) {
 function sandbox(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'fc-'));
   try {
-    run('git', ['init', '-q', '.'], dir);
+    run('git', ['init', '-q', '-b', 'main', '.'], dir); // -b: CI's git defaults to master, and fixtures name main
     return fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -143,7 +143,7 @@ invariant('I-01', 'One project boundary', true, () => sandbox((outer) => {
   // repository — the one failure no downstream gate can undo, because the write already landed.
   const inner = join(outer, 'vendor/inner');
   mkdirSync(inner, { recursive: true });
-  run('git', ['init', '-q', '.'], inner);
+  run('git', ['init', '-q', '-b', 'main', '.'], inner);
   const r = board(['add', 'I-001', '--title', 'inner', '--owner', 'ios-developer'], inner);
   const wroteInner = existsSync(join(inner, 'docs/31-board-events.jsonl'));
   const outerCount = logLines(outer).length;
