@@ -371,7 +371,11 @@ invariant('I-07', 'Enforced risk route', true, () => sandbox((dir) => {
   g(['add', 'src']); g(['commit', '-q', '-m', 'billing']); g(['checkout', '-q', '-']);
   for (const [e, by] of [['claimed', 'ios-developer'], ['done_reported', 'ios-developer'],
     ['verified', 'verification-engineer'], ['review_requested', 'ios-developer'],
-    ['started', 'code-reviewer'], ['approved', 'code-reviewer']]) board(['move', 'PAY-001', e, '--by', by], dir);
+    ['started', 'code-reviewer'], ['approved', 'code-reviewer']]) {
+    const m = board(['move', 'PAY-001', e, '--by', by], dir);
+    // A setup move that fails makes the merge refusal below meaningless — say which one, and why.
+    if (m.code !== 0) return { state: 'FAIL', detail: `fixture move ${e} --by ${by} was refused: ${m.out.trim().split('\n').slice(0, 3).join(' / ')}` };
+  }
 
   // The generic review is present and the separation rule is satisfied. Only the SPECIALIST the
   // risk route demanded is missing — the requirement that used to be printed and discarded.

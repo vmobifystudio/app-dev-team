@@ -453,16 +453,25 @@ process.stdout.write(
     const diff = policy && Array.isArray(policy.rules) && m.files.length ? routeFiles(policy, m.files)?.risk : null;
     return [planned, diff].filter(Boolean).sort((a, b) => RANK[b] - RANK[a])[0] || null;
   };
-  const risky = merged.filter((m) => ['high', 'critical'].includes(tier(m)));
+  // Codex on PR #46: a policy may require runtime evidence below high. board.mjs defers those kinds
+  // to the wave and records them on the merged event (merge_risk.required_evidence) — read it here.
+  const ticketOf = (m) => tickets.get(m.id.toUpperCase()) || [...tickets.values()].find((x) => x.id === m.id);
+  const runtimeRequired = (m) => {
+    const ev = [...(ticketOf(m)?.events || [])].reverse().find((e) => e.event === 'merged');
+    const req = ev?.detail?.merge_risk?.required_evidence;
+    return Array.isArray(req) && req.some((k) => k === 'runtime-gate' || k === 'runtime-evidence');
+  };
+  const why = (m) => (['high', 'critical'].includes(tier(m)) ? tier(m) : 'policy requires runtime evidence');
+  const risky = merged.filter((m) => ['high', 'critical'].includes(tier(m)) || runtimeRequired(m));
   if (risky.length) {
     const gate = process.env.STUDIO_RUNTIME_GATE || resolve(HERE, 'runtime-gate.sh'); // env: test seam
-    process.stdout.write(`\n  RUNTIME GATE on the wave candidate — required by ${risky.map((m) => `${m.id} (${tier(m)})`).join(', ')}\n`);
+    process.stdout.write(`\n  RUNTIME GATE on the wave candidate — required by ${risky.map((m) => `${m.id} (${why(m)})`).join(', ')}\n`);
     const rg = spawnSync('sh', [gate, '--project-root', WT], { cwd: WT, encoding: 'utf8' });
     process.stdout.write(`${`${rg.stdout || ''}${rg.stderr || ''}`.trim().split('\n').map((l) => `  | ${l}`).join('\n')}\n`);
     if (rg.status !== 0) {
       process.stdout.write(
         `\n  WAVE NOT LANDABLE — the suite is green, but runtime-gate ${rg.status === 1 ? 'FAILED' : 'could not evaluate (exit 2)'} on the merged tree,\n` +
-        '  and a high/critical ticket lands only on a wave that built and launched. The `verified` commands above\n' +
+        '  and a high/critical (or runtime-required) ticket lands only on a wave that built and launched. The `verified` commands above\n' +
         `  are still true (the suite ran); landing is not. ${WAVE_BRANCH} is kept at ${WT}.\n` +
         '  Fix it, or drop the risky ticket from the wave, then re-run with the next wave number.\n'
       );

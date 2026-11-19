@@ -11102,7 +11102,7 @@ f1m "$F1N" move F-1 merged --by tech-manager --head feat/unnamed >/dev/null 2>&1
 ( cd "$F1N" && git checkout -q feat/unnamed ) >/dev/null 2>&1; F1NQ=$(f1_run "$F1N" feat/unnamed); ( cd "$F1N" && git checkout -q main ) >/dev/null 2>&1
 f1m "$F1N" move F-1 qa_passed --by qa-engineer --evidence "$F1NQ" >/dev/null 2>&1
 assert_exit 1 "F1: closed with no branch named for the ticket and no --head is refused (G2-8)" f1m "$F1N" move F-1 closed --by tech-manager
-assert_has "$TMP/err" "the commit recorded at merged" "F1: ...because the code being closed is unknown"
+assert_has "$TMP/err" "the commit recorded at merged" "F1: ...naming the commit recorded at merged, which is not on main"
 assert_exit 1 "F1: ...and --head naming an unmerged commit is refused" f1m "$F1N" move F-1 closed --by tech-manager --head feat/unnamed
 assert_has "$TMP/err" "is not merged into main" "F1: ...because it is not on the integration branch"
 
@@ -11902,6 +11902,28 @@ muib() { ( cd "$MUIB" && node -e 'import(process.argv[1]).then((m) => process.st
 [ "$(muib)" = develop ] && ok "MU: with no strategy doc the board's integration branch is still develop-first" || bad "MU: with no strategy doc the board's integration branch is still develop-first" "$(muib)"
 printf 'Integration branch: main\n' > "$MUIB/docs/23-git-strategy.md"
 [ "$(muib)" = main ] && ok "MU: a declared 'Integration branch: main' wins over an existing develop branch" || bad "MU: a declared 'Integration branch: main' wins over an existing develop branch" "$(muib)"
+
+# Codex (PR #46) — runtime evidence a policy requires BELOW high is still checked at the wave.
+MUR="$MU/wave-rt"; mkdir -p "$MUR/docs/team" "$MUR/docs/53-reviews"
+( cd "$MUR" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  printf 'docs/\n' > .gitignore
+  printf 'Integration branch: main\n' > docs/23-git-strategy.md
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":"true"}}\n' > docs/team/project-profile.json
+  printf '{"schema":"risk-policy/v1","default":{"risk":"medium","model":"sonnet","approvals":[],"required_evidence":["runtime-gate"]},"rules":[]}\n' > docs/team/risk-policy.json
+  git add .gitignore && git commit -qm init
+  git checkout -q -b feat/APP-1-x main && echo t > app.sh && git add app.sh && git commit -qm app && git checkout -q main
+  node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-1 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-1 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-1 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-1 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-1-x\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 approved --by code-reviewer --verdict docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 merged --by tech-manager ) >/dev/null 2>&1
+printf 'echo "runtime FAIL"; exit 1\n' > "$MU/rg-no.sh"
+( cd "$MUR" && STUDIO_RUNTIME_GATE="$MU/rg-no.sh" node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command "printf '# tests 1\n# pass 1\n'" ) >"$TMP/mur.txt" 2>&1
+[ $? = 1 ] && grep -q 'WAVE NOT LANDABLE' "$TMP/mur.txt" && ok "MU: a medium ticket whose policy requires runtime-gate does not land on a failing runtime gate" \
+  || bad "MU: a medium ticket whose policy requires runtime-gate does not land on a failing runtime gate" "$(grep -E 'RUNTIME|WAVE' "$TMP/mur.txt" | head -3)"
 
 # --- Sprint 6 track Q2: the guard's cheap writes, the reviewer's $T idiom, QA close, case folds ---
 # C5G-1 (QA- close with code added after merged), C5G-2 (redirects with no command word, `<>`),
