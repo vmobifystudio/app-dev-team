@@ -125,7 +125,7 @@ this command folds its real conventions back into the packs so future apps start
 
       ```bash
       node "${CLAUDE_PLUGIN_ROOT}/scripts/memory-curator.mjs" propose \
-        --ledger docs/team/memory.jsonl --class studio --confidence <0-1> \
+        --ledger docs/team/memory.jsonl --class studio --confidence <0-1> --by tech-lead \
         --content "<category>: <the finding, stated as an abstract shape, not this app's specifics>" \
         --source <path to the dry-run report or retro>
       ```
