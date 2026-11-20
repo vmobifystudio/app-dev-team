@@ -816,6 +816,9 @@ with the same access, and nothing here claims to be.
   tests and the declared journeys assert.
 - **A review verdict's `## Not checked` is the reviewer's word.** The binding proves which diff
   and evidence the approval names, not that the reviewer read them.
+- **A developer's own slot is matched by role, not by instance.** A developer whose cwd is the main
+  checkout may write into any `.agent-wt/<its role>-N`, so two parallel `ios-developer`s can reach
+  each other's slots; binding the slot to the agent through its lease in `worktree-slots.json` closes it.
 
 **Zero runtime dependencies.** Node stdlib and POSIX `sh` only — no `package.json`, no
 `node_modules` at the plugin root (the optional `control-room/` UI has its own). That is a security property as much as a portability one.

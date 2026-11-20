@@ -214,6 +214,8 @@ function cmdSend(options) {
 
   const kind = String(options.kind).toLowerCase();
   if (!KIND_SET.has(kind)) die(`--kind must be ${KINDS.join('|')}`);
+  // PR47-7: #artifacts carries registrations, and only `messages.mjs artifact` writes them.
+  if (String(options.channel || '').replace(/^#/, '') === 'artifacts') die('--channel artifacts is reserved for `messages.mjs artifact <TYPE>` registrations — send on another channel');
 
   const priority = options.priority || (kind === 'fyi' ? 'fyi' : 'material');
   if (!PRIORITIES.has(priority)) die('--priority must be material|fyi');
@@ -425,6 +427,7 @@ function cmdArtifact(type, options) {
       summary: `${id}: ${options.title}`,
       body: `${spec.dir}${basename(file)}`,
       channel: 'artifacts',
+      registration: true,
       status: 'closed',
     },
     messages.length + 1

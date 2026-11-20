@@ -200,6 +200,7 @@ function normalize(record, line) {
     provenance: record.provenance || 'cli',
     inferred_fields: toArray(record.inferred_fields),
     channel: record.channel ? String(record.channel).replace(/^#/, '') : '',
+    ...(record.registration === true ? { registration: true } : {}),
   };
   message.thread = record.thread || threadOf(message);
   return message;
@@ -437,7 +438,9 @@ const openQuestions = (thread) => pairQuestions(thread).open;
 // the artifact type's declared READERS, and it decides nothing about the thread. Counting it as
 // either made the CTO's prescribed `artifact ADR --ticket` refused on every ticket — cto plus four
 // ADR readers is five roles (R7-2) — and let any WAIVER close the ticket to unrelated questions (R7-11).
-const isRegistration = (m) => m.channel === 'artifacts' && Boolean(m.artifact);
+// PR47-7: recognised by a field only `messages.mjs artifact` sets — `--channel artifacts --artifact x`
+// are ordinary send flags, and with them any message skipped the chain cap and kept its decision silent.
+const isRegistration = (m) => m.registration === true;
 
 /**
  * Decide whether `candidate` may be appended given the log. `{ok:true}` or

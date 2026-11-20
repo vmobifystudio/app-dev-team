@@ -322,6 +322,17 @@ if (!existsSync(MATRIX)) {
           }
         }
       }
+      // PR47-16: the spawn templates (`template/<path>`) are versioned too, so their hash is checked
+      // back the same way — an edit to spawn-prompt.mjs without a sync was otherwise invisible.
+      for (const entry of registry.entries.filter((e) => String(e.id).startsWith('template/') && e.content_hash)) {
+        const file = join(ROOT, entry.id.slice('template/'.length));
+        if (!existsSync(file)) continue;
+        if (createHash('sha256').update(readFileSync(file)).digest('hex') !== entry.content_hash) {
+          add(findings, 'prompt_registry_stale', 'docs/team/prompt-registry.json',
+            `"${entry.id}"'s registry entry does not match ${entry.id.slice('template/'.length)}'s current content — the template changed since its last sync.`,
+            `Run: node scripts/prompt-registry.mjs sync`);
+        }
+      }
     }
   }
 

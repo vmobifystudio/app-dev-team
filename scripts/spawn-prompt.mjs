@@ -395,6 +395,19 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
       `Fix exactly the \`Blocking:\` lines of \`${vf}\` (verbatim below), then return the full contract again.`,
       '', ...fence(readFileSync(abs, 'utf8').trim()),
     ];
+  } else if (ticketEvents(ROOT, row.id).pop()?.event === 'rework') {
+    // PR47-5: `rework` (the wave could not land it: FAIL / CONFLICT) sends a MERGED ticket back. Its
+    // branch exists and carries the reviewed work; a fresh `checkout -b` forked a second branch and
+    // `verified` then refused the ambiguity. The task is the rework event's own detail.
+    const why = String(ticketEvents(ROOT, row.id).pop().detail || '').trim();
+    const { branch, ambiguous } = ticketBranch(ROOT, row.id, allIds);
+    if (!branch) die(2, ambiguous.length ? `rework: several branches are ${row.id}'s (${ambiguous.join(', ')}) — delete the stray one first` : `rework: no branch is named for ${row.id}, but the board sent it back with rework`);
+    start = [
+      `**This is a REWORK: the wave could not land this ticket.** Your branch \`${branch}\` already exists — \`git -C "${slot}" checkout ${branch}\`.`,
+      'Do NOT create a new branch: commit the fix on that branch, then return the full contract again.',
+      ...(/CONFLICT/i.test(why) && base ? [`It CONFLICTED with \`${base}\`: rebase first and resolve — \`git -C "${slot}" rebase ${base}\`.`] : []),
+      'Why it came back (the `rework` event, verbatim):', '', ...fence(why || '(no detail recorded)'),
+    ];
   } else {
     start = base
       ? [`Base: \`${base}\` (the integration branch). Your FIRST action, before writing any file:`, '',

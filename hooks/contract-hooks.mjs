@@ -680,6 +680,10 @@ function guardGateWrites() {
   const pathText = payload.tool_name === 'Bash' ? String(input.command || '') : [input.file_path, input.notebook_path, input.path].filter(Boolean).join('\n');
   // ponytail: the first 20 distinct absolute spellings; a command naming more is past the bound.
   [...new Set(pathText.match(/(?<![\w.$-])[~/][^\s'"`;|&<>(){}]*/g) || [])].slice(0, 20).forEach(addRoot);
+  // PR47-6: ...and every RELATIVE path-like word (one containing `/`), resolved against the cwd —
+  // `rm -rf ../proj/docs/team/evidence` from a non-studio cwd names that studio root too.
+  [...new Set(pathText.split(/[\s'"`;|&<>(){}]+/).map((w) => w.replace(/^-[\w-]*=/, ''))
+    .filter((w) => w.includes('/') && !/^[~/]/.test(w) && !/^\w+:\/\//.test(w)))].slice(0, 20).forEach((w) => addRoot(w));
   if (!roots.size) allow();
   const TOKENS = 'docs/team/actor-tokens.jsonl';
   // PR46-3: actors.json (the actor registry and its HMAC keys) and .studio-stop (the spawn kill switch) are control files too.

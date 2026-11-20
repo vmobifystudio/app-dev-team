@@ -155,6 +155,9 @@ TARGET_WT=$(worktree_of "$ABS_TARGET")
 # including the case where I am standing in none at all (the shared tree reaching into an isolated
 # worktree has exactly as little business there as a sibling worktree does).
 # A developer standing in no worktree, writing into a slot of its OWN role, is in its own slot.
+# ponytail: matched by role prefix, not instance — ios-developer-1 may write into ios-developer-2's
+# slot from the main checkout (PR47-4). Upgrade: bind the slot to the agent via its lease in
+# worktree-slots.json (agent_id / ticket) instead of the role name.
 if [ -n "$DEV" ] && [ -z "$MY_WT" ] && [ -n "$TARGET_WT" ]; then
   case "${TARGET_WT##*/}" in "$ROLE"|"$ROLE"-[0-9]*) MY_WT=$TARGET_WT ;; esac
 fi

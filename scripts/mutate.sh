@@ -578,6 +578,13 @@ MF47A@@scripts/integration-branch.sh@@-e 's/^[[:space:]>*|#-]*([0-9]+\.[[:space:
 MF47B@@hooks/block-shared-tree-destructive-git.sh@@printf 'main master develop %s'@@printf 'main %s'@@PR47 fixes: an unresolvable declaration still protects develop from a raw merge@@PR47 fixes
 MF47C@@hooks/block-shared-tree-destructive-git.sh@@case $REF in i) SWEEP=1; EXCL="" ;; u) EXCL="" ;; esac@@SWEEP=1; EXCL=""@@PR47 fixes: git clean -fd runs when the only operational file is the gitignored board log@@PR47 fixes
 MF47D@@hooks/block-shared-tree-destructive-git.sh@@m = (sc == "clean") ? "u" : ""@@m = ""@@PR47 fixes: git clean -fd is refused when an untracked operational file exists@@PR47 fixes
+MF47E@@scripts/spawn-prompt.mjs@@} else if (ticketEvents(ROOT, row.id).pop()?.event === 'rework') {@@} else if (false) {@@PR47 fixes: after rework, compose checks out the existing branch and carries the wave's reason@@PR47 fixes
+MF47F@@hooks/contract-hooks.mjs@@.filter((w) => w.includes('/') && !/^[~/]/.test(w)@@.filter((w) => false && !/^[~/]/.test(w)@@PR47 fixes: rm -rf ../proj/docs/team/evidence from a non-studio cwd is refused@@PR47 fixes
+MF47G@@scripts/messages.mjs@@if (String(options.channel || '').replace(/^#/, '') === 'artifacts') die(@@if (false) die(@@PR47 fixes: send refuses --channel artifacts@@PR47 fixes
+MF47H@@scripts/messages.mjs@@      registration: true,@@      registration: false,@@PR47 fixes: messages.mjs artifact stamps registration:true@@PR47 fixes
+MF47I@@scripts/lib/atomic.mjs@@const ownerFile = (lockPath) => (statSync(lockPath).isDirectory() ? join(lockPath, 'owner') : lockPath);@@const ownerFile = (lockPath) => lockPath;@@PR47 fixes: main's directory lock with a dead owner is reaped, not waited out@@PR47 fixes
+MF47J@@scripts/lib/atomic.mjs@@if ((Number.isInteger(pid) && pid > 0) || age < ORPHAN_AGE_MS) return '';@@return '';@@PR47 fixes: an aged lock naming no holder says how to clear it@@PR47 fixes
+MF47K@@scripts/team-doctor.mjs@@for (const entry of registry.entries.filter((e) => String(e.id).startsWith('template/') && e.content_hash)) {@@for (const entry of []) {@@PR47 fixes: a spawn template edited without a registry sync is a team-doctor finding@@PR47 fixes
 CATALOGUE
 }
 

@@ -13371,6 +13371,78 @@ mkdir -p "$P47SW/docs/team" && echo '{}' > "$P47SW/docs/team/messages.jsonl"
 ! p47sw "git clean -fd" && ok "PR47 fixes: git clean -fd is refused when an untracked operational file exists" \
   || bad "PR47 fixes: git clean -fd is refused when an untracked operational file exists"
 
+# --- PR47 fixes: a rework is composed on the existing branch ---
+echo "PR47 fixes: a rework is composed on the existing branch"
+p47g() { git -c user.name=t -c user.email=t@localhost "$@"; }
+p47m() { ( cd "$P47RW" && node "$HERE/board.mjs" "$@" ); }
+P47RW="$TMP/p47-rw"; rm -rf "$P47RW"; mkdir -p "$P47RW/docs/team" "$P47RW/docs/53-reviews" "$P47RW/src" "$P47RW/.agent-wt/ios-developer"
+printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$P47RW/docs/team/project-profile.json"
+( cd "$P47RW" && git init -q -b main . && echo x > src/a.ts && git add src docs/team && p47g commit -qm base \
+  && node "$HERE/board.mjs" add T-1 --title t --owner ios-developer --by tech-manager \
+  && git checkout -q -b feat/T-1-x && echo r > src/r.ts && git add src && p47g commit -qm r && git checkout -q main \
+  && node "$HERE/board.mjs" move T-1 claimed --by ios-developer && node "$HERE/board.mjs" move T-1 done_reported --by ios-developer ) >/dev/null 2>&1
+p47m move T-1 verified --by tech-manager --evidence "$( cd "$P47RW" && sh "$HERE/verify-done.sh" feat/T-1-x main fast 2>/dev/null | sed -n 's/^  Evidence: //p')" >/dev/null 2>&1
+p47m move T-1 review_requested --by ios-developer >/dev/null 2>&1
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\nsrc/r.ts read.\n\n## Not checked\nNothing.\n' > "$P47RW/docs/53-reviews/v.md"
+p47m move T-1 approved --by code-reviewer --verdict docs/53-reviews/v.md >/dev/null 2>&1
+p47m move T-1 merged --by tech-manager >/dev/null 2>&1
+p47m move T-1 rework --by tech-manager --detail "wave 1: CONFLICT src/r.ts" >/dev/null 2>&1
+( cd "$P47RW" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket T-1 --role ios-developer --slot .agent-wt/ios-developer ) >"$TMP/p47rw.txt" 2>&1
+grep -q 'checkout feat/T-1-x' "$TMP/p47rw.txt" && grep -qF 'wave 1: CONFLICT src/r.ts' "$TMP/p47rw.txt" && grep -q 'rebase main' "$TMP/p47rw.txt" \
+  && ! grep -q 'checkout -b' "$TMP/p47rw.txt" \
+  && ok "PR47 fixes: after rework, compose checks out the existing branch and carries the wave's reason" \
+  || bad "PR47 fixes: after rework, compose checks out the existing branch and carries the wave's reason" "$(head -c 600 "$TMP/p47rw.txt")"
+
+# --- PR47 fixes: the guard finds a studio root from a relative target ---
+echo "PR47 fixes: the guard finds a studio root from a relative target"
+P47G="$TMP/p47-g12"; rm -rf "$P47G"; mkdir -p "$P47G/proj/docs/team/evidence" "$P47G/outside"
+( cd "$P47G/proj" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i ) >/dev/null 2>&1
+: > "$P47G/proj/docs/31-board-events.jsonl"; echo '{}' > "$P47G/proj/docs/team/evidence/x.json"
+node -e 'const [, c, d] = process.argv; process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "p47", cwd: d, tool_input: { command: c } }))' \
+  "rm -rf ../proj/docs/team/evidence" "$P47G/outside" | sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>&1
+[ $? = 2 ] && ok "PR47 fixes: rm -rf ../proj/docs/team/evidence from a non-studio cwd is refused" \
+  || bad "PR47 fixes: rm -rf ../proj/docs/team/evidence from a non-studio cwd is refused"
+
+# --- PR47 fixes: only messages.mjs artifact writes a registration ---
+echo "PR47 fixes: only messages.mjs artifact writes a registration"
+P47MS="$TMP/p47-ms"; rm -rf "$P47MS"; mkdir -p "$P47MS/docs/team"
+node "$HERE/messages.mjs" send --ledger "$P47MS/docs/team/messages.md" --from tech-lead --to ios-developer \
+  --ticket APP-070 --kind decision --summary "a send posing as a filing" --channel artifacts --artifact docs/x.md >/dev/null 2>&1
+[ $? != 0 ] && ok "PR47 fixes: send refuses --channel artifacts (registrations come only from messages.mjs artifact)" \
+  || bad "PR47 fixes: send refuses --channel artifacts (registrations come only from messages.mjs artifact)"
+node "$HERE/messages.mjs" artifact ADR --ledger "$P47MS/docs/team/messages.md" --by cto --title "Still a filing" --ticket APP-071 >/dev/null 2>&1 \
+  && grep -q '"registration":true' "$P47MS/docs/team/messages.jsonl" \
+  && ok "PR47 fixes: messages.mjs artifact stamps registration:true" \
+  || bad "PR47 fixes: messages.mjs artifact stamps registration:true"
+
+# --- PR47 fixes: legacy and holder-less locks ---
+echo "PR47 fixes: legacy and holder-less locks"
+sh -c 'exit 0' & P47DEAD=$!; wait "$P47DEAD"
+P47LK="$TMP/p47-lk"; rm -rf "$P47LK"; mkdir -p "$P47LK/docs/team/messages.jsonl.lock"
+printf '%s\n' "$P47DEAD" > "$P47LK/docs/team/messages.jsonl.lock/owner"; touch -t 202001010000 "$P47LK/docs/team/messages.jsonl.lock"
+P47T0=$(date +%s)
+node "$HERE/messages.mjs" send --ledger "$P47LK/docs/team/messages.md" --from tech-lead --to ios-developer \
+  --ticket APP-080 --kind fyi --summary "legacy lock probe" >/dev/null 2>&1
+P47RC=$?
+[ "$P47RC" = 0 ] && [ $(( $(date +%s) - P47T0 )) -lt 20 ] \
+  && ok "PR47 fixes: main's directory lock with a dead owner is reaped, not waited out" \
+  || bad "PR47 fixes: main's directory lock with a dead owner is reaped, not waited out" "rc=$P47RC"
+: > "$P47LK/x.lock"; touch -t 202001010000 "$P47LK/x.lock"
+node --input-type=module -e '
+import { withFileLock } from "'"$HERE"'/lib/atomic.mjs";
+withFileLock(process.argv[1], () => {}, { timeoutMs: 100, die: (c, m) => { process.stdout.write(m); process.exit(c); } });' "$P47LK/x" >"$TMP/p47lk.txt" 2>&1
+grep -q 'names no holder pid' "$TMP/p47lk.txt" && grep -qF "rm -rf \"$P47LK/x.lock\"" "$TMP/p47lk.txt" && ! grep -q 'never delete it by hand' "$TMP/p47lk.txt" \
+  && ok "PR47 fixes: an aged lock naming no holder says how to clear it, not 'never delete'" \
+  || bad "PR47 fixes: an aged lock naming no holder says how to clear it, not 'never delete'" "$(head -c 400 "$TMP/p47lk.txt")"
+
+# --- PR47 fixes: team-doctor checks the template hashes ---
+echo "PR47 fixes: team-doctor checks the template hashes"
+P47TD=$(plugin_copy p47td)
+( cd "$P47TD" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-20 >/dev/null && printf '\n// drift\n' >> scripts/spawn-prompt.mjs \
+  && node "$HERE/team-doctor.mjs" --json ) > "$TMP/p47td.json" 2>/dev/null
+assert_finding "$TMP/p47td.json" prompt_registry_stale \
+  "PR47 fixes: a spawn template edited without a registry sync is a team-doctor finding" "template/scripts/spawn-prompt.mjs"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
