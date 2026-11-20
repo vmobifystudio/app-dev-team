@@ -4347,7 +4347,6 @@ IBFAIL=""
 write_ib() { printf '%s\n' "$1" > "$IBP/docs/23-git-strategy.md"; }
 for FORM in 'Integration branch: develop' \
             '- Integration branch — `develop`' \
-            'The integration branch is `develop`.' \
             'Integration branch = develop' \
             '| Integration branch | develop |' \
             '**Integration branch:** `develop`'; do
@@ -11109,6 +11108,8 @@ assert_has "$TMP/err" "is not merged into main" "F1: ...because it is not on the
 
 # ·· W2-5 / R2-3: the bind base is the integration branch (develop)
 F1W=$(f1_proj develop '{"requireApprovalBinding": true}')
+# Sprint 7 U1 (W7-2): a develop project DECLARES develop — the board no longer guesses it from the branch existing.
+printf 'Integration branch: develop\n' > "$F1W/docs/23-git-strategy.md"
 ( cd "$F1W" && git branch develop main && git checkout -q develop && echo d > D.swift && git add D.swift && f1g commit -qm dev \
   && git checkout -q feat/F-1-x && f1g rebase -q develop && git checkout -q main ) >/dev/null 2>&1
 F1WEV=$(f1_vd "$F1W" feat/F-1-x develop)
@@ -11208,7 +11209,8 @@ K3L="$HERE/../skills/parallel-orchestrator/references/build-loop-branches.md"
 K3MISS=""
 for _p in $(sed -n '/^   for p in \.agent-wt/,/; do$/p' "$K3I" | tr ' \\;' '\n\n\n' | grep -E '^(docs/|\.)'); do
   _q=${_p%/}
-  grep -qxF "$_q" "$HERE/lib/operational-paths.txt" || K3MISS="$K3MISS $_p"
+  # Sprint 7 U1 (R7-4): a path UNDER an operational dir (docs/54-evidence/runtime) is operational too.
+  grep -qxF "$_q" "$HERE/lib/operational-paths.txt" || grep -qxF "${_q%/*}" "$HERE/lib/operational-paths.txt" || K3MISS="$K3MISS $_p"
 done
 _k3n=$(sed -n '/^   for p in \.agent-wt/,/; do$/p' "$K3I" | tr ' \\;' '\n\n\n' | grep -cE '^(docs/|\.)')
 [ -z "$K3MISS" ] && [ "$_k3n" -ge 16 ] \
@@ -11900,7 +11902,8 @@ MUWD="$MU/wave-dirty"; cp -R "$MUW" "$MUWD"; MUWC="$MU/wave-clean"; cp -R "$MUW"
 MUIB="$MU/ib"; mkdir -p "$MUIB/docs"
 ( cd "$MUIB" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m i && git branch develop ) >/dev/null 2>&1
 muib() { ( cd "$MUIB" && node -e 'import(process.argv[1]).then((m) => process.stdout.write(m.integrationBase(m.gitAt(process.cwd())) || "-"))' "$HERE/lib/integration.mjs" ); }
-[ "$(muib)" = develop ] && ok "MU: with no strategy doc the board's integration branch is still develop-first" || bad "MU: with no strategy doc the board's integration branch is still develop-first" "$(muib)"
+# Sprint 7 U1 (W7-2): with no strategy doc the board takes integration-branch.sh's answer (main), not develop-if-it-exists.
+[ "$(muib)" = main ] && ok "MU: with no strategy doc the board's integration branch is the resolver's main, not a stale develop (W7-2)" || bad "MU: with no strategy doc the board's integration branch is the resolver's main, not a stale develop (W7-2)" "$(muib)"
 printf 'Integration branch: main\n' > "$MUIB/docs/23-git-strategy.md"
 [ "$(muib)" = main ] && ok "MU: a declared 'Integration branch: main' wins over an existing develop branch" || bad "MU: a declared 'Integration branch: main' wins over an existing develop branch" "$(muib)"
 
@@ -12389,6 +12392,151 @@ grep -q 'exit `1` with `runtime`/`journey` \*\*STALE\*\*' "$HERE/../commands/app
   && grep -qF 'npm ci && npm test' "$HERE/../agents/devops-engineer.md" && grep -qF 'npm ci && npm test' "$HERE/../commands/app-plan.md" \
   && ok "MQ: ship's STALE first pass, release-manager's release-doc commit, and lockfile-installing web tests are spelled (C4W-10/11, C4G-G7)" \
   || bad "MQ: ship's STALE first pass, release-manager's release-doc commit, and lockfile-installing web tests are spelled (C4W-10/11, C4G-G7)"
+
+# --- Sprint 7 U1: one integration branch, and the wave lands only what was reviewed ---
+echo "Sprint 7 U1: one integration branch, and the wave lands only what was reviewed"
+U1="$TMP/s7u1"; rm -rf "$U1"; mkdir -p "$U1"
+u1base() { ( cd "$1" && node -e 'import(process.argv[1]).then((m) => process.stdout.write(m.integrationBase(m.gitAt(process.cwd())) || "-"))' "$HERE/lib/integration.mjs" ); }
+u1repo() { mkdir -p "$1/docs" && ( cd "$1" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m init ) >/dev/null 2>&1; }
+
+# C7-5: only a line that STARTS with the label declares; prose about "the integration branch" does not.
+U1P="$U1/prose"; u1repo "$U1P"; ( cd "$U1P" && git branch develop ) >/dev/null 2>&1
+printf 'Features merge into the integration branch — never straight to main.\nThe integration branch is protected.\nIntegration branch: main\n' > "$U1P/docs/23-git-strategy.md"
+[ "$(sh "$HERE/integration-branch.sh" "$U1P" 2>/dev/null)" = main ] && [ "$(u1base "$U1P")" = main ] \
+  && ok "Sprint 7 U1: prose naming 'the integration branch' is not a declaration — main is read, not never/protected (C7-5)" \
+  || bad "Sprint 7 U1: prose naming 'the integration branch' is not a declaration — main is read, not never/protected (C7-5)" "$(sh "$HERE/integration-branch.sh" "$U1P" 2>&1 | head -2)"
+# C7-5: a doc that exists but cannot resolve is '' — never a fallback to the develop branch nobody declared.
+printf 'The integration branch is protected.\n' > "$U1P/docs/23-git-strategy.md"
+[ "$(u1base "$U1P")" = "-" ] && ok "Sprint 7 U1: a strategy doc that cannot resolve gives the board no base, not a fallback develop (C7-5)" \
+  || bad "Sprint 7 U1: a strategy doc that cannot resolve gives the board no base, not a fallback develop (C7-5)" "$(u1base "$U1P")"
+# W7-2: no strategy doc + a stale develop → the board agrees with integration-branch.sh (main).
+rm -f "$U1P/docs/23-git-strategy.md"
+[ "$(u1base "$U1P")" = main ] && ok "Sprint 7 U1: with no strategy doc the board and integration-branch.sh both say main (W7-2)" \
+  || bad "Sprint 7 U1: with no strategy doc the board and integration-branch.sh both say main (W7-2)" "$(u1base "$U1P")"
+
+# G7-3: the COMMITTED doc is the declaration; an uncommitted overwrite (or a ticket branch) is not.
+U1C="$U1/committed"; u1repo "$U1C"
+( cd "$U1C" && git branch develop && git branch feat/APP-1-x && printf 'Integration branch: develop\n' > docs/23-git-strategy.md \
+  && git add docs/23-git-strategy.md && git commit -qm strategy ) >/dev/null 2>&1
+printf 'Integration branch: feat/APP-1-x\n' > "$U1C/docs/23-git-strategy.md"
+[ "$(u1base "$U1C")" = develop ] && ok "Sprint 7 U1: an uncommitted rewrite of the strategy doc does not move the integration branch (G7-3)" \
+  || bad "Sprint 7 U1: an uncommitted rewrite of the strategy doc does not move the integration branch (G7-3)" "$(u1base "$U1C")"
+( cd "$U1C" && git worktree add -q .agent-wt/s feat/APP-1-x && printf 'Integration branch: feat/APP-1-x\n' > .agent-wt/s/docs/23-git-strategy.md ) >/dev/null 2>&1
+[ "$(u1base "$U1C/.agent-wt/s")" = develop ] && ok "Sprint 7 U1: ...nor does a slot's own copy of the doc — every worktree reads the main checkout's commit (G7-3)" \
+  || bad "Sprint 7 U1: ...nor does a slot's own copy of the doc — every worktree reads the main checkout's commit (G7-3)" "$(u1base "$U1C/.agent-wt/s")"
+( cd "$U1C" && git worktree remove --force .agent-wt/s && git add docs/23-git-strategy.md && git commit -qm ticket-branch ) >/dev/null 2>&1
+assert_exit 2 "Sprint 7 U1: a declared ticket branch (feat/…) is CANNOT RESOLVE, even committed (G7-3)" sh "$HERE/integration-branch.sh" "$U1C"
+
+# G7-16: a fresh clone has the declared develop only as origin/develop; the board gets a ref that resolves.
+U1O="$U1/origin"; u1repo "$U1O"
+( cd "$U1O" && printf 'Integration branch: develop\n' > docs/23-git-strategy.md && git add docs && git commit -qm s && git branch develop \
+  && cd "$U1" && git clone -q origin clone ) >/dev/null 2>&1
+[ "$(u1base "$U1/clone")" = origin/develop ] && ok "Sprint 7 U1: in a fresh clone the board's integration base is origin/develop, a ref that resolves (G7-16)" \
+  || bad "Sprint 7 U1: in a fresh clone the board's integration base is origin/develop, a ref that resolves (G7-16)" "$(u1base "$U1/clone")"
+
+# G7-6 / W7-1: the wave merges the commit `merged` recorded, and holds out a branch that moved since.
+U1W="$U1/wave"; mkdir -p "$U1W/docs/team" "$U1W/docs/53-reviews"
+( cd "$U1W" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  printf 'docs/\n.agent-wt/\n' > .gitignore
+  printf 'Integration branch: main\n' > docs/23-git-strategy.md
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":"true"}}\n' > docs/team/project-profile.json
+  git add .gitignore && git commit -qm init
+  git checkout -q -b feat/APP-1-x main && echo reviewed > app.sh && git add app.sh && git commit -qm app && git checkout -q main
+  node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-1 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-1 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-1 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-1 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-1-x\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 approved --by code-reviewer --verdict docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 merged --by tech-manager
+  git checkout -q feat/APP-1-x && echo UNREVIEWED > evil.txt && git add evil.txt && git commit -qm evil && git checkout -q main ) >/dev/null 2>&1
+( cd "$U1W" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command "printf '# tests 1\n# pass 1\n'" ) >"$TMP/u1w.txt" 2>&1
+U1RC=$?
+[ "$U1RC" = 2 ] && grep -q 'MOVED SINCE MERGED' "$TMP/u1w.txt" && grep -q 'APP-1 rework --by tech-manager' "$TMP/u1w.txt" \
+  && ! ( cd "$U1W" && git rev-parse -q --verify integration/wave-1 ) >/dev/null 2>&1 \
+  && ok "Sprint 7 U1: a branch with commits after merged is held out of the wave and routed to rework (G7-6, W7-1)" \
+  || bad "Sprint 7 U1: a branch with commits after merged is held out of the wave and routed to rework (G7-6, W7-1)" "rc=$U1RC $(grep -E 'WAVE|MOVED|rework' "$TMP/u1w.txt" | head -3)"
+# ...and with the branch back at the recorded commit (deleted here), the wave lands that commit by sha.
+( cd "$U1W" && git branch -q -D feat/APP-1-x ) >/dev/null 2>&1
+( cd "$U1W" && node "$HERE/wave-integrate.mjs" --root . --wave 2 --test-command "printf '# tests 1\n# pass 1\n'" ) >"$TMP/u1w2.txt" 2>&1
+U1RC=$?
+[ "$U1RC" = 0 ] && grep -q 'recorded at merged' "$TMP/u1w2.txt" && ( cd "$U1W" && git cat-file -e integration/wave-2:app.sh && ! git cat-file -e integration/wave-2:evil.txt ) 2>/dev/null \
+  && ok "Sprint 7 U1: the wave merges merged_head — the reviewed commit lands, the later one does not (G7-6)" \
+  || bad "Sprint 7 U1: the wave merges merged_head — the reviewed commit lands, the later one does not (G7-6)" "rc=$U1RC $(grep -E 'WAVE|NO BRANCH' "$TMP/u1w2.txt" | head -3)"
+
+# G7-17: an edit hidden by assume-unchanged is a dirty wave tree, not GREEN.
+U1D="$U1/wave-hidden"; mkdir -p "$U1D/docs/team"
+( cd "$U1D" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  printf 'docs/\n.agent-wt/\n' > .gitignore && echo a > a.txt && git add .gitignore a.txt && git commit -qm init
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":"true"}}\n' > docs/team/project-profile.json
+  git checkout -q -b feat/APP-1-x main && echo t > app.sh && git add app.sh && git commit -qm app && git checkout -q main
+  node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-1 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-1 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-1 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-1 review_requested --by ios-developer --detail "-> code-reviewer"
+  mkdir -p docs/53-reviews && printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-1-x\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 approved --by code-reviewer --verdict docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 merged --by tech-manager ) >/dev/null 2>&1
+( cd "$U1D" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command "git update-index --assume-unchanged a.txt; echo changed > a.txt; printf '# tests 1\n# pass 1\n'" ) >"$TMP/u1d.txt" 2>&1
+U1RC=$?
+[ "$U1RC" = 2 ] && grep -q 'CANNOT EVALUATE' "$TMP/u1d.txt" && ok "Sprint 7 U1: a wave suite that hides an edit behind assume-unchanged is CANNOT EVALUATE (G7-17)" \
+  || bad "Sprint 7 U1: a wave suite that hides an edit behind assume-unchanged is CANNOT EVALUATE (G7-17)" "rc=$U1RC $(grep -E 'WAVE RESULT' "$TMP/u1d.txt")"
+# W7-8: re-running that wave refuses AND keeps the tree its message promised to keep.
+( cd "$U1D" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command true ) >/dev/null 2>&1
+[ -d "$U1D/.agent-wt/integration-wave-1" ] && ok "Sprint 7 U1: re-running an existing wave keeps the kept wave tree on disk (W7-8)" \
+  || bad "Sprint 7 U1: re-running an existing wave keeps the kept wave tree on disk (W7-8)"
+
+# W7-5: board-doctor (and so `orchestrator round`) refuses a log whose anchor is gone; ship-gate names adopt.
+U1B="$U1/anchor"; mkdir -p "$U1B"
+( cd "$U1B" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m i \
+  && node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager && node "$HERE/board.mjs" render ) >/dev/null 2>&1
+( cd "$U1B" && node "$HERE/board-doctor.mjs" docs/31-board.md ) >/dev/null 2>&1
+U1RC0=$?
+rm -rf "$U1B/.git/studio"
+( cd "$U1B" && node "$HERE/board-doctor.mjs" docs/31-board.md ) >/dev/null 2>"$TMP/u1b.txt"
+U1RC=$?
+[ "$U1RC0" = 0 ] && [ "$U1RC" = 2 ] && grep -q 'adopt' "$TMP/u1b.txt" \
+  && ok "Sprint 7 U1: board-doctor is CANNOT EVALUATE on a log whose anchor is gone, naming adopt (W7-5)" \
+  || bad "Sprint 7 U1: board-doctor is CANNOT EVALUATE on a log whose anchor is gone, naming adopt (W7-5)" "before=$U1RC0 after=$U1RC $(head -2 "$TMP/u1b.txt")"
+( cd "$U1B" && sh "$HERE/ship-gate.sh" ) >"$TMP/u1s.txt" 2>&1
+grep -q 'does not match its anchor' "$TMP/u1s.txt" && grep -q 'board.mjs" adopt' "$TMP/u1s.txt" && ! grep -q 'audit chain is BROKEN' "$TMP/u1s.txt" \
+  && ok "Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)" \
+  || bad "Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)" "$(grep -E 'anchor|chain' "$TMP/u1s.txt" | head -2)"
+
+# W7-3: the runtime gate in a main checkout that is not at the integration branch's tip is CANNOT EVALUATE.
+U1R="$U1/rt"; u1repo "$U1R"
+( cd "$U1R" && printf 'Integration branch: develop\n' > docs/23-git-strategy.md && git add docs && git commit -qm s \
+  && git branch develop && git checkout -q -b develop-next && git commit -q --allow-empty -m wave && git checkout -q develop && git merge -q --ff-only develop-next && git checkout -q main ) >/dev/null 2>&1
+sh "$HERE/runtime-gate.sh" --project-root "$U1R" >"$TMP/u1r.txt" 2>&1
+U1RC=$?
+[ "$U1RC" = 2 ] && grep -q 'not the tip of the integration branch develop' "$TMP/u1r.txt" \
+  && ok "Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)" \
+  || bad "Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)" "rc=$U1RC $(head -3 "$TMP/u1r.txt")"
+
+# Prose: the rework route (W7-1), FAIL-file names (R7-10), develop set-up order (W7-3), tracked QA
+# bundles and ignored register (R7-4, W7-9), close-after-QA-lands (W7-11).
+U1AB="$HERE/../commands/app-build.md"; U1AI="$HERE/../commands/app-init.md"
+grep -qF 'move APP-NNN rework --by tech-manager' "$U1AB" && grep -q 'MOVED SINCE MERGED' "$U1AB" \
+  && ok "Sprint 7 U1: app-build step 5 documents the rework route for a wave FAIL/CONFLICT (W7-1)" \
+  || bad "Sprint 7 U1: app-build step 5 documents the rework route for a wave FAIL/CONFLICT (W7-1)"
+grep -qF 'APP-NNN-cycle-N-verification.md' "$U1AB" && grep -qF 'APP-NNN-cycle-N-design-qa.md' "$U1AB" \
+  && ! grep -qF 'APP-NNN-cycle-N.md` as a FAIL file' "$U1AB" \
+  && ok "Sprint 7 U1: verification/design-QA FAIL files never reuse the reviewer's verdict file name (R7-10)" \
+  || bad "Sprint 7 U1: verification/design-QA FAIL files never reuse the reviewer's verdict file name (R7-10)"
+grep -q 'Then create and check out the declared integration branch' "$U1AI" \
+  && ok "Sprint 7 U1: app-init creates and checks out the declared integration branch after the first commit (W7-3)" \
+  || bad "Sprint 7 U1: app-init creates and checks out the declared integration branch after the first commit (W7-3)"
+U1GI=$(sed -n '/^   for p in \.agent-wt/,/; do$/p' "$U1AI")
+printf '%s' "$U1GI" | grep -q 'docs/54-evidence/runtime/' && ! printf '%s' "$U1GI" | grep -q 'docs/54-evidence/ ' \
+  && printf '%s' "$U1GI" | grep -q 'docs/90-register.jsonl' && printf '%s' "$U1GI" | grep -q 'docs/team/release-candidates.jsonl' \
+  && ok "Sprint 7 U1: app-init ignores only script-written evidence (bundles stay committable) and the register (R7-4, W7-9)" \
+  || bad "Sprint 7 U1: app-init ignores only script-written evidence (bundles stay committable) and the register (R7-4, W7-9)"
+grep -q 'Close nothing yet' "$U1AB" && grep -qF 'journey-gate.mjs" --root <its slot> --list' "$U1AB" && grep -qF '${CLAUDE_PLUGIN_ROOT}/docs/team/journeys/README.md' "$U1AB" \
+  && ok "Sprint 7 U1: app-build lands the QA- journeys and re-runs the journey gate before closing (W7-11)" \
+  || bad "Sprint 7 U1: app-build lands the QA- journeys and re-runs the journey gate before closing (W7-11)"
+rm -rf "$U1"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

@@ -146,7 +146,7 @@ M19@@scripts/lib/events.mjs@@if (record.hash !== expected) {@@if (false) {@@an e
 M20@@scripts/lib/redact.mjs@@if (isPlaceholder(value)) continue;@@if (true) continue;@@the artifact scan fails on a credential-shaped string
 M21@@scripts/spawn-gate.sh@@if [ -e "$STOP_ROOT/$STOP_FILE" ]; then@@if false; then@@spawn-gate refuses while the emergency stop file exists
 M22@@scripts/injection-scan.mjs@@if (pattern.test(raw)) findings.push@@if (false) findings.push@@instruction-shaped content in repository text is reported
-M23@@scripts/ship-gate.sh@@node "$HERE/board.mjs" verify --log "$LOG" >/dev/null 2>&1@@true@@ship-gate BLOCKS a release whose event log was rewritten
+M23@@scripts/ship-gate.sh@@CHAIN_OUT=$(node "$HERE/board.mjs" verify --log "$LOG" 2>&1)@@CHAIN_OUT=$(true)@@ship-gate BLOCKS a release whose event log was rewritten
 M24@@scripts/messages.mjs@@if (obligationOf(candidate) === null) {@@if (false) {@@an answer that names no artifact is REFUSED
 M25@@scripts/lib/messages.mjs@@if (prior) {@@if (false) {@@a duplicate question on one ticket is refused
 M26@@scripts/lib/messages.mjs@@if (decided.length && openQuestions(thread).length === 0 && !candidate.evidence) {@@if (false) {@@reopening a decided thread with no evidence is refused
@@ -479,9 +479,21 @@ MU16@@scripts/lib/evidence.mjs@@inlineTokenFlag(f.root ? resolve(String(f.root))
 MU17@@scripts/lib/evidence.mjs@@if (mergedHead && !(mergedHead === head || isAncestor(git, mergedHead, head))) return fail(@@if (false) return fail(@@MU: a journey PASS on an ancestor made before the ticket's merged commit is refused@@PR46 review
 MU18@@scripts/wave-integrate.mjs@@if (isQaDocs(t)) continue;@@if (/^QA-/i.test(t.id)) continue;@@MU: wave-integrate takes a code-changing QA- ticket at qa into the wave@@PR46 review
 MU19@@scripts/wave-integrate.mjs@@const run = waveDirty@@const run = false@@MU: a wave suite that rewrites a tracked file is CANNOT EVALUATE, not GREEN@@PR46 review
-MU20@@scripts/lib/integration.mjs@@if (r.status === 0 && name && /\(declared in /.test(r.stderr || '')) return name;@@void name;@@MU: a declared 'Integration branch: main' wins over an existing develop branch@@PR46 review
+MU20@@scripts/lib/integration.mjs@@if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${name}`]) !== null) return { base: name, reason: '' };@@void name;@@MU: a declared 'Integration branch: main' wins over an existing develop branch@@PR46 review
 MU21@@scripts/wave-integrate.mjs@@['high', 'critical'].includes(tier(m)) || runtimeRequired(m));@@['high', 'critical'].includes(tier(m)));@@MU: a medium ticket whose policy requires runtime-gate does not land on a failing runtime gate@@PR46 review
 MU22@@scripts/board.mjs@@  if (!c.ok) {@@  if (false) {@@MU: adopt without a terminal is refused and writes no anchor@@PR46 review
+MS7U1A@@scripts/integration-branch.sh@@s/^[[:space:]>*|-]*[Ii]ntegration branch@@s/.*[Ii]ntegration branch@@Sprint 7 U1: prose naming 'the integration branch' is not a declaration — main is read, not never/protected (C7-5)@@Sprint 7 U1
+MS7U1B@@scripts/integration-branch.sh@@  feat/*|fix/*|qa/*|bug/*)@@  __no_ticket_branch__)@@Sprint 7 U1: a declared ticket branch (feat/…) is CANNOT RESOLVE, even committed (G7-3)@@Sprint 7 U1
+MS7U1C@@scripts/integration-branch.sh@@if git --git-dir="$COMMON" cat-file -e "HEAD:$PREFIX$1" 2>/dev/null; then@@if false; then@@Sprint 7 U1: an uncommitted rewrite of the strategy doc does not move the integration branch (G7-3)@@Sprint 7 U1
+MS7U1D@@scripts/lib/integration.mjs@@if (r.status !== 0 || !name) return { base: '',@@if (r.status !== 0 || !name) return { base: 'develop',@@Sprint 7 U1: a strategy doc that cannot resolve gives the board no base, not a fallback develop (C7-5)@@Sprint 7 U1
+MS7U1E@@scripts/lib/integration.mjs@@return { base: `origin/${name}`, reason: '' };@@return { base: name, reason: '' };@@Sprint 7 U1: in a fresh clone the board's integration base is origin/develop, a ref that resolves (G7-16)@@Sprint 7 U1
+MS7U1F@@scripts/wave-integrate.mjs@@if (head) {@@if (false) {@@Sprint 7 U1: a branch with commits after merged is held out of the wave and routed to rework (G7-6, W7-1)@@Sprint 7 U1
+MS7U1G@@scripts/wave-integrate.mjs@@if (ahead.length) { moved.push(@@if (false) { moved.push(@@Sprint 7 U1: a branch with commits after merged is held out of the wave and routed to rework (G7-6, W7-1)@@Sprint 7 U1
+MS7U1H@@scripts/wave-integrate.mjs@@  || indexHides(WT);@@  || false;@@Sprint 7 U1: a wave suite that hides an edit behind assume-unchanged is CANNOT EVALUATE (G7-17)@@Sprint 7 U1
+MS7U1I@@scripts/wave-integrate.mjs@@const GREEN_REF = `refs/studio/wave-green/${WAVE}`;@@rmSync(WT, { recursive: true, force: true }); const GREEN_REF = `refs/studio/wave-green/${WAVE}`;@@Sprint 7 U1: re-running an existing wave keeps the kept wave tree on disk (W7-8)@@Sprint 7 U1
+MS7U1J@@scripts/board-doctor.mjs@@if (!anchor.ok) {@@if (false) {@@Sprint 7 U1: board-doctor is CANNOT EVALUATE on a log whose anchor is gone, naming adopt (W7-5)@@Sprint 7 U1
+MS7U1K@@scripts/ship-gate.sh@@then CHAIN_RC=3; fi@@then CHAIN_RC=1; fi@@Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)@@Sprint 7 U1
+MS7U1L@@scripts/runtime-gate.sh@@if [ -n "$IB_SHA" ] && [ "$IB_SHA" != "$HEAD_SHA" ]; then@@if false; then@@Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)@@Sprint 7 U1
 CATALOGUE
 }
 

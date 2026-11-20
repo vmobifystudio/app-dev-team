@@ -37,7 +37,9 @@
  * IT USES NO NEW BOARD EVENT AND NO SCHEMA CHANGE. `verified` is already legal from `qa`
  * (lib/events.mjs legalEvents: "so a ticket merged on a STATIC verification can be upgraded once the
  * executable suite finally runs"). That path existed and nothing ever walked it. This is what walks
- * it.
+ * it. It merges the commit `merged` RECORDED (merged_head), never the branch's current tip, and on
+ * FAIL / CONFLICT / a branch that moved since `merged` it prints `move <ID> rework` — the route back
+ * to in_progress, so new commits are reviewed before any wave lands them (W7-1, G7-6).
  *
  * WHAT IT WILL NOT DO, deliberately:
  *   - it never force-pushes, never rewrites the integration branch, and never resolves a conflict on
@@ -72,6 +74,7 @@ import { writeTestEvidence } from './lib/evidence.mjs';
 import { inlineTokenFlag } from './lib/actor.mjs';
 import { RANK, routeFiles } from './lib/risk.mjs';
 import { matchesTicket } from './lib/integration.mjs';
+import { indexHides } from './lib/readiness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const die = (code, message) => { process.stderr.write(`wave-integrate: ${message}\n`); process.exit(code); };
@@ -154,12 +157,28 @@ const ALL_IDS = [...tickets.values()].map((t) => t.id);
 const candidates = [];
 const noBranch = [];
 const ambiguous = [];
+const moved = [];
+const isAnc = (a, b) => gitTry(['merge-base', '--is-ancestor', a, b]).ok;
 for (const t of tickets.values()) {
   if (t.status !== 'qa') continue;
   // PR46-12: only a DOCS-ONLY QA ticket closes from `merged` without integration (design 1); a QA- ticket
   // that changed code took the review path and is integrated like any other.
   if (isQaDocs(t)) continue;
   const mine = branches.filter((b) => matchesTicket(b, t.id, ALL_IDS));
+  // G7-6 / W7-1: THE WAVE LANDS THE COMMIT THAT WAS REVIEWED. `merged` records it (merged_head); this
+  // merged the branch's CURRENT tip, so a commit added after `merged` — a wave-FAIL fix, a conflict
+  // resolution, anything — rode onto the integration branch unreviewed and was pushed. Merge the
+  // recorded sha, and hold out a ticket whose branch has commits beyond it (they need review first).
+  const m = [...(t.events || [])].reverse().find((e) => e.event === 'merged');
+  const head = (m && m.detail && typeof m.detail === 'object' && m.detail.merged_head) || '';
+  if (head) {
+    if (isAnc(head, BASE)) continue;
+    const ahead = mine.filter((b) => { const tip = gitTry(['rev-parse', b]).out; return tip !== head && !isAnc(b, head) && !isAnc(b, BASE); });
+    if (ahead.length) { moved.push({ id: t.id, head, branches: ahead }); continue; }
+    candidates.push({ id: t.id, branch: mine.find((b) => gitTry(['rev-parse', b]).out === head) || head.slice(0, 12), ref: head, allBranches: mine });
+    continue;
+  }
+  // A ticket merged before merged_head was recorded: its branch tip, as before.
   if (!mine.length) { noBranch.push(t.id); continue; }
   const already = mine.filter((b) => gitTry(['merge-base', '--is-ancestor', b, BASE]).ok);
   // `already` used to be `.some()`: ANY matching branch being an ancestor skipped the ticket, so a
@@ -167,8 +186,29 @@ for (const t of tickets.values()) {
   const outstanding = mine.filter((b) => !already.includes(b));
   if (!outstanding.length) continue;
   if (outstanding.length > 1) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }
-  candidates.push({ id: t.id, branch: outstanding[0], allBranches: mine });
+  candidates.push({ id: t.id, branch: outstanding[0], ref: outstanding[0], allBranches: mine });
 }
+
+// W2-10: printed commands are runnable as printed — the plugin path, and under requireActorTokens
+// the token minted INLINE in the same command (a shell variable does not survive between calls).
+// PR46-10: lib/actor.mjs's inlineTokenFlag is the one spelling of that mint.
+const BOARD_CLI = 'node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs"';
+const tokenFor = (role, id) => inlineTokenFlag(ROOT, role, id);
+// W7-1: the legal route back from `qa` for code the wave could not land. `rework` returns the ticket
+// to in_progress, so the fix (or conflict resolution) is verified, reviewed and `merged` again, and
+// the next wave lands the NEW recorded commit — never commits nobody reviewed.
+const reworkCmd = (id, why) => `      ${BOARD_CLI} move ${id} rework --by tech-manager --detail "wave ${WAVE}: ${why}"${tokenFor('tech-manager', id)}\n`;
+
+const reportMoved = () => {
+  if (!moved.length) return;
+  process.stdout.write(
+    `\n  MOVED SINCE MERGED — ${moved.length} ticket(s) held out of this wave, NOT integrated:\n` +
+    moved.map((x) => `      ${x.id}: ${x.branches.join(', ')} has commits after ${x.head.slice(0, 12)}, the commit recorded at merged\n`).join('') +
+    '    Those commits were never reviewed, so the wave will not land them. Send the ticket back\n' +
+    '    through review (verify, review, `merged` again records the new commit), then re-run:\n' +
+    moved.map((x) => reworkCmd(x.id, 'branch moved since merged')).join('')
+  );
+};
 
 const reportAmbiguous = () => {
   if (!ambiguous.length) return;
@@ -188,13 +228,15 @@ if (!candidates.length) {
     (noBranch.length ? `  NO BRANCH FOUND: ${noBranch.join(', ')} — reported, never assumed merged (merge-reconcile.mjs's rule).\n` : '')
   );
   reportAmbiguous();
+  reportMoved();
   process.exit(2);
 }
 
 process.stdout.write(`WAVE ${WAVE} — ${candidates.length} ticket(s) to integrate into ${BASE}\n\n`);
-for (const c of candidates) process.stdout.write(`  ${c.id.padEnd(16)} ${c.branch}\n`);
+for (const c of candidates) process.stdout.write(`  ${c.id.padEnd(16)} ${c.branch}${c.ref !== c.branch ? ` @ ${c.ref.slice(0, 12)} (recorded at merged)` : ''}\n`);
 if (noBranch.length) process.stdout.write(`\n  NO BRANCH FOUND (not integrated, not assumed merged): ${noBranch.join(', ')}\n`);
 reportAmbiguous();
+reportMoved();
 
 if (flags['dry-run']) {
   process.stdout.write('\n  --dry-run: nothing was touched.\n');
@@ -218,7 +260,6 @@ const WAVE_BRANCH = `integration/wave-${WAVE}`;
 // the message exists to preserve. Under `.agent-wt/` the reaper counts it, reports it, and refuses
 // to remove it while it holds uncommitted work.
 const WT = resolve(ROOT, '.agent-wt', `integration-wave-${WAVE}`);
-rmSync(WT, { recursive: true, force: true });   // `git worktree add` wants to create it itself
 
 let created = false;
 // `keep` is set on every exit path that leaves something a human must look at: a merged tree whose
@@ -252,7 +293,10 @@ if (gitTry(['rev-parse', '--verify', WAVE_BRANCH]).ok) {
          (flags.push ? '\n  --push lands an existing wave branch only when its tip is the commit that ran GREEN; this\n' +
                        '  one has no green record, or has moved since it ran.' : ''));
 }
-const add = gitTry(['worktree', 'add', '-b', WAVE_BRANCH, WT, BASE]);
+// W7-8: only AFTER the "already exists" check. Before it, re-running a FAIL wave deleted the very
+// tree its FAIL message promised to keep, leaving a prunable worktree behind.
+rmSync(WT, { recursive: true, force: true });   // `git worktree add` wants to create it itself
+const add =gitTry(['worktree', 'add', '-b', WAVE_BRANCH, WT, BASE]);
 if (!add.ok) die(2, `could not create the integration worktree:\n${add.out.trim()}`);
 created = true;
 
@@ -260,9 +304,9 @@ created = true;
 const merged = [];
 const conflicted = [];
 for (const c of candidates) {
-  const r = gitTry(['merge', '--no-ff', '-m', `Merge ${c.id} into ${WAVE_BRANCH}`, c.branch], { cwd: WT });
+  const r = gitTry(['merge', '--no-ff', '-m', `Merge ${c.id} into ${WAVE_BRANCH}`, c.ref], { cwd: WT });
   if (r.ok) {
-    const files = (gitTry(['diff', '--name-only', `${BASE}...${c.branch}`], { cwd: WT }).out || '').split('\n').filter(Boolean);
+    const files = (gitTry(['diff', '--name-only', `${BASE}...${c.ref}`], { cwd: WT }).out || '').split('\n').filter(Boolean);
     merged.push({ ...c, files });
     continue;
   }
@@ -278,11 +322,12 @@ for (const c of conflicted) {
   process.stdout.write(
     `\n  CONFLICT ${c.id} (${c.branch}) on:\n` +
     c.conflicts.map((f) => `      ${f}\n`).join('') +
-    '    Read both sides and the governing spec (git-pr-strategy §6). A TEXTUAL conflict — imports,\n' +
-    '    two additions to one list, formatting — is yours to resolve here. A conflict that changes\n' +
-    '    BEHAVIOUR or a CONTRACT goes back as a ticket to the owner of that contract, with the hunks\n' +
-    '    attached. Nothing here picks a side: `ours`/`theirs` on an unread conflict is a silent\n' +
-    '    lost edit wearing a merge commit.\n'
+    '    Read both sides and the governing spec (git-pr-strategy §6). Nothing here picks a side:\n' +
+    '    `ours`/`theirs` on an unread conflict is a silent lost edit wearing a merge commit.\n' +
+    '    The resolution is a NEW commit on the ticket branch, so it is reviewed like any other (W7-1):\n' +
+    '    send the ticket back, rebase it onto the integration branch in its slot (a BEHAVIOUR or\n' +
+    `    CONTRACT conflict goes to that contract's owner, hunks attached), then verify, review, merged:\n` +
+    reworkCmd(c.id, `CONFLICT on ${c.conflicts.join(', ') || 'merge'}`)
   );
 }
 
@@ -310,8 +355,11 @@ const test = spawnSync('sh', ['-c', `. "${resolve(HERE, 'build-env.sh')}" && ${T
 const testOut = `${test.stdout || ''}${test.stderr || ''}`;
 // Codex on PR #46: a suite that rewrites tracked files (or moves HEAD) tested bytes the wave commit
 // does not contain, so its green is not the commit's — the same rule as lib/evidence.mjs's runs.
+// G7-17: `git status` cannot see an edit hidden by assume-unchanged / skip-worktree — the same
+// check lib/evidence.mjs's runs make (indexHides).
 const waveDirty = gitTry(['rev-parse', 'HEAD'], { cwd: WT }).out !== headBefore
-  || Boolean(gitTry(['status', '--porcelain', '--untracked-files=no'], { cwd: WT }).out);
+  || Boolean(gitTry(['status', '--porcelain', '--untracked-files=no'], { cwd: WT }).out)
+  || indexHides(WT);
 
 // The SAME three-way split every other gate here uses, and for the same reason: a missing toolchain
 // and a failing assertion are different sentences, and conflating them sends developers to fix bugs
@@ -374,11 +422,6 @@ const EVIDENCE = green
     mode: 'tests', command: TEST_CMD, commandSource: flags['test-command'] ? 'caller' : 'profile', exitCode: test.status, output: testOut, dirty: waveDirty,
   })
   : '';
-// W2-10: printed commands are runnable as printed — the plugin path, and under requireActorTokens
-// the token minted INLINE in the same command (a shell variable does not survive between calls).
-// PR46-10: lib/actor.mjs's inlineTokenFlag is the one spelling of that mint.
-const BOARD_CLI = 'node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs"';
-const tokenFor = (role, id) => inlineTokenFlag(ROOT, role, id);
 const boardCommands = merged.map((m) => `  ${BOARD_CLI} move ${m.id} verified --by tech-manager --evidence ${EVIDENCE} --detail "wave ${WAVE} full suite green"${tokenFor('tech-manager', m.id)}`).join('\n');
 
 if (cannotRun) {
@@ -422,10 +465,14 @@ if (!green) {
         '  This is a CANDIDATE LIST, not a verdict. It is a filename match on test output, which is a\n' +
         '  heuristic and is stated as one — the alternative was attributing failures by feel, and the\n' +
         '  alternative to that was re-spawning every developer in the wave. Read the output, then\n' +
-        '  re-spawn only the owners the failure actually names, with these lines verbatim.\n'
+        '  re-spawn only the owners the failure actually names, with these lines verbatim.\n' +
+        '  A fix is a NEW commit, so send each owner\'s ticket back through review first (W7-1) — the\n' +
+        '  next wave lands only the commit `merged` records, never a fix nobody reviewed:\n' +
+        blamed.map((id) => reworkCmd(id, 'FAIL — named in the wave suite output')).join('')
       : '\n  No ticket\'s changed files appear in the failure output. That is itself a finding: the wave\n' +
         '  broke something no single ticket touched, which is the composition failure a per-ticket\n' +
-        '  build structurally cannot see. Route it to tech-lead, not to a developer.\n') +
+        '  build structurally cannot see. Route it to tech-lead, not to a developer; whichever ticket\n' +
+        '  takes the fix goes back through review with `move <ID> rework` before its next wave.\n') +
     `\n  ${WAVE_BRANCH} is kept for inspection, checked out at ${WT}. Nothing was pushed.\n`
   );
   keep = true;

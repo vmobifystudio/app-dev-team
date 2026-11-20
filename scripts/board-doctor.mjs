@@ -54,7 +54,7 @@ import {
   MAX_CHAIN,
   MAX_PER_TICKET,
 } from './lib/messages.mjs';
-import { parseEventLog, reduce as reduceEvents, isQaDocs } from './lib/events.mjs';
+import { parseEventLog, reduce as reduceEvents, isQaDocs, verifyChain, checkAnchor } from './lib/events.mjs';
 // --------------------------------------------------------------------------------------------
 // the cascade
 // --------------------------------------------------------------------------------------------
@@ -673,6 +673,27 @@ function main() {
   if (!existsSync(boardPath)) {
     process.stderr.write(`board-doctor: no board at ${boardPath}. Run /app-plan first.\n`);
     process.exit(2);
+  }
+
+  // W7-5: a board whose log fails its hash chain or its anchor cannot be judged coherent. `board.mjs
+  // show`/`move` refuse it (a moved project, a fresh clone, a rewritten log), and this said "Board is
+  // coherent. Safe to spawn." over the same log. A BROKEN chain is a rewritten history: incoherent,
+  // exit 1 (ship-gate blocks on it). A chain that does not match its ANCHOR is CANNOT EVALUATE, exit 2,
+  // with the reason that names `adopt`.
+  const eventLog = join(dirname(boardPath), '31-board-events.jsonl');
+  if (existsSync(eventLog)) {
+    const raw = readFileSync(eventLog, 'utf8');
+    const chain = verifyChain(raw);
+    if (!chain.ok) {
+      process.stderr.write(`board-doctor: the event log's audit chain is BROKEN — a rewritten history, not a coherent board.\n  ${chain.reason}\n` +
+        '  Recover the log from version control; adopt does not re-trust a broken chain.\n');
+      process.exit(1);
+    }
+    const anchor = checkAnchor(eventLog, raw, chain);
+    if (!anchor.ok) {
+      process.stderr.write(`board-doctor: the event log cannot be trusted — cannot evaluate.\n  ${anchor.reason}\n`);
+      process.exit(2);
+    }
   }
 
   const text = readFileSync(boardPath, 'utf8');
