@@ -13310,11 +13310,18 @@ echo "PR47 review: Codex and CI follow-ups"
 # CI: the W7-3 tip check is for a studio project's own checkout — a fixture directory inside another
 # repo (eval/crash-on-launch in the plugin's PR merge commit) must not be refused for it.
 P47R="$TMP/p47-rt"; mkdir -p "$P47R/eval/app" && ( cd "$P47R" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
-  && echo x > eval/app/a && git add eval && git commit -qm i && git checkout -q -b pr && git commit -q --allow-empty -m pr ) >/dev/null 2>&1
+  && echo x > eval/app/a && git add eval && git commit -qm i && git checkout -q -b pr && git commit -q --allow-empty -m pr && mkdir -p docs && : > docs/31-board-events.jsonl ) >/dev/null 2>&1
 sh "$HERE/runtime-gate.sh" --project-root "$P47R/eval/app" >"$TMP/p47r.txt" 2>&1
 ! grep -q 'not the tip of the integration branch' "$TMP/p47r.txt" \
   && ok "PR47: the runtime gate's integration-tip check skips a fixture directory inside another repo" \
   || bad "PR47: the runtime gate's integration-tip check skips a fixture directory inside another repo" "$(head -3 "$TMP/p47r.txt")"
+# ...and a repo that is not a studio project (no board log), even at its own toplevel off main.
+P47N="$TMP/p47-plain"; mkdir -p "$P47N" && ( cd "$P47N" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && echo x > a && git add a && git commit -qm i && git checkout -q -b pr && git commit -q --allow-empty -m pr ) >/dev/null 2>&1
+sh "$HERE/runtime-gate.sh" --project-root "$P47N" >"$TMP/p47r2.txt" 2>&1
+! grep -q 'not the tip of the integration branch' "$TMP/p47r2.txt" \
+  && ok "PR47: the runtime gate's integration-tip check skips a repo that is not a studio project" \
+  || bad "PR47: the runtime gate's integration-tip check skips a repo that is not a studio project" "$(head -3 "$TMP/p47r2.txt")"
 # Codex P2: a code-changing QA- ticket rides the wave, so a wave FAIL can send it back with rework.
 node --input-type=module -e '
 import { legalEvents } from "'"$HERE"'/lib/events.mjs";
