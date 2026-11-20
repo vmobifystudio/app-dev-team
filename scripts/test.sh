@@ -60,7 +60,12 @@ if [ -n "$ONLY" ]; then
   ' "$0" > "$SEL"
   echo "  RUNNING A SUBSET (--only $ONLY). This is an accelerator, NOT the gate — sections share"
   echo "  fixtures, so a pass here is not a pass. Run the whole suite before you commit."
-  APP_TEAM_TEST_HERE="$HERE" sh "$SEL" $VERBOSE
+  # A lifted section can find a fixture variable unset (set by an earlier section) and then run its
+  # git commands in the cwd — once that was the plugin's own worktree (PR47 fixes: a stray branch
+  # with two commits). Run the subset from a throwaway repo so such commands land there instead.
+  SUBCWD=$(mktemp -d)
+  ( cd "$SUBCWD" && git init -q -b main . && git -c user.name=t -c user.email=t@t.t commit -q --allow-empty -m scratch ) >/dev/null 2>&1
+  ( cd "$SUBCWD" && APP_TEAM_TEST_HERE="$HERE" sh "$SEL" $VERBOSE )
   RC=$?
   if [ "$RC" != 0 ]; then
     # A SUBSET FAILURE IS AMBIGUOUS, AND SAYING SO IS THE WHOLE POINT. Sections set shell variables
