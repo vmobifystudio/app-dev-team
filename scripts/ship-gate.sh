@@ -275,10 +275,15 @@ fi
 # and the message says so), and CANNOT EVALUATE when there is no log to read.
 LOG="$ROOT/docs/31-board-events.jsonl"
 if [ -f "$LOG" ]; then
-  node "$HERE/board.mjs" verify --log "$LOG" >/dev/null 2>&1
-  case $? in
+  CHAIN_OUT=$(node "$HERE/board.mjs" verify --log "$LOG" 2>&1)
+  CHAIN_RC=$?
+  # W7-5: a log that hashes cleanly but does not match its ANCHOR (a moved project, a fresh clone)
+  # is not a rewritten history, and "Run: board.mjs verify" never named the recovery, `adopt`.
+  if [ "$CHAIN_RC" = 1 ] && printf '%s' "$CHAIN_OUT" | grep -q 'does NOT match its anchor'; then CHAIN_RC=3; fi
+  case $CHAIN_RC in
     0) ;;
-    1) block "the board's audit chain is BROKEN — the event log was edited, reordered or truncated after it was written. Run: node scripts/board.mjs verify. Every gate below reads state derived from that log." ;;
+    3) unknown "the board's event log does not match its anchor (outside the tree) — a moved project, a fresh clone, or lines written without the CLI. If the log is genuinely the record, the founder re-trusts it at their own terminal: node \"$HERE/board.mjs\" adopt. $(printf '%s' "$CHAIN_OUT" | sed -n 2p | sed 's/^ *//')" ;;
+    1) block "the board's audit chain is BROKEN — the event log was edited, reordered or truncated after it was written. Run: node \"$HERE/board.mjs\" verify. Every gate below reads state derived from that log." ;;
     *) unknown "board.mjs verify could not read $LOG — the audit chain was NOT checked." ;;
   esac
 else

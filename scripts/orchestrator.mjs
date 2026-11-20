@@ -349,7 +349,8 @@ function cmdRound() {
   const steps = [
     { name: 'board doctor', argv: [resolve(HERE_SCRIPTS, 'board-doctor.mjs'), resolve(ROOT, 'docs/31-board.md')],
       blocked: 'the board is incoherent — spawn nobody until tech-manager repairs it',
-      unknown: 'there is no board yet; run /app-plan' },
+      // W7-5: board-doctor also checks the log's hash chain and anchor; the reason below says which.
+      unknown: 'there is no board yet (run /app-plan), or its event log fails its chain or anchor (the reason names the recovery — adopt is a founder decision)' },
     { name: 'budget', argv: [resolve(HERE_SCRIPTS, 'round-journal.mjs'), 'check'],
       blocked: 'a ceiling is reached, or the emergency stop is set. Raising a ceiling is the operator\'s call, not a workaround',
       unknown: 'the budget could not be read' },
