@@ -18,3 +18,19 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/impact-map.mjs" \
 
 An unmapped or consumer-less surface is a finding requiring an explicit map update and reviewer
 decision.
+
+**The map is the project's own, and nothing writes it for you.** No bootstrap creates
+the default map (`impact-map.json` in the project's `docs/team/`); without it the script exits `2`
+(`no impact map`). Write it once,
+commit it, and extend it whenever a finding names an unmapped surface — each rule is a path regex
+and the files or roles that consume that surface:
+
+```json
+{
+  "schema": "impact-map/v1",
+  "rules": [
+    { "pattern": "^Sources/Models/", "consumers": ["Sources/Persistence/", "Sources/Sync/"] },
+    { "pattern": "^Sources/API/", "consumers": ["backend-developer", "Sources/Networking/"] }
+  ]
+}
+```

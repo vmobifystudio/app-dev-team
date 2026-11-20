@@ -200,6 +200,7 @@ function normalize(record, line) {
     provenance: record.provenance || 'cli',
     inferred_fields: toArray(record.inferred_fields),
     channel: record.channel ? String(record.channel).replace(/^#/, '') : '',
+    ...(record.registration === true ? { registration: true } : {}),
   };
   message.thread = record.thread || threadOf(message);
   return message;
@@ -433,6 +434,14 @@ function openFollowUps(thread) {
 
 const openQuestions = (thread) => pairQuestions(thread).open;
 
+// An `artifact` registration (messages.mjs artifact …) is a filing, not a conversation: its `to` is
+// the artifact type's declared READERS, and it decides nothing about the thread. Counting it as
+// either made the CTO's prescribed `artifact ADR --ticket` refused on every ticket — cto plus four
+// ADR readers is five roles (R7-2) — and let any WAIVER close the ticket to unrelated questions (R7-11).
+// PR47-7: recognised by a field only `messages.mjs artifact` sets — `--channel artifacts --artifact x`
+// are ordinary send flags, and with them any message skipped the chain cap and kept its decision silent.
+const isRegistration = (m) => m.registration === true;
+
 /**
  * Decide whether `candidate` may be appended given the log. `{ok:true}` or
  * `{ok:false, code, reason, remedy}`.
@@ -511,7 +520,7 @@ function guard(messages, candidate) {
 
     // 5. no reopening a resolved thread without new evidence. A thread that reached a `decision` and
     // then reopens on the same ground is how a settled scope gets relitigated by whoever arrived last.
-    const decided = thread.filter((m) => m.kind === 'decision');
+    const decided = thread.filter((m) => m.kind === 'decision' && !isRegistration(m));
     if (decided.length && openQuestions(thread).length === 0 && !candidate.evidence) {
       const last = decided[decided.length - 1];
       return {
@@ -541,10 +550,10 @@ function guard(messages, candidate) {
   }
 
   // 7. chain depth — counted on the roles this message WOULD create, not the ones already recorded.
-  const roles = new Set([from, ...to]);
+  const roles = new Set([from, ...(isRegistration(candidate) ? [] : to)]);
   for (const m of thread) {
     roles.add(m.from);
-    for (const r of m.to) roles.add(r);
+    if (!isRegistration(m)) for (const r of m.to) roles.add(r);
   }
   if (roles.size > MAX_CHAIN) {
     return {
@@ -580,7 +589,7 @@ function auditGuards(messages) {
       if (count > MAX_PAIR) breaches.push({ code: 'message_pair_exceeded', ticket, pair, count, limit: MAX_PAIR });
     }
 
-    const involved = new Set(thread.flatMap((m) => [m.from, ...m.to])).size;
+    const involved = new Set(thread.flatMap((m) => [m.from, ...(isRegistration(m) ? [] : m.to)])).size;
     if (involved > MAX_CHAIN) {
       breaches.push({ code: 'message_chain_too_deep', ticket, count: involved, limit: MAX_CHAIN });
     }

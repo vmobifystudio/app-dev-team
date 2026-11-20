@@ -29,13 +29,14 @@
  * Exit codes:  0 done · 1 refused (guard or obligation; nothing was written) · 2 usage / cannot read
  */
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { parseMessages, readBoard } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
+import { withFileLock } from './lib/atomic.mjs';
 import {
   SCHEMA_VERSION,
   KINDS,
@@ -66,47 +67,11 @@ const die = (message, code = 2) => {
 };
 
 // `nextId()` is necessarily read/compute/write. Without a lock, two parallel agent processes can
-// read the same maximum and append duplicate MSG-NNNN records. A lock directory is used because
-// mkdir is atomic on the filesystems this plugin supports and the core runtime has no dependency on
-// flock. The process-exit hook releases locks even when a validation refusal calls process.exit().
-let activeLock = '';
-function releaseLogLock() {
-  if (!activeLock) return;
-  try { rmSync(activeLock, { recursive: true, force: true }); } catch { /* best effort on exit */ }
-  activeLock = '';
-}
-process.on('exit', releaseLogLock);
-
-function acquireLogLock(jsonlPath) {
-  mkdirSync(dirname(jsonlPath), { recursive: true });
-  const lock = `${jsonlPath}.lock`;
-  for (let attempt = 0; attempt < 250; attempt += 1) {
-    try {
-      mkdirSync(lock);
-      writeFileSync(join(lock, 'owner'), `${process.pid}\n`);
-      activeLock = lock;
-      return;
-    } catch (error) {
-      if (error.code !== 'EEXIST') die(`cannot lock ${jsonlPath}: ${error.message}`);
-      let owner = 0;
-      try { owner = Number.parseInt(readFileSync(join(lock, 'owner'), 'utf8'), 10); } catch { /* partial lock */ }
-      if (owner && owner !== process.pid) {
-        try {
-          process.kill(owner, 0);
-        } catch (probe) {
-          if (probe.code === 'ESRCH') {
-            rmSync(lock, { recursive: true, force: true });
-            continue;
-          }
-        }
-      }
-      // Atomics.wait is a synchronous, dependency-free sleep; it avoids a busy loop while the
-      // other writer completes its read/validate/append/render transaction.
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40);
-    }
-  }
-  die(`could not acquire ${jsonlPath} within 10 seconds — another writer may be stuck`);
-}
+// read the same maximum and append duplicate MSG-NNNN records. `send` and `artifact` run whole
+// inside lib/atomic.mjs's withFileLock (C7-10). This file used to carry its own directory lock that
+// reaped on "pid not alive" alone — the scheme atomic.mjs documents as broken: two waiters that
+// both read a dead owner each delete the lock and both enter.
+const lockDie = (code, message) => die(message, code);
 
 // A LEGACY LOG WITHOUT A TRAILING NEWLINE MUST GET ONE FIRST. `serialize()` only trails a record
 // with `\n`; it never LEADS with one. `appendFileSync` concatenates raw bytes, so a log whose last
@@ -249,12 +214,13 @@ function cmdSend(options) {
 
   const kind = String(options.kind).toLowerCase();
   if (!KIND_SET.has(kind)) die(`--kind must be ${KINDS.join('|')}`);
+  // PR47-7: #artifacts carries registrations, and only `messages.mjs artifact` writes them.
+  if (String(options.channel || '').replace(/^#/, '') === 'artifacts') die('--channel artifacts is reserved for `messages.mjs artifact <TYPE>` registrations — send on another channel');
 
   const priority = options.priority || (kind === 'fyi' ? 'fyi' : 'material');
   if (!PRIORITIES.has(priority)) die('--priority must be material|fyi');
 
   const paths = ledgerPaths(options);
-  acquireLogLock(paths.jsonl);
   const { messages } = readLog(paths);
 
   const candidate = normalize(
@@ -400,7 +366,6 @@ function cmdArtifact(type, options) {
   }
 
   const paths = ledgerPaths(options);
-  acquireLogLock(paths.jsonl);
   const root = dirname(dirname(dirname(paths.md))); // …/docs/team/messages.md -> project root
   const dir = join(root, spec.dir);
   mkdirSync(dir, { recursive: true });
@@ -462,6 +427,7 @@ function cmdArtifact(type, options) {
       summary: `${id}: ${options.title}`,
       body: `${spec.dir}${basename(file)}`,
       channel: 'artifacts',
+      registration: true,
       status: 'closed',
     },
     messages.length + 1
@@ -506,9 +472,10 @@ function main() {
 
   switch (command) {
     case 'send':
-      return cmdSend(options);
+      return withFileLock(ledgerPaths(options).jsonl, () => cmdSend(options), { die: lockDie });
     case 'artifact':
-      return cmdArtifact(String(positional[0] || '').toUpperCase(), options);
+      return withFileLock(ledgerPaths(options).jsonl,
+        () => cmdArtifact(String(positional[0] || '').toUpperCase(), options), { die: lockDie });
     case 'migrate': {
       const paths = ledgerPaths(options);
       if (existsSync(paths.jsonl) && !options.force) {

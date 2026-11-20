@@ -35,7 +35,7 @@ live **outside** the slots (`${CLAUDE_PLUGIN_ROOT}/scripts/build-env.sh` → `.s
 warm build.
 
 `.agent-wt/` **must be in `.gitignore`** — `/app-init` adds it for new projects; on an existing
-project add it before the first spawn, or every agent's `git status` shows it as untracked noise and
+project `/app-onboard` step 4a adds it (with the other operational paths) before the first spawn, or every agent's `git status` shows it as untracked noise and
 invites a blanket `git add`.
 
 ## Shared-tree writes — the test is collision, not location

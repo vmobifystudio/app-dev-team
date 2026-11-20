@@ -146,7 +146,7 @@ M19@@scripts/lib/events.mjs@@if (record.hash !== expected) {@@if (false) {@@an e
 M20@@scripts/lib/redact.mjs@@if (isPlaceholder(value)) continue;@@if (true) continue;@@the artifact scan fails on a credential-shaped string
 M21@@scripts/spawn-gate.sh@@if [ -e "$STOP_ROOT/$STOP_FILE" ]; then@@if false; then@@spawn-gate refuses while the emergency stop file exists
 M22@@scripts/injection-scan.mjs@@if (pattern.test(raw)) findings.push@@if (false) findings.push@@instruction-shaped content in repository text is reported
-M23@@scripts/ship-gate.sh@@node "$HERE/board.mjs" verify --log "$LOG" >/dev/null 2>&1@@true@@ship-gate BLOCKS a release whose event log was rewritten
+M23@@scripts/ship-gate.sh@@CHAIN_OUT=$(node "$HERE/board.mjs" verify --log "$LOG" 2>&1)@@CHAIN_OUT=$(true)@@ship-gate BLOCKS a release whose event log was rewritten
 M24@@scripts/messages.mjs@@if (obligationOf(candidate) === null) {@@if (false) {@@an answer that names no artifact is REFUSED
 M25@@scripts/lib/messages.mjs@@if (prior) {@@if (false) {@@a duplicate question on one ticket is refused
 M26@@scripts/lib/messages.mjs@@if (decided.length && openQuestions(thread).length === 0 && !candidate.evidence) {@@if (false) {@@reopening a decided thread with no evidence is refused
@@ -193,7 +193,7 @@ M67@@scripts/register.mjs@@  if (!ID_SHAPE.test(subject)) die(1,@@  if (false) d
 M68@@scripts/register.mjs@@  if (errors.length) die(2,@@  if (false) die(2,@@...but a register that EXISTS and will not parse is CANNOT EVALUATE, never 'nothing owed'@@N4/N6/N7
 M69@@scripts/report-check.mjs@@if (fragmentTruth?.ok === false) {@@if (false) {@@...naming it a false claim, not a missing field@@presence is not truth
 M70@@scripts/spawn-prompt.mjs@@const missing = contract.fields.filter((f) => !text.includes(f));@@const missing = [];@@verify REFUSES the exact prompt shape that produced H5's 0-of-6 result@@spawn-prompt
-M71@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$HEAD" ] && [ "$HEAD" = "$DECLARED" ]; then@@if false; then@@on the integration branch: BLOCKS the exact H6 shape (git merge --no-ff)
+M71@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$HEAD" ] && pick_declared "$HEAD" "$DECLARED_ALL"; then@@if false; then@@on the integration branch: BLOCKS the exact H6 shape (git merge --no-ff)
 M72@@scripts/wave-integrate.mjs@@if (push.ok) {@@if (false) {@@--push runs merge-reconcile.mjs again right after the wave lands@@B1: --push must land
 M73@@scripts/orchestrator.mjs@@const staticOnly = [...tickets.values()].filter((t) => t.verifiedStatic === true).map((t) => t.id);@@const staticOnly = [];@@a ticket still carrying verified_static is counted, every round@@OPS-013: the verified_static
 M74@@scripts/messages.mjs@@if (candidate.kind === 'answer' && candidate.ticket !== TICKETLESS) {@@if (false) {@@an answer on an already-shipped ticket says it filed a register item
@@ -221,7 +221,7 @@ M122@@hooks/contract-hooks.mjs@@existsSync(join(r, 'docs', '31-board-events.json
 M123@@hooks/contract-hooks.mjs@@if (check.status !== 1 && !noDone) allow();@@allow();@@C10: an IC stopping with an incomplete DONE report is BLOCKED@@Sprint 2 track B
 M124@@hooks/contract-hooks.mjs@@if (c.status === 1) block(@@if (false) block(@@C10: the pre-spawn hook BLOCKS a ticket whose files overlap in-flight work@@Sprint 2 track B
 M125@@hooks/contract-hooks.mjs@@if (gate.status === 1) block(@@if (false) block(@@C10: the pre-spawn hook honours .studio-stop (spawn-gate)@@Sprint 2 track B
-M126@@scripts/spawn-prompt.mjs@@.filter((p) => res.some((r) => r.test(p)))@@.filter(() => false)@@C7: an IC prompt inlines the impl-spec section that names its ticket@@Sprint 2 track B
+M126@@scripts/spawn-prompt.mjs@@.filter((p) => res.some((r) => r.test(p.join('\n'))))@@.filter(() => false)@@C7: an IC prompt inlines the impl-spec section that names its ticket@@Sprint 2 track B
 M127@@scripts/spawn-prompt.mjs@@.sort().pop()@@.sort().shift()@@C7: the reviewer prompt carries the LATEST persisted DONE report for the ticket@@Sprint 2 track B
 M128@@scripts/context-manifest.mjs@@if (moved && flags['strict-head'])@@if (moved)@@C11: a merge moving HEAD alone does not make the context manifest STALE@@Sprint 2 track B
 MA01@@skills/defect-hunting/SKILL.md@@`references/round-trip.md`@@`references/round-trip-moved.md`@@every references/ file a SKILL.md or command names exists, and every reference is named@@Sprint 2 track A
@@ -289,7 +289,7 @@ ME09@@hooks/contract-hooks.mjs@@const real = /[*?[]/.test(abs) ? abs : realish(a
 ME10@@hooks/contract-hooks.mjs@@|| lastAssistantText(payload.agent_transcript_path) ||@@||@@S3E: with no last_assistant_message the transcript's last assistant text is persisted and checked (C2-26)@@Sprint 3 track E
 ME11@@hooks/in-studio.sh@@[ "$_studio" = 1 ] || [ -z "$_cwd" ] || exit 0@@true@@S3E: outside a studio project the hook wrapper exits before starting node (C2-27)@@Sprint 3 track E
 ME12@@hooks/require-review-verdict.sh@@[ -e "$_m" ] && exit 0@@true@@S3E: the review hook blocks ONCE per agent_id, and lets stop_hook_active through@@Sprint 3 track E
-ME13@@scripts/spawn-prompt.mjs@@...fence(`git checkout -b ${branchName} ${base}`)]@@...fence('')]@@S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)@@Sprint 3 track E
+ME13@@scripts/spawn-prompt.mjs@@...fence(`git -C "${slot}" checkout -b ${branchName} ${base}`)]@@...fence('')]@@S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)@@Sprint 3 track E
 ME14@@scripts/lib/contract.mjs@@export const ARTIFACT_CONTRACT = ['Worktree:', 'Branch:',@@export const ARTIFACT_CONTRACT = ['Worktree:',@@S3E: report-check refuses an artifact DONE with no Branch: (C2-8)@@Sprint 3 track E
 MF01@@scripts/lib/integration.mjs@@return o.length > want.length && o.startsWith(`${want}-`) && bare(n, o);@@return false;@@F1: ...with all three branches present, each ticket's tip is its own branch (no ambiguity, no theft)@@Sprint 3 track F1
 MF02@@scripts/lib/integration.mjs@@const bare = (name, id) => new RegExp(`(^|/)${esc(id)}${SLUG}$`).test(name);@@const bare = (name, id) => name.includes(id);@@F1: matchesTicket is whole-id and gives a branch to the LONGEST board id (APP-001 / APP-001-analytics / APP-0010)@@Sprint 3 track F1
@@ -371,7 +371,7 @@ MP03@@scripts/lib/evidence.mjs@@return !qa && PROSE_ANYWHERE.test(f);@@return PR
 MP04@@scripts/board.mjs@@base: name === 'closed' ? recordedMergeBase(events, ticket) : ''@@base: ''@@P1: a QA- ticket fast-forwarded into main BEFORE closed still closes (C4G-G2)@@Sprint 5 track P1
 MP05@@scripts/board.mjs@@const qaBase = isQaDocs(tickets.get(key(ticket))) ? docsOnlyDiff(g, subj.sha, { qa: true }).base : '';@@const qaBase = '';@@P1: merged records the merge-base its docs-only proof was taken against (C4G-G2)@@Sprint 5 track P1
 MP06@@scripts/board.mjs@@if (name === 'closed' && isQaDocs(state)) printQaLanding(ticket, events);@@if (false) printQaLanding(ticket, events);@@P1: ...and closed prints the exact ff-only command that lands its files (C4W-2)@@Sprint 5 track P1
-MP07@@scripts/lib/events.mjs@@return withCorrection(state.qaPassed || isQaTicket(state)@@return ((x) => x)(state.qaPassed || isQaTicket(state)@@P1: corrected is legal while a ticket sits in qa (C4G-G3)@@Sprint 5 track P1
+MP07@@scripts/lib/events.mjs@@if (isQaTicket(state)) return withCorrection(['closed'@@if (isQaTicket(state)) return ((x) => x)(['closed'@@P1: corrected is legal while a ticket sits in qa (C4G-G3)@@Sprint 5 track P1
 MP08@@scripts/lib/evidence.mjs@@if (text !== null) return { commands: testsOf(text)@@if (false) return { commands: testsOf(text)@@P1: the board freezes main's committed profile, not an uncommitted working-tree edit (C4G-G4)@@Sprint 5 track P1
 MP09@@scripts/lib/approval.mjs@@if (mb && base !== mb && !isAncestor(git, base, mb)) {@@if (false) {@@P1: merged refuses an approval bound to tip~1..tip@@Sprint 5 track P1
 MP10@@scripts/project-profile.mjs@@blocked += coldDeps.length;@@blocked += 0;@@P1: project-profile check BLOCKS a bare 'npm test'@@Sprint 5 track P1
@@ -395,7 +395,7 @@ MR08@@scripts/spawn-gate.sh@@if [ -n "$missing" ] && { [ -e "$DIR/$1" ] ||@@if f
 MR09@@scripts/register.mjs@@if (!b.closed || !OPEN_STATUSES.has(existing.status)) continue;@@continue;@@Q1: import-bugs moves an OPEN register item to FIXED when its row's Resolution says so (C5W-8)@@Sprint 6 track Q1
 MR10@@scripts/approval-check.mjs@@if (!counted.length && flags.ticket) {@@if (false) {@@Q1: approval-check --ticket with zero approvals exits 1, never 'CLEAR' (C5W-10)@@Sprint 6 track Q1
 MR11@@scripts/orchestrator.mjs@@.filter(Boolean).join(' ') || detail || '';@@.find(Boolean) || detail || '';@@Q1: the round's ci row shows the unresolved-branch reason through to its remedy (C5W-11)@@Sprint 6 track Q1
-MR12@@scripts/spawn-prompt.mjs@@const SKILL_DEPS = { 'ic-workflow': ['agent-isolation'] };@@const SKILL_DEPS = { 'ic-workflow': ['agent-isolation', 'defect-hunting'] };@@Q1: developer and verification-engineer composes are within their word budgets (C5W-12)@@Sprint 6 track Q1
+MR12@@scripts/spawn-prompt.mjs@@const SKILL_DEPS = { 'ic-workflow': ['agent-isolation', 'context-preflight'] };@@const SKILL_DEPS = { 'ic-workflow': ['agent-isolation', 'context-preflight', 'defect-hunting', 'mutation-testing'] };@@Q1: developer and verification-engineer composes are within their word budgets (C5W-12)@@Sprint 6 track Q1
 MR13@@commands/app-ship.md@@--project-root . --write`.@@--project-root .`.@@Q1: app-ship 1a re-records the waiver's founder decision, and the record reads INTACT (C5W-7)@@Sprint 6 track Q1
 MQ01@@hooks/contract-hooks.mjs@@else if (fed !== undefined) queue.push(...shellCommands(fed));@@else if (false) queue.push(...shellCommands(fed));@@MQ: guard exit 2 — heredoc into sh minting@@Sprint 5 track P2
 MQ02@@hooks/contract-hooks.mjs@@else if (fed === null) refuse(@@else if (false) refuse(@@MQ: guard exit 2 — unknown text piped into sh@@Sprint 5 track P2
@@ -446,7 +446,7 @@ MT14@@hooks/contract-hooks.mjs@@writeFileSync(file, `${redact(report).text}\n`)@
 MT15@@scripts/lib/evidence.mjs@@const lf = f.toLowerCase();@@const lf = f;@@MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json@@Sprint 6 track Q2
 MT16@@scripts/lib/evidence.mjs@@|Directory\.Build\.props)$/i;@@|Directory\.Build\.props)$/;@@MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json and a PACKAGE.JSON@@Sprint 6 track Q2
 MT17@@scripts/board.mjs@@return base ? landedAfterMerge(git, ticket, recorded, base) : '';@@return '';@@MT: a QA- ticket whose branch gained code AFTER merged@@Sprint 6 track Q2
-MT18@@hooks/block-shared-tree-destructive-git.sh@@if same_ref "$REF" "$DECLARED"; then@@if [ "$REF" = "$DECLARED" ]; then@@MT: ref hook blocks update-ref refs/heads/Main on macOS@@Sprint 6 track Q2
+MT18@@hooks/block-shared-tree-destructive-git.sh@@for c in $2; do same_ref "$1" "$c"@@for c in $2; do [ "$1" = "$c" ]@@MT: ref hook blocks update-ref refs/heads/Main on macOS@@Sprint 6 track Q2
 MT19@@hooks/block-shared-tree-destructive-git.sh@@} else if (sc == "symbolic-ref") {@@} else if (sc == "zzzz-no-such-command") {@@MT: ref hook blocks git symbolic-ref@@Sprint 6 track Q2
 MT20@@hooks/contract-hooks.mjs@@if (/^(ex|vi|vim|nvim|ed|red)$/.test(name)) plain.forEach(path);@@if (false) plain.forEach(path);@@MT: guard exit 2 — writer: vim -es@@Sprint 6 track Q2
 MT21@@hooks/contract-hooks.mjs@@if (sub === 'clone' && paths.length > 1)@@if (false)@@MT: guard exit 2 — writer: git clone@@Sprint 6 track Q2
@@ -479,9 +479,123 @@ MU16@@scripts/lib/evidence.mjs@@inlineTokenFlag(f.root ? resolve(String(f.root))
 MU17@@scripts/lib/evidence.mjs@@if (mergedHead && !(mergedHead === head || isAncestor(git, mergedHead, head))) return fail(@@if (false) return fail(@@MU: a journey PASS on an ancestor made before the ticket's merged commit is refused@@PR46 review
 MU18@@scripts/wave-integrate.mjs@@if (isQaDocs(t)) continue;@@if (/^QA-/i.test(t.id)) continue;@@MU: wave-integrate takes a code-changing QA- ticket at qa into the wave@@PR46 review
 MU19@@scripts/wave-integrate.mjs@@const run = waveDirty@@const run = false@@MU: a wave suite that rewrites a tracked file is CANNOT EVALUATE, not GREEN@@PR46 review
-MU20@@scripts/lib/integration.mjs@@if (r.status === 0 && name && /\(declared in /.test(r.stderr || '')) return name;@@void name;@@MU: a declared 'Integration branch: main' wins over an existing develop branch@@PR46 review
+MU20@@scripts/lib/integration.mjs@@if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${name}`]) !== null) return { base: name, reason: '' };@@void name;@@MU: a declared 'Integration branch: main' wins over an existing develop branch@@PR46 review
 MU21@@scripts/wave-integrate.mjs@@['high', 'critical'].includes(tier(m)) || runtimeRequired(m));@@['high', 'critical'].includes(tier(m)));@@MU: a medium ticket whose policy requires runtime-gate does not land on a failing runtime gate@@PR46 review
 MU22@@scripts/board.mjs@@  if (!c.ok) {@@  if (false) {@@MU: adopt without a terminal is refused and writes no anchor@@PR46 review
+MS7U2-01@@scripts/lib/evidence.mjs@@git(['diff', '--no-renames', '--name-only', '-z', from, to]);@@git(['diff', '--name-only', '-z', from, to]);@@U2: a QA- branch that renames code into docs/ is not docs-only — both sides of the rename are listed (G7-1)@@Sprint 7 U2
+MS7U2-02@@scripts/lib/evidence.mjs@@'--no-renames', '--name-only', '-z', from, to]);@@'--no-renames', '--name-only', from, to]);@@U2: a non-ASCII path is listed raw and routes to its tier (G7-4)@@Sprint 7 U2
+MS7U2-03@@scripts/board.mjs@@const files = mb ? changedFiles(g, mb, tip.sha) : null;@@const files = mb ? (g(['diff', '--name-only', mb, tip.sha]) || '').split('\n').filter(Boolean) : null;@@U2: merged is refused when a rename moves code out of a high-risk path (G7-4)@@Sprint 7 U2
+MS7U2-04@@scripts/lib/risk.mjs@@approvals: union(tier, 'approvals')@@approvals: selected.approvals || []@@U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)@@Sprint 7 U2
+MS7U2-05@@scripts/lib/risk.mjs@@best.approvals = [...new Set([...best.approvals, ...r.approvals])];@@void 0;@@U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)@@Sprint 7 U2
+MS7U2-06@@scripts/lib/evidence.mjs@@const away = wave ? '' : notIntegrated(git, ticket, rec.head, mergedHead, root);@@const away = '';@@U2: qa_passed on a post-merge re-run of the ticket's own unintegrated branch is refused (G7-2)@@Sprint 7 U2
+MS7U2-07@@scripts/lib/evidence.mjs@@if (mergedTs && !(Date.parse(v.evaluated_at) > Date.parse(mergedTs))) return fail(@@if (false) return fail(@@U2: a journey PASS evaluated before the ticket merged is not QA evidence (G7-2)@@Sprint 7 U2
+MS7U2-08@@scripts/lib/evidence.mjs@@const undeclared = journeyDeclarationGap(root, git);@@const undeclared = '';@@U2: qa_passed on a web project with no journey declared is refused (S7-5)@@Sprint 7 U2
+MS7U2-09@@scripts/lib/evidence.mjs@@if (sel.only) return@@if (false) return@@U2: a journey PASS from --only <id> does not count (G7-7)@@Sprint 7 U2
+MS7U2-10@@scripts/lib/evidence.mjs@@if (!d || d.sha256 !== w.sha256) return@@if (!d) return@@U2: a journey run on an edited, uncommitted declaration does not count (G7-7)@@Sprint 7 U2
+MS7U2-11@@scripts/journey-gate.mjs@@only: flags.only ? String(flags.only) : null,@@only: null,@@U2: journey-gate records its selection, directory and declaration sha256 (G7-7)@@Sprint 7 U2
+MS7U2-12@@scripts/lib/capabilities.mjs@@if (name === 'unblocked' && needsApproval(state)) return@@if (false) return@@U2: a worker cannot release a needs-approval ticket (S7-2)@@Sprint 7 U2
+MS7U2-13@@scripts/lib/capabilities.mjs@@if (name === 'corrected') return@@if (false) return@@U2: a worker cannot rewrite a ticket's invariants with corrected (S7-3)@@Sprint 7 U2
+MS7U2-14@@scripts/board.mjs@@const gate = GATE_EVENTS.has(eventName) || conditional;@@const gate = GATE_EVENTS.has(eventName);@@U2: ...nor can --by tech-manager without the orchestrator's token (S7-2)@@Sprint 7 U2
+MS7U2-15@@scripts/lib/events.mjs@@status: 'in_progress', approvals: [], qaPassed@@status: 'in_progress', qaPassed@@U2: ...it is in_progress with no approvals — re-review before it merges again@@Sprint 7 U2
+MS7U2-16@@scripts/lib/capabilities.mjs@@rework: ['tech-manager'],@@rework: ['tech-manager', 'code-reviewer'],@@U2: only the orchestrator sends a merged ticket back to rework@@Sprint 7 U2
+MS7U2-19@@scripts/lib/events.mjs@@if (dep.events.findLastIndex((e) => e.event === 'rework') > dep.events.findLastIndex((e) => e.event === 'merged')) return true;@@void 0;@@U2: ...and a ticket depending on it is not claimable until it merges again@@Sprint 7 U2
+MS7U2-20@@scripts/lib/events.mjs@@reason: `rework sends a merged ticket back and must say why@@ok: true, reason: `rework sends a merged ticket back and must say why@@U2: ...and it must say why@@Sprint 7 U2
+MS7U2-21@@scripts/lib/events.mjs@@qaPassed: false, verified: false, verifiedStatic@@qaPassed: false, verifiedStatic@@U2: ...and it cannot go straight to review: verification was voided@@Sprint 7 U2
+MS7U2-22@@scripts/board.mjs@@if (!base) return unresolvedBase(git);@@if (!base) return '';@@U2: closed refuses, naming why, when the declared integration branch does not resolve@@Sprint 7 U2
+MS7U2-23@@scripts/board.mjs@@const local = base.replace(/^origin\//, '');@@const local = base;@@U2: ...and the landing command checks out develop, not origin/develop@@Sprint 7 U2
+MS7U2-24@@scripts/lib/risk.mjs@@new RegExp(rule.pattern, 'i')@@new RegExp(rule.pattern)@@U2: risk-policy patterns match case-insensitively (App/Persistence/Migrations)@@Sprint 7 U2
+MS7U2-17@@scripts/board.mjs@@if (s.kind !== 'absent' && flags.mismatch !== s.kind) {@@if (false) {@@U2: adopt refuses a log the anchor disagrees with unless the mismatch is named, printing both counts (G7-13)@@Sprint 7 U2
+MS7U2-18@@scripts/board.mjs@@if (String(flags.role || '') === 'founder' && tkt) {@@if (false) {@@U2: the founder mint refusal names the resolved path, and no registry lock was taken to ask (C7-8)@@Sprint 7 U2
+U401@@scripts/context-preflight.mjs@@if (inSlot) notes.push(@@if (false) notes.push(@@Sprint 7 U4: preflight clears a freshly leased, detached slot (C7-2)@@Sprint 7 U4
+U402@@scripts/context-preflight.mjs@@const writer = role ? Boolean(contractFor(role)) : inSlot;@@const writer = true;@@Sprint 7 U4: a reviewer in the main checkout on the integration branch is not blocked, --ticket first (C7-2)@@Sprint 7 U4
+U403@@scripts/context-preflight.mjs@@const row = rows && rows[ticket.toUpperCase()];@@const row = null;@@Sprint 7 U4: ...reading the ticket from the main project's board, not a docs/31-board.md the slot lacks (C7-2)@@Sprint 7 U4
+U404@@scripts/spawn-prompt.mjs@@if (row.owner === 'qa-engineer' && row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict(@@if (false) return composeQaVerdict(@@Sprint 7 U4: the VE QA-verdict prompt's own qa_passed command is accepted, and the ticket closes (R7-1)@@Sprint 7 U4
+U405@@scripts/spawn-prompt.mjs@@const mine = wave.filter(own);@@const mine = [];@@Sprint 7 U4: the QA wave refuses a qa-engineer-owned ticket (it cannot pass its own work) (R7-1)@@Sprint 7 U4
+U406@@scripts/spawn-prompt.mjs@@e.by === 'code-reviewer' && (e.event === 'approved' || e.event === 'changes') && e.detail?.verdict_path@@false@@Sprint 7 U4: after REQUEST CHANGES the VE prompt carries the constants routed in the verdict the reviewer cited (R7-5, C7-4)@@Sprint 7 U4
+U407@@scripts/spawn-prompt.mjs@@const artifact = contract.tier === 'artifact' && !qa;@@const artifact = false;@@Sprint 7 U4: an artifact owner (ux-architect on docs/12-flows.md) is told to edit its Spec, not forbidden to (R7-6)@@Sprint 7 U4
+U408@@scripts/spawn-prompt.mjs@@...fence(`git -C "${slot}" checkout -b@@...fence(`git checkout -b@@Sprint 7 U4: the IC prompt prints the absolute slot, git -C <slot>, and cd <slot> on every Bash call (R7-7)@@Sprint 7 U4
+U409@@scripts/spawn-prompt.mjs@@+ skillWords + packWords;@@+ skillWords;@@Sprint 7 U4: the budget total includes the role's mandatory KB packs (C7-6)@@Sprint 7 U4
+U410@@scripts/spawn-prompt.mjs@@if (inFence) kept.push(@@if (false) kept.push(@@Sprint 7 U4: ...and a fence cut open is closed, so every later fence pairs (C7-7)@@Sprint 7 U4
+U411@@scripts/spawn-prompt.mjs@@out.push('', n > left ? cutLines(body.split('\n'), left) : body);@@out.push('', n > left ? `${body.split(/\s+/).slice(0, left).join(' ')} […truncated]` : body);@@Sprint 7 U4: a truncated excerpt keeps its lines, and a # comment in a code block does not split the section (C7-7)@@Sprint 7 U4
+U412@@scripts/spawn-prompt.mjs@@[...new Set(['docs/10-prd.md', PLATFORM_SPEC[role], specFile]@@[...new Set([PLATFORM_SPEC[role], specFile, 'docs/10-prd.md']@@Sprint 7 U4: ...with the PRD's acceptance first, before the impl spec spends the budget (C7-7)@@Sprint 7 U4
+U413@@scripts/spawn-prompt.mjs@@die(2, `slot ${slot} does not exist.@@process.stderr.write(`slot ${slot} does not exist.@@Sprint 7 U4: compose refuses a slot that does not exist (C7-12)@@Sprint 7 U4
+U414@@scripts/spawn-prompt.mjs@@readPolicy(ROOT);  // C7-12@@void ROOT;  // C7-12@@Sprint 7 U4: compose refuses an unparseable .studio-policy.json, as the board does (C7-12)@@Sprint 7 U4
+U415@@scripts/lib/contract.mjs@@'ASO BLOCKED', 'ASO:'],@@'ASO BLOCKED'],@@Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)@@Sprint 7 U4
+U416@@scripts/prompt-registry.mjs@@...TEMPLATES.map((rel)@@...[].map((rel)@@Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)@@Sprint 7 U4
+U417@@scripts/spawn-prompt.mjs@@'You write no board event: the orchestrator records a FAIL as `changes`.',@@...tokenLines(ROOT, role, row.id),@@Sprint 7 U4: ...mints no token for a spawn that writes no board event, and clears verify (R7-13)@@Sprint 7 U4
+
+M7U5-01@@scripts/test.sh@@if [ "$_after" != "$PLUGIN_STATUS_BEFORE" ]; then@@if false; then@@C7-1: a run that writes a tracked plugin file fails loudly on exit@@Sprint 7 U5
+M7U5-02@@scripts/test.sh@@grep -qF -- "$2" "$1" && ok "$3"@@grep -q -- "$2" "$1" && ok "$3"@@C7-11: assert_has reads its needle as a fixed string — 'a.c' does not match 'abc'@@Sprint 7 U5
+M7U5-03@@scripts/test.sh@@for _kt in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$_kt"; done@@:@@C7-11: assert_exit_within kills the hung command's children, not only its subshell@@Sprint 7 U5
+M7U5-04@@scripts/worktree-slot.mjs@@case 'lease': withFileLock(STATE, cmdLease, { die }); break;@@case 'lease': cmdLease(); break;@@C7-3: 4 concurrent leases with --pool 2 lease exactly 2, record both, create 2 worktrees@@Sprint 7 U5
+M7U5-05@@scripts/lib/atomic.mjs@@const LOCK_WAIT_MS = 30_000;@@const LOCK_WAIT_MS = 5000;@@C7-9: a lock waiter outlasts a live 6s holder instead of refusing at 5s@@Sprint 7 U5
+M7U5-06@@scripts/run-ledger.mjs@@withFileLock(ledger, () => {@@((fn) => { if (existsSync(ledger + '.lock')) die(2, 'locked'); return fn(); })(() => {@@C7-10: run-ledger reaps a dead holder's aged lock instead of blocking every claim@@Sprint 7 U5
+M7U5-07@@scripts/messages.mjs@@return withFileLock(ledgerPaths(options).jsonl, () => cmdSend(options), { die: lockDie });@@if (existsSync(ledgerPaths(options).jsonl + '.lock')) die('locked'); return cmdSend(options);@@C7-10: messages.mjs takes the same shared lock and reaps the same dead holder@@Sprint 7 U5
+M7U5-08@@scripts/lib/messages.mjs@@const roles = new Set([from, ...(isRegistration(candidate) ? [] : to)]);@@const roles = new Set([from, ...to]);@@R7-2: messages.mjs artifact ADR --by cto --ticket APP-060 is not chain_too_deep@@Sprint 7 U5
+M7U5-09@@scripts/lib/messages.mjs@@m.kind === 'decision' && !isRegistration(m)@@m.kind === 'decision'@@R7-11: an artifact registration does not close the ticket thread to a later question@@Sprint 7 U5
+M7U5-10@@scripts/review-pattern-scan.mjs@@if (/^REVIEW VERDICT:\s*REQUEST CHANGES\s*$/m.test(text)) {@@if (false) {@@R7-3: two current-format verdicts blocking on one file are correlated@@Sprint 7 U5
+M7U5-11@@scripts/memory-curator.mjs@@if (candidate.by === by) die(1,@@if (false) die(1,@@S7-11: memory review by the proposer is refused@@Sprint 7 U5
+M7U5-12@@scripts/memory-curator.mjs@@by: required('by') });@@by: flags.by || null });@@S7-11: ...and propose without --by is refused@@Sprint 7 U5
+M7U5-13@@scripts/lib/operational-paths.txt@@.studio-cache@@.studio-cache-x@@S7-1: a .studio-cache/ build cache does not make the tree dirty@@Sprint 7 U5
+M7U5-14@@scripts/run-doctor.mjs@@for (const a of active) console.log(@@for (const a of []) console.log(@@S7-4: run-doctor --root reads that project and lists the live attempt's run and attempt ids@@Sprint 7 U5
+M7U5-15@@scripts/run-doctor.mjs@@resolve(String(flags.root || '.'), String(flags.ledger@@resolve(String(flags.ledger@@S7-4: run-doctor --root reads that project and lists the live attempt's run and attempt ids@@Sprint 7 U5
+M7U5-16@@scripts/verify-done.sh@@    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs\" --root . --wave <N> --base $BASE@@    node scripts/wave-integrate.mjs --root . --wave <N> --base $BASE@@W7-12: verify-done and merge-reconcile print ${CLAUDE_PLUGIN_ROOT} paths, not relative ones@@Sprint 7 U5
+M7U5-17@@scripts/ship-gate.sh@@echo "        red-team-agent and defect-hunting, not by this gate."@@:@@N6: a CLEAR ship-gate run itself states it only replays known defects (G-F13)@@Sprint 7 U5
+
+MS7U1A@@scripts/integration-branch.sh@@s/^[[:space:]>*|#-]*([0-9]+\.[[:space:]]*)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@s/.*(@)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@Sprint 7 U1: prose naming 'the integration branch' is not a declaration — main is read, not never/protected (C7-5)@@Sprint 7 U1
+MS7U1B@@scripts/integration-branch.sh@@  feat/*|fix/*|qa/*|bug/*)@@  __no_ticket_branch__)@@Sprint 7 U1: a declared ticket branch (feat/…) is CANNOT RESOLVE, even committed (G7-3)@@Sprint 7 U1
+MS7U1C@@scripts/integration-branch.sh@@if git --git-dir="$COMMON" cat-file -e "HEAD:$PREFIX$1" 2>/dev/null; then@@if false; then@@Sprint 7 U1: an uncommitted rewrite of the strategy doc does not move the integration branch (G7-3)@@Sprint 7 U1
+MS7U1D@@scripts/lib/integration.mjs@@if (r.status !== 0 || !name) return { base: '',@@if (r.status !== 0 || !name) return { base: 'develop',@@Sprint 7 U1: a strategy doc that cannot resolve gives the board no base, not a fallback develop (C7-5)@@Sprint 7 U1
+MS7U1E@@scripts/lib/integration.mjs@@return { base: `origin/${name}`, reason: '' };@@return { base: name, reason: '' };@@Sprint 7 U1: in a fresh clone the board's integration base is origin/develop, a ref that resolves (G7-16)@@Sprint 7 U1
+MS7U1F@@scripts/wave-integrate.mjs@@if (head) {@@if (false) {@@Sprint 7 U1: a branch with commits after merged is held out of the wave and routed to rework (G7-6, W7-1)@@Sprint 7 U1
+MS7U1G@@scripts/wave-integrate.mjs@@if (ahead.length) { moved.push(@@if (false) { moved.push(@@Sprint 7 U1: a branch with commits after merged is held out of the wave and routed to rework (G7-6, W7-1)@@Sprint 7 U1
+MS7U1H@@scripts/wave-integrate.mjs@@  || indexHides(WT);@@  || false;@@Sprint 7 U1: a wave suite that hides an edit behind assume-unchanged is CANNOT EVALUATE (G7-17)@@Sprint 7 U1
+MS7U1I@@scripts/wave-integrate.mjs@@const GREEN_REF = `refs/studio/wave-green/${WAVE}`;@@rmSync(WT, { recursive: true, force: true }); const GREEN_REF = `refs/studio/wave-green/${WAVE}`;@@Sprint 7 U1: re-running an existing wave keeps the kept wave tree on disk (W7-8)@@Sprint 7 U1
+MS7U1J@@scripts/board-doctor.mjs@@if (!anchor.ok) {@@if (false) {@@Sprint 7 U1: board-doctor is CANNOT EVALUATE on a log whose anchor is gone, naming adopt (W7-5)@@Sprint 7 U1
+MS7U1K@@scripts/ship-gate.sh@@(absent)'; then CHAIN_RC=3;@@(absent)'; then CHAIN_RC=1;@@Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)@@Sprint 7 U1
+MS7U1L@@scripts/runtime-gate.sh@@if [ -n "$IB_SHA" ] && [ "$IB_SHA" != "$HEAD_SHA" ]@@if false@@Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)@@Sprint 7 U1
+
+MV01@@hooks/contract-hooks.mjs@@if (n && !n.startsWith('#')) WRAPPERS.set(n, { ops: Number(ops) || 0, vals: new Set(vals) });@@void n;@@U3: guard exit 2 — wrappers.txt row 'timeout' wraps rm@@Sprint 7 U3
+MV02@@hooks/block-shared-tree-destructive-git.sh@@nf = split(line, F, /[ \t]+/); WRAP[F[1]] = 1;@@nf = split(line, F, /[ \t]+/);@@U3: git hook exit 2 — wrappers.txt row 'setsid' wraps git@@Sprint 7 U3
+MV03@@hooks/contract-hooks.mjs@@if (unsure) alts = [...alts, ...before];@@if (false) alts = [...alts, ...before];@@U3: guard exit 2 — uncertain cd: sh -c "cd /nonexistent@@Sprint 7 U3
+MV04@@hooks/block-shared-tree-destructive-git.sh@@return (unsure || SHADOW || !enterable(nd)) ? union(nd, dir) : nd@@return nd@@U3: git hook exit 2 — dirty tree: false && cd /tmp; git stash@@Sprint 7 U3
+MV05@@hooks/block-shared-tree-destructive-git.sh@@if d=$(sh "$PLUGIN/scripts/integration-branch.sh" "$1" 2>/dev/null); then@@if d=main; then@@U3: git hook exit 2 — merge --no-ff onto develop declared as "develop."@@Sprint 7 U3
+MV06@@hooks/contract-hooks.mjs@@.slice(0, 20).forEach(addRoot);@@.slice(0, 0).forEach(addRoot);@@U3: guard exit 2 — rm -rf <abs project>/docs/team/evidence from cwd /tmp@@Sprint 7 U3
+MV07@@hooks/contract-hooks.mjs@@if (script === 'board.mjs' && after.some((w) => w.v.text === 'adopt')) refuse(ADOPT);@@void ADOPT;@@U3: guard exit 2 — board.mjs adopt run by its shebang@@Sprint 7 U3
+MV08@@hooks/contract-hooks.mjs@@if (/^(g?base64|uudecode|plutil)$/.test(name)) opt(@@if (false) opt(@@U3: guard exit 2 — writer: base64@@Sprint 7 U3
+MV09@@hooks/block-shared-tree-destructive-git.sh@@git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | grep '^??'@@git -C "$GDIR" status --porcelain -uall 2>/dev/null | grep '^??'@@U3: git hook exit 0 — branch -D with only operational files untracked@@Sprint 7 U3
+MV10@@hooks/block-shared-tree-destructive-git.sh@@[ -n "$AGENT" ] && [ -n "$ROOT" ] && [ -f "$ROOT/docs/31-board-events.jsonl" ] || continue@@continue@@U3: git hook exit 2 — a subagent: checkout -b in the studio main checkout@@Sprint 7 U3
+MV11@@hooks/block-cross-worktree-write.sh@@if [ -n "$DEV" ] && [ -z "$TARGET_WT" ]; then@@if false; then@@U3: write hook exit 2 — an ios-developer writing into the studio main checkout@@Sprint 7 U3
+MV12@@hooks/block-shared-tree-destructive-git.sh@@if (has(A, na, "-u")) emit("D", "", d, "git read-tree@@if (0) emit("D", "", d, "git read-tree@@U3: git hook exit 2 — dirty tree: git read-tree@@Sprint 7 U3
+MV13@@hooks/contract-hooks.mjs@@if (/board\.mjs/.test(body) && /\badopt\b/.test(body)) refuse(ADOPT);@@void ADOPT;@@U3: guard exit 2 — python3 pty.spawn board.mjs adopt@@Sprint 7 U3
+MV14@@hooks/guard-gate-writes.sh@@  *[/~]*) printf@@  *NEVER*) printf@@U3: guard exit 2 — rm -rf <abs project>/docs/team/evidence from cwd /tmp@@Sprint 7 U3
+MS7L01@@hooks/block-shared-tree-destructive-git.sh@@      if [ -z "$DIRTY" ] && [ -n "$SWEEP" ] && [ -n "$OPS" ]; then@@      if false; then@@Sprint 7 lead: 'git clean -fdx' in a main checkout with a gitignored board log is refused@@Sprint 7 lead
+MP47A@@scripts/lib/events.mjs@@...(isQaDocs(state) ? [] : ['rework'])@@...(isQaDocs(state) ? [] : [])@@PR47: rework is legal for a code-changing QA- ticket at qa, not for a docs-only one@@PR47 review
+MP47B@@hooks/block-shared-tree-destructive-git.sh@@      STAT=$( { git -C "$GDIR" status --porcelain -uno -- ':/' 2>/dev/null@@      STAT=$( { true@@PR47: a tracked operational file with uncommitted changes still blocks git reset --hard@@PR47 review
+MP47C@@scripts/runtime-gate.sh@@[ -f "$TOPL/docs/31-board-events.jsonl" ]@@true@@PR47: the runtime gate's integration-tip check skips a repo that is not a studio project@@PR47 review
+MP47D@@scripts/runtime-gate.sh@@[ "$(cd "$ROOT" && pwd -P)" = "$(cd "$TOPL" && pwd -P)" ]@@true@@PR47: the runtime gate's integration-tip check skips a fixture directory inside another repo@@PR47 review
+MP47E@@scripts/spawn-prompt.mjs@@return ticketEvents(root, id).filter((e) => !METADATA_EVENTS.has(e.event)).pop();@@return ticketEvents(root, id).pop();@@PR47 round 2: a corrected event after rework still composes the rework (existing branch, wave reason)@@PR47 fixes
+MP47F@@scripts/spawn-prompt.mjs@@} else if (qa && base && tryGit(ROOT, ['rev-parse', '--verify', '-q', `refs/heads/${branchName}`])) {@@} else if (false) {@@PR47 round 3: QA's first spawn cuts qa/QA-1; the re-spawn once it exists is a verdict pass on the landed tree@@PR47 fixes
+MF47A@@scripts/integration-branch.sh@@-e 's/^[[:space:]>*|#-]*([0-9]+\.[[:space:]]*)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@-e 's/^[[:space:]>*|-]*(@)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@PR47 fixes: heading, numbered, hyphen@@PR47 fixes
+MF47B@@hooks/block-shared-tree-destructive-git.sh@@printf 'main master develop %s'@@printf 'main %s'@@PR47 fixes: an unresolvable declaration still protects develop from a raw merge@@PR47 fixes
+MF47C@@hooks/block-shared-tree-destructive-git.sh@@case $REF in i) SWEEP=1; EXCL="" ;; u) EXCL="" ;; esac@@SWEEP=1; EXCL=""@@PR47 fixes: git clean -fd runs when the only operational file is the gitignored board log@@PR47 fixes
+MF47D@@hooks/block-shared-tree-destructive-git.sh@@m = (sc == "clean") ? "u" : ""@@m = ""@@PR47 fixes: git clean -fd is refused when an untracked operational file exists@@PR47 fixes
+MF47E@@scripts/spawn-prompt.mjs@@} else if (lastWorkEvent(ROOT, row.id)?.event === 'rework') {@@} else if (false) {@@PR47 fixes: after rework, compose checks out the existing branch and carries the wave's reason@@PR47 fixes
+MF47F@@hooks/contract-hooks.mjs@@.filter((w) => w.includes('/') && !/^[~/]/.test(w)@@.filter((w) => false && !/^[~/]/.test(w)@@PR47 fixes: rm -rf ../proj/docs/team/evidence from a non-studio cwd is refused@@PR47 fixes
+MF47G@@scripts/messages.mjs@@if (String(options.channel || '').replace(/^#/, '') === 'artifacts') die(@@if (false) die(@@PR47 fixes: send refuses --channel artifacts@@PR47 fixes
+MF47H@@scripts/messages.mjs@@      registration: true,@@      registration: false,@@PR47 fixes: messages.mjs artifact stamps registration:true@@PR47 fixes
+MF47I@@scripts/lib/atomic.mjs@@const ownerFile = (lockPath) => (statSync(lockPath).isDirectory() ? join(lockPath, 'owner') : lockPath);@@const ownerFile = (lockPath) => lockPath;@@PR47 fixes: main's directory lock with a dead owner is reaped, not waited out@@PR47 fixes
+MF47J@@scripts/lib/atomic.mjs@@if ((Number.isInteger(pid) && pid > 0) || age < ORPHAN_AGE_MS) return '';@@return '';@@PR47 fixes: an aged lock naming no holder says how to clear it@@PR47 fixes
+MF47K@@scripts/team-doctor.mjs@@for (const entry of registry.entries.filter((e) => String(e.id).startsWith('template/') && e.content_hash)) {@@for (const entry of []) {@@PR47 fixes: a spawn template edited without a registry sync is a team-doctor finding@@PR47 fixes
+MF47L@@scripts/board-doctor.mjs@@process.exit(anchor.kind === 'absent' ? 2 : 1);@@process.exit(2);@@PR47 fixes: board-doctor exits 1 on a log with lines deleted under its anchor@@PR47 fixes
+MF47M@@scripts/ship-gate.sh@@then CHAIN_RC=3; else CHAIN_RC=4; fi@@then CHAIN_RC=3; else CHAIN_RC=3; fi@@PR47 fixes: ship-gate blocks a deleted-lines anchor mismatch@@PR47 fixes
+MF47N@@scripts/wave-integrate.mjs@@if (r.base.startsWith('origin/')) {@@if (false) {@@PR47 fixes: in a fresh clone the wave names origin/develop@@PR47 fixes
+MF47O@@scripts/runtime-gate.sh@@ && ! git -C "$ROOT" merge-base --is-ancestor "$IB_SHA" "$HEAD_SHA" 2>/dev/null; then@@; then@@PR47 fixes: runtime-gate on a release/* HEAD that contains the develop tip@@PR47 fixes
+MF47P@@scripts/lib/evidence.mjs@@const UI_PLATFORMS = /\b(ios|android|web|web-app)\b/i;@@const UI_PLATFORMS = /^(ios|android|web|web-app)$/i;@@PR47 fixes: platform@@PR47 fixes
+MF47Q@@scripts/lib/evidence.mjs@@&& /^integration\/wave-/.test(String(rec.branch || ''));@@;@@PR47 fixes: a wave-integrate.mjs record on the ticket's own unintegrated branch@@PR47 fixes
+MF47R@@scripts/spawn-prompt.mjs@@row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict@@row.status === 'qa') return composeQaVerdict@@PR47 fixes: a QA- ticket at qa is composed as a verification@@PR47 fixes
+MF47S@@scripts/merge-reconcile.mjs@@corrected --by tech-manager --detail "<what went wrong>"@@corrected --detail "<what went wrong>"@@PR47 fixes: merge-reconcile prints the full corrected command, with --by@@PR47 fixes
+MF47T@@scripts/dispatch-preflight.mjs@@${inlineTokenFlag(resolve(String(flags.root)), 'tech-manager', flags.ticket)}@@@@PR47 fixes: dispatch-preflight's corrected command is absolute@@PR47 fixes
 CATALOGUE
 }
 

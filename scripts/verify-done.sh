@@ -328,7 +328,7 @@ if [ "$TESTS_STATUS" = "deferred-to-wave" ]; then
   echo "Next: record the honest state, which unlocks review, approval and the merge gate:"
   echo "    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs\" move $TICKET_ID verified_static --by tech-manager${STATIC_EV:+ --evidence $STATIC_EV} --detail \"deferred to wave integration\"$TOKFLAG"
   echo "  It refuses \`closed\` and blocks ship-gate until something runs the suite. That something is"
-  echo "    node scripts/wave-integrate.mjs --root . --wave <N> --base $BASE"
+  echo "    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs\" --root . --wave <N> --base $BASE"
   echo "  whose green full run is what earns the real \`verified\` for every ticket in the wave."
   exit 2
 fi

@@ -784,16 +784,41 @@ with the same access, and nothing here claims to be.
   board's own validation, tokens and re-derived evidence are the gate.
 - **A TTY can be faked.** The founder mint asks for an interactive terminal and the ticket typed
   back; that proves a terminal, not a human — a pseudo-terminal satisfies it.
-- **A fresh clone trusts the committed log once.** The board anchor lives in `.git/studio/`, so a
-  clone or a moved project has none and refuses every board read. The founder runs
-  `board.mjs adopt` at a terminal (typing `ADOPT`); it accepts a log whose hash chain is intact and
-  anchors it as it stands, so a log rewritten and re-hashed before the clone is adopted as-is.
+- **A new checkout trusts a carried-over log once.** The board log is never committed: it and the
+  rest of `/app-init` step 5's gitignored operational state live in the main checkout only, so a
+  `git checkout` cannot roll the board back. A fresh clone therefore has **no board**, and a moved
+  project has its log but no anchor (the anchor lives in `.git/studio/`); both refuse every board
+  read. **Do not run `/app-plan` there** — it would re-plan finished work. To continue a project in
+  a new checkout, first copy the operational state over from the old one, from the new root:
+
+  ```sh
+  OLD=/path/to/old/checkout
+  for p in docs/31-board-events.jsonl docs/33-rounds.jsonl docs/53-reviews docs/54-evidence \
+           docs/team/actors.json docs/team/actor-tokens.jsonl docs/team/runs.jsonl docs/team/reports \
+           docs/team/evidence docs/team/runtime-result.json docs/team/journey-result.json \
+           docs/team/ship-gate-verdict.json docs/team/messages.md; do
+    [ -e "$OLD/$p" ] && [ ! -e "$p" ] && mkdir -p "$(dirname "$p")" && cp -R "$OLD/$p" "$p"
+  done
+  ```
+
+  (not `.agent-wt/`, `.studio-stop` or `docs/team/worktree-slots.json` — those name the old
+  checkout's worktrees). Then the founder runs `node "<absolute plugin path>/scripts/board.mjs" adopt`
+  in their own terminal (not a Claude Code `!` command, which has no TTY; their terminal has no
+  `CLAUDE_PLUGIN_ROOT`, so the path is printed resolved) and types `ADOPT`. It accepts a log whose
+  hash chain is intact and anchors it as it stands, so a log rewritten and re-hashed before the copy
+  is adopted as-is. Adopt runs only when there is no anchor; if an anchor exists and disagrees, it
+  prints both counts and refuses unless the founder names what they accept with
+  `--mismatch deleted|appended|rewritten`. With no old checkout to copy from, the board history is gone; that is a founder
+  decision (start a new board), not something an agent recovers.
 - **Tests and journeys prove what they ran.** The suite runs in a fresh detached worktree of the
   exact tip, with the test commands frozen at the first gate event; journeys run only through the
   plugin's `scripts/drivers/*` (path and sha recorded). Neither proves more than the project's
   tests and the declared journeys assert.
 - **A review verdict's `## Not checked` is the reviewer's word.** The binding proves which diff
   and evidence the approval names, not that the reviewer read them.
+- **A developer's own slot is matched by role, not by instance.** A developer whose cwd is the main
+  checkout may write into any `.agent-wt/<its role>-N`, so two parallel `ios-developer`s can reach
+  each other's slots; binding the slot to the agent through its lease in `worktree-slots.json` closes it.
 
 **Zero runtime dependencies.** Node stdlib and POSIX `sh` only — no `package.json`, no
 `node_modules` at the plugin root (the optional `control-room/` UI has its own). That is a security property as much as a portability one.

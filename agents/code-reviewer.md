@@ -44,7 +44,7 @@ touch money, auth or personal data, or has a second write path you cannot close,
     framework re-check, an identity mock returning what the assertion checks, a call-count-only
     assertion, or an "expected" value computed by the code under test. The mutation rule below is
     the proof.
-- `[all]` `context-preflight` — branch, ticket, base, dirty state and source-of-truth docs.
+- `[all]` `context-preflight` (with `--role code-reviewer`) — branch, ticket, base, dirty state and source-of-truth docs.
 - `[std+]` `defect-hunting` SKILL.md (§1 second-path procedure); §4b's trigger loads
   `skills/defect-hunting/references/round-trip.md`. §2/§3 rules you **route** (step 6), not run.
 - `[std+]` `house-conventions` — the platform pack only (`ios-conventions.md`,

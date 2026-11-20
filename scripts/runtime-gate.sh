@@ -96,6 +96,33 @@ if [ "$RECORD" = 1 ]; then
 fi
 record() { :; }
 
+# W7-3: in the MAIN checkout this gate certifies the INTEGRATION BRANCH. On a develop-model project
+# the main checkout sat on `main` before its first landing, and the gate recorded PASS for a tree
+# that did not contain the wave. A linked worktree (the wave tree, an agent slot) is the tree its
+# caller chose and is left alone; the main checkout must be at the integration branch's tip.
+GDIRS=$(git -C "$ROOT" rev-parse --path-format=absolute --git-dir --git-common-dir 2>/dev/null)
+# Only a STUDIO project's own checkout: --project-root at the git toplevel with a board log. A fixture
+# directory inside some other repo (CI's eval/crash-on-launch in the plugin's PR merge commit) is not one.
+TOPL=$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)
+if [ -n "$GDIRS" ] && [ "$(printf '%s\n' "$GDIRS" | sed -n 1p)" = "$(printf '%s\n' "$GDIRS" | sed -n 2p)" ] \
+   && [ -n "$TOPL" ] && [ "$(cd "$ROOT" && pwd -P)" = "$(cd "$TOPL" && pwd -P)" ] && [ -f "$TOPL/docs/31-board-events.jsonl" ] \
+   && HEAD_SHA=$(git -C "$ROOT" rev-parse --verify -q HEAD 2>/dev/null) \
+   && IB=$(sh "$(dirname "$0")/integration-branch.sh" "$ROOT" 2>/dev/null); then
+  IB_SHA=$(git -C "$ROOT" rev-parse --verify -q "refs/heads/$IB" 2>/dev/null || git -C "$ROOT" rev-parse --verify -q "refs/remotes/origin/$IB" 2>/dev/null)
+  # PR47-12: a HEAD that CONTAINS the integration tip (a release/<version> cut from develop, per
+  # knowledge/git-workflow.md and /app-ship 3b) is what ships; only a HEAD missing it is refused.
+  if [ -n "$IB_SHA" ] && [ "$IB_SHA" != "$HEAD_SHA" ] && ! git -C "$ROOT" merge-base --is-ancestor "$IB_SHA" "$HEAD_SHA" 2>/dev/null; then
+    echo "RUNTIME GATE"
+    echo "  -        UNKNOWN  $ROOT is at ${HEAD_SHA%"${HEAD_SHA#????????????}"}, not the tip of the integration branch $IB"
+    echo "                    (${IB_SHA%"${IB_SHA#????????????}"}). The gate would certify a tree that is not what ships."
+    echo "                    Check out $IB here (git checkout $IB), or run it on the wave tree"
+    echo "                    (wave-integrate.mjs runs it there itself)."
+    echo
+    echo "RESULT: CANNOT EVALUATE — this is NOT a pass. The app was never built or launched."
+    exit 2
+  fi
+fi
+
 # Pin the shared toolchain caches (OPS-003). This gate builds once per WAVE, so it is not the
 # repeated cost the caches were added for — but it runs on the same machine minutes after
 # verify-done did, and GRADLE_USER_HOME alone means the Android path reuses that dependency cache

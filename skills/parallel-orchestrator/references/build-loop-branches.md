@@ -69,10 +69,14 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN reopened --by founde
 ```
 
 It moves the ticket back to `in_progress` with exactly one more cycle; re-spawn the owner from there.
-Only the founder writes it. Print both steps for the human: in their own terminal (it needs a TTY
-and the ticket id typed back; the token is single-use, 30 minutes)
-`node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role founder --ticket APP-NNN`, then in
-Claude Code `! node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN reopened --by founder --token <it>`.
+Only the founder writes it. Print both steps for the human, with the plugin path **resolved** — run
+`printf '%s\n' "${CLAUDE_PLUGIN_ROOT}"` yourself and print the absolute path it gives, because the
+founder's own terminal has no `CLAUDE_PLUGIN_ROOT` set. The mint runs in the founder's own terminal,
+from the project root — never through Claude Code's `!`, which has no TTY, and the mint refuses
+without one (it needs the ticket id typed back; the token is single-use, 30 minutes):
+`node "/abs/path/to/plugin/scripts/board.mjs" actor mint --role founder --ticket APP-NNN`. The move
+needs no TTY, so it runs in that terminal or as a Claude Code `!` command:
+`node "/abs/path/to/plugin/scripts/board.mjs" move APP-NNN reopened --by founder --detail "<reason>" --token <it>`.
 **You never mint a `founder` token and never append it on your own judgement.**
 
 A `rejected` verify-done is not a cycle: the row stays `in_progress` and only `changes` counts.
@@ -165,6 +169,14 @@ tickets gets no new `QA-` ticket.
 (`docs/team/journey-result.json`), or the test-evidence record a full run on the integration branch
 wrote under `docs/team/evidence/` (`wave-integrate`'s, or `verify-done.sh <integration branch>
 <base> full` after the merge). Not a hand-written plan, not a screenshot, not a report.
+
+**First declarations land before verdicts.** `qa_passed` on a UI project needs a P0 journey
+declaration already committed on the integration branch — a declaration still on QA's branch is
+refused, even with the full-suite fallback. So when QA writes the first `docs/team/journeys/<journey-id>.json`
+(or a new P0 one), it returns its `QA-` ticket WITHOUT verdicts; land it (app-build step 5), re-run
+the journey gate, then lease QA a slot and re-spawn it with `compose --ticket QA-<sprint>-w<n> --role
+qa-engineer` — it composes a VERDICT PASS on the landed tree (no new branch) — to record each
+`qa_passed`/`qa_failed` against the landed declarations. Only then close.
 
 **`qa_failed` → the fix.** The rejected ticket stays in `qa`. Add
 `BUG-NNN-fix --owner <platform dev> --depends APP-NNN` (branch `feat/BUG-NNN-fix-<slug>`): a

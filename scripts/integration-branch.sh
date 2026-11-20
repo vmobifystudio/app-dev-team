@@ -10,8 +10,10 @@
 # Resolution order:
 #   1. docs/23-git-strategy.md      — an "Integration branch: <name>" line (devops-engineer writes this)
 #   2. docs/20-architecture.md      — the same line, if §7 carries it instead
-#   3. main — ONLY when there is no docs/23-git-strategy.md at all. A git-strategy doc that exists
-#      and declares nothing is exit 2, not `main`: see the block that raises it.
+#   3. main (master in a master-only repo) — ONLY when there is no docs/23-git-strategy.md at all.
+#      A git-strategy doc that exists and declares nothing is exit 2, not `main`.
+#   Both docs are read as COMMITTED at the main checkout's HEAD (G7-3); a declared ticket branch
+#   (feat/ fix/ qa/ bug/) is exit 2.
 #
 # A branch named by the docs but absent from the repository is exit 2, NOT a fallback. This file
 # used to print a warning to stderr and return `main` with exit 0 — failing open on the single
@@ -44,32 +46,58 @@ if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
   exit 2
 fi
 
+# G7-3: the declaration is read from the COMMITTED doc at the MAIN CHECKOUT's HEAD, not from the
+# caller's working tree. A subagent's `printf 'Integration branch: feat/APP-1-x' > docs/23-…` (or a
+# slot's own copy of the doc) redirected `closed`, merge risk and wave landing. The main checkout's
+# HEAD lives in the common git dir, so every worktree of the repository reads the same answer.
+# ponytail: a doc never committed at all (app-init before its first commit, fixtures that gitignore
+# docs/) is still read from the main checkout's working tree — committing it closes that window.
+COMMON=$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)
+MAIN=$(dirname "$COMMON")
+[ -e "$MAIN/.git" ] || MAIN=$(git -C "$ROOT" rev-parse --show-toplevel)
+PREFIX=$(git -C "$ROOT" rev-parse --show-prefix 2>/dev/null)
+doc_text() {
+  if git --git-dir="$COMMON" cat-file -e "HEAD:$PREFIX$1" 2>/dev/null; then
+    git --git-dir="$COMMON" show "HEAD:$PREFIX$1"
+  elif [ -f "$MAIN/$PREFIX$1" ]; then
+    cat "$MAIN/$PREFIX$1"
+  else
+    return 1
+  fi
+}
+
 # Pull the first "Integration branch: <name>" declaration out of a doc, tolerating backticks,
-# bold markers and table cells around the name.
+# bold markers, list bullets and table cells around the name.
 #
-# The separator set is wider than `[:|]` because prose is wider than `[:|]`. These are all real
-# phrasings a devops-engineer writes into docs/23-git-strategy.md, and every one of them fell
-# through to the silent `main` fallback:
+# C7-5: ANCHORED TO THE START OF A LINE. The unanchored form read prose: "Features merge into the
+# integration branch — never straight to main." gave `never`, "The integration branch is protected"
+# gave `protected`, and a doc declaring `main` two lines later could not resolve. Only a line that
+# STARTS with the label (after markdown decoration) declares anything:
 #
 #   Integration branch: develop            Integration branch = develop
-#   - Integration branch — `develop`       The integration branch is `develop`.
+#   - Integration branch — `develop`       **Integration branch:** `develop`
 #   | Integration branch | develop |
+#   - Integration branch - develop         1. Integration branch: develop
+#   ## Integration branch: develop         The integration branch is `develop`.
+#
+# PR47-2: the `is` form only with a backticked name that ENDS the line, so "is protected" is prose.
 #
 # ERE (`sed -E`), not BRE: `\|` alternation in a BRE is a GNU extension and this repo runs on BSD
 # sed too, where it would have silently matched nothing — a resolver that always falls back.
 read_declared() {
-  [ -f "$1" ] || return 1
-  sed -nE 's/.*[Ii]ntegration branch[[:space:]]*(:|=|—|–|-|\||is)[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\2/p' "$1" \
+  doc_text "$1" | sed -nE \
+    -e 's/^[[:space:]>*|#-]*([0-9]+\.[[:space:]]*)?[Ii]ntegration branch[[:space:]]*(\*\*)?[[:space:]]*(:|=|—|–|\||-[[:space:]])[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\4/p' \
+    -e 's/^[[:space:]>*|#-]*([0-9]+\.[[:space:]]*)?([Tt]he[[:space:]]+)?[Ii]ntegration branch[[:space:]]+is[[:space:]]+`([A-Za-z0-9._/-]+)`[.[:space:]]*$/\3/p' \
     | head -n 1 | sed -E 's/[./]+$//'   # W2-22: "Integration branch: main." — a branch cannot end in . or /
 }
 
 DECLARED=""
 SOURCE=""
-for doc in "$ROOT/docs/23-git-strategy.md" "$ROOT/docs/20-architecture.md"; do
+for doc in docs/23-git-strategy.md docs/20-architecture.md; do
   candidate=$(read_declared "$doc" || true)
   if [ -n "$candidate" ]; then
     DECLARED="$candidate"
-    SOURCE="$doc"
+    SOURCE="$MAIN/$PREFIX$doc"
     break
   fi
 done
@@ -88,8 +116,8 @@ if [ -z "$DECLARED" ]; then
   #   no git-strategy doc at all -> `main`, exit 0. A project with no branch model has no develop
   #     model to get wrong, and brownfield /app-audit runs must not be bricked by a doc they never
   #     had.
-  if [ -f "$ROOT/docs/23-git-strategy.md" ]; then
-    MSG="integration-branch: CANNOT RESOLVE — $ROOT/docs/23-git-strategy.md exists but declares no
+  if doc_text docs/23-git-strategy.md >/dev/null 2>&1; then
+    MSG="integration-branch: CANNOT RESOLVE — $MAIN/${PREFIX}docs/23-git-strategy.md exists but declares no
 integration branch. Add the line devops-engineer owns, exactly:
     Integration branch: <name>
 Refusing to assume $FALLBACK: on a develop-model project that silently merges features into the
@@ -98,10 +126,22 @@ wrong branch, which is not recoverable by a later fix."
     echo "$MSG" >&2
     exit 2
   fi
+  # A master-only repository has no `main`; naming one there gave every caller a ref that is not.
+  if ! git -C "$ROOT" rev-parse --verify --quiet refs/heads/main >/dev/null 2>&1 \
+    && git -C "$ROOT" rev-parse --verify --quiet refs/heads/master >/dev/null 2>&1; then FALLBACK=master; fi
   echo "integration-branch: no docs/23-git-strategy.md in $ROOT; using $FALLBACK" >&2
   echo "$FALLBACK"
   exit 0
 fi
+
+# G7-3: a TICKET branch is never the integration branch. `Integration branch: feat/APP-1-x` made
+# `closed` accept the ticket's own tip as integrated while develop still held only `init`.
+case $(printf '%s' "$DECLARED" | tr '[:upper:]' '[:lower:]') in
+  feat/*|fix/*|qa/*|bug/*)
+    MSG="integration-branch: CANNOT RESOLVE — $SOURCE declares '$DECLARED', a ticket branch
+(feat/, fix/, qa/, bug/), not an integration branch. Declare the branch tickets merge INTO."
+    echo "$MSG"; echo "$MSG" >&2; exit 2 ;;
+esac
 
 # The declared branch has to actually exist, or every comparison against it is vacuous.
 if git -C "$ROOT" rev-parse --verify --quiet "refs/heads/$DECLARED" >/dev/null 2>&1 \

@@ -18,6 +18,7 @@
 import { createHash } from 'node:crypto';
 
 import { gitAt, integrationBase, isAncestor, ticketTip } from './integration.mjs';
+import { changedFiles } from './evidence.mjs';
 
 const sameTicket = (a, b) => String(a ?? '').toUpperCase() === String(b ?? '').toUpperCase();
 
@@ -86,9 +87,8 @@ export function checkApprovals(events, { ticket = '', head = '', cwd = process.c
     // The file manifest is what makes the blast radius readable. A mismatch means files entered or
     // left the candidate after it was approved.
     if (Array.isArray(detail.files) && base) {
-      const now = git(['diff', '--name-only', base, detail.commit]);
-      if (now !== null) {
-        const actual = now.split('\n').filter(Boolean);
+      const actual = changedFiles(git, base, detail.commit); // G7-4: both sides of a rename, raw paths
+      if (actual !== null) {
         const added = actual.filter((f) => !detail.files.includes(f));
         const gone = detail.files.filter((f) => !actual.includes(f));
         if (added.length || gone.length) {

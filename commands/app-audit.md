@@ -86,14 +86,26 @@ Dimension (optional, default = all): $ARGUMENTS
    through the board CLI — one `board.mjs add` per ticket, appended to the event log
    `docs/31-board-events.jsonl`; never a hand-written row in the rendered board view (it is
    regenerated from the log) — prioritized by severity, each carrying its violated-rule +
-   Safe/Risky tag in `--notes`:
+   Safe/Risky tag in `--notes`.
+
+   **First, the risk policy.** `board.mjs add` derives each ticket's risk from `--file` against
+   `docs/team/risk-policy.json`; with no policy, or no `--file`, the ticket is stored `risk: null`
+   and its high-risk invariant check never applies. On an existing app `/app-plan` 1b has not run
+   yet, so bootstrap the manifests here (exit `1` "already exist" means they are there — continue):
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/team-bootstrap.mjs" --root .
+   ```
+
+   Then add each ticket with the file(s) its fix touches (comma-separated):
 
    ```bash
    # Safe
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add AUDIT-NNN --title "..." --owner <role> \
-     --notes "rule: <violated rule> · Safe" --by tech-manager
+     --file "<path/the/fix/touches>" --notes "rule: <violated rule> · Safe" --by tech-manager
    # Risky — born blocked, so nothing can claim it until the founder approves it
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" add AUDIT-NNN --title "..." --owner <role> \
+     --file "<path/the/fix/touches>" \
      --notes "rule: <violated rule> · Risky · plan: <the short written plan>" \
      --status blocked --reason "needs-approval: Risky change, awaiting the founder at step 4" \
      --by tech-manager
@@ -119,8 +131,10 @@ Dimension (optional, default = all): $ARGUMENTS
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move AUDIT-NNN unblocked --by tech-manager \
-     --detail "approved by the founder at the /app-audit gate, <date>"
+     --detail "approved by the founder at the /app-audit gate, <date>" --token <tech-manager token>
    ```
+   Releasing a `needs-approval:` block is a gate event (S7-2): only tech-manager or founder, and under
+   `requireActorTokens` with that role's token — a worker's `unblocked` on it is refused.
 
    A Risky ticket the user did not approve stays `blocked` with its `needs-approval:` reason.
 

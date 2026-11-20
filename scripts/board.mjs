@@ -57,9 +57,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { withFileLock } from './lib/atomic.mjs';
 import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
-import { resolveActor, verifyActorToken, mintActorToken, revokeActorToken, listActorTokens, TOKEN_REGISTRY, inlineTokenFlag, founderConfirms } from './lib/actor.mjs';
-import { GATE_EVENTS } from './lib/capabilities.mjs';
-import { verifyTestEvidence, verifyQaEvidence, currentTestProfile, frozenTestProfile, sameCommands, docsOnlyDiff } from './lib/evidence.mjs';
+import { resolveActor, verifyActorToken, mintActorToken, revokeActorToken, listActorTokens, TOKEN_REGISTRY, inlineTokenFlag, founderConfirms, BOARD_CLI } from './lib/actor.mjs';
+import { GATE_EVENTS, conditionalGate } from './lib/capabilities.mjs';
+import { verifyTestEvidence, verifyQaEvidence, currentTestProfile, frozenTestProfile, sameCommands, docsOnlyDiff, changedFiles } from './lib/evidence.mjs';
 import { RANK, routeFiles } from './lib/risk.mjs';
 import { parseBoard, parseLedger, parseDependencies, isEmpty, normalizeId, MAX_REVIEW_CYCLES } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
@@ -81,7 +81,7 @@ import {
 } from './lib/events.mjs';
 import { VERDICT_EVENTS, readVerdict } from './lib/verdict.mjs';
 import { checkApprovals } from './lib/approval.mjs';
-import { gitAt, integrationBase, ticketTip, isAncestor } from './lib/integration.mjs';
+import { gitAt, integrationBase, integrationResolve, ticketTip, isAncestor } from './lib/integration.mjs';
 
 const DEFAULT_LOG = 'docs/31-board-events.jsonl';
 const DEFAULT_BOARD = 'docs/31-board.md';
@@ -164,7 +164,7 @@ const VALUE_FLAGS = new Set([
   'status', 'by', 'detail', 'reason', 'to', 'log', 'board', 'out',
   'invariant', 'rollback', 'file', 'change', 'commit', 'idempotency-key', 'project-root', 'base', 'actor', 'actor-token',
   'evidence', 'context', 'run', 'attempt', 'lease-seconds', 'verdict', 'head',
-  'token', 'role', 'ticket', 'ttl-minutes', 'token-id',
+  'token', 'role', 'ticket', 'ttl-minutes', 'token-id', 'mismatch',
 ]);
 
 const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die, listFlags: { file: ',', depends: ',', invariant: ';' } });
@@ -358,7 +358,7 @@ function append(logPath, event) {
  * durable admission that the role was asserted rather than proven. Under
  * `requireAttestedActors: true` an unproven role is refused outright.
  */
-function stampActor(paths, flags, ticket, eventName) {
+function stampActor(paths, flags, ticket, eventName, conditional = false) {
   // THE SECURITY ROOT COMES FROM THE RESOLVER, NOT FROM THE CALLER'S --log.
   //
   // This was `dirname(dirname(paths.log))`. `--log` is a caller-supplied path, so the caller chose
@@ -370,7 +370,7 @@ function stampActor(paths, flags, ticket, eventName) {
   const { root, policy } = studioPolicy();
   const token = typeof flags.token === 'string' ? flags.token : '';
   const role = String(flags.by || '');
-  const gate = GATE_EVENTS.has(eventName);
+  const gate = GATE_EVENTS.has(eventName) || conditional; // S7-2/S7-3: corrected, unblocked of needs-approval
   // C3W-8 / design D: only the orchestrator's own role (tech-manager) is shown an inline mint. For an
   // AGENT role, printing a mint was an instruction to self-attest — the agent would mint the token
   // that is supposed to prove the orchestrator sent it.
@@ -787,9 +787,8 @@ function bindApprovalEvidence(flags, ticket, state) {
   // The changed-file manifest is recorded alongside the diff hash. The hash proves the content did
   // not change; the manifest is what a human or a policy check can actually read to see the blast
   // radius of what was approved.
-  let files = [];
-  try { files = execFileSync('git', ['diff', '--name-only', base, commit], { encoding: 'utf8' }).split('\n').filter(Boolean); }
-  catch { /* recorded as empty; the diff hash is still authoritative */ }
+  // G7-4: --no-renames, raw paths (lib/evidence.mjs changedFiles) — the same list approval-check re-derives.
+  const files = changedFiles(gitAt(process.cwd()), base, commit) || []; // empty on error; the diff hash is still authoritative
   if (!flags.evidence) return { ok: false, reason: '--bind requires --evidence <path to the evidence the review used>' };
   if (!flags.context) return { ok: false, reason: '--bind requires --context <path to the context the review used>' };
   // G2-6: --evidence is a record under docs/team/evidence/ that RE-DERIVES for this ticket and ran
@@ -836,7 +835,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     by: flags.by || '',
     detail: typeof flags.detail === 'object' ? flags.detail : scrub('--detail', flags.detail || ''),
     provenance: 'cli',
-    actor: stampActor(paths, flags, ticket, name),
+    actor: stampActor(paths, flags, ticket, name, Boolean(conditionalGate(tickets.get(key(ticket)), name))),
     // Stamped here as well as in `cmdAdd`. The first version of this fix stamped the key on
     // `created` only, so `alreadyApplied` could never find it for a `move` — the dedup guard ran,
     // found nothing, and the retry fell through to the state machine. FC-001 inside the fix for
@@ -1049,12 +1048,15 @@ function printQaLanding(ticket, events) {
   if (isAncestor(g, head, base)) { process.stdout.write(`  ${ticket}'s files are already on ${base}.\n`); return; }
   const tip = ticketTip(g, ticket, boardIds());
   const branch = tip.sha === head ? tip.branch : head;
+  // U1: a fresh clone's base is origin/<name>; `git checkout <name>` makes the local branch (checking
+  // out origin/<name> would detach HEAD and the fast-forward would land nowhere).
+  const local = base.replace(/^origin\//, '');
   process.stdout.write(
-    `  Land ${ticket}'s documents on ${base} (docs-only, reviewed inline — a fast-forward, no merge commit):\n` +
-    `    git checkout ${base} && git merge --ff-only ${branch}\n` +
+    `  Land ${ticket}'s documents on ${local} (docs-only, reviewed inline — a fast-forward, no merge commit):\n` +
+    `    git checkout ${local} && git merge --ff-only ${branch}\n` +
     (isAncestor(g, g(['rev-parse', base]) || '', head) ? ''
       : `  ${base} has moved since the QA branch was cut, so that is not a fast-forward yet. Rebase it first (documents only, nothing to re-review):\n` +
-        `    git rebase ${base} ${branch} && git checkout ${base} && git merge --ff-only ${branch}\n`)
+        `    git rebase ${base} ${branch} && git checkout ${local} && git merge --ff-only ${branch}\n`)
   );
 }
 
@@ -1128,13 +1130,16 @@ function gitRefusal(name, ticket, flags, events, state) {
     if (!d.ok) return `${ticket} is on the QA- docs-only fast path, but ${d.reason}. A QA ticket that changes code takes the normal path (review_requested -> approved -> merged).`;
     // C5G-1: the docs-only proof is about the commit recorded at merged — a code commit added AFTER it and
     // fast-forwarded onto the integration branch rode in unreviewed, exactly as on the normal path.
-    const base = name === 'closed' && recorded ? integrationBase(git) : '';
+    if (!(name === 'closed' && recorded)) return '';
+    const base = integrationBase(git);
+    if (base === '') return unresolvedBase(git);
     return base ? landedAfterMerge(git, ticket, recorded, base) : '';
   }
   const binding = studioPolicy().policy.requireApprovalBinding === true;
   if (name === 'closed') {
     const base = integrationBase(git);
-    if (!base) return '';
+    // U1/G7-16: a strategy doc that cannot resolve is a refusal, never "nothing to check" (no repo: unchanged).
+    if (!base) return unresolvedBase(git);
     // G2-8: the subject must be known — the merged commit recorded at `merged` (C3G-8), or, for a
     // ticket merged before that was recorded, the branch tip / --head.
     const subj = recorded ? { sha: recorded, source: 'the commit recorded at merged' } : mergeSubject(git, ticket, flags);
@@ -1223,6 +1228,12 @@ const EVIDENCE_CHECKS = {
   'migration-plan': (st) => Boolean(String(st.meta?.rollback || '').trim()),
 };
 const RUNTIME_KINDS = new Set(['runtime-gate', 'runtime-evidence']);
+/** `closed` with no resolvable integration branch: '' only outside a repository (nothing was ever checkable). */
+function unresolvedBase(git) {
+  if (git(['rev-parse', '--git-dir']) === null) return '';
+  return `the integration branch is unknown (${integrationResolve(git).reason}) — "done" asserts code on the integration branch, and where that is cannot be told. Fix docs/23-git-strategy.md's "Integration branch:" line.`;
+}
+
 function mergeRisk(ticket, state, paths, flags = {}) {
   const policyPath = resolve(dirname(paths.log), 'team', 'risk-policy.json');
   if (!state) return {};
@@ -1249,9 +1260,10 @@ function mergeRisk(ticket, state, paths, flags = {}) {
   if (subj.error) return { refusal: `${subj.error}\n  risk-policy.json is in force, so the merge must know which files it lands.` };
   const tip = { sha: subj.sha };
   const base = integrationBase(g);
-  if (!base) return { refusal: 'risk-policy.json is in force and no integration branch (develop/main/master) exists, so the diff — and the risk it carries — is unknown' };
+  if (!base) return { refusal: `risk-policy.json is in force and the integration branch is unknown (${integrationResolve(g).reason}), so the diff — and the risk it carries — is unknown` };
   const mb = g(['merge-base', base, tip.sha]);
-  const files = mb ? (g(['diff', '--name-only', mb, tip.sha]) || '').split('\n').filter(Boolean) : null;
+  // G7-4: a rename routes BOTH paths (src/auth/login.ts -> src/login.ts still touched auth/), unquoted.
+  const files = mb ? changedFiles(g, mb, tip.sha) : null;
   if (files === null) return { refusal: `cannot diff ${tip.sha.slice(0, 12)} against ${base} — the diff, and the risk it carries, is unknown` };
   const planned = state.meta?.policy_decision || null;
   const diff = files && files.length ? routeFiles(policy, files) : null;
@@ -1405,26 +1417,63 @@ function cmdShow(id, flags, paths) {
  * must verify intact; adoption trusts the log's CONTENT as of now, which is the decision the
  * founder is asked to make. BOUND: a log rewritten and re-hashed before the clone is adopted as-is.
  */
-function cmdAdopt(paths) {
+// G7-13 / C7-8 / G7-15: adopt is for an ABSENT anchor (fresh clone, moved project). An anchor that
+// disagrees with the log is adopted only with `--mismatch <deleted|appended|rewritten>` naming what
+// the founder accepts losing or trusting, and the counts are printed first. The confirmation is
+// read BEFORE the log lock, and the log is re-assessed inside it: unchanged, or nothing is written.
+function adoptState(paths) {
   if (!existsSync(paths.log)) die(2, `no event log at ${paths.log} — nothing to adopt`);
   const text = readFileSync(paths.log, 'utf8');
   const chain = verifyChain(text);
   if (!chain.ok) die(2, `the audit chain of ${paths.log} is broken at line ${chain.line} (${chain.reason}) — a broken log is restored, never adopted.`);
   const at = anchorPath(paths.log);
   if (!at) die(2, `${paths.log} is not in a git repository — there is no anchor to write.`);
-  const current = checkAnchor(paths.log, text, chain);
-  if (current.ok && existsSync(at)) {
-    process.stdout.write(`board: ${paths.log} already matches its anchor (${chain.chained} chained line(s)) — nothing to adopt\n`);
+  let a = null;
+  if (existsSync(at)) { try { a = JSON.parse(readFileSync(at, 'utf8')); } catch { a = { chained: null, tip: null, unreadable: true }; } }
+  const kind = !a ? 'absent' : a.unreadable ? 'rewritten'
+    : a.chained === chain.chained && a.tip === chain.tip ? 'none'
+      : chain.chained < a.chained ? 'deleted' : chain.chained > a.chained ? 'appended' : 'rewritten';
+  return { text, chain, at, a, kind };
+}
+function cmdAdopt(paths, flags) {
+  const s = adoptState(paths);
+  if (s.kind === 'none') {
+    process.stdout.write(`board: ${paths.log} already matches its anchor (${s.chain.chained} chained line(s)) — nothing to adopt\n`);
     return;
   }
-  const c = founderConfirms('ADOPT');
-  if (!c.ok) {
-    die(1, `refusing adopt: ${c.reason.replace(/actor mint --role founder --ticket ADOPT[\s\S]*/, 'board.mjs adopt')}\n` +
-      '  adopt re-trusts the committed log as it stands. Only the human founder decides that, at their own terminal:\n' +
-      `    ! node "\${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" adopt`);
+  const cd = `cd "${dirname(dirname(paths.log))}" && `;
+  const cmd = `${cd}node "${BOARD_CLI}" adopt${s.kind === 'absent' ? '' : ` --mismatch ${s.kind}`}`;
+  const counts = s.kind === 'absent'
+    ? `  no anchor for this log in this checkout; the log has ${s.chain.chained} chained line(s).`
+    : `  the anchor recorded ${s.a.chained ?? '?'} chained line(s) ending ${String(s.a.tip || '?').slice(0, 12)}; the log has ${s.chain.chained} ending ${String(s.chain.tip || '').slice(0, 12)}.\n` +
+      (s.kind === 'deleted' ? `  ${s.a.chained - s.chain.chained} line(s) the anchor vouched for are GONE — adopting forgets them.`
+        : s.kind === 'appended' ? `  ${s.chain.chained - s.a.chained} line(s) were appended without the CLI — adopting trusts them:\n` +
+          s.text.split('\n').filter((l) => l.includes('"hash"')).slice(s.a.chained)
+            .map((l) => { try { const e = JSON.parse(l); return `    ${e.ts || ''} ${e.ticket || ''} ${e.event || ''} --by ${e.by || '?'}`; } catch { return '    (unreadable line)'; } }).join('\n')
+          : '  the same number of lines hash differently — the history was rewritten and re-hashed.');
+  if (s.kind !== 'absent' && flags.mismatch !== s.kind) {
+    die(1, `refusing adopt: the anchor exists and disagrees with ${paths.log} (${s.kind}).\n${counts}\n` +
+      '  adopt is for a checkout with NO anchor (a fresh clone, a moved project). Restore the log from a backup that\n' +
+      '  matches the anchor; or, if the founder accepts exactly this, at their own terminal:\n' +
+      `    ${cmd}`);
   }
-  writeAnchor(paths.log, chain.chained, chain.tip);
-  process.stdout.write(`board: adopted ${paths.log} — ${chain.chained} chained line(s), anchored at ${at}\n`);
+  const c = founderConfirms('ADOPT', {
+    root: dirname(dirname(paths.log)),
+    prompt: `Adopt ${paths.log}?\n${counts}\nThis re-trusts the log as it stands. Type the word ADOPT to anchor it: `,
+    refusal: `adopt re-trusts the log as it stands, so the human founder confirms it at a terminal (stdin is not a TTY here; an agent Bash call and a Claude Code \`!\` command never have one).\n${counts}\n` +
+      `  Founder: in your own terminal run\n    ${cmd}`,
+  });
+  if (!c.ok) {
+    die(1, `refusing adopt: ${c.reason}`);
+  }
+  withFileLock(paths.log, () => {
+    const now = adoptState(paths);
+    if (now.kind !== s.kind || now.chain.tip !== s.chain.tip || now.chain.chained !== s.chain.chained) {
+      die(1, `refusing adopt: ${paths.log} changed while the founder was confirming — nothing anchored. Run adopt again.`);
+    }
+    writeAnchor(paths.log, now.chain.chained, now.chain.tip);
+    process.stdout.write(`board: adopted ${paths.log} — ${now.chain.chained} chained line(s), anchored at ${now.at}\n`);
+  }, { die });
 }
 
 function cmdVerify(paths) {
@@ -1443,7 +1492,7 @@ function cmdVerify(paths) {
   }
   const anchored = checkAnchor(paths.log, text, chain);
   if (!anchored.ok) {
-    process.stdout.write(`AUDIT CHAIN: does NOT match its anchor\n  ${anchored.reason.split('\n').join('\n  ')}\n`);
+    process.stdout.write(`AUDIT CHAIN: does NOT match its anchor (${anchored.kind})\n  ${anchored.reason.split('\n').join('\n  ')}\n`);
     process.exit(1);
   }
   process.stdout.write(
@@ -1465,7 +1514,16 @@ function cmdActor(sub, flags) {
   const { root } = studioPolicy();
   const regPath = resolve(root, TOKEN_REGISTRY);
   if (sub === 'mint') {
-    const r = withFileLock(regPath, () => mintActorToken({ root, role: String(flags.role || ''), ticket: typeof flags.ticket === 'string' ? flags.ticket : '', ttlMinutes: flags['ttl-minutes'] || 240 }), { die });
+    // C7-8: the founder confirms BEFORE the registry lock — a lock held for minutes on terminal
+    // input failed every orchestrator mint meanwhile, with advice to delete a live lock.
+    const tkt = typeof flags.ticket === 'string' ? flags.ticket : '';
+    let confirm;
+    if (String(flags.role || '') === 'founder' && tkt) {
+      const c = founderConfirms(tkt, { root });
+      if (!c.ok) die(1, `actor mint: ${c.reason}`);
+      confirm = () => ({ ok: true });
+    }
+    const r = withFileLock(regPath, () => mintActorToken({ root, role: String(flags.role || ''), ticket: tkt, ttlMinutes: flags['ttl-minutes'] || 240, ...(confirm ? { confirm } : {}) }), { die });
     if (!r.ok) die(1, `actor mint: ${r.reason}`);
     process.stderr.write(`board: minted token ${r.record.token_id} for ${r.record.role} on ${r.record.ticket}, expires ${r.record.expires_at}.\n` +
       // C4W-13: the orchestrator's own inline `--token "$(… mint --role tech-manager …)"` is not a
@@ -1719,7 +1777,7 @@ const EXPECTED_POSITIONALS = {
   show: { max: 1, usage: 'show [ID] [--json]' },
   render: { max: 0, usage: 'render' },
   verify: { max: 0, usage: 'verify' },
-  adopt: { max: 0, usage: 'adopt   (founder, at a terminal: anchor a committed log in this checkout)' },
+  adopt: { max: 0, usage: 'adopt [--mismatch deleted|appended|rewritten]   (founder, at a terminal: anchor a committed log in this checkout)' },
   actor: { max: 1, usage: 'actor mint --role R --ticket T [--ttl-minutes N] | actor revoke --token-id ID | actor list' },
   migrate: { max: 1, usage: 'migrate [path/to/31-board.md] [--out log.jsonl]' },
 };
@@ -1810,7 +1868,7 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
     case 'verify':
       return cmdVerify(paths);
     case 'adopt':
-      return withFileLock(paths.log, () => cmdAdopt(paths));
+      return cmdAdopt(paths, flags); // takes the log lock itself, after the founder confirms (C7-8)
     case 'migrate':
       return cmdMigrate(rest[0], flags, paths);
     case 'actor':

@@ -13,7 +13,7 @@ const files = flags.file ? String(flags.file).split(',').map((file) => file.trim
 if (!files.length) die(2, '--file is required');
 const missing = [];
 for (const file of files) {
-  const matches = map.rules.filter((rule) => new RegExp(rule.pattern).test(file));
+  const matches = map.rules.filter((rule) => new RegExp(rule.pattern, 'i').test(file));
   if (!matches.length) missing.push(`${file}: no impact rule`);
   for (const rule of matches) if (!rule.consumers?.length) missing.push(`${file}: impact rule has no consumers`);
 }

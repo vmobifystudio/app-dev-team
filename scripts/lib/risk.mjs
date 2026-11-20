@@ -7,11 +7,16 @@
 export const RANK = { low: 0, medium: 1, high: 2, critical: 3 };
 
 /** `policy` is risk-policy/v1. Returns the selected route for one input string, or null. */
+// G7-5: every rule at the winning tier contributes its approvals and evidence (a billing rule's
+// security review and a migration rule's plan are both owed when one diff touches both).
+const union = (rules, k) => [...new Set(rules.flatMap((r) => r[k] || []))];
 export function route(policy, input) {
-  const matched = policy.rules.filter((rule) => new RegExp(rule.pattern).test(input));
+  // U6: paths are matched case-insensitively — App/Persistence/Migrations/ is a migration path too.
+  const matched = policy.rules.filter((rule) => new RegExp(rule.pattern, 'i').test(input));
   const selected = [...matched].sort((a, b) => RANK[b.risk] - RANK[a.risk])[0] || policy.default;
   if (!selected || !selected.model || !selected.risk) return null;
-  return { risk: selected.risk, model: selected.model, approvals: selected.approvals || [], required_evidence: selected.required_evidence || [], matched_rules: matched.length };
+  const tier = matched.length ? matched.filter((r) => r.risk === selected.risk) : [selected];
+  return { risk: selected.risk, model: selected.model, approvals: union(tier, 'approvals'), required_evidence: union(tier, 'required_evidence'), matched_rules: matched.length };
 }
 
 /**
@@ -23,7 +28,12 @@ export function routeFiles(policy, files) {
   let best = null;
   for (const f of files) {
     const r = route(policy, f);
-    if (r && (!best || RANK[r.risk] > RANK[best.risk])) best = { ...r, because: f };
+    if (!r) continue;
+    if (!best || RANK[r.risk] > RANK[best.risk]) best = { ...r, because: f };
+    else if (r.risk === best.risk) {
+      best.approvals = [...new Set([...best.approvals, ...r.approvals])];
+      best.required_evidence = [...new Set([...best.required_evidence, ...r.required_evidence])];
+    }
   }
   return best;
 }

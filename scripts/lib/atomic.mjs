@@ -16,9 +16,9 @@
  * Node has no built-in flock and this plugin stays dependency-free by design, so an `O_EXCL`
  * lockfile does the work — the same mechanism Unix mail spools and package managers use.
  */
-import { closeSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 
 // A lock is stale if its holder DIED — not if it is merely slow.
 //
@@ -50,7 +50,13 @@ process.on('exit', () => {
  * append-only log MUST be wrapped in this — locking only the write is not enough, because the
  * decision (and the tip the hash chains onto) is made during the read.
  */
-function withFileLock(target, fn, { timeoutMs = 5000, die = defaultDie } = {}) {
+// The wait is 30s (C7-9). At 5s, 24 concurrent `board.mjs move … claimed` — each holding the lock
+// ~0.45s because it runs run-ledger inside — refused 11 of them, and one slow `merged` (a large
+// `git diff --binary`) shrinks that ceiling further. Waiting longer costs nothing: the reaper, not
+// the timeout, is what tells a dead holder from a live one.
+const LOCK_WAIT_MS = 30_000;
+
+function withFileLock(target, fn, { timeoutMs = LOCK_WAIT_MS, die = defaultDie } = {}) {
   const lockPath = `${target}.lock`;
   mkdirSync(dirname(target), { recursive: true });
   const deadline = Date.now() + timeoutMs;
@@ -64,7 +70,9 @@ function withFileLock(target, fn, { timeoutMs = 5000, die = defaultDie } = {}) {
         die(2,
           `could not acquire ${lockPath} within ${timeoutMs}ms — another writer is holding it.\n` +
           '  This is contention, not corruption: nothing has been written and nothing is lost.\n' +
-          '  Re-run the command. If it persists, a process died holding the lock; remove the file.');
+          (orphanHint(lockPath) ||
+          '  Re-run the command. A live holder may be waiting on founder input (adopt or a founder mint) —\n' +
+          '  finish that first. A dead holder\'s lock is reaped automatically; never delete it by hand.'));
       }
       try { execFileSync('sleep', ['0.02']); } catch { /* best-effort backoff */ }
     }
@@ -105,12 +113,32 @@ function withFileLock(target, fn, { timeoutMs = 5000, die = defaultDie } = {}) {
  * this primitive exists to prevent.
  */
 const MIN_REAP_AGE_MS = 30_000;
+const ORPHAN_AGE_MS = 5 * 60_000;
+
+// PR47-8: main's messages.mjs locked with a DIRECTORY (`messages.jsonl.lock/owner`); one left behind
+// by an upgrade is read through its `owner` file and reaped by the same rule. A lock that names no
+// holder at all (main's pid-less run-ledger lockfile, or a holder killed between create and write)
+// is never reaped — but past ORPHAN_AGE_MS the refusal says how to clear it instead of "never delete".
+const ownerFile = (lockPath) => (statSync(lockPath).isDirectory() ? join(lockPath, 'owner') : lockPath);
+
+function orphanHint(lockPath) {
+  try {
+    const age = Date.now() - statSync(lockPath).mtimeMs;
+    let pid = NaN;
+    try { pid = Number(readFileSync(ownerFile(lockPath), 'utf8').trim()); } catch { /* no owner */ }
+    if ((Number.isInteger(pid) && pid > 0) || age < ORPHAN_AGE_MS) return '';
+    return `  ${lockPath} names no holder pid and is ${Math.round(age / 60_000)} minutes old — left by an older\n` +
+      '  version or a holder killed while taking it. Nothing reaps a lock that names nobody. Confirm no\n' +
+      `  studio command is still running (ps -ax | grep -E 'board|messages|run-ledger'), then remove it:\n      rm -rf "${lockPath}"`;
+  } catch { return ''; }
+}
 
 function reapIfStale(lockPath) {
   try {
     // The age floor is checked FIRST and cheaply: a young lock is never reaped, whatever it claims.
     if (Date.now() - statSync(lockPath).mtimeMs < MIN_REAP_AGE_MS) return false;
-    const pid = Number(readFileSync(lockPath, 'utf8').trim());
+    const dir = statSync(lockPath).isDirectory();
+    const pid = Number(readFileSync(ownerFile(lockPath), 'utf8').trim());
     // An unreadable or pid-less lockfile is left alone. Guessing that it must be abandoned is how
     // the mtime version stole a live holder's lock; if it really is orphaned, the timeout below
     // still surfaces it to a human with an explanation.
@@ -118,7 +146,7 @@ function reapIfStale(lockPath) {
     if (pid === process.pid) return false;
     try { process.kill(pid, 0); return false; }  // still alive — wait for it, however long it takes
     catch (e) { if (e.code === 'EPERM') return false; }  // alive, owned by another user
-    unlinkSync(lockPath);
+    if (dir) rmSync(lockPath, { recursive: true, force: true }); else unlinkSync(lockPath);
     return true;
   } catch { return false; }
 }

@@ -78,8 +78,11 @@ this command folds its real conventions back into the packs so future apps start
    3. **Flag recurrence — this is the point of the pass.** After writing, run:
 
       ```bash
-      node "${CLAUDE_PLUGIN_ROOT}/scripts/team-doctor.mjs" --json
+      (cd "${CLAUDE_PLUGIN_ROOT}" && node "${CLAUDE_PLUGIN_ROOT}/scripts/team-doctor.mjs" --json)
       ```
+
+      From the plugin root, in a subshell: from a project directory team-doctor exits `2` ("run me
+      from the plugin root") and the recurrence check never runs.
 
       and read every `corpus_recurrence` finding. Each one means a class recurred **after the date
       its rule shipped** — proof the rule does not work, which is a strictly more valuable fact than
@@ -122,7 +125,7 @@ this command folds its real conventions back into the packs so future apps start
 
       ```bash
       node "${CLAUDE_PLUGIN_ROOT}/scripts/memory-curator.mjs" propose \
-        --ledger docs/team/memory.jsonl --class studio --confidence <0-1> \
+        --ledger docs/team/memory.jsonl --class studio --confidence <0-1> --by tech-lead \
         --content "<category>: <the finding, stated as an abstract shape, not this app's specifics>" \
         --source <path to the dry-run report or retro>
       ```

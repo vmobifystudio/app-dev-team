@@ -65,7 +65,9 @@ Focus (optional): $ARGUMENTS
    It runs **before step 2** because `board.mjs add` reads `docs/team/risk-policy.json` to set each
    ticket's risk: a ticket added before the policy exists is planned with no risk tier, and its
    high-risk second approval never fires. It refuses to overwrite existing manifests — a project's edited policy is not something a
-   re-plan resets. `--force` for a deliberate reset.
+   re-plan resets. `--force` for a deliberate reset. On an existing app `/app-audit` step 3 has
+   already run it, so exit `1` naming the manifests as already existing is expected there: continue
+   to the read-and-edit below.
 
    **Then read what it wrote, and edit it.** The defaults are the safe end of each contract, not
    decisions anyone made for this project: developer roles may write source, document roles may
@@ -109,7 +111,7 @@ Focus (optional): $ARGUMENTS
    billing, release) carries at least one `--invariant`** (`;`-separated), or `review_requested`
    is refused later and the ticket can never be reviewed. Missed one? Fix it in place — the
    sanctioned route, never a re-add:
-   `board.mjs move APP-001 corrected --by tech-manager --invariant "I1; I2"` (it replaces the list).
+   `board.mjs move APP-001 corrected --by tech-manager --invariant "I1; I2" --token <tech-manager token>` (it replaces the list).
 
    Each `add` re-renders `docs/31-board.md`, so the board exists as a side effect of the tickets
    existing. Every `APP-NNN-analytics` ticket is owned per the roster: `data-analyst` where it is

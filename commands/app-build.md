@@ -280,7 +280,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      gate** (`compose --role verification-engineer`), with the named constants and rules verbatim.
      Its `VERIFICATION: PASS` / `VERIFICATION: FAIL` gates the merge **alongside** the review
      verdict: `FAIL` blocks exactly as a `REQUEST CHANGES` does — write
-     `docs/53-reviews/APP-NNN-cycle-N.md` as a FAIL file (below) with the `VERIFICATION: FAIL`
+     `docs/53-reviews/APP-NNN-cycle-N-verification.md` as a FAIL file (below) with the `VERIFICATION: FAIL`
      findings, record `board.mjs move APP-NNN changes --by tech-manager --verdict <that file>
      <TOKEN>`, and re-spawn the developer. A verdict missing either field goes back to the reviewer
      — a missing field is never "none". It fires only when the reviewer flags one; never spawn it
@@ -298,6 +298,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      ```
 
      Line 1 exactly, line 2 the scope. It counts toward the 2-cycle cap like any `changes`.
+     Name it `APP-NNN-cycle-N-verification.md` or `APP-NNN-cycle-N-design-qa.md`, never the
+     reviewer's own `APP-NNN-cycle-N.md` (R7-10).
 
    - **The `design-qa` gate — a pass, like code review, not a role.** Run it on every ticket whose
      branch changes a user-facing surface, in parallel with code review and before the merge gate,
@@ -366,10 +368,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    ```
 
 5. **The wave integration pass — merge once, test once, push once.** Every ticket whose merge gate
-   cleared sits at `qa` with its branch unmerged. This is where the git merges happen and the only
-   place the executable suite runs (`${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs` header has
-   the full account). A wave holding a `high`/`critical` ticket lands only when the runtime gate
-   passes on the wave candidate — `wave-integrate` refuses otherwise and names it.
+   cleared sits at `qa` with its branch unmerged; this is the only place merges happen and the suite
+   runs. A wave holding a `high`/`critical` ticket lands only when the runtime gate passes on it.
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE"
@@ -378,8 +378,13 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    | Exit | Meaning | Do |
    |---|---|---|
    | `0` GREEN | merged tree passes | run the `board.mjs move ... verified --evidence <record> --token ...` lines it printed, as printed, then push (below) |
-   | `1` FAIL/CONFLICT | wave does not advance | re-spawn only the owners its candidate list names; a textual conflict is **yours** to resolve here (`git-pr-strategy` §6); a behaviour/contract one goes to that contract's owner as a ticket |
+   | `1` FAIL/CONFLICT | wave does not advance | send back only the tickets it names, with the `move <ID> rework` lines it printed (below), then re-spawn their owners |
    | `2` CANNOT EVALUATE | no `full` scope, or the suite could not run | not a pass; every ticket keeps `verified_static`, `closed` stays refused |
+
+   **The wave lands the commit `merged` recorded** (W7-1); a later commit is unreviewed, so the wave
+   holds that ticket out as `MOVED SINCE MERGED`. Route back: `board.mjs move APP-NNN rework --by tech-manager
+   --detail "wave <N>: …" <TOKEN>` (printed) → `in_progress`; re-spawn the owner with the failure, or
+   the conflict to rebase (`git-pr-strategy` §6); steps 3–4 again. No ticket named → tech-lead.
 
    **The push is a second call on the same, already-green wave branch** — no re-merge, no re-test:
 
@@ -387,25 +392,23 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N> --base "$BASE" --push
    ```
 
-   One push, one CI run; never trigger a workflow yourself. No `origin` → skipped,
-   exit `0`; say `NOT PUSHED: no origin`. Exit `1` here is a push failure, not a code failure —
-   re-spawn nobody, report it verbatim. Exit `2` means the branch was never recorded green or moved
-   since: re-run the wave. A non-green wave is a normal outcome — `merge-reconcile` reports it as
-   `AWAITING INTEGRATION`.
+   One push, one CI run; never trigger a workflow yourself. No `origin` → skipped, exit `0`
+   (`NOT PUSHED: no origin`). Exit `1` is a push failure — re-spawn nobody, report it verbatim. Exit
+   `2`: never recorded green, or moved since — re-run the wave. A non-green wave is normal
+   (`merge-reconcile`: `AWAITING INTEGRATION`).
 
-   **Then the runtime gate**, on the integration branch, once per wave, before spawning `qa-engineer`:
+   **Then the runtime gate**, once per wave, before spawning `qa-engineer`, with the main checkout at
+   the integration branch's tip (else CANNOT EVALUATE, W7-3):
 
    ```bash
    sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
    ```
 
    - Exit `0` → the app builds and launches. Name the evidence path in the standup.
-   - Exit `1` → **the wave does not advance.** No row moves `qa → done`. File an `S1` in
-     `docs/51-bugs.md` (step 1 turns it into `BUG-NNN-fix`) and re-spawn the owning developer with the
-     gate's compiler output **verbatim**.
-   - Exit `2` → **CANNOT EVALUATE, not a pass.** Print it under `RUNTIME GATE: CANNOT EVALUATE`. QA
-     still runs, but nothing may record this build as launched, and `/app-ship` re-runs the gate on
-     the candidate (`build-loop-branches.md` §Step 5).
+   - Exit `1` → **the wave does not advance.** File an `S1` in `docs/51-bugs.md` (step 1 makes it
+     `BUG-NNN-fix`); re-spawn the owner with the gate's output **verbatim**.
+   - Exit `2` → **CANNOT EVALUATE, not a pass** (`RUNTIME GATE: CANNOT EVALUATE`). QA still runs;
+     nothing records this build as launched; `/app-ship` re-runs the gate.
 
    **Then the journey gate** — the runtime gate proves the app is ALIVE, not that it WORKS:
 
@@ -417,17 +420,15 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    A `web-app` uses `web.sh` on the built, running app — setup: `build-loop-branches.md` §Step 5 —
    journey-gate drivers.
 
-   - Exit `0` → a declared P0 journey completed with its assertions holding — the only signal that
-     *the product does what it is for*. Name the evidence.
-   - Exit `1` → **the wave does not advance**, as a runtime FAIL. The product is wrong, not the
-     harness (drivers: `build-loop-branches.md` §Step 5).
+   - Exit `0` → a declared P0 journey passed: *the product does what it is for*. Name the evidence.
+   - Exit `1` → **the wave does not advance**, as a runtime FAIL: the product is wrong.
    - Exit `2` → **CANNOT EVALUATE.** Print it under `JOURNEY GATE: CANNOT EVALUATE` and name the cause:
      - **No journey declared** → **rows may not move `qa → done` this wave.** Spawn `qa-engineer` to
-       declare one (`docs/team/journeys/<journey-id>.json`; `ux-architect`'s inventory names the ids)
-       and re-run.
-     - **No driver available** → rows may advance on QA's own verdict, but **nothing may record this
-       build as having had its journeys exercised**; the standup carries the line verbatim and
-       `/app-ship` requires an explicit waiver.
+       declare one (`docs/team/journeys/<journey-id>.json`, format:
+       `${CLAUDE_PLUGIN_ROOT}/docs/team/journeys/README.md`), checked on its branch with
+       `node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root <its slot> --list`.
+     - **No driver available** → rows may advance on QA's verdict, but **nothing records this build's
+       journeys as exercised**; the standup says so and `/app-ship` needs a waiver.
 
    Then run the QA pass **as a ticket**, not as an errand — on every tier, except a wave made only of
    `QA-` tickets:
@@ -439,10 +440,11 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    ```
 
    Spawn `qa-engineer` once, composed with `compose --ticket QA-<sprint>-w<n> --role qa-engineer`:
-   the prompt lists every ticket of the wave with its acceptance criteria and carries one token per
-   listed ticket (`Token for APP-NNN: …`). QA works on branch `qa/QA-<sprint>-w<n>`, exercises the criteria (driving the P0 journey per
-   `runtime-gate` where the toolchain is present), writes defects to `docs/51-bugs.md` (S1/S2 return
-   via step 1), and **records its own verdict per ticket**:
+   the prompt lists each wave ticket, its acceptance criteria and token
+   (`Token for APP-NNN: …`). qa-engineer-owned APP rows skip it: compose those `--role verification-engineer`. QA works on `qa/QA-<sprint>-w<n>`, exercises the criteria (driving the P0 journey per
+   `runtime-gate` where the toolchain is present), files defects in `docs/51-bugs.md` (S1/S2 return
+   via step 1), and **records a verdict per ticket** — unless its P0 journeys are new: verdicts
+   follow landing (`build-loop-branches.md` §Step 5, first declarations):
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_passed --by qa-engineer \
@@ -452,17 +454,16 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      --token <its token for APP-NNN> --detail "BUG-NNN"
    ```
 
-   You only **check** them (`board.mjs show`), then close what passed:
+   Check them (`board.mjs show`). **Close nothing yet** (W7-11): land the `QA-` ticket
+   (below), re-run the journey gate, then — unless `No journey declared` — close what passed:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN closed --by tech-manager \
      --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket APP-NNN)"
    ```
-   `closed` checks the commit `merged` recorded; no `--head` needed.
 
-   QA's legal `--evidence` is the journey-gate PASS record or a full-suite test-evidence record on
-   the integration branch (`build-loop-branches.md` §Step 5 — the QA ticket). `closed` is refused
-   without a `qa_passed`. After a `RUNTIME GATE: FAIL` no row in the wave gets a `qa_passed` at all.
+   QA's `--evidence`: the journey-gate PASS or a full-suite record on the integration branch
+   (`build-loop-branches.md` §Step 5). No `qa_passed` → no `closed`; none at all after `RUNTIME GATE: FAIL`.
 
    **The `QA-` ticket is docs-only** — `docs/50-test-plan.md`, `docs/51-bugs.md`, `docs/54-evidence/`, `docs/daily/`, `docs/team/journeys/<journey-id>.json`;
    anything else (any other doc, control files, build manifests, files outside `docs/`) takes the review

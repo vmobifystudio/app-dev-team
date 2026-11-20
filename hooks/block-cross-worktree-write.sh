@@ -44,11 +44,12 @@ PAYLOAD=$(cat 2>/dev/null || true)
 # Pull `file_path` out without a JSON parser — same technique and same portability constraint as
 # block-shared-tree-destructive-git.sh: GNU sed alternation fails SILENTLY on BSD sed (i.e. macOS),
 # so this stays awk, POSIX character classes only.
-FILE_PATH=$(printf '%s' "$PAYLOAD" | tr '\n' ' ' | awk '
+field() {
+  printf '%s' "$PAYLOAD" | tr '\n' ' ' | awk -v key="\"$1\"" '
   {
-    i = index($0, "\"file_path\"");
+    i = index($0, key);
     if (i == 0) exit;
-    rest = substr($0, i + 12);
+    rest = substr($0, i + length(key));
     j = index(rest, "\"");
     if (j == 0) exit;
     rest = substr(rest, j + 1);
@@ -60,8 +61,15 @@ FILE_PATH=$(printf '%s' "$PAYLOAD" | tr '\n' ' ' | awk '
       out = out c;
     }
     print out;
-  }')
+  }'
+}
+FILE_PATH=$(field file_path)
 [ -n "$FILE_PATH" ] || exit 0
+# R7-7: a DEVELOPER subagent always works in its leased slot (.agent-wt/<role>-<n>). Its cwd resets to
+# the orchestrator's checkout on every call, so "standing in no worktree" is its normal state, not
+# a sign it is the shared-tree session. devops-engineer is not here: app-init has it write the main tree.
+ROLE=$(field agent_type); ROLE=${ROLE#app-dev-team:}
+case "$ROLE" in ios-developer|android-developer|backend-developer|web-developer|monetization-engineer|test-automation-engineer) DEV=1 ;; *) DEV="" ;; esac
 
 # Resolve to an absolute path without requiring the file to exist yet (Write creates new files).
 # `cd` the parent directory and re-append the basename — the standard trick for resolving a path
@@ -146,6 +154,14 @@ TARGET_WT=$(worktree_of "$ABS_TARGET")
 # The refusal: the target is inside SOME worktree, and it is not the one I am standing in —
 # including the case where I am standing in none at all (the shared tree reaching into an isolated
 # worktree has exactly as little business there as a sibling worktree does).
+# A developer standing in no worktree, writing into a slot of its OWN role, is in its own slot.
+# ponytail: matched by role prefix, not instance — ios-developer-1 may write into ios-developer-2's
+# slot from the main checkout (PR47-4). Upgrade: bind the slot to the agent via its lease in
+# worktree-slots.json (agent_id / ticket) instead of the role name.
+if [ -n "$DEV" ] && [ -z "$MY_WT" ] && [ -n "$TARGET_WT" ]; then
+  case "${TARGET_WT##*/}" in "$ROLE"|"$ROLE"-[0-9]*) MY_WT=$TARGET_WT ;; esac
+fi
+
 if [ -n "$TARGET_WT" ] && [ "$TARGET_WT" != "$MY_WT" ]; then
   cat >&2 <<EOF
 BLOCKED — a write reaching into another agent's worktree.
@@ -164,6 +180,26 @@ channel), or wait for it to be reviewed and merged. Never read or write another 
 directly — it may be mid-edit, and a write racing theirs is exactly what this refuses.
 EOF
   exit 2
+fi
+
+# R7-7: ...and never writes into a studio project's MAIN checkout — the tree the orchestrator and every
+# other role read. A literal agent given a relative path writes there, because that is its cwd.
+if [ -n "$DEV" ] && [ -z "$TARGET_WT" ]; then
+  TOP=$(git -C "$RESOLVED_BASE" rev-parse --show-toplevel 2>/dev/null) || TOP=""
+  if [ -n "$TOP" ] && [ -f "$TOP/docs/31-board-events.jsonl" ] \
+    && [ "$(git -C "$TOP" rev-parse --absolute-git-dir 2>/dev/null)" = "$(git -C "$TOP" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]; then
+    cat >&2 <<EOF
+BLOCKED — a $ROLE subagent writing into the studio's MAIN checkout.
+
+  target : $ABS_TARGET
+  tree   : $TOP (the orchestrator's checkout — not your slot)
+
+You work in the slot your prompt names (.agent-wt/$ROLE-<n>). Write to it by its ABSOLUTE path:
+  $TOP/.agent-wt/$ROLE-<n>/<path>
+Your Bash cwd resets to this checkout on every call, so a relative path lands here (R7-7).
+EOF
+    exit 2
+  fi
 fi
 
 exit 0

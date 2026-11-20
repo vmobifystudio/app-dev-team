@@ -8,6 +8,7 @@ const die = (code, message) => { process.stderr.write(`prompt-registry: ${messag
 const { flags, positional } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['registry', 'agents-dir', 'now']), die });
 const path = resolve(String(flags.registry || 'docs/team/prompt-registry.json'));
 const command = positional[0] || 'check';
+const TEMPLATES = ['scripts/spawn-prompt.mjs', 'scripts/lib/contract.mjs'];
 
 /**
  * `sync` is the only place an entry's `content_hash` and `version` are ever written — an empty
@@ -27,10 +28,15 @@ function cmdSync(flags) {
   const byId = new Map(registry.entries.map((entry) => [entry.id, entry]));
   const now = String(flags.now || new Date().toISOString().slice(0, 10));
   const seen = new Set();
-  for (const file of readdirSync(agentsDir).filter((f) => f.endsWith('.md')).sort()) {
-    const id = basename(file, '.md');
+  // R7-13: the spawn templates are most of what an agent actually reads, so they are versioned too —
+  // `template/<path>`, hashed like a role file, next to agents/ (skipped where the tree has none).
+  const sources = [
+    ...readdirSync(agentsDir).filter((f) => f.endsWith('.md')).sort().map((f) => [basename(f, '.md'), resolve(agentsDir, f)]),
+    ...TEMPLATES.map((rel) => [`template/${rel}`, resolve(agentsDir, '..', rel)]).filter(([, p]) => existsSync(p)),
+  ];
+  for (const [id, file] of sources) {
     seen.add(id);
-    const hash = createHash('sha256').update(readFileSync(resolve(agentsDir, file))).digest('hex');
+    const hash = createHash('sha256').update(readFileSync(file)).digest('hex');
     const existing = byId.get(id);
     if (!existing) {
       byId.set(id, {

@@ -9,9 +9,9 @@
  * pattern in the impl spec, a contract nobody documented) each pay for their own discovery, even
  * though every verdict that found it is already sitting on disk in the same directory.
  *
- * WHAT THIS CHECKS, mechanically rather than semantically: `code-reviewer`'s own convention is a
- * blocking finding heading of the shape `### N. \`<file[:line]>\` — <description>` under a
- * `## Blocking` section, in a file whose verdict line is `## REQUEST CHANGES: <ticket>`. Group the
+ * WHAT THIS CHECKS, mechanically rather than semantically: a `REVIEW VERDICT: REQUEST CHANGES`
+ * file's `Ticket:` and its `Blocking: <file:line> …` items (the format the board requires), or the
+ * older `## REQUEST CHANGES: <ticket>` / `## Blocking` / `### N. \`<file[:line]>\`` shape. Group the
  * (file path) side of that heading across every review file; if two or more DISTINCT tickets have a
  * blocking finding naming the same file, that is reported as a shared-file pattern. A cheap,
  * defensible signal — not a claim that the underlying defect is identical, only that the same file
@@ -56,15 +56,41 @@ if (!existsSync(REVIEWS_DIR)) {
   process.exit(2);
 }
 
-const files = readdirSync(REVIEWS_DIR).filter((f) => /-cycle-\d+\.md$/.test(f));
+// Every verdict in the directory, not only `*-cycle-N.md`: the board accepts a verdict file by its
+// contents, not its name (R7-3).
+const files = readdirSync(REVIEWS_DIR).filter((f) => f.endsWith('.md'));
 
 // file path (the blocking finding's own target) -> Set of ticket IDs that blocked on it
 const byFile = new Map();
 const total = { reviewed: 0, requestChanges: 0 };
+const note = (target, ticket) => {
+  const file = target.replace(/^\s*(?:[-*]|\d+\.)?\s*`?/, '').split(/[`\s]/)[0].replace(/:\d.*$/, '').trim();
+  if (!file || !/[./]/.test(file)) return; // "none", prose — not a path
+  if (!byFile.has(file)) byFile.set(file, new Set());
+  byFile.get(file).add(ticket);
+};
 
 for (const f of files) {
   const text = readFileSync(resolve(REVIEWS_DIR, f), 'utf8');
   total.reviewed += 1;
+  // R7-3: the format the board REQUIRES (agents/code-reviewer.md) is `REVIEW VERDICT: REQUEST
+  // CHANGES` with `Ticket:` and `Blocking: <file:line> …` (items may continue on the lines after).
+  // The scan read only the older `## REQUEST CHANGES: <ticket>` / `## Blocking` / `### N.` shape,
+  // so it reported 0 verdicts on every review the board would actually accept.
+  if (/^REVIEW VERDICT:\s*REQUEST CHANGES\s*$/m.test(text)) {
+    const ticket = (text.match(/^Ticket:\s*(\S+)/m) || [])[1] || f.replace(/(-cycle-\d+)?\.md$/, '');
+    total.requestChanges += 1;
+    const lines = text.split('\n');
+    const at = lines.findIndex((l) => /^Blocking:/.test(l));
+    if (at < 0) continue;
+    const items = [lines[at].replace(/^Blocking:\s*/, '')];
+    for (const l of lines.slice(at + 1)) {
+      if (!l.trim() || /^#/.test(l) || /^[A-Z][A-Za-z ()-]*:\s/.test(l)) break;
+      items.push(l);
+    }
+    for (const item of items) for (const part of item.split(/;\s*/)) note(part.trim(), ticket);
+    continue;
+  }
   const verdictMatch = text.match(/^##\s*REQUEST CHANGES:\s*(\S+)/m);
   if (!verdictMatch) continue;
   const ticket = verdictMatch[1];
@@ -73,12 +99,7 @@ for (const f of files) {
   const blockingSection = text.split(/^##\s*Blocking\s*$/m)[1]?.split(/^##\s/m)[0] || '';
   const headingRe = /^###\s*\d+\.\s*`([^`]+)`/gm;
   let m;
-  while ((m = headingRe.exec(blockingSection))) {
-    const target = m[1].split(':')[0].trim(); // drop a trailing :line, keep the file
-    if (!target) continue;
-    if (!byFile.has(target)) byFile.set(target, new Set());
-    byFile.get(target).add(ticket);
-  }
+  while ((m = headingRe.exec(blockingSection))) note(m[1], ticket);
 }
 
 const patterns = [...byFile.entries()]

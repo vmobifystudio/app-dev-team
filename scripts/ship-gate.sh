@@ -275,10 +275,20 @@ fi
 # and the message says so), and CANNOT EVALUATE when there is no log to read.
 LOG="$ROOT/docs/31-board-events.jsonl"
 if [ -f "$LOG" ]; then
-  node "$HERE/board.mjs" verify --log "$LOG" >/dev/null 2>&1
-  case $? in
+  CHAIN_OUT=$(node "$HERE/board.mjs" verify --log "$LOG" 2>&1)
+  CHAIN_RC=$?
+  # W7-5: a log that hashes cleanly but whose ANCHOR is gone (a moved project, a fresh clone) is not a
+  # rewritten history, and "Run: board.mjs verify" never named the recovery, `adopt`. PR47-10: only an
+  # ABSENT anchor is UNKNOWN — one that disagrees (deleted / appended / rewritten) is a tamper signal
+  # and BLOCKS, quoting the `adopt --mismatch <kind>` command board.mjs verify prints.
+  if [ "$CHAIN_RC" = 1 ] && printf '%s' "$CHAIN_OUT" | grep -q 'does NOT match its anchor'; then
+    if printf '%s' "$CHAIN_OUT" | grep -q 'does NOT match its anchor (absent)'; then CHAIN_RC=3; else CHAIN_RC=4; fi
+  fi
+  case $CHAIN_RC in
     0) ;;
-    1) block "the board's audit chain is BROKEN — the event log was edited, reordered or truncated after it was written. Run: node scripts/board.mjs verify. Every gate below reads state derived from that log." ;;
+    3) unknown "the board's event log does not match its anchor (outside the tree) — a moved project, a fresh clone, or lines written without the CLI. If the log is genuinely the record, the founder re-trusts it at their own terminal: node \"$HERE/board.mjs\" adopt. $(printf '%s' "$CHAIN_OUT" | sed -n 2p | sed 's/^ *//')" ;;
+    4) block "the board's event log does NOT match its anchor — $(printf '%s' "$CHAIN_OUT" | sed -n 2p | sed 's/^ *//') Restore the log from a backup that matches it; only if the founder accepts exactly this mismatch, at their own terminal: $(printf '%s' "$CHAIN_OUT" | grep -- '--mismatch' | tail -n 1 | sed 's/^ *//')" ;;
+    1) block "the board's audit chain is BROKEN — the event log was edited, reordered or truncated after it was written. Run: node \"$HERE/board.mjs\" verify. Every gate below reads state derived from that log." ;;
     *) unknown "board.mjs verify could not read $LOG — the audit chain was NOT checked." ;;
   esac
 else
@@ -454,9 +464,9 @@ fi
 if [ -f "$PLAN" ]; then
   # G2-24: the plan is read only once it is known to exist.
   QAV=$(tr -d '*_' < "$PLAN" | grep -iE '^[[:space:]]*QA VERDICT:' || true)
-  if printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD\b'; then
-    block "$(printf '%s\n' "$QAV" | grep -iE 'QA VERDICT:[[:space:]]*HOLD\b' | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
-  elif printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*GO\b'; then
+  if printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD([^A-Za-z]|$)'; then
+    block "$(printf '%s\n' "$QAV" | grep -iE 'QA VERDICT:[[:space:]]*HOLD([^A-Za-z]|$)' | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
+  elif printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*GO([^A-Za-z]|$)'; then
     :
   elif [ -f "$LOG" ]; then
     : # the board's qa_passed events above ARE the verdict; a missing GO line is not a gap

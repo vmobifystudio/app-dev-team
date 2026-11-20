@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
+import { inlineTokenFlag } from './lib/actor.mjs';
 const die = (code, message) => { process.stderr.write(`dispatch-preflight: ${message}\n`); process.exit(code); };
 const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root', 'context', 'schedule', 'capability', 'risk', 'role', 'operation', 'path', 'file', 'change', 'ticket']), die,
   // C5W-3: repeated --file / --path accumulate (as board.mjs add does), never last-wins.
@@ -145,8 +146,8 @@ if (policy.requireTicketFiles === true) {
         '  A ticket with no declared file set cannot be checked for collision against work already\n' +
         '  in flight, so dispatching it is a bet that no other agent is in the same file. Declare\n' +
         '  what it touches, from the impl spec section the ticket names:\n' +
-        `    node scripts/board.mjs move ${flags.ticket} corrected --by tech-manager \\\n` +
-        '      --detail \'{"files":["path/one.swift","path/two.swift"]}\'\n' +
+        `    node "${resolve(dirname(fileURLToPath(import.meta.url)), 'board.mjs')}" move ${flags.ticket} corrected --by tech-manager \\\n` +
+        `      --detail '{"files":["path/one.swift","path/two.swift"]}'${inlineTokenFlag(resolve(String(flags.root)), 'tech-manager', flags.ticket)}\n` +
         '  (new tickets take `--file a,b` at `board.mjs add`; a correction carries the array,\n' +
         '   because a correction may NARROW a file set and a repeated flag could only widen it.)\n' +
         '  or drop requireTicketFiles for this project and accept the bet deliberately.'

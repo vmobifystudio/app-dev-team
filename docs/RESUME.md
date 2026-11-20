@@ -3,8 +3,20 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-11-19 · **Branch:** `fix/e2e-review-sweep` (on top of `main` at `3bedced`, #44)
-**Suite:** 2272 passed, 0 failed · **Mutation sample:** all caught · **Eval lab:** passes · **Invariants:** 12/12 · **Version:** 3.1.0
+**Last updated:** 2026-11-20 · **Branch:** `fix/sprint-7` (on top of `main` at `33bfab2`, #46)
+**Suite:** 2562 passed, 0 failed · **Mutation anchors:** 443, all unique · **Eval lab:** 7/7 · **Invariants:** 12/12 · **Version:** 3.1.0
+
+## 2026-11-19/20 — fresh audit on main and Sprint 7 (`fix/sprint-7`)
+
+Five fresh reviewers re-audited `main` after PR #46 (`docs/reviews/2026-11-19-fresh-audit.md`): 62
+unique findings, 17 High, none caught by the 2331-check suite. Sprint 7 fixed all 62 plus N3/N6
+(never closed) and two found on the way (N13, N14) in six tracks U1–U6 — register
+`docs/reviews/2026-11-18-sprint-2.md` § Sprint 7 outcome. Biggest changes: one integration-branch
+resolver read from the committed doc; the wave lands `merged_head` and a new `rework` event routes a
+failed wave back through review; gate file lists see renames; QA evidence must be on the integrated
+build with the full P0 journey set; `unblocked`(needs-approval)/`corrected` are token-gated; adopt only
+on an absent anchor; one wrapper table for both hooks; preflight no longer refuses every IC; test.sh
+never edits the plugin in place. Still unproven: a real agent-spawned run on the reinstalled plugin.
 
 ## 2026-11-17 — the end-to-end review (`fix/e2e-review-sweep`)
 

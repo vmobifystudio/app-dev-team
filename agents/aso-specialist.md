@@ -57,7 +57,8 @@ list — you do not wave it through.
 # Output — which one you return
 
 **Ticket-owner spawn (`/app-build`) → the output block below. Store-readiness spawn (`/app-ship`) →
-the `ASO READY` / `ASO BLOCKED` block under Handoff.** That block, or `DONE:`, is your first line.
+the `ASO READY` / `ASO BLOCKED` / `ASO: CANNOT EVALUATE` block under Handoff.** That block, or
+`DONE:`, is your first line.
 
 As a ticket owner, return the output block your spawn prompt prints, verbatim, `DONE:` first, every field filled. `Branch:` is required even on a docs-only ticket.
 Its labels, for reference: `DONE:` · `Worktree:` · `Branch:` · `Files:` · `Mutation confirmed:` ·
@@ -97,4 +98,14 @@ Next: release-manager to sign and export; the founder uploads
 ASO BLOCKED:
 Missing: <list of unchecked readiness items>
 Need: <who supplies what>
+```
+
+When `docs/15-aso.md` does not exist (a brownfield or internal-distribution release may
+legitimately have none), the readiness gate cannot be evaluated — return this, not `ASO BLOCKED`
+and not `ASO READY`; `/app-ship` step 2 takes it to produce-or-waive:
+
+```
+ASO: CANNOT EVALUATE — docs/15-aso.md
+Missing: <what does not exist>
+Need: founder — produce the listing, or waive store readiness for this release
 ```

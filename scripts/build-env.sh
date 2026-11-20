@@ -43,8 +43,10 @@
 #      and this must not be able to stop a round.
 #
 # The cache root is `.studio-cache/` at the repository top level: inside the repo so it is trivially
-# discoverable and trivially deletable, gitignored so it can never be committed, and OUTSIDE every
-# `.agent-wt/` worktree so no reaper (`worktree-reap.mjs`) can take it with them.
+# discoverable and trivially deletable, and OUTSIDE every `.agent-wt/` worktree so no reaper
+# (`worktree-reap.mjs`) can take it with them. It is listed in lib/operational-paths.txt (S7-1), so
+# the dirty-tree checks never read it as an uncommitted change; nothing here makes it gitignored —
+# /app-init's .gitignore step does that.
 
 # NO `set -u` HERE. This file is SOURCED into other scripts, and turning on nounset in the caller's
 # shell changes the caller's behaviour from a file it merely wanted an environment from. verify-done
