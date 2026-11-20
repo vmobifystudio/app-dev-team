@@ -494,8 +494,12 @@ while IFS="$TAB" read -r KIND REF DIR WHY; do
     # W7-9: the studio's own operational files (scripts/lib/operational-paths.txt — the board log,
     # the register, release candidates) are the loop's bookkeeping, not work this command destroys.
     if [ -n "$ROOT" ]; then
-      DIRTY=$(git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | head -n 1)
-      DIRTY_N=$(git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | grep -c . || echo "?")
+      # Tracked changes always count — reset --hard / checkout discard an edited operational file too
+      # (Codex PR #47: an appended, committed messages.jsonl). Only UNTRACKED operational files skip.
+      STAT=$( { git -C "$GDIR" status --porcelain -uno -- ':/' 2>/dev/null
+                git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | grep '^??'; } )
+      DIRTY=$(printf '%s\n' "$STAT" | sed '/^$/d' | head -n 1)
+      DIRTY_N=$(printf '%s\n' "$STAT" | grep -c . || echo "?")
       if [ -z "$DIRTY" ] && [ -n "$SWEEP" ] && [ -n "$OPS" ]; then
         DIRTY=$(git -C "$GDIR" status --porcelain -uall --ignored -- $OPS 2>/dev/null | head -n 1)
         [ -n "$DIRTY" ] && DIRTY_N="the studio's operational (board/register)"

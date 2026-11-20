@@ -13143,7 +13143,7 @@ grep -q 'does not match its anchor' "$TMP/u1s.txt" && grep -q 'board.mjs" adopt'
 # W7-3: the runtime gate in a main checkout that is not at the integration branch's tip is CANNOT EVALUATE.
 U1R="$U1/rt"; u1repo "$U1R"
 ( cd "$U1R" && printf 'Integration branch: develop\n' > docs/23-git-strategy.md && git add docs && git commit -qm s \
-  && git branch develop && git checkout -q -b develop-next && git commit -q --allow-empty -m wave && git checkout -q develop && git merge -q --ff-only develop-next && git checkout -q main ) >/dev/null 2>&1
+  && git branch develop && git checkout -q -b develop-next && git commit -q --allow-empty -m wave && git checkout -q develop && git merge -q --ff-only develop-next && git checkout -q main && : > docs/31-board-events.jsonl ) >/dev/null 2>&1
 sh "$HERE/runtime-gate.sh" --project-root "$U1R" >"$TMP/u1r.txt" 2>&1
 U1RC=$?
 [ "$U1RC" = 2 ] && grep -q 'not the tip of the integration branch develop' "$TMP/u1r.txt" \
@@ -13304,6 +13304,32 @@ for c in "git clean -fdx" "git clean -fdX" "git stash -a"; do
 done
 s7l_hook "git branch -D gone" && ok "Sprint 7 lead: branch -D with only operational files present still runs (W7-9)" \
   || bad "Sprint 7 lead: branch -D with only operational files present still runs (W7-9)"
+
+# --- PR #47 review (Codex + CI) -------------------------------------------------------------------
+echo "PR47 review: Codex and CI follow-ups"
+# CI: the W7-3 tip check is for a studio project's own checkout — a fixture directory inside another
+# repo (eval/crash-on-launch in the plugin's PR merge commit) must not be refused for it.
+P47R="$TMP/p47-rt"; mkdir -p "$P47R/eval/app" && ( cd "$P47R" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && echo x > eval/app/a && git add eval && git commit -qm i && git checkout -q -b pr && git commit -q --allow-empty -m pr ) >/dev/null 2>&1
+sh "$HERE/runtime-gate.sh" --project-root "$P47R/eval/app" >"$TMP/p47r.txt" 2>&1
+! grep -q 'not the tip of the integration branch' "$TMP/p47r.txt" \
+  && ok "PR47: the runtime gate's integration-tip check skips a fixture directory inside another repo" \
+  || bad "PR47: the runtime gate's integration-tip check skips a fixture directory inside another repo" "$(head -3 "$TMP/p47r.txt")"
+# Codex P2: a code-changing QA- ticket rides the wave, so a wave FAIL can send it back with rework.
+node --input-type=module -e '
+import { legalEvents } from "'"$HERE"'/lib/events.mjs";
+const base = { status: "qa", qaPassed: false, verified: true };
+const code = legalEvents({ ...base, id: "QA-1", verifiedMode: "tests" });
+const docs = legalEvents({ ...base, id: "QA-1", verifiedMode: "docs-only" });
+process.exit(code.includes("rework") && code.includes("closed") && !docs.includes("rework") ? 0 : 1);' \
+  && ok "PR47: rework is legal for a code-changing QA- ticket at qa, not for a docs-only one" \
+  || bad "PR47: rework is legal for a code-changing QA- ticket at qa, not for a docs-only one"
+# Codex P1: tracked operational files with uncommitted changes still block a command that discards them.
+P47H="$TMP/p47-hook"; mkdir -p "$P47H/docs/team" && ( cd "$P47H" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && echo '{}' > docs/team/messages.jsonl && git add docs && git commit -qm i && echo '{"m":1}' >> docs/team/messages.jsonl ) >/dev/null 2>&1
+printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"git reset --hard HEAD"}}' "$P47H" | sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" >/dev/null 2>&1
+[ $? = 2 ] && ok "PR47: a tracked operational file with uncommitted changes still blocks git reset --hard" \
+  || bad "PR47: a tracked operational file with uncommitted changes still blocks git reset --hard"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

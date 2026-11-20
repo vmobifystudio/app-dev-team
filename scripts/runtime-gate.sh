@@ -101,7 +101,11 @@ record() { :; }
 # that did not contain the wave. A linked worktree (the wave tree, an agent slot) is the tree its
 # caller chose and is left alone; the main checkout must be at the integration branch's tip.
 GDIRS=$(git -C "$ROOT" rev-parse --path-format=absolute --git-dir --git-common-dir 2>/dev/null)
+# Only a STUDIO project's own checkout: --project-root at the git toplevel with a board log. A fixture
+# directory inside some other repo (CI's eval/crash-on-launch in the plugin's PR merge commit) is not one.
+TOPL=$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)
 if [ -n "$GDIRS" ] && [ "$(printf '%s\n' "$GDIRS" | sed -n 1p)" = "$(printf '%s\n' "$GDIRS" | sed -n 2p)" ] \
+   && [ -n "$TOPL" ] && [ "$(cd "$ROOT" && pwd -P)" = "$(cd "$TOPL" && pwd -P)" ] && [ -f "$TOPL/docs/31-board-events.jsonl" ] \
    && HEAD_SHA=$(git -C "$ROOT" rev-parse --verify -q HEAD 2>/dev/null) \
    && IB=$(sh "$(dirname "$0")/integration-branch.sh" "$ROOT" 2>/dev/null); then
   IB_SHA=$(git -C "$ROOT" rev-parse --verify -q "refs/heads/$IB" 2>/dev/null || git -C "$ROOT" rev-parse --verify -q "refs/remotes/origin/$IB" 2>/dev/null)

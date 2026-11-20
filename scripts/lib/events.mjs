@@ -137,10 +137,11 @@ function legalEvents(state) {
       // `done` except lying, and a sprint would have to close by hand — which is what happened.
       // C4G-G3: `corrected` too — the comment above says EVERY state, and the test-profile refusal
       // prints `corrected --test-profile` to a ticket that may well be sitting here.
-      // `rework` (wave FAIL/CONFLICT) only before qa_passed, and never on a QA- ticket (none ride a wave).
-      return withCorrection(state.qaPassed || isQaTicket(state)
-        ? ['closed', 'verified', 'qa_failed', 'blocked']
-        : ['qa_passed', 'verified', 'qa_failed', 'blocked', 'rework']);
+      // `rework` (wave FAIL/CONFLICT) only before qa_passed, and never on a docs-only QA- ticket — a
+      // code-changing QA- ticket rides the wave like any other (Codex PR #47), so it can be sent back.
+      if (state.qaPassed) return withCorrection(['closed', 'verified', 'qa_failed', 'blocked']);
+      if (isQaTicket(state)) return withCorrection(['closed', 'verified', 'qa_failed', 'blocked', ...(isQaDocs(state) ? [] : ['rework'])]);
+      return withCorrection(['qa_passed', 'verified', 'qa_failed', 'blocked', 'rework']);
     case 'done':
       return withCorrection([]);
     case 'blocked':
