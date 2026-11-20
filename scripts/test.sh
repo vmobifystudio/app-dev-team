@@ -13412,6 +13412,17 @@ grep -q 'checkout feat/T-1-x' "$TMP/p47rw.txt" && grep -qF 'wave 1: CONFLICT src
   && ! grep -q 'checkout -b' "$TMP/p47rw.txt" \
   && ok "PR47 fixes: after rework, compose checks out the existing branch and carries the wave's reason" \
   || bad "PR47 fixes: after rework, compose checks out the existing branch and carries the wave's reason" "$(head -c 600 "$TMP/p47rw.txt")"
+# Codex PR #47 round 2: a title correction after rework does not turn the respawn into a fresh branch.
+p47m move T-1 corrected --by tech-manager --title "t, renamed" >/dev/null 2>&1
+( cd "$P47RW" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket T-1 --role ios-developer --slot .agent-wt/ios-developer ) >"$TMP/p47rw2.txt" 2>&1
+grep -q 'checkout feat/T-1-x' "$TMP/p47rw2.txt" && grep -qF 'wave 1: CONFLICT src/r.ts' "$TMP/p47rw2.txt" && ! grep -q 'checkout -b' "$TMP/p47rw2.txt" \
+  && ok "PR47 round 2: a corrected event after rework still composes the rework (existing branch, wave reason)" \
+  || bad "PR47 round 2: a corrected event after rework still composes the rework (existing branch, wave reason)" "$(head -c 600 "$TMP/p47rw2.txt")"
+# ...and the first-declarations rule is written where QA and the orchestrator read it.
+grep -q 'First declarations land before verdicts' "$HERE/../skills/parallel-orchestrator/references/build-loop-branches.md" \
+  && grep -q 'unless its P0 journeys are new' "$HERE/../commands/app-build.md" \
+  && ok "PR47 round 2: app-build sends new P0 declarations to land before QA records verdicts" \
+  || bad "PR47 round 2: app-build sends new P0 declarations to land before QA records verdicts"
 
 # --- PR47 fixes: the guard finds a studio root from a relative target ---
 echo "PR47 fixes: the guard finds a studio root from a relative target"

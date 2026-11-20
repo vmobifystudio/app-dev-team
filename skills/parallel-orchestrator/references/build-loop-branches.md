@@ -170,6 +170,13 @@ tickets gets no new `QA-` ticket.
 wrote under `docs/team/evidence/` (`wave-integrate`'s, or `verify-done.sh <integration branch>
 <base> full` after the merge). Not a hand-written plan, not a screenshot, not a report.
 
+**First declarations land before verdicts.** `qa_passed` on a UI project needs a P0 journey
+declaration already committed on the integration branch — a declaration still on QA's branch is
+refused, even with the full-suite fallback. So when QA writes the first `docs/team/journeys/*.json`
+(or a new P0 one), it returns its `QA-` ticket WITHOUT verdicts; land it (app-build step 5), re-run
+the journey gate, then re-spawn QA with `compose --ticket QA-<sprint>-w<n> --role qa-engineer` to
+record each `qa_passed`/`qa_failed` against the landed declarations. Only then close.
+
 **`qa_failed` → the fix.** The rejected ticket stays in `qa`. Add
 `BUG-NNN-fix --owner <platform dev> --depends APP-NNN` (branch `feat/BUG-NNN-fix-<slug>`): a
 dependency at `qa` counts as satisfied, so it is ready at once and takes the normal code path

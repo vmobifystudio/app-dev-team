@@ -440,10 +440,11 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    ```
 
    Spawn `qa-engineer` once, composed with `compose --ticket QA-<sprint>-w<n> --role qa-engineer`:
-   the prompt lists each wave ticket with its acceptance criteria and one token per ticket
+   the prompt lists each wave ticket, its acceptance criteria and token
    (`Token for APP-NNN: …`). qa-engineer-owned APP rows skip it: compose those `--role verification-engineer`. QA works on `qa/QA-<sprint>-w<n>`, exercises the criteria (driving the P0 journey per
    `runtime-gate` where the toolchain is present), files defects in `docs/51-bugs.md` (S1/S2 return
-   via step 1), and **records a verdict per ticket**:
+   via step 1), and **records a verdict per ticket** — unless its P0 journeys are new: verdicts
+   follow landing (`build-loop-branches.md` §Step 5, first declarations):
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_passed --by qa-engineer \
@@ -453,14 +454,13 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      --token <its token for APP-NNN> --detail "BUG-NNN"
    ```
 
-   You only **check** them (`board.mjs show`). **Close nothing yet** (W7-11): land the `QA-` ticket
+   Check them (`board.mjs show`). **Close nothing yet** (W7-11): land the `QA-` ticket
    (below), re-run the journey gate, then — unless `No journey declared` — close what passed:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN closed --by tech-manager \
      --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket APP-NNN)"
    ```
-   `closed` checks the commit `merged` recorded; no `--head` needed.
 
    QA's `--evidence`: the journey-gate PASS or a full-suite record on the integration branch
    (`build-loop-branches.md` §Step 5). No `qa_passed` → no `closed`; none at all after `RUNTIME GATE: FAIL`.

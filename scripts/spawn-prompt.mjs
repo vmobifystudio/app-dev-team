@@ -252,6 +252,13 @@ function boardRows(root) {
 }
 
 /** The log's events for one ticket, oldest first. Unparseable lines are skipped (board.mjs verify owns integrity). */
+/** The last event that moved the ticket's work — `corrected`/`assigned`/`blocked`/`unblocked` only
+ * edit or pause it, so a `rework` followed by a title correction is still a rework (Codex PR #47). */
+const METADATA_EVENTS = new Set(['corrected', 'assigned', 'blocked', 'unblocked']);
+function lastWorkEvent(root, id) {
+  return ticketEvents(root, id).filter((e) => !METADATA_EVENTS.has(e.event)).pop();
+}
+
 function ticketEvents(root, id) {
   let text = '';
   try { text = readFileSync(join(root, 'docs', '31-board-events.jsonl'), 'utf8'); } catch { return []; }
@@ -395,11 +402,11 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
       `Fix exactly the \`Blocking:\` lines of \`${vf}\` (verbatim below), then return the full contract again.`,
       '', ...fence(readFileSync(abs, 'utf8').trim()),
     ];
-  } else if (ticketEvents(ROOT, row.id).pop()?.event === 'rework') {
+  } else if (lastWorkEvent(ROOT, row.id)?.event === 'rework') {
     // PR47-5: `rework` (the wave could not land it: FAIL / CONFLICT) sends a MERGED ticket back. Its
     // branch exists and carries the reviewed work; a fresh `checkout -b` forked a second branch and
     // `verified` then refused the ambiguity. The task is the rework event's own detail.
-    const why = String(ticketEvents(ROOT, row.id).pop().detail || '').trim();
+    const why = String(lastWorkEvent(ROOT, row.id).detail || '').trim();
     const { branch, ambiguous } = ticketBranch(ROOT, row.id, allIds);
     if (!branch) die(2, ambiguous.length ? `rework: several branches are ${row.id}'s (${ambiguous.join(', ')}) — delete the stray one first` : `rework: no branch is named for ${row.id}, but the board sent it back with rework`);
     start = [
