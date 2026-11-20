@@ -193,7 +193,7 @@ M67@@scripts/register.mjs@@  if (!ID_SHAPE.test(subject)) die(1,@@  if (false) d
 M68@@scripts/register.mjs@@  if (errors.length) die(2,@@  if (false) die(2,@@...but a register that EXISTS and will not parse is CANNOT EVALUATE, never 'nothing owed'@@N4/N6/N7
 M69@@scripts/report-check.mjs@@if (fragmentTruth?.ok === false) {@@if (false) {@@...naming it a false claim, not a missing field@@presence is not truth
 M70@@scripts/spawn-prompt.mjs@@const missing = contract.fields.filter((f) => !text.includes(f));@@const missing = [];@@verify REFUSES the exact prompt shape that produced H5's 0-of-6 result@@spawn-prompt
-M71@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$HEAD" ] && [ "$HEAD" = "$DECLARED" ]; then@@if false; then@@on the integration branch: BLOCKS the exact H6 shape (git merge --no-ff)
+M71@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$HEAD" ] && pick_declared "$HEAD" "$DECLARED_ALL"; then@@if false; then@@on the integration branch: BLOCKS the exact H6 shape (git merge --no-ff)
 M72@@scripts/wave-integrate.mjs@@if (push.ok) {@@if (false) {@@--push runs merge-reconcile.mjs again right after the wave lands@@B1: --push must land
 M73@@scripts/orchestrator.mjs@@const staticOnly = [...tickets.values()].filter((t) => t.verifiedStatic === true).map((t) => t.id);@@const staticOnly = [];@@a ticket still carrying verified_static is counted, every round@@OPS-013: the verified_static
 M74@@scripts/messages.mjs@@if (candidate.kind === 'answer' && candidate.ticket !== TICKETLESS) {@@if (false) {@@an answer on an already-shipped ticket says it filed a register item
@@ -371,7 +371,7 @@ MP03@@scripts/lib/evidence.mjs@@return !qa && PROSE_ANYWHERE.test(f);@@return PR
 MP04@@scripts/board.mjs@@base: name === 'closed' ? recordedMergeBase(events, ticket) : ''@@base: ''@@P1: a QA- ticket fast-forwarded into main BEFORE closed still closes (C4G-G2)@@Sprint 5 track P1
 MP05@@scripts/board.mjs@@const qaBase = isQaDocs(tickets.get(key(ticket))) ? docsOnlyDiff(g, subj.sha, { qa: true }).base : '';@@const qaBase = '';@@P1: merged records the merge-base its docs-only proof was taken against (C4G-G2)@@Sprint 5 track P1
 MP06@@scripts/board.mjs@@if (name === 'closed' && isQaDocs(state)) printQaLanding(ticket, events);@@if (false) printQaLanding(ticket, events);@@P1: ...and closed prints the exact ff-only command that lands its files (C4W-2)@@Sprint 5 track P1
-MP07@@scripts/lib/events.mjs@@return withCorrection(state.qaPassed || isQaTicket(state)@@return ((x) => x)(state.qaPassed || isQaTicket(state)@@P1: corrected is legal while a ticket sits in qa (C4G-G3)@@Sprint 5 track P1
+MP07@@scripts/lib/events.mjs@@return withCorrection(['qa_passed', 'verified'@@return ((x) => x)(['qa_passed', 'verified'@@P1: corrected is legal while a ticket sits in qa (C4G-G3)@@Sprint 5 track P1
 MP08@@scripts/lib/evidence.mjs@@if (text !== null) return { commands: testsOf(text)@@if (false) return { commands: testsOf(text)@@P1: the board freezes main's committed profile, not an uncommitted working-tree edit (C4G-G4)@@Sprint 5 track P1
 MP09@@scripts/lib/approval.mjs@@if (mb && base !== mb && !isAncestor(git, base, mb)) {@@if (false) {@@P1: merged refuses an approval bound to tip~1..tip@@Sprint 5 track P1
 MP10@@scripts/project-profile.mjs@@blocked += coldDeps.length;@@blocked += 0;@@P1: project-profile check BLOCKS a bare 'npm test'@@Sprint 5 track P1
@@ -446,7 +446,7 @@ MT14@@hooks/contract-hooks.mjs@@writeFileSync(file, `${redact(report).text}\n`)@
 MT15@@scripts/lib/evidence.mjs@@const lf = f.toLowerCase();@@const lf = f;@@MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json@@Sprint 6 track Q2
 MT16@@scripts/lib/evidence.mjs@@|Directory\.Build\.props)$/i;@@|Directory\.Build\.props)$/;@@MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json and a PACKAGE.JSON@@Sprint 6 track Q2
 MT17@@scripts/board.mjs@@return base ? landedAfterMerge(git, ticket, recorded, base) : '';@@return '';@@MT: a QA- ticket whose branch gained code AFTER merged@@Sprint 6 track Q2
-MT18@@hooks/block-shared-tree-destructive-git.sh@@if same_ref "$REF" "$DECLARED"; then@@if [ "$REF" = "$DECLARED" ]; then@@MT: ref hook blocks update-ref refs/heads/Main on macOS@@Sprint 6 track Q2
+MT18@@hooks/block-shared-tree-destructive-git.sh@@for c in $2; do same_ref "$1" "$c"@@for c in $2; do [ "$1" = "$c" ]@@MT: ref hook blocks update-ref refs/heads/Main on macOS@@Sprint 6 track Q2
 MT19@@hooks/block-shared-tree-destructive-git.sh@@} else if (sc == "symbolic-ref") {@@} else if (sc == "zzzz-no-such-command") {@@MT: ref hook blocks git symbolic-ref@@Sprint 6 track Q2
 MT20@@hooks/contract-hooks.mjs@@if (/^(ex|vi|vim|nvim|ed|red)$/.test(name)) plain.forEach(path);@@if (false) plain.forEach(path);@@MT: guard exit 2 — writer: vim -es@@Sprint 6 track Q2
 MT21@@hooks/contract-hooks.mjs@@if (sub === 'clone' && paths.length > 1)@@if (false)@@MT: guard exit 2 — writer: git clone@@Sprint 6 track Q2
@@ -542,7 +542,7 @@ M7U5-15@@scripts/run-doctor.mjs@@resolve(String(flags.root || '.'), String(flags
 M7U5-16@@scripts/verify-done.sh@@    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs\" --root . --wave <N> --base $BASE@@    node scripts/wave-integrate.mjs --root . --wave <N> --base $BASE@@W7-12: verify-done and merge-reconcile print ${CLAUDE_PLUGIN_ROOT} paths, not relative ones@@Sprint 7 U5
 M7U5-17@@scripts/ship-gate.sh@@echo "        red-team-agent and defect-hunting, not by this gate."@@:@@N6: a CLEAR ship-gate run itself states it only replays known defects (G-F13)@@Sprint 7 U5
 
-MS7U1A@@scripts/integration-branch.sh@@s/^[[:space:]>*|-]*[Ii]ntegration branch@@s/.*[Ii]ntegration branch@@Sprint 7 U1: prose naming 'the integration branch' is not a declaration — main is read, not never/protected (C7-5)@@Sprint 7 U1
+MS7U1A@@scripts/integration-branch.sh@@s/^[[:space:]>*|#-]*([0-9]+\.[[:space:]]*)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@s/.*(@)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@Sprint 7 U1: prose naming 'the integration branch' is not a declaration — main is read, not never/protected (C7-5)@@Sprint 7 U1
 MS7U1B@@scripts/integration-branch.sh@@  feat/*|fix/*|qa/*|bug/*)@@  __no_ticket_branch__)@@Sprint 7 U1: a declared ticket branch (feat/…) is CANNOT RESOLVE, even committed (G7-3)@@Sprint 7 U1
 MS7U1C@@scripts/integration-branch.sh@@if git --git-dir="$COMMON" cat-file -e "HEAD:$PREFIX$1" 2>/dev/null; then@@if false; then@@Sprint 7 U1: an uncommitted rewrite of the strategy doc does not move the integration branch (G7-3)@@Sprint 7 U1
 MS7U1D@@scripts/lib/integration.mjs@@if (r.status !== 0 || !name) return { base: '',@@if (r.status !== 0 || !name) return { base: 'develop',@@Sprint 7 U1: a strategy doc that cannot resolve gives the board no base, not a fallback develop (C7-5)@@Sprint 7 U1
@@ -559,11 +559,11 @@ MV01@@hooks/contract-hooks.mjs@@if (n && !n.startsWith('#')) WRAPPERS.set(n, { o
 MV02@@hooks/block-shared-tree-destructive-git.sh@@nf = split(line, F, /[ \t]+/); WRAP[F[1]] = 1;@@nf = split(line, F, /[ \t]+/);@@U3: git hook exit 2 — wrappers.txt row 'setsid' wraps git@@Sprint 7 U3
 MV03@@hooks/contract-hooks.mjs@@if (unsure) alts = [...alts, ...before];@@if (false) alts = [...alts, ...before];@@U3: guard exit 2 — uncertain cd: sh -c "cd /nonexistent@@Sprint 7 U3
 MV04@@hooks/block-shared-tree-destructive-git.sh@@return (unsure || SHADOW || !enterable(nd)) ? union(nd, dir) : nd@@return nd@@U3: git hook exit 2 — dirty tree: false && cd /tmp; git stash@@Sprint 7 U3
-MV05@@hooks/block-shared-tree-destructive-git.sh@@d=$(sh "$PLUGIN/scripts/integration-branch.sh" "$1" 2>/dev/null) || d=""@@d=""@@U3: git hook exit 2 — merge --no-ff onto develop declared as "develop."@@Sprint 7 U3
+MV05@@hooks/block-shared-tree-destructive-git.sh@@if d=$(sh "$PLUGIN/scripts/integration-branch.sh" "$1" 2>/dev/null); then@@if d=main; then@@U3: git hook exit 2 — merge --no-ff onto develop declared as "develop."@@Sprint 7 U3
 MV06@@hooks/contract-hooks.mjs@@.slice(0, 20).forEach(addRoot);@@.slice(0, 0).forEach(addRoot);@@U3: guard exit 2 — rm -rf <abs project>/docs/team/evidence from cwd /tmp@@Sprint 7 U3
 MV07@@hooks/contract-hooks.mjs@@if (script === 'board.mjs' && after.some((w) => w.v.text === 'adopt')) refuse(ADOPT);@@void ADOPT;@@U3: guard exit 2 — board.mjs adopt run by its shebang@@Sprint 7 U3
 MV08@@hooks/contract-hooks.mjs@@if (/^(g?base64|uudecode|plutil)$/.test(name)) opt(@@if (false) opt(@@U3: guard exit 2 — writer: base64@@Sprint 7 U3
-MV09@@hooks/block-shared-tree-destructive-git.sh@@DIRTY=$(git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | head -n 1)@@DIRTY=$(git -C "$GDIR" status --porcelain -uall 2>/dev/null | head -n 1)@@U3: git hook exit 0 — branch -D with only operational files untracked@@Sprint 7 U3
+MV09@@hooks/block-shared-tree-destructive-git.sh@@git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | grep '^??'@@git -C "$GDIR" status --porcelain -uall 2>/dev/null | grep '^??'@@U3: git hook exit 0 — branch -D with only operational files untracked@@Sprint 7 U3
 MV10@@hooks/block-shared-tree-destructive-git.sh@@[ -n "$AGENT" ] && [ -n "$ROOT" ] && [ -f "$ROOT/docs/31-board-events.jsonl" ] || continue@@continue@@U3: git hook exit 2 — a subagent: checkout -b in the studio main checkout@@Sprint 7 U3
 MV11@@hooks/block-cross-worktree-write.sh@@if [ -n "$DEV" ] && [ -z "$TARGET_WT" ]; then@@if false; then@@U3: write hook exit 2 — an ios-developer writing into the studio main checkout@@Sprint 7 U3
 MV12@@hooks/block-shared-tree-destructive-git.sh@@if (has(A, na, "-u")) emit("D", "", d, "git read-tree@@if (0) emit("D", "", d, "git read-tree@@U3: git hook exit 2 — dirty tree: git read-tree@@Sprint 7 U3
@@ -574,6 +574,10 @@ MP47A@@scripts/lib/events.mjs@@...(isQaDocs(state) ? [] : ['rework'])@@...(isQaD
 MP47B@@hooks/block-shared-tree-destructive-git.sh@@      STAT=$( { git -C "$GDIR" status --porcelain -uno -- ':/' 2>/dev/null@@      STAT=$( { true@@PR47: a tracked operational file with uncommitted changes still blocks git reset --hard@@PR47 review
 MP47C@@scripts/runtime-gate.sh@@[ -f "$TOPL/docs/31-board-events.jsonl" ]@@true@@PR47: the runtime gate's integration-tip check skips a repo that is not a studio project@@PR47 review
 MP47D@@scripts/runtime-gate.sh@@[ "$(cd "$ROOT" && pwd -P)" = "$(cd "$TOPL" && pwd -P)" ]@@true@@PR47: the runtime gate's integration-tip check skips a fixture directory inside another repo@@PR47 review
+MF47A@@scripts/integration-branch.sh@@-e 's/^[[:space:]>*|#-]*([0-9]+\.[[:space:]]*)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@-e 's/^[[:space:]>*|-]*(@)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@PR47 fixes: heading, numbered, hyphen@@PR47 fixes
+MF47B@@hooks/block-shared-tree-destructive-git.sh@@printf 'main master develop %s'@@printf 'main %s'@@PR47 fixes: an unresolvable declaration still protects develop from a raw merge@@PR47 fixes
+MF47C@@hooks/block-shared-tree-destructive-git.sh@@case $REF in i) SWEEP=1; EXCL="" ;; u) EXCL="" ;; esac@@SWEEP=1; EXCL=""@@PR47 fixes: git clean -fd runs when the only operational file is the gitignored board log@@PR47 fixes
+MF47D@@hooks/block-shared-tree-destructive-git.sh@@m = (sc == "clean") ? "u" : ""@@m = ""@@PR47 fixes: git clean -fd is refused when an untracked operational file exists@@PR47 fixes
 CATALOGUE
 }
 

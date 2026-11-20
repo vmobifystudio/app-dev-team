@@ -13338,6 +13338,39 @@ printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"git reset --hard
 [ $? = 2 ] && ok "PR47: a tracked operational file with uncommitted changes still blocks git reset --hard" \
   || bad "PR47: a tracked operational file with uncommitted changes still blocks git reset --hard"
 
+# --- PR47 fixes: integration-branch declarations and the hook's fallback ---
+echo "PR47 fixes: integration-branch declarations and the hook's fallback"
+# PR47-2: forms that resolved before C7-5 anchored the regex — heading, numbered list, ASCII hyphen,
+# and the `is` form with a backticked name ending the line. "is protected" stays prose.
+P47IB="$TMP/p47-ib"; mkdir -p "$P47IB/docs" && ( cd "$P47IB" && git init -q -b main . && git commit -q --allow-empty -m i && git branch develop ) >/dev/null 2>&1
+p47ib() { printf '# Git\n%s\n' "$1" > "$P47IB/docs/23-git-strategy.md"; sh "$HERE/integration-branch.sh" "$P47IB" 2>/dev/null; }
+P47IBR=""
+for l in '## Integration branch: develop' '1. Integration branch: develop' '- Integration branch - develop' 'The integration branch is `develop`.'; do
+  [ "$(p47ib "$l")" = develop ] || P47IBR="$P47IBR [$l]"
+done
+p47ib 'The integration branch is protected' >/dev/null && P47IBR="$P47IBR [is protected resolved]"
+[ -z "$P47IBR" ] && ok "PR47 fixes: heading, numbered, hyphen and 'is \`x\`.' declarations resolve; 'is protected' does not" \
+  || bad "PR47 fixes: heading, numbered, hyphen and 'is \`x\`.' declarations resolve; 'is protected' does not" "$P47IBR"
+# PR47-3: when the resolver cannot answer, the hook protects every candidate, not only main.
+P47FB="$TMP/p47-fb"; mkdir -p "$P47FB/docs" && ( cd "$P47FB" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf '# Git\nWe integrate somewhere.\n' > docs/23-git-strategy.md && git add docs && git commit -qm i && git branch feat/x && git checkout -q -b develop ) >/dev/null 2>&1
+printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"git merge --no-ff feat/x"}}' "$P47FB" | sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" >/dev/null 2>&1
+[ $? = 2 ] && ok "PR47 fixes: an unresolvable declaration still protects develop from a raw merge" \
+  || bad "PR47 fixes: an unresolvable declaration still protects develop from a raw merge"
+
+# --- PR47 fixes: clean and stash sweeps parse their own flags ---
+echo "PR47 fixes: clean and stash sweeps parse their own flags"
+P47SW="$TMP/p47-sw"; mkdir -p "$P47SW/docs" && ( cd "$P47SW" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf 'docs/31-board-events.jsonl\n' > .gitignore && echo x > a && git add .gitignore a && git commit -qm i && echo '{}' > docs/31-board-events.jsonl ) >/dev/null 2>&1
+p47sw() { printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"%s"}}' "$P47SW" "$1" | sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" >/dev/null 2>&1; }
+p47sw "git clean -fd" && ok "PR47 fixes: git clean -fd runs when the only operational file is the gitignored board log" \
+  || bad "PR47 fixes: git clean -fd runs when the only operational file is the gitignored board log"
+p47sw "git stash push -m update-ui" && ok "PR47 fixes: a stash message containing -u is not read as --include-untracked" \
+  || bad "PR47 fixes: a stash message containing -u is not read as --include-untracked"
+mkdir -p "$P47SW/docs/team" && echo '{}' > "$P47SW/docs/team/messages.jsonl"
+! p47sw "git clean -fd" && ok "PR47 fixes: git clean -fd is refused when an untracked operational file exists" \
+  || bad "PR47 fixes: git clean -fd is refused when an untracked operational file exists"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

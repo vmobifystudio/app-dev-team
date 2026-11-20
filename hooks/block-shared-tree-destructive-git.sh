@@ -182,6 +182,32 @@ function cmdat(W, nw,    i, w, k) {
   return i
 }
 
+# PR47-9: what a clean/stash sweeps, parsed from ITS OWN flags (a glob over the whole command read
+# `stash push -m update-ui` as -u): "i" ignored files too (clean -x/-X, stash -a/--all), "u"
+# untracked files (clean without -x, stash -u/--include-untracked), "" neither (a plain stash).
+function sweep(sc, A, na,    j, x, q, c, m) {
+  m = (sc == "clean") ? "u" : ""
+  for (j = 1; j <= na && A[j] != "--"; j++) {
+    x = A[j]
+    if (x == "-m" || x == "--message") { j++; continue }
+    if (x ~ /^--/) {
+      if (sc == "clean" && x ~ /^--ignored/) return "i"
+      if (sc == "stash" && x == "--all") return "i"
+      if (sc == "stash" && x == "--include-untracked") m = "u"
+      continue
+    }
+    if (x !~ /^-./) continue
+    for (q = 2; q <= length(x); q++) {
+      c = substr(x, q, 1)
+      if (sc == "stash" && c == "m") { if (q == length(x)) j++; break }
+      if (sc == "clean" && (c == "x" || c == "X")) return "i"
+      if (sc == "stash" && c == "a") return "i"
+      if (sc == "stash" && c == "u") m = "u"
+    }
+  }
+  return m
+}
+
 function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all, st, wt, x, q, c, k, L) {
   np = pos(A, na, P)
   if (sc == "reset") {
@@ -207,7 +233,7 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
       emit("D", "", d, "git restore over the whole tree discards every uncommitted change")
   } else if (sc == "clean") {
     if (na > np && !has(A, na, "-n") && !has(A, na, "--dry-run"))
-      emit("D", "", d, "git clean deletes untracked files, including another agent'"'"'s new files")
+      emit("D", sweep(sc, A, na), d, "git clean deletes untracked files, including another agent'"'"'s new files")
   } else if (sc == "push") {
     force = 0
     for (j = 1; j <= na && A[j] != "--"; j++) if (A[j] == "-f" || A[j] ~ /^--force/) force = 1
@@ -241,7 +267,7 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
       emit("D", "", d, "git stash drop/clear destroys stash entries, and every worktree of this repo shares that stack")
     else if (x == "" || x == "push" || x == "save" || x ~ /^-/) {
       for (j = 1; j <= na && A[j] != "--"; j++) ;
-      if (j > na) emit("D", "", d, "git stash sweeps the whole tree, including work you did not write — this is the exact command that cost 22 files on 2026-07-29")
+      if (j > na) emit("D", sweep(sc, A, na), d, "git stash sweeps the whole tree, including work you did not write — this is the exact command that cost 22 files on 2026-07-29")
     }
   } else if (sc == "add") {
     all = 0
@@ -450,11 +476,18 @@ END {
 # G7-11: the declared branch comes from scripts/integration-branch.sh itself — ONE parser. A copy
 # here drifted (it kept the `.` of "Integration branch: main.", so main went unprotected). The script
 # is found beside this hook (its own plugin root), never through $CLAUDE_PLUGIN_ROOT. When it cannot
-# resolve (exit 2: a doc that declares nothing, a declared branch that does not exist), `main`.
-# Resolved per repository, because a segment's `cd`/`-C` can name a different one.
+# resolve (exit 2: a doc that declares nothing, a declared branch that does not exist), EVERY
+# candidate is protected — main, master, develop and whatever the doc names (PR47-3: falling back to
+# `main` alone left a develop-model project's real integration branch open to a raw merge or push).
+# Resolved per repository, because a segment's `cd`/`-C` can name a different one. Prints a
+# space-separated list; `pick_declared` sets DECLARED to the member a ref or HEAD matches.
 declared_for() {
-  d=$(sh "$PLUGIN/scripts/integration-branch.sh" "$1" 2>/dev/null) || d=""
-  printf '%s' "${d:-main}"
+  if d=$(sh "$PLUGIN/scripts/integration-branch.sh" "$1" 2>/dev/null); then printf '%s' "${d:-main}"; return; fi
+  printf 'main master develop %s' "$(printf '%s\n' "$d" | sed -n "s/.* declares '\([^']*\)'.*/\1/p" | head -n 1)"
+}
+pick_declared() {   # pick_declared <ref> <list> — 0 and DECLARED=<member> when ref is one of them
+  for c in $2; do same_ref "$1" "$c" && { DECLARED=$c; return 0; }; done
+  return 1
 }
 
 # C5G-6: macOS ref storage folds case — `refs/heads/Develop` IS develop there, so compare folded on Darwin.
@@ -466,12 +499,13 @@ same_ref() { if [ -n "$DARWIN" ]; then [ "$(lc "$1")" = "$(lc "$2")" ]; else [ "
 # (branch -D, reset --hard, checkout). `git clean` and `git stash -u/-a` DELETE them, and with -x/-X/-a
 # they delete the gitignored board log too, which `git status` never shows. Those commands count the
 # operational paths, ignored or not (Sprint 7 lead: U3's skip let `git clean -fdx` erase the board).
-EXCL=""; OPS=""; SWEEP=""
+EXCL0=""; OPS=""
 if [ -f "$PLUGIN/scripts/lib/operational-paths.txt" ]; then
-  EXCL=$(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(top,exclude)/' "$PLUGIN/scripts/lib/operational-paths.txt")
+  EXCL0=$(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(top,exclude)/' "$PLUGIN/scripts/lib/operational-paths.txt")
   OPS=$(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(top)/' "$PLUGIN/scripts/lib/operational-paths.txt")
 fi
-case " $CMD " in *[[:space:]]clean[[:space:]]*|*[[:space:]]stash*-u*|*[[:space:]]stash*-a*|*--include-untracked*|*--all*) SWEEP=1; EXCL="" ;; esac
+# PR47-9: which sweep a segment is comes from its own parsed flags (the REF field of its D line),
+# never from a glob over the whole command — see sweep() in the parser above.
 
 TAB=$(printf '\t')
 while IFS="$TAB" read -r KIND REF DIR WHY; do
@@ -493,6 +527,8 @@ while IFS="$TAB" read -r KIND REF DIR WHY; do
     # switched off, and a switched-off gate protects nothing.
     # W7-9: the studio's own operational files (scripts/lib/operational-paths.txt — the board log,
     # the register, release candidates) are the loop's bookkeeping, not work this command destroys.
+    SWEEP=""; EXCL=$EXCL0
+    case $REF in i) SWEEP=1; EXCL="" ;; u) EXCL="" ;; esac
     if [ -n "$ROOT" ]; then
       # Tracked changes always count — reset --hard / checkout discard an edited operational file too
       # (Codex PR #47: an appended, committed messages.jsonl). Only UNTRACKED operational files skip.
@@ -562,7 +598,7 @@ EOF
     GDIR=$BASE
     ROOT=$(git -C "$GDIR" rev-parse --show-toplevel 2>/dev/null) || continue
   fi
-  DECLARED=$(declared_for "$ROOT")
+  DECLARED_ALL=$(declared_for "$ROOT"); DECLARED=${DECLARED_ALL%% *}
 
   if [ "$KIND" = "M" ]; then
     # --- a raw `git merge` INTO the integration branch, by anyone at all -------------------------
@@ -582,7 +618,7 @@ EOF
     # and `git mergetool` are different subcommands and never reach this. `git pull --no-ff`, or a
     # pull of some OTHER branch, is the same merge spelled differently.
     HEAD=$(git -C "$GDIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-    if [ -n "$HEAD" ] && [ "$HEAD" = "$DECLARED" ]; then
+    if [ -n "$HEAD" ] && pick_declared "$HEAD" "$DECLARED_ALL"; then
       if [ "$REF" = "-" ] || [ "$REF" != "$DECLARED" ]; then
         cat >&2 <<EOF
 BLOCKED — a raw \`git $WHY\` directly onto the integration branch (\`$DECLARED\`).
@@ -622,7 +658,7 @@ EOF
   # from, with no board event — without the word "merge" ever appearing. A plain
   # `git push origin main` (local main to remote main, no force) is the documented landing step.
   REFBLOCK=""
-  if same_ref "$REF" "$DECLARED"; then
+  if pick_declared "$REF" "$DECLARED_ALL"; then
     case "$WHY" in
       push)  REFBLOCK="a push that rewrites or forces $DECLARED on the remote (a refspec ending :$DECLARED, +$DECLARED, --force, or --delete) — no merge, no board event" ;;
       fetch) REFBLOCK="a fetch refspec ending :$DECLARED moves the integration branch's LOCAL ref directly — this is wave-integrate.mjs's own mechanism, run by hand instead of through it" ;;

@@ -77,11 +77,17 @@ doc_text() {
 #   Integration branch: develop            Integration branch = develop
 #   - Integration branch — `develop`       **Integration branch:** `develop`
 #   | Integration branch | develop |
+#   - Integration branch - develop         1. Integration branch: develop
+#   ## Integration branch: develop         The integration branch is `develop`.
+#
+# PR47-2: the `is` form only with a backticked name that ENDS the line, so "is protected" is prose.
 #
 # ERE (`sed -E`), not BRE: `\|` alternation in a BRE is a GNU extension and this repo runs on BSD
 # sed too, where it would have silently matched nothing — a resolver that always falls back.
 read_declared() {
-  doc_text "$1" | sed -nE 's/^[[:space:]>*|-]*[Ii]ntegration branch[[:space:]]*(\*\*)?[[:space:]]*(:|=|—|–|\|)[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\3/p' \
+  doc_text "$1" | sed -nE \
+    -e 's/^[[:space:]>*|#-]*([0-9]+\.[[:space:]]*)?[Ii]ntegration branch[[:space:]]*(\*\*)?[[:space:]]*(:|=|—|–|\||-[[:space:]])[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\4/p' \
+    -e 's/^[[:space:]>*|#-]*([0-9]+\.[[:space:]]*)?([Tt]he[[:space:]]+)?[Ii]ntegration branch[[:space:]]+is[[:space:]]+`([A-Za-z0-9._/-]+)`[.[:space:]]*$/\3/p' \
     | head -n 1 | sed -E 's/[./]+$//'   # W2-22: "Integration branch: main." — a branch cannot end in . or /
 }
 
