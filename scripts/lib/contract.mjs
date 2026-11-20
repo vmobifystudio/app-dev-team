@@ -75,7 +75,8 @@ export const GATE_HEADERS = {
   'security-reviewer': ['REVIEW VERDICT:', 'SECURITY:', 'PRIVACY:'],
   'ux-architect': ['DESIGN QA:'],
   'data-analyst': ['ANALYTICS:'],
-  'aso-specialist': ['ASO READY', 'ASO BLOCKED'],
+  // R7-9: `ASO: CANNOT EVALUATE — …` is the line /app-ship expects when the gate cannot run.
+  'aso-specialist': ['ASO READY', 'ASO BLOCKED', 'ASO:'],
   'verification-engineer': ['VERIFICATION:'],
   'release-auditor': ['RELEASE AUDIT:'],
 };

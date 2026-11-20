@@ -4514,7 +4514,7 @@ assert_has "$TMP/rc-true.txt" "VERIFIED on the branch" "...and says it verified 
 # team-protocol" instead of containing it, and the agent returned 0 of 6 fields — worse than the
 # agent that failed H4 the day before. The identical ticket, role and slot, re-spawned with the
 # contract pasted in literally, returned all six. Dispatch, not capability.
-SPF="$TMP/spawn-prompt-fixture"; rm -rf "$SPF"; mkdir -p "$SPF/docs"
+SPF="$TMP/spawn-prompt-fixture"; rm -rf "$SPF"; mkdir -p "$SPF/docs" "$SPF/.agent-wt/ios-developer"
 ( cd "$SPF" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
   && git commit -q --allow-empty -m init ) >/dev/null 2>&1
 printf 'Integration branch: main\n' > "$SPF/docs/23-git-strategy.md"
@@ -7809,8 +7809,8 @@ assert_exit 0 "dependency policy accepts the plugin's declared and locked contro
 CPMAIN="$TMP/context-preflight-main"; mkdir -p "$CPMAIN"
 ( cd "$CPMAIN" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
   && git commit -q --allow-empty -m init ) >/dev/null 2>&1
-assert_exit 1 "context preflight blocks writes from the protected main branch" \
-  node "$HERE/context-preflight.mjs" "$CPMAIN"
+assert_exit 1 "context preflight blocks a writing role on the protected main branch" \
+  node "$HERE/context-preflight.mjs" "$CPMAIN" --role ios-developer
 assert_has "$TMP/out" "protected branch main" "...and names the reason"
 
 CPFEAT="$TMP/context-preflight-feature"; mkdir -p "$CPFEAT"
@@ -9794,7 +9794,7 @@ CONFLICTED=$( { grep -rln '^<<<<<<< \|^>>>>>>> ' \
 # skip. They are hooks now (hooks/require-spawn-contract.sh, hooks/persist-ic-report.sh ->
 # hooks/contract-hooks.mjs). C6: IC reports are persisted. C7: IC prompts carry a spec excerpt, the
 # reviewer gets a template with the DONE report. C11: the manifest stops going STALE on every merge.
-S2B="$TMP/s2b"; rm -rf "$S2B"; mkdir -p "$S2B/docs"
+S2B="$TMP/s2b"; rm -rf "$S2B"; mkdir -p "$S2B/docs" "$S2B/.agent-wt/ios-developer"
 ( cd "$S2B" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
   && git commit -q --allow-empty -m init ) >/dev/null 2>&1
 printf 'Integration branch: main\n' > "$S2B/docs/23-git-strategy.md"
@@ -9812,7 +9812,7 @@ assert_has "$TMP/s2b-ic.txt" "greets the user by name" "C7: ...and the PRD secti
 assert_has "$TMP/s2b-ic.txt" "full file: " "C7: ...with a pointer to the full file"
 grep -q UNRELATED "$TMP/s2b-ic.txt" && bad "C7: ...and no section that does not name the ticket (APP-0010 is not APP-001)" \
   || ok "C7: ...and no section that does not name the ticket (APP-0010 is not APP-001)"
-assert_has "$TMP/s2b-ic.err" "(budget 4000" "C11: compose prints the composed prompt's word count against the IC budget"
+assert_has "$TMP/s2b-ic.err" "(budget 6600" "C11: compose prints the composed prompt's word count against the IC budget"
 cp "$S2B/docs/22-impl-spec-ios.md" "$TMP/s2b-spec.bak"
 { printf '# iOS\n\n## APP-001 huge\n'; awk 'BEGIN { for (i = 0; i < 3000; i++) printf "filler%d ", i }'; } > "$S2B/docs/22-impl-spec-ios.md"
 ( cd "$S2B" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role ios-developer ) >"$TMP/s2b-big.txt" 2>/dev/null
@@ -9820,6 +9820,8 @@ cp "$S2B/docs/22-impl-spec-ios.md" "$TMP/s2b-spec.bak"
   && ok "C7: a 3000-word spec section is cut to the excerpt budget, and says so" \
   || bad "C7: a 3000-word spec section is cut to the excerpt budget, and says so" "$(wc -w < "$TMP/s2b-big.txt") words"
 cp "$TMP/s2b-spec.bak" "$S2B/docs/22-impl-spec-ios.md"
+# The slot existed only to compose (C7-12 refuses a missing one); the spawn hook below refuses a slot dir that is not a worktree.
+rmdir "$S2B/.agent-wt/ios-developer" "$S2B/.agent-wt"
 
 # C7b — the reviewer template: the LATEST persisted DONE report, the branch tip, the verdict contract.
 mkdir -p "$S2B/docs/team/reports"
@@ -10735,7 +10737,7 @@ rm -rf "$F2"
 # IDs (W2-4, W2-7, W2-16); the gate-write guard refuses only writes INTO evidence and closes the
 # quoting/variable/inline-program/nested-claude/transcript holes (C2-4, G2-1, G2-15, G2-16, G2-27).
 echo
-TE="$TMP/s3e"; rm -rf "$TE"; mkdir -p "$TE/docs/team/reports"
+TE="$TMP/s3e"; rm -rf "$TE"; mkdir -p "$TE/docs/team/reports" "$TE/.agent-wt/ios-developer" "$TE/.agent-wt/qa-engineer"
 ( cd "$TE" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m init \
   && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
   && node "$HERE/board.mjs" add APP-001 --title greet --owner ios-developer --acceptance "Given Ada, shows Hello Ada" --by tech-manager \
@@ -10766,7 +10768,7 @@ te_compose --ticket QA-1-w1 --role qa-engineer >/dev/null 2>&1
   || bad "S3E: a QA compose with no ticket at qa refuses (no QA ticket for an empty wave)"
 
 # W2-2 / C2-2 — gate-role templates, each with its own token, each clearing verify.
-for _r in tech-lead security-reviewer verification-engineer; do
+for _r in tech-lead security-reviewer; do
   te_compose --ticket APP-001 --role "$_r" >"$TMP/te-$_r.txt" 2>/dev/null
   if [ $? = 0 ] && grep -q '^Token: st_' "$TMP/te-$_r.txt" && node "$HERE/spawn-prompt.mjs" verify --role "$_r" --prompt "$TMP/te-$_r.txt" >/dev/null 2>&1; then
     ok "S3E: compose has a $_r template that mints its token and clears verify"
@@ -10801,7 +10803,7 @@ assert_has "$TMP/te-rv.err" "mandatory skills" "S3E: the budget line counts the 
 
 # C2-5 / C2-11 — the IC prints its base and checkout line; a retry goes onto the existing branch.
 te_compose --ticket APP-001 --role ios-developer >"$TMP/te-ic.txt" 2>/dev/null
-grep -qF 'git checkout -b feat/APP-001-<short-slug> main' "$TMP/te-ic.txt" \
+grep -qF 'checkout -b feat/APP-001-<short-slug> main' "$TMP/te-ic.txt" \
   && ok "S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)" \
   || bad "S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)"
 printf 'REVIEW VERDICT: REQUEST CHANGES\nScope: a..b\nBlocking: RETRY-BLOCKING-LINE\n\n## Not checked\nNothing\n' > "$TE/docs/v.md"
@@ -11289,7 +11291,7 @@ node -e 'process.stdout.write(JSON.stringify({ tool_name: "Agent", agent_id: "k2
 rm -rf "$K2"
 
 # Design A / C3W-1 — QA on its QA- ticket: branch qa/QA-…, no feat/APP- line, per-ticket commands.
-K2Q="$TMP/s4k2q"; rm -rf "$K2Q"; mkdir -p "$K2Q/docs/team"
+K2Q="$TMP/s4k2q"; rm -rf "$K2Q"; mkdir -p "$K2Q/docs/team" "$K2Q/.agent-wt/qa-engineer"
 ( cd "$K2Q" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m init \
   && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
   && node "$HERE/board.mjs" add APP-001 --title greet --owner ios-developer --acceptance "Given Ada" --by tech-manager \
@@ -11298,7 +11300,7 @@ K2Q="$TMP/s4k2q"; rm -rf "$K2Q"; mkdir -p "$K2Q/docs/team"
   && node "$HERE/board.mjs" move APP-002 claimed --by ios-developer && node "$HERE/board.mjs" move APP-002 done_reported --by ios-developer ) >/dev/null 2>&1
 printf '{"requireActorTokens": true}\n' > "$K2Q/.studio-policy.json"
 ( cd "$K2Q" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-1-w1 --role qa-engineer --tickets APP-001 ) >"$TMP/k2qa.txt" 2>/dev/null
-grep -qF 'git checkout -b qa/QA-1-w1 main' "$TMP/k2qa.txt" && grep -qF 'Branch: qa/QA-1-w1' "$TMP/k2qa.txt" && ! grep -q 'feat/APP-' "$TMP/k2qa.txt" \
+grep -qF 'checkout -b qa/QA-1-w1 main' "$TMP/k2qa.txt" && grep -qF 'Branch: qa/QA-1-w1' "$TMP/k2qa.txt" && ! grep -q 'feat/APP-' "$TMP/k2qa.txt" \
   && grep -qE "move APP-001 qa_passed --by qa-engineer --token st_" "$TMP/k2qa.txt" && grep -qE "move APP-001 qa_failed --by qa-engineer --token st_" "$TMP/k2qa.txt" \
   && ok "K2: QA composes on branch qa/QA-<sprint>-w<n>, no feat/APP- line, qa_passed/qa_failed spelled per ticket (C3W-1, design A)" \
   || bad "K2: QA composes on branch qa/QA-<sprint>-w<n>, no feat/APP- line, qa_passed/qa_failed spelled per ticket (C3W-1, design A)" "$(head -c 900 "$TMP/k2qa.txt")"
@@ -11686,7 +11688,7 @@ printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"no
 assert_exit 0 "P1: ...and clears 'npm ci && npm test'" node "$HERE/project-profile.mjs" check --root "$P1P"
 
 # ·· C4W-3 / C4W-4: qa_failed -> BUG-NNN-fix is dispatchable (ids case-insensitive, deps satisfied at qa)
-P1S=$(p1_proj sched)
+P1S=$(p1_proj sched); mkdir -p "$P1S/.agent-wt/qa-engineer"
 printf '{"schema":"scheduler-plan/v1","tasks":[]}\n' > "$P1S/docs/team/schedule.json"
 ( cd "$P1S" && node "$BD" add APP-001-analytics --title "Feature" --owner ios-developer && git checkout -q -b feat/APP-001-analytics-events \
   && mkdir -p src && echo 'let a = 1' > src/A.swift && git add src && p1g commit -qm a && git checkout -q main \
@@ -11738,7 +11740,7 @@ grep -Eq 'RESULT: (BLOCKED \(|CANNOT EVALUATE \(worst wins — )(BLOCKED|CANNOT 
   && ok "P1: orchestrator ship's RESULT names the BLOCKED and CANNOT EVALUATE steps (C4W-13)" \
   || bad "P1: orchestrator ship's RESULT names the BLOCKED and CANNOT EVALUATE steps (C4W-13)"
 ( cd "$P1S" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-5-w1 --role qa-engineer --tickets APP-001-analytics ) >/dev/null 2>"$TMP/p1qab.txt"
-grep -q '(budget 6000' "$TMP/p1qab.txt" \
+grep -q '(budget 7000' "$TMP/p1qab.txt" \
   && ok "P1: a qa-engineer prompt on a QA- ticket is measured against the QA budget, not the IC one (C4W-13)" \
   || bad "P1: a qa-engineer prompt on a QA- ticket is measured against the QA budget, not the IC one (C4W-13)" "$(cat "$TMP/p1qab.txt")"
 rm -rf "$P1G" "$P1H" "$P1B" "$P1F4" "$P1A" "$P1P" "$P1S" "$P1R" "$P1T"
@@ -12140,7 +12142,7 @@ q1_tc_proj() {
     && node "$HERE/board.mjs" move TC-1 done_reported --by ios-developer ) >/dev/null 2>&1
   printf '%s' "$_p"
 }
-Q1Q=$(q1_tc_proj)
+Q1Q=$(q1_tc_proj); mkdir -p "$Q1Q/.agent-wt/qa-engineer"
 q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$(q1_vd "$Q1Q" feat/TC-1-x)" >/dev/null 2>&1
 q1m "$Q1Q" move TC-1 review_requested --by ios-developer >/dev/null 2>&1
 mkdir -p "$Q1Q/docs/53-reviews"; printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\nsrc/A.swift read.\n\n## Not checked\nNothing.\n' > "$Q1Q/docs/53-reviews/v.md"
@@ -12216,7 +12218,7 @@ grep -q 'moved — then release QA.s slot (step 4a)' "$HERE/../commands/app-buil
   && ok "Q1: the QA ticket's landing releases its slot, and QA does not import the register in its slot (C5W-9)" \
   || bad "Q1: the QA ticket's landing releases its slot, and QA does not import the register in its slot (C5W-9)"
 # ·· C5W-10: approval-check --ticket on a ticket with no approval is BLOCKED, not CLEAR.
-Q1A="$TMP/q1-ac"; rm -rf "$Q1A"; mkdir -p "$Q1A/docs"; printf '{"requireApprovalBinding":true}\n' > "$Q1A/.studio-policy.json"
+Q1A="$TMP/q1-ac"; rm -rf "$Q1A"; mkdir -p "$Q1A/docs" "$Q1A/.agent-wt/web-developer" "$Q1A/.agent-wt/ios-developer" "$Q1A/.agent-wt/android-developer" "$Q1A/.agent-wt/backend-developer" "$Q1A/.agent-wt/verification-engineer"; printf '{"requireApprovalBinding":true}\n' > "$Q1A/.studio-policy.json"
 ( cd "$Q1A" && git init -q -b main . && q1g commit -q --allow-empty -m init && node "$HERE/board.mjs" add APP-001 --title t --owner web-developer ) >/dev/null 2>&1
 assert_exit 1 "Q1: approval-check --ticket with zero approvals exits 1, never 'CLEAR' (C5W-10)" sh -c 'cd "$1" && node "$2/approval-check.mjs" --ticket APP-001 --head main' sh "$Q1A" "$HERE"
 assert_has "$TMP/out" "has no approval on record" "Q1: ...saying there is no approval (C5W-10)"
@@ -12430,6 +12432,135 @@ grep -qF 'verify-done.sh" <branch> <integration-branch> fast' "$U6R/skills/sprin
   && ! grep -qF '## Could not verify' "$U6R/agents/verification-engineer.md" && grep -qF '## Not checked' "$U6R/agents/verification-engineer.md" \
   && ok "U6: security fallback context, ASO CANNOT EVALUATE, crash-free fraction, VE heading (R7-8/9/12/13)" \
   || bad "U6: security fallback context, ASO CANNOT EVALUATE, crash-free fraction, VE heading (R7-8/9/12/13)"
+
+# --- Sprint 7 U4: spawn prompts, context preflight, verify routing, budgets ----------------------
+# C7-2 preflight refused every IC and reviewer · R7-5/C7-4 VE read the wrong cycle's verdict · R7-1 a
+# qa-owned non-QA ticket could never close · R7-6 artifact owners told not to edit their document ·
+# R7-7 relative slot, bare git · C7-6 budget left out KB packs · C7-7 excerpt flattened · C7-12 missing
+# slot / bad policy only warned · R7-9 ASO: CANNOT EVALUATE · R7-13 templates unversioned, VE token.
+U4="$TMP/s7u4"; rm -rf "$U4"; mkdir -p "$U4/docs/team" "$U4/docs/53-reviews" "$U4/.agent-wt/ux-architect" "$U4/.agent-wt/qa-engineer"
+u4g() { git -c user.name=t -c user.email=t@localhost "$@"; }
+u4m() { ( cd "$U4" && node "$HERE/board.mjs" "$@" ); }
+u4c() { ( cd "$U4" && node "$HERE/spawn-prompt.mjs" compose --root "$U4" "$@" ); }
+u4vd() { ( cd "$U4" && sh "$HERE/verify-done.sh" "$1" main fast 2>/dev/null | sed -n 's/^  Evidence: //p' ); }
+printf 'Integration branch: main\n' > "$U4/docs/23-git-strategy.md"
+printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$U4/docs/team/project-profile.json"
+printf '# PRD\n\n## F-001 Greeting\nGreets by name.\n\n### F-001 Acceptance\n- Given Ada, shows Hello Ada\n' > "$U4/docs/10-prd.md"
+{ printf '# iOS\n\n## APP-001 greet\n| field | type |\n|---|---|\n| name | String |\n\n```sh\n# a shell comment, not a heading\necho AFTER-COMMENT-LINE\n'
+  awk 'BEGIN { for (i = 0; i < 200; i++) print "filler line " i " with ten words a b c d" }'; printf '```\n'; } > "$U4/docs/22-impl-spec-ios.md"
+( cd "$U4" && git init -q -b main && u4g add docs && u4g commit -q -m base \
+  && node "$HERE/board.mjs" add APP-001 --title greet --owner ios-developer --feature F-001 --spec docs/22-impl-spec-ios.md --by tech-manager \
+  && node "$HERE/board.mjs" add APP-040 --title flows --owner ux-architect --spec docs/12-flows.md --by tech-manager \
+  && node "$HERE/board.mjs" add APP-030 --title "Test plan for checkout" --owner qa-engineer --acceptance "plan covers checkout" --by tech-manager \
+  && node "$HERE/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001 ) >/dev/null 2>&1
+U4SLOT="$U4/.agent-wt/ios-developer-1"
+
+# C7-2 — the preflight every IC and reviewer runs first.
+assert_exit 0 "Sprint 7 U4: preflight clears a freshly leased, detached slot (C7-2)" \
+  node "$HERE/context-preflight.mjs" "$U4SLOT" --ticket APP-001 --role ios-developer
+grep -qF 'ticket APP-001: todo' "$TMP/out" && ok "Sprint 7 U4: ...reading the ticket from the main project's board, not a docs/31-board.md the slot lacks (C7-2)" \
+  || bad "Sprint 7 U4: ...reading the ticket from the main project's board, not a docs/31-board.md the slot lacks (C7-2)" "$(cat "$TMP/out")"
+assert_exit 0 "Sprint 7 U4: a reviewer in the main checkout on the integration branch is not blocked, --ticket first (C7-2)" \
+  node "$HERE/context-preflight.mjs" --ticket APP-001 --role code-reviewer "$U4"
+assert_exit 1 "Sprint 7 U4: ...a writing role there still is (C7-2)" node "$HERE/context-preflight.mjs" "$U4" --role ux-architect
+assert_exit 1 "Sprint 7 U4: ...and a ticket not on the board is a blocker (C7-2)" \
+  node "$HERE/context-preflight.mjs" "$U4" --ticket APP-999 --role code-reviewer
+
+# R7-7 / C7-6 / C7-7 — the IC prompt: absolute slot, git -C, KB packs counted, excerpt keeps its lines.
+u4c --ticket APP-001 --role ios-developer --slot .agent-wt/ios-developer-1 >"$TMP/u4-ic.txt" 2>"$TMP/u4-ic.err"
+grep -qF "git -C \"$U4SLOT\" checkout -b feat/APP-001-<short-slug> main" "$TMP/u4-ic.txt" \
+  && grep -qF "start EVERY Bash call with \`cd \"$U4SLOT\" && …\`" "$TMP/u4-ic.txt" \
+  && ok "Sprint 7 U4: the IC prompt prints the absolute slot, git -C <slot>, and cd <slot> on every Bash call (R7-7)" \
+  || bad "Sprint 7 U4: the IC prompt prints the absolute slot, git -C <slot>, and cd <slot> on every Bash call (R7-7)" "$(head -12 "$TMP/u4-ic.txt")"
+sed -n 's/.*: prompt \([0-9]*\) + role file \([0-9]*\) + mandatory skills \([0-9]*\) (.*) + KB packs \([0-9]*\) (ios-conventions, stack-defaults) = \([0-9]*\) words.*/\1 \2 \3 \4 \5/p' "$TMP/u4-ic.err" \
+  | awk '{ exit !($4 > 0 && $1 + $2 + $3 + $4 == $5) }' \
+  && ok "Sprint 7 U4: the budget total includes the role's mandatory KB packs (C7-6)" \
+  || bad "Sprint 7 U4: the budget total includes the role's mandatory KB packs (C7-6)" "$(cat "$TMP/u4-ic.err")"
+grep -q 'OVER BUDGET' "$TMP/u4-ic.err" && bad "Sprint 7 U4: ...and an ordinary iOS ticket with a full excerpt is within the measured budget (C7-6)" "$(cat "$TMP/u4-ic.err")" \
+  || ok "Sprint 7 U4: ...and an ordinary iOS ticket with a full excerpt is within the measured budget (C7-6)"
+grep -qx '| name | String |' "$TMP/u4-ic.txt" && grep -qF 'AFTER-COMMENT-LINE' "$TMP/u4-ic.txt" && grep -qF '[…truncated]' "$TMP/u4-ic.txt" \
+  && ok "Sprint 7 U4: a truncated excerpt keeps its lines, and a # comment in a code block does not split the section (C7-7)" \
+  || bad "Sprint 7 U4: a truncated excerpt keeps its lines, and a # comment in a code block does not split the section (C7-7)"
+[ $(( $(grep -c '^```' "$TMP/u4-ic.txt") % 2 )) = 0 ] && ok "Sprint 7 U4: ...and a fence cut open is closed, so every later fence pairs (C7-7)" \
+  || bad "Sprint 7 U4: ...and a fence cut open is closed, so every later fence pairs (C7-7)"
+[ "$(grep -n 'Given Ada, shows Hello Ada' "$TMP/u4-ic.txt" | head -1 | cut -d: -f1)" -lt "$(grep -n '| name | String |' "$TMP/u4-ic.txt" | head -1 | cut -d: -f1)" ] 2>/dev/null \
+  && ok "Sprint 7 U4: ...with the PRD's acceptance first, before the impl spec spends the budget (C7-7)" \
+  || bad "Sprint 7 U4: ...with the PRD's acceptance first, before the impl spec spends the budget (C7-7)"
+grep -qF 'Do not edit the specs.' "$TMP/u4-ic.txt" && ok "Sprint 7 U4: a code IC is still told not to edit the specs" || bad "Sprint 7 U4: a code IC is still told not to edit the specs"
+
+# R7-6 — an artifact owner edits the document its ticket is for.
+u4c --ticket APP-040 --role ux-architect >"$TMP/u4-ux.txt" 2>/dev/null
+grep -qF "Edit only the document(s) your ticket's Spec names; no other spec." "$TMP/u4-ux.txt" && ! grep -qF 'Do not edit the specs' "$TMP/u4-ux.txt" \
+  && ok "Sprint 7 U4: an artifact owner (ux-architect on docs/12-flows.md) is told to edit its Spec, not forbidden to (R7-6)" \
+  || bad "Sprint 7 U4: an artifact owner (ux-architect on docs/12-flows.md) is told to edit its Spec, not forbidden to (R7-6)"
+
+# C7-12 — a missing slot or an unparseable policy is exit 2, not a warning over a printed prompt.
+assert_exit 2 "Sprint 7 U4: compose refuses a slot that does not exist (C7-12)" u4c --ticket APP-001 --role ios-developer --slot .agent-wt/nope
+printf '{"requireActorTokens": tru\n' > "$U4/.studio-policy.json"
+assert_exit 2 "Sprint 7 U4: compose refuses an unparseable .studio-policy.json, as the board does (C7-12)" \
+  u4c --ticket APP-001 --role ios-developer --slot .agent-wt/ios-developer-1
+rm -f "$U4/.studio-policy.json"
+
+# R7-5 / C7-4 — after REQUEST CHANGES the VE reads the verdict the reviewer CITED (cycles moved on).
+( cd "$U4SLOT" && u4g checkout -q -b feat/APP-001-greet main && echo 'let a = 1' > A.swift && u4g add A.swift && u4g commit -q -m work ) >/dev/null 2>&1
+printf 'REVIEW VERDICT: REQUEST CHANGES\nScope: a..b\nConstants routed to verification-engineer: MAX_RETRY=3\nBlocking: x\n\n## Not checked\nNothing.\n' > "$U4/docs/53-reviews/APP-001-cycle-0.md"
+u4m move APP-001 claimed --by ios-developer >/dev/null 2>&1
+u4m move APP-001 done_reported --by ios-developer >/dev/null 2>&1
+u4m move APP-001 verified --by tech-manager --evidence "$(u4vd feat/APP-001-greet)" >/dev/null 2>&1
+u4m move APP-001 review_requested --by ios-developer >/dev/null 2>&1
+u4m move APP-001 changes --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-0.md >/dev/null 2>"$TMP/u4-ch.err"
+printf '{"requireActorTokens": true}\n' > "$U4/.studio-policy.json"
+u4c --ticket APP-001 --role verification-engineer >"$TMP/u4-ve.txt" 2>/dev/null
+rm -f "$U4/.studio-policy.json"
+grep -qF 'MAX_RETRY=3' "$TMP/u4-ve.txt" && grep -qF 'docs/53-reviews/APP-001-cycle-0.md' "$TMP/u4-ve.txt" \
+  && ok "Sprint 7 U4: after REQUEST CHANGES the VE prompt carries the constants routed in the verdict the reviewer cited (R7-5, C7-4)" \
+  || bad "Sprint 7 U4: after REQUEST CHANGES the VE prompt carries the constants routed in the verdict the reviewer cited (R7-5, C7-4)" "$(cat "$TMP/u4-ch.err"; grep -i routed "$TMP/u4-ve.txt")"
+! grep -q '^Token: ' "$TMP/u4-ve.txt" && node "$HERE/spawn-prompt.mjs" verify --role verification-engineer --prompt "$TMP/u4-ve.txt" >/dev/null 2>&1 \
+  && ok "Sprint 7 U4: ...mints no token for a spawn that writes no board event, and clears verify (R7-13)" \
+  || bad "Sprint 7 U4: ...mints no token for a spawn that writes no board event, and clears verify (R7-13)"
+
+# R7-1 — a qa-engineer-owned APP ticket closes: verification-engineer writes its QA verdict.
+( cd "$U4" && u4g checkout -q -b feat/APP-030-plan main && printf '# Test plan\n' > docs/50-test-plan.md && u4g add docs/50-test-plan.md \
+  && u4g commit -q -m plan && u4g checkout -q main ) >/dev/null 2>&1
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\ndocs/50-test-plan.md read.\n\n## Not checked\nNothing.\n' > "$U4/docs/53-reviews/APP-030-cycle-0.md"
+u4m move APP-030 claimed --by qa-engineer >/dev/null 2>&1
+u4m move APP-030 done_reported --by qa-engineer >/dev/null 2>&1
+u4m move APP-030 verified --by tech-manager --evidence "$(u4vd feat/APP-030-plan)" >/dev/null 2>&1
+u4m move APP-030 review_requested --by qa-engineer >/dev/null 2>&1
+u4m move APP-030 approved --by code-reviewer --verdict docs/53-reviews/APP-030-cycle-0.md >/dev/null 2>&1
+u4m move APP-030 merged --by tech-manager >/dev/null 2>&1
+u4m move APP-030 verified --by tech-manager --evidence "$(u4vd feat/APP-030-plan)" >/dev/null 2>"$TMP/u4-qa.err"
+u4m add QA-1-w1 --title "QA pass — wave 1" --owner qa-engineer --by tech-manager >/dev/null 2>&1
+assert_exit 2 "Sprint 7 U4: the QA wave refuses a qa-engineer-owned ticket (it cannot pass its own work) (R7-1)" \
+  u4c --ticket QA-1-w1 --role qa-engineer --tickets APP-030
+assert_has "$TMP/err" "role verification-engineer" "Sprint 7 U4: ...and names the verification-engineer compose instead (R7-1)"
+printf '{"requireActorTokens": true}\n' > "$U4/.studio-policy.json"
+u4c --ticket APP-030 --role verification-engineer >"$TMP/u4-vq.txt" 2>"$TMP/u4-vq.err"
+U4QP=$(grep -F 'qa_passed --by verification-engineer --token st_' "$TMP/u4-vq.txt")
+( cd "$U4" && sh -c "$U4QP" ) >"$TMP/u4-qp.out" 2>&1; U4RC=$?
+( cd "$U4" && u4g merge -q --ff-only feat/APP-030-plan ) >/dev/null 2>&1
+u4m move APP-030 closed --by tech-manager --token "$(u4m actor mint --role tech-manager --ticket APP-030)" >>"$TMP/u4-qp.out" 2>&1
+rm -f "$U4/.studio-policy.json"
+[ -n "$U4QP" ] && [ "$U4RC" = 0 ] && [ "$(cd "$U4" && node "$HERE/board.mjs" show --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>console.log(JSON.parse(s).tickets["APP-030"].status))')" = done ] \
+  && ok "Sprint 7 U4: the VE QA-verdict prompt's own qa_passed command is accepted, and the ticket closes (R7-1)" \
+  || bad "Sprint 7 U4: the VE QA-verdict prompt's own qa_passed command is accepted, and the ticket closes (R7-1)" "$(cat "$TMP/u4-qa.err" "$TMP/u4-vq.err" "$TMP/u4-qp.out")"
+
+# R7-9 — `ASO: CANNOT EVALUATE` is a gate line, not a missing DONE.
+node -e 'process.stdout.write(JSON.stringify({ hook_event_name: "SubagentStop", agent_type: "app-dev-team:aso-specialist", agent_id: "u4a", cwd: process.argv[1],
+  transcript_path: "/nonexistent", last_assistant_message: "ASO: CANNOT EVALUATE — no screenshots captured (APP-001)" }))' "$U4" | sh "$HERE/../hooks/persist-ic-report.sh" >/dev/null 2>"$TMP/u4-aso.err"
+[ $? = 0 ] && ok "Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)" \
+  || bad "Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)" "$(cat "$TMP/u4-aso.err")"
+
+# R7-13 — the spawn templates are versioned in the prompt registry next to the role files.
+U4R="$TMP/s7u4-reg"; rm -rf "$U4R"; mkdir -p "$U4R/agents" "$U4R/scripts/lib"
+printf '# a\n' > "$U4R/agents/role-a.md"; printf 'one\n' > "$U4R/scripts/spawn-prompt.mjs"; printf 'c\n' > "$U4R/scripts/lib/contract.mjs"
+( cd "$U4R" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-20 >/dev/null )
+printf 'two\n' > "$U4R/scripts/spawn-prompt.mjs"
+( cd "$U4R" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-21 >/dev/null )
+node -e 'const r = require(process.argv[1]); const t = r.entries.find((e) => e.id === "template/scripts/spawn-prompt.mjs");
+  process.exit(t && t.version === "1.0.1" && r.entries.some((e) => e.id === "template/scripts/lib/contract.mjs") ? 0 : 1)' "$U4R/docs/team/prompt-registry.json" \
+  && ok "Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)" \
+  || bad "Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
