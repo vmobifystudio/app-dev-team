@@ -132,7 +132,9 @@ cases** and confirm it gets both right. State in your report that you did.
   `Daily fragment:` · `Assumptions & open questions:` · `Shared surfaces touched:` · `Next:`.
 
 Any gate event your spawn prompt asks you to write (`qa_passed`/`qa_failed` when you are the QA
-writer) carries `--token <the Token: line for that ticket>`.
+writer) carries `--token <the Token: line for that ticket>`. On a qa-engineer-owned ticket at `qa`
+(e.g. a test plan) your spawn prompt is a QA verdict: qa-engineer may not pass its own ticket, so you
+write `qa_passed`/`qa_failed --by verification-engineer` with the evidence the prompt names.
 
 # The verification verdict
 

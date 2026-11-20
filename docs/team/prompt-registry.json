@@ -60,13 +60,13 @@
     },
     {
       "id": "code-reviewer",
-      "version": "1.0.14",
+      "version": "1.0.15",
       "owner": "code-reviewer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.13",
-      "content_hash": "2b2c2ba0981b9192fcc1e17210f51d910d729f04b0cec3386d03f6e2b33ab8ad"
+      "rollback_version": "1.0.14",
+      "content_hash": "ab9e1ce4c287b809eabd80e211e1972e019553e58a0ad2ad8381d56efd7a8d5b"
     },
     {
       "id": "cpo",
@@ -280,13 +280,13 @@
     },
     {
       "id": "verification-engineer",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "owner": "verification-engineer",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.4",
-      "content_hash": "42f9d09ae0e6163e5fb1205965cc1fd6935d28b31f64d4a5e9cf00b2d8eb571c"
+      "rollback_version": "1.0.5",
+      "content_hash": "7a53242153ff6d4d18e8c3131379d3db35fccf0ad8003404383ab8933d5c5ba1"
     },
     {
       "id": "web-developer",
@@ -307,6 +307,26 @@
       "change_reason": "agent file content changed",
       "rollback_version": "1.0.3",
       "content_hash": "438b9679e998b0070223978b42c5047c461f3630db5f36d470065c418791d9f3"
+    },
+    {
+      "id": "template/scripts/spawn-prompt.mjs",
+      "version": "1.0.0",
+      "owner": "template/scripts/spawn-prompt.mjs",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-11-20",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "422911cd2bd34f95e56c639fafc1e12bd2b1615c4c55b8f89412ad65887c5b21"
+    },
+    {
+      "id": "template/scripts/lib/contract.mjs",
+      "version": "1.0.0",
+      "owner": "template/scripts/lib/contract.mjs",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-11-20",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "e34c09f1ca22e5a56dc4d1a568c4680d6033bfa196c946f3332eab4013882db5"
     }
   ]
 }

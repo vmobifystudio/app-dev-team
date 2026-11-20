@@ -10,7 +10,9 @@ purpose is not to create more ceremony; it is to prevent an agent from acting on
 
 ## Procedure
 
-1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/context-preflight.mjs" <project-root> [--ticket ID]`.
+1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/context-preflight.mjs" <project-root or slot> --ticket ID --role <role>`.
+   `--role` decides the protected-branch check: writing roles are blocked on the integration branch,
+   reviewers are not. A detached HEAD in a fresh `.agent-wt/` slot is a note, not a blocker.
 2. Read the reported branch, dirty-tree, active-worktree, ticket, and required-document findings.
 3. Read the ticket, its dependency ancestors, the architecture/engineering-principles docs, the Git
    strategy, and the latest relevant decision or follow-up before editing.
