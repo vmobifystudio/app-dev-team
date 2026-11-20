@@ -12506,14 +12506,14 @@ u2route() { node --input-type=module -e "
 import { routeFiles, route } from '$HERE/lib/risk.mjs';
 const p = { default: { risk: 'low', model: 's' }, rules: [
   { pattern: 'src/billing', risk: 'high', model: 'o', approvals: ['security-reviewer'] },
-  { pattern: 'db/migrations', risk: 'high', model: 'o', required_evidence: ['migration-plan'] },
+  { pattern: 'db/migrations', risk: 'high', model: 'o', approvals: ['tech-lead'], required_evidence: ['migration-plan'] },
   { pattern: 'billing', risk: 'high', model: 'o', approvals: ['cto'] }] };
 const a = routeFiles(p, ['src/billing/pay.ts', 'db/migrations/1.sql']); const b = route(p, 'src/billing/x');
 process.stdout.write([a.approvals.sort().join('+'), a.required_evidence.join('+'), b.approvals.sort().join('+')].join(' '));"; }
 u2route2() { node --input-type=module -e "
 import { route } from '$HERE/lib/risk.mjs';
 process.stdout.write(route({ default: { risk: 'medium', model: 's' }, rules: [{ pattern: '/migrations/', risk: 'high', model: 'o' }] }, 'App/Persistence/Migrations/V2.swift').risk);"; }
-[ "$(u2route)" = "cto+security-reviewer migration-plan cto+security-reviewer" ] \
+[ "$(u2route)" = "cto+security-reviewer+tech-lead migration-plan cto+security-reviewer" ] \
   && ok "U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)" \
   || bad "U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)" "$(u2route)"
 
