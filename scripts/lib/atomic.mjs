@@ -50,7 +50,13 @@ process.on('exit', () => {
  * append-only log MUST be wrapped in this — locking only the write is not enough, because the
  * decision (and the tip the hash chains onto) is made during the read.
  */
-function withFileLock(target, fn, { timeoutMs = 5000, die = defaultDie } = {}) {
+// The wait is 30s (C7-9). At 5s, 24 concurrent `board.mjs move … claimed` — each holding the lock
+// ~0.45s because it runs run-ledger inside — refused 11 of them, and one slow `merged` (a large
+// `git diff --binary`) shrinks that ceiling further. Waiting longer costs nothing: the reaper, not
+// the timeout, is what tells a dead holder from a live one.
+const LOCK_WAIT_MS = 30_000;
+
+function withFileLock(target, fn, { timeoutMs = LOCK_WAIT_MS, die = defaultDie } = {}) {
   const lockPath = `${target}.lock`;
   mkdirSync(dirname(target), { recursive: true });
   const deadline = Date.now() + timeoutMs;

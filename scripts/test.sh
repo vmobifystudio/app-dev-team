@@ -88,7 +88,34 @@ if ! git var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
   export GIT_COMMITTER_NAME=studio-test GIT_COMMITTER_EMAIL=studio-test@example.invalid
 fi
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+# C7-1: NO TEST EDITS A TRACKED PLUGIN FILE IN PLACE. Mirror tests used to `cp x x.bak`, mutate the
+# real file and `mv` it back on the happy path — so a SIGTERM, a timeout or a CI cancel mid-mirror
+# left board.mjs's claimLease as `return { ok: true }` for good, and two concurrent runs could
+# save each other's mutant as the "backup". Mirror tests now mutate `plugin_copy`; the exit trap
+# proves the plugin's own `git status` did not move, and fails the run loudly if it did.
+PLUGIN_STATUS_BEFORE=$(git -C "$HERE/.." status --porcelain -uall 2>/dev/null)
+suite_exit() {
+  _rc=$?
+  rm -rf "$TMP"
+  _after=$(git -C "$HERE/.." status --porcelain -uall 2>/dev/null)
+  if [ "$_after" != "$PLUGIN_STATUS_BEFORE" ]; then
+    echo "FATAL: the plugin's working tree changed during this run — a test wrote into it (C7-1)."
+    echo "  before:"; printf '%s\n' "$PLUGIN_STATUS_BEFORE" | sed 's/^/    /'
+    echo "  after:";  printf '%s\n' "$_after" | sed 's/^/    /'
+    exit 1
+  fi
+  exit "$_rc"
+}
+trap suite_exit EXIT
+trap 'exit 143' INT TERM HUP
+
+# plugin_copy <name> — prints a private copy of the whole plugin (minus .git and .claude) in $TMP,
+# for a mirror test to mutate and run. The copy goes when $TMP does; the real tree is never touched.
+plugin_copy() {
+  _pc="$TMP/plugin-$1"; rm -rf "$_pc"; mkdir -p "$_pc"
+  ( cd "$HERE/.." && tar cf - --exclude .git --exclude .claude . ) | ( cd "$_pc" && tar xf - )
+  printf '%s' "$_pc"
+}
 
 ok()   { PASS=$((PASS+1)); [ "$VERBOSE" = "-v" ] && echo "  ok    $1" || true; }
 bad()  { FAIL=$((FAIL+1)); echo "  FAIL  $1"; [ -n "${2:-}" ] && echo "        $2"; }
@@ -101,8 +128,17 @@ assert_exit() {
 }
 
 # assert_has <fixture-output-file> <needle> <label>
+#
+# The needle is a FIXED STRING (C7-11). It used to be a regex, so every `.` in a path or version
+# matched any character and the label claimed more than the check did. A needle that means a
+# pattern says so by calling assert_has_re.
 assert_has() {
-  grep -q -- "$2" "$1" && ok "$3" || bad "$3" "missing: $2"
+  grep -qF -- "$2" "$1" && ok "$3" || bad "$3" "missing: $2"
+}
+
+# assert_has_re <fixture-output-file> <basic-regex> <label> — for the few needles that ARE patterns.
+assert_has_re() {
+  grep -q -- "$2" "$1" && ok "$3" || bad "$3" "no line matches: $2"
 }
 
 # assert_finding <doctor-json> <code> <label> [needle]
@@ -142,6 +178,15 @@ process.exit(require(json).anomalies.some(
 # For assertions about a script that must not HANG. `assert_exit` would wait forever on a
 # regression, and a suite that hangs reports nothing at all — the failure mode is indistinguishable
 # from a machine that went to sleep. There is no `timeout(1)` on macOS, hence the watchdog.
+# kill_tree <pid> — stop <pid>, kill every descendant, then <pid> (C7-11). Killing only the
+# subshell left a hung command running for the rest of the suite. pgrep -P walks the tree on both
+# macOS and Linux; there is no portable setsid to give the job its own process group.
+kill_tree() {
+  kill -STOP "$1" 2>/dev/null
+  for _kt in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$_kt"; done
+  kill -9 "$1" 2>/dev/null
+}
+
 assert_exit_within() {
   secs=$1; want=$2; label=$3; shift 3
   rm -f "$TMP/rc"
@@ -153,7 +198,7 @@ assert_exit_within() {
       [ -f "$TMP/rc" ] && exit 0
       sleep 1; i=$((i + 1))
     done
-    kill -9 "$job" 2>/dev/null ) & dog=$!
+    kill_tree "$job" ) & dog=$!
   wait "$job" 2>/dev/null; jrc=$?
   wait "$dog" 2>/dev/null
   got=$(cat "$TMP/rc" 2>/dev/null || echo "")
@@ -536,13 +581,13 @@ printf '#!/bin/sh\necho "xcode-select: error: tool '"'"'xcodebuild'"'"' requires
             || bad "a missing toolchain is CANNOT EVALUATE, not REJECTED" "$(head -3 "$TMP/vtc.txt")"
 # Both halves. The exit code alone cannot tell this apart from the usage errors that were already
 # exit 2, and the headline is what an agent acts on.
-assert_has "$TMP/vtc.txt" "^CANNOT EVALUATE" "...and says so on line 1, where an agent reads it"
+assert_has_re "$TMP/vtc.txt" "^CANNOT EVALUATE" "...and says so on line 1, where an agent reads it"
 grep -q "^REJECTED" "$TMP/vtc.txt" && bad "...and never says REJECTED anywhere in that output" \
                                    || ok "...and never says REJECTED anywhere in that output"
 assert_has "$TMP/vtc.txt" "not a failing assertion" "...and states WHY it decided cannot-evaluate"
 # The other side of the fork, so this is a discrimination and not a blanket downgrade: a suite that
 # genuinely ran and reported failures is still exit 1, and says which way it decided.
-assert_has "$TMP/vreal.txt" "^REJECTED" "a suite that ran and failed still says REJECTED on line 1"
+assert_has_re "$TMP/vreal.txt" "^REJECTED" "a suite that ran and failed still says REJECTED on line 1"
 assert_has "$TMP/vreal.txt" "Decided REJECTED, not CANNOT EVALUATE" "...and prints which it decided and why"
 
 # The conservative tie-break, stated as an assertion so it cannot be quietly reversed: a bare
@@ -556,7 +601,7 @@ assert_has "$TMP/vreal.txt" "Decided REJECTED, not CANNOT EVALUATE" "...and prin
 # 2 for "the tests never ran" — an agent reading line 1 saw VERIFIED and acted on it.
 grep -q "^VERIFIED" "$TMP/vnone.txt" && bad "the no-test-command path never headlines VERIFIED while exiting 2" \
                                      || ok "the no-test-command path never headlines VERIFIED while exiting 2"
-assert_has "$TMP/vnone.txt" "^CANNOT EVALUATE" "...it headlines CANNOT EVALUATE, matching its exit code"
+assert_has_re "$TMP/vnone.txt" "^CANNOT EVALUATE" "...it headlines CANNOT EVALUATE, matching its exit code"
 # ...and it routes to the board state that exists for exactly this ticket, rather than dead-ending.
 assert_has "$TMP/vnone.txt" "verified_static" "...and names the board event that keeps static review possible"
 
@@ -1713,14 +1758,12 @@ tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "even whe
   && ok "...and writes the heading even when nothing was skipped, so its absence means omission" \
   || bad "...and writes the heading even when nothing was skipped, so its absence means omission"
 # Mirror test: strip the requirement and prove the assertion above goes red.
-cp "$HERE/../agents/code-reviewer.md" "$TMP/cr-4b.bak"
-sed 's/§4b/SECTION-REMOVED/g' "$TMP/cr-4b.bak" > "$HERE/../agents/code-reviewer.md"
-if tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "4b"; then
+sed 's/§4b/SECTION-REMOVED/g' "$HERE/../agents/code-reviewer.md" > "$TMP/cr-4b.mut"
+if tr '\n' ' ' < "$TMP/cr-4b.mut" | tr -s ' ' | grep -q "4b"; then
   bad "mirror test: removing §4b from code-reviewer should make its assertion fail"
 else
   ok "mirror test: removing §4b from code-reviewer reproduces an unrequired round-trip rule"
 fi
-cp "$TMP/cr-4b.bak" "$HERE/../agents/code-reviewer.md"
 
 grep -q "corpus_recurrence" "$HERE/../commands/app-learn.md" \
   && ok "/app-learn's failure pass reads the recurrence flag" \
@@ -2173,7 +2216,7 @@ RGF=$(gradleproj rg-fail 'echo "e: MainActivity.kt:12:5 unresolved reference: vi
 assert_exit 1 "a project whose build fails is FAIL, not CANNOT EVALUATE" \
   env PATH="$ASTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGF"
 cp "$TMP/out" "$TMP/rg-fail.txt"
-assert_has "$TMP/rg-fail.txt" "^RESULT: FAIL" "...and the headline word matches the exit code"
+assert_has_re "$TMP/rg-fail.txt" "^RESULT: FAIL" "...and the headline word matches the exit code"
 assert_has "$TMP/rg-fail.txt" "unresolved reference" "...and the compiler's own output is quoted, so the re-spawn instruction can be followed"
 assert_has "$TMP/rg-fail.txt" "Re-spawn the developer" "...which is exactly what the verdict tells the loop to do"
 grep -q "PASS\|CANNOT EVALUATE" "$TMP/rg-fail.txt" \
@@ -2187,7 +2230,7 @@ RGP=$(gradleproj rg-pass 'mkdir -p app/build/outputs/apk/debug; : > app/build/ou
 assert_exit 0 "a build that assembles, installs, launches and stays up is PASS" \
   env PATH="$ASTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP"
 cp "$TMP/out" "$TMP/rg-pass.txt"
-assert_has "$TMP/rg-pass.txt" "^RESULT: PASS" "...and says PASS on the line an agent reads"
+assert_has_re "$TMP/rg-pass.txt" "^RESULT: PASS" "...and says PASS on the line an agent reads"
 assert_has "$TMP/rg-pass.txt" "still running after 3s" "...and states the liveness check it based that on"
 assert_has "$TMP/rg-pass.txt" "com.example.app" "...naming the package it actually launched"
 assert_has "$TMP/rg-pass.txt" "docs/54-evidence/runtime/runtime-" "...and the evidence artifact it captured"
@@ -2237,7 +2280,7 @@ grep -q "^RESULT: PASS" "$TMP/rg-noshot.txt" \
   && bad "...and leaves no empty evidence file behind to be mistaken for a capture" \
   || ok "...and leaves no empty evidence file behind to be mistaken for a capture"
 # Mirror test: restore the old evidence-optional behaviour and prove the assertion above goes red.
-cp "$HERE/runtime-gate.sh" "$HERE/runtime-gate.sh.bak"
+RGM=$(plugin_copy rg-mirror)/scripts
 node -e '
   const fs = require("fs");
   const p = process.argv[1];
@@ -2246,14 +2289,13 @@ node -e '
   if (!t.includes(marker)) { console.error("marker not found"); process.exit(1); }
   t = t.replace(marker, "        pass \"android\" \"MUTATED evidence-optional pass ($PKG)\"; : \"");
   fs.writeFileSync(p, t);
-' "$HERE/runtime-gate.sh"
-env PATH="$NOSHOTSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP" >"$TMP/rg-mirror.txt" 2>&1
+' "$RGM/runtime-gate.sh"
+env PATH="$NOSHOTSTUB:$PATH" sh "$RGM/runtime-gate.sh" --platform android --project-root "$RGP" >"$TMP/rg-mirror.txt" 2>&1
 if grep -q "^RESULT: PASS" "$TMP/rg-mirror.txt"; then
   ok "mirror test: restoring the evidence-optional pass reproduces a PASS with no evidence"
 else
   bad "mirror test: restoring the evidence-optional pass should reproduce a PASS with no evidence"
 fi
-mv "$HERE/runtime-gate.sh.bak" "$HERE/runtime-gate.sh"
 
 # The timeout branch. RUNTIME_GATE_BUILD_TIMEOUT exists in the source for exactly one reason —
 # "so the timeout branch is testable in seconds instead of in a quarter of an hour" — and no test
@@ -2581,7 +2623,7 @@ BOARD_RUN_ID=$(board_run_id "$L2/docs/31-board-events.jsonl")
 
 # Mirror test: prove the assertion above would have caught the old discard-the-result bug, by
 # temporarily making claimLease() ignore run-ledger's output the way it used to.
-cp "$HERE/board.mjs" "$HERE/board.mjs.bak"
+BD=$(plugin_copy bd-lease-mirror)/scripts/board.mjs
 node -e '
   const fs = require("fs");
   const path = process.argv[1];
@@ -2590,7 +2632,7 @@ node -e '
   if (!text.includes(marker)) { console.error("marker not found"); process.exit(1); }
   text = text.replace(marker, "  return { ok: true }; // mutated for mirror test — the old discard-the-result behavior\n" + marker);
   fs.writeFileSync(path, text);
-' "$HERE/board.mjs"
+' "$BD"
 L3=$(newboard bd-lease-mirror)
 bm "$L3" add L-003 --title "Mirror ticket" --owner ios-developer >/dev/null 2>&1
 bm "$L3" move L-003 claimed --by ios-developer >/dev/null 2>&1
@@ -2600,7 +2642,7 @@ if [ -n "$MIRROR_RUN_ID" ]; then
 else
   ok "mirror test: discarding the run-ledger result reproduces a claimed event with no run identity"
 fi
-mv "$HERE/board.mjs.bak" "$HERE/board.mjs"
+BD="$HERE/board.mjs"
 
 # --- a DONE nobody checked is not reviewable. verify-done.sh existed and its result was recorded
 # nowhere the board could gate on, so an unverified claim reached a reviewer by an agent's say-so.
@@ -3248,7 +3290,7 @@ assert_has "$TMP/rj2.txt" "not measurable in this harness" \
   "show says token cost is not measurable rather than inventing a figure"
 node "$RJ" append --journal "$J" --round 4 --spawns 1 --spend-usd 2.5 >/dev/null 2>&1
 node "$RJ" show --journal "$J" >"$TMP/rj3.txt" 2>&1
-assert_has "$TMP/rj3.txt" '\$2.50' "...and prints a real figure once one is actually reported"
+assert_has "$TMP/rj3.txt" '$2.50' "...and prints a real figure once one is actually reported"
 assert_exit 1 "the spend ceiling applies once spend is reported" \
   node "$RJ" check --journal "$J" --max-spend-usd 1
 
@@ -7037,7 +7079,7 @@ import(process.argv[1]).then((m) => {
 # Mirror test: prove these assertions would catch a regression, by reverting the CLEAR-gate check to
 # always treat any real verification as production-ready and confirming the tested-vs-production-ready
 # assertion goes red.
-cp "$CR/state.mjs" "$CR/state.mjs.bak"
+CR=$(plugin_copy cr-mirror)/control-room
 sed -i.tmp "s/!(shipGate.ok \&\& shipGate.result === 'CLEAR')/false/" "$CR/state.mjs"
 rm -f "$CR/state.mjs.tmp"
 CRTESTED2="$TMP/cr-readiness-tested-mirror"; mkdir -p "$CRTESTED2"
@@ -7050,7 +7092,7 @@ if [ "$(readiness_state "$CRTESTED2" engineering)" = "tested" ]; then
 else
   ok "mirror test: dropping the ship-gate check reproduces a false production-ready verdict"
 fi
-mv "$CR/state.mjs.bak" "$CR/state.mjs"
+CR="$HERE/../control-room"
 
 # HALF a population is not a population. The `decisions` section spans two inputs — blocked tickets
 # from the board, and questions routed to a founder from the channel — and it gated `unavailable` on
@@ -7344,13 +7386,14 @@ assert_exit 0 "board.mjs sees the project's real ticket from inside a linked wor
 # test that silently stops reverting is a rule that cannot fail, which is the exact defect class
 # mirror tests exist to catch. Kept as a sed for locality, but any future rename of this function
 # must update the pattern here; the assertion below is what tells you if you forgot.
+BD=$(plugin_copy bd-root-mirror)/scripts/board.mjs
 sed -i.bak "s/resolve(projectRoot(flags), DEFAULT_LOG)/resolve(process.cwd(), DEFAULT_LOG)/; s/resolve(projectRoot(flags), DEFAULT_BOARD)/resolve(process.cwd(), DEFAULT_BOARD)/" "$BD"
 grep -q "resolve(process.cwd(), DEFAULT_LOG)" "$BD" \
   && ok "mirror test: the revert actually applied (the sed pattern still matches)" \
   || bad "mirror test: the revert actually applied (the sed pattern still matches)" "projectRoot() was renamed; update the sed above"
 assert_exit 2 "mirror test: reverting projectRoot() reproduces the fork (ticket unreachable from the worktree)" \
   bash -c "cd '$WTB/.agent-wt/WT-001' && node '$BD' show WT-001"
-mv "$BD.bak" "$BD"
+BD="$HERE/board.mjs"
 
 # --- DR-TC-P0-002: once defaults resolve to the project root regardless of `cwd`, `--bind`'s
 # assumption that `HEAD` always names the reviewed commit breaks the OPPOSITE way — invoked from the
@@ -7436,7 +7479,7 @@ assert_has "$TMP/err" "missing detail.commit" "...because it binds nothing"
 
 MEMORY="$TMP/revamp-memory"; mkdir -p "$MEMORY"
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Keep acceptance criteria explicit" --source docs/2026-07-29-revamp-master-plan.md --confidence 0.9 > "$MEMORY/proposal.json"
+  --content "Keep acceptance criteria explicit" --by proposer --source docs/2026-07-29-revamp-master-plan.md --confidence 0.9 > "$MEMORY/proposal.json"
 MEMORY_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/proposal.json")
 assert_exit 0 "memory-curator verifies chained proposals" node "$HERE/memory-curator.mjs" verify --ledger "$MEMORY/memory.jsonl"
 assert_exit 1 "memory-curator refuses review of an unknown candidate" node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id MEM-NOT-FOUND --reason promote --content rationale --by reviewer
@@ -7446,11 +7489,11 @@ node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$ME
 # back — a memory vocabulary nobody queries is a write-only log, not governance. Live means
 # promoted, not expired as of --now, and not superseded/contradicted by a later PROMOTED memory.
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Expires before --now" --source spec.md --confidence 0.5 --expires 2020-01-01T00:00:00Z > "$MEMORY/expiring.json"
+  --content "Expires before --now" --by proposer --source spec.md --confidence 0.5 --expires 2020-01-01T00:00:00Z > "$MEMORY/expiring.json"
 EXPIRING_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/expiring.json")
 node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$EXPIRING_ID" --reason promote --content rationale --by reviewer >/dev/null
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class platform \
-  --content "Never reviewed" --source spec.md --confidence 0.4 >/dev/null
+  --content "Never reviewed" --by proposer --source spec.md --confidence 0.4 >/dev/null
 node "$HERE/memory-curator.mjs" retrieve --ledger "$MEMORY/memory.jsonl" --now 2026-08-01T00:00:00Z > "$MEMORY/retrieved.json"
 grep -q "$MEMORY_ID" "$MEMORY/retrieved.json" \
   && ok "retrieve returns a promoted, unexpired memory" \
@@ -7462,7 +7505,7 @@ grep -q "Never reviewed" "$MEMORY/retrieved.json" \
   && bad "...and excludes one that was proposed but never reviewed" "found the unreviewed content" \
   || ok "...and excludes one that was proposed but never reviewed"
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Superseding replacement" --source spec2.md --confidence 0.9 --supersedes "$MEMORY_ID" > "$MEMORY/replacement.json"
+  --content "Superseding replacement" --by proposer --source spec2.md --confidence 0.9 --supersedes "$MEMORY_ID" > "$MEMORY/replacement.json"
 REPLACEMENT_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/replacement.json")
 node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$REPLACEMENT_ID" --reason promote --content rationale --by reviewer >/dev/null
 node "$HERE/memory-curator.mjs" retrieve --ledger "$MEMORY/memory.jsonl" --now 2026-08-01T00:00:00Z --class project > "$MEMORY/retrieved2.json"
@@ -7479,7 +7522,7 @@ grep -q "$REPLACEMENT_ID" "$MEMORY/retrieved2.json" \
 # pass) had no way to be looked at on its own; an operator had to scan every class's output by eye.
 STUDIO_MEM=$(node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class studio \
   --content "question-quality: ask about offline behavior before implementation, not after" \
-  --source docs/dry-runs/example.md --confidence 0.6)
+  --by proposer --source docs/dry-runs/example.md --confidence 0.6)
 STUDIO_MEM_ID=$(node -e 'console.log(JSON.parse(process.argv[1]).memory_id)' "$STUDIO_MEM")
 node "$HERE/memory-curator.mjs" list --ledger "$MEMORY/memory.jsonl" --class studio > "$MEMORY/list-studio.json"
 grep -q "$STUDIO_MEM_ID" "$MEMORY/list-studio.json" \
@@ -8731,7 +8774,7 @@ assert_has "$TMP/wr.txt" "ORPHAN   APP-002" "...and names the one whose ticket i
 # agent's in-progress work.
 echo scratch > "$WR/.agent-wt/APP-002/left-behind.txt"
 ( cd "$WR" && node "$HERE/worktree-reap.mjs" --root . --apply ) >"$TMP/wr2.txt" 2>&1
-assert_has "$TMP/wr2.txt" "ORPHAN\*" "a DIRTY orphan is reported, not reclaimed"
+assert_has "$TMP/wr2.txt" "ORPHAN*" "a DIRTY orphan is reported, not reclaimed"
 [ -d "$WR/.agent-wt/APP-002" ] && ok "...and the tree with uncommitted work is still there afterwards" \
   || bad "...and the tree with uncommitted work is still there afterwards" "it was deleted"
 
@@ -12561,6 +12604,173 @@ node -e 'const r = require(process.argv[1]); const t = r.entries.find((e) => e.i
   process.exit(t && t.version === "1.0.1" && r.entries.some((e) => e.id === "template/scripts/lib/contract.mjs") ? 0 : 1)' "$U4R/docs/team/prompt-registry.json" \
   && ok "Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)" \
   || bad "Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)"
+
+# --- Sprint 7 U5: tools, locks, test infrastructure ---
+#
+# C7-1: no test edits the plugin's tracked files in place; the exit trap proves the plugin's git
+# status did not move. Proven on a throwaway plugin repo carrying this suite's preamble plus one
+# probe: a probe that writes a tracked file must fail the run loudly; one that does not must pass.
+U5P="$TMP/u5-fakeplugin"; rm -rf "$U5P"; mkdir -p "$U5P/scripts"
+for u5k in dirty clean; do
+  { awk '/^echo "SCRIPT TESTS"/ { exit } { print }' "$HERE/test.sh"
+    [ "$u5k" = dirty ] && echo 'printf x >> "$HERE/../tracked.txt"'
+    echo '[ "$FAIL" -eq 0 ] || exit 1'; } > "$U5P/scripts/probe-$u5k.sh"
+done
+( cd "$U5P" && git init -q -b main . && echo t > tracked.txt && git add . && git commit -q -m init ) >/dev/null 2>&1
+# APP_TEAM_TEST_HERE is cleared: under --only it is exported, and the probe would then write the REAL
+# plugin's tree — which is exactly what the trap caught the first time this ran.
+( cd "$U5P" && APP_TEAM_TEST_HERE= sh scripts/probe-dirty.sh ) >"$TMP/u5-dirty.txt" 2>&1; U5RC=$?
+[ "$U5RC" = 1 ] && grep -q 'FATAL: the plugin' "$TMP/u5-dirty.txt" \
+  && ok "C7-1: a run that writes a tracked plugin file fails loudly on exit" \
+  || bad "C7-1: a run that writes a tracked plugin file fails loudly on exit" "rc=$U5RC $(tail -3 "$TMP/u5-dirty.txt")"
+( cd "$U5P" && git checkout -q -- tracked.txt && APP_TEAM_TEST_HERE= sh scripts/probe-clean.sh ) >"$TMP/u5-clean.txt" 2>&1 \
+  && ok "C7-1: ...and a run that leaves the tree alone passes" \
+  || bad "C7-1: ...and a run that leaves the tree alone passes" "$(tail -3 "$TMP/u5-clean.txt")"
+# The five in-place mirror tests now mutate plugin_copy; nothing restores a tracked file from a .bak.
+grep -n -E '"\$(HERE|CR|BD)[^"]*\.bak"' "$HERE/test.sh" >"$TMP/u5-inplace.txt"
+[ ! -s "$TMP/u5-inplace.txt" ] \
+  && ok "C7-1: ...and no test copies a .bak over a tracked plugin file" \
+  || bad "C7-1: ...and no test copies a .bak over a tracked plugin file" "$(cat "$TMP/u5-inplace.txt")"
+
+# C7-11: assert_has needles are fixed strings; patterns go through assert_has_re.
+printf 'abc\n' > "$TMP/u5-fixed.txt"
+( PASS=0; FAIL=0; assert_has "$TMP/u5-fixed.txt" "a.c" probe; [ "$FAIL" = 1 ] ) >/dev/null 2>&1 \
+  && ok "C7-11: assert_has reads its needle as a fixed string — 'a.c' does not match 'abc'" \
+  || bad "C7-11: assert_has reads its needle as a fixed string — 'a.c' does not match 'abc'"
+( PASS=0; FAIL=0; assert_has_re "$TMP/u5-fixed.txt" "^a.c" probe; [ "$FAIL" = 0 ] ) >/dev/null 2>&1 \
+  && ok "C7-11: ...and assert_has_re is the explicit pattern form" \
+  || bad "C7-11: ...and assert_has_re is the explicit pattern form"
+# C7-11: a hung command's whole tree dies with it, not only the subshell.
+rm -f "$TMP/u5-kt.pid"
+( PASS=0; FAIL=0; assert_exit_within 1 0 probe sh -c 'sleep 30 & echo $! > "$1"; wait' sh "$TMP/u5-kt.pid" ) >/dev/null 2>&1
+sleep 1
+U5KT=$(cat "$TMP/u5-kt.pid" 2>/dev/null)
+if [ -n "$U5KT" ] && kill -0 "$U5KT" 2>/dev/null; then
+  kill -9 "$U5KT" 2>/dev/null
+  bad "C7-11: assert_exit_within kills the hung command's children, not only its subshell"
+else
+  ok "C7-11: assert_exit_within kills the hung command's children, not only its subshell"
+fi
+
+# C7-3: four concurrent leases against --pool 2 — the pool holds and every slot is recorded.
+U5W="$TMP/u5-slots"; rm -rf "$U5W"; mkdir -p "$U5W"
+( cd "$U5W" && git init -q -b main . && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+U5PIDS=''
+for o in a b c d; do
+  node "$HERE/worktree-slot.mjs" lease --root "$U5W" --owner "dev-$o" --tickets "T-$o" --pool 2 --base main >"$TMP/u5-lease-$o.txt" 2>&1 &
+  U5PIDS="$U5PIDS $!"
+done
+for p in $U5PIDS; do wait "$p"; done
+U5LEASED=$(cat "$TMP"/u5-lease-?.txt | grep -c '^LEASED')
+U5SLOTS=$(node -e 'console.log(Object.keys(require(process.argv[1]).slots).length)' "$U5W/docs/team/worktree-slots.json" 2>/dev/null)
+U5TREES=$(cd "$U5W" && git worktree list | grep -c '\.agent-wt/')
+[ "$U5LEASED" = 2 ] && [ "$U5SLOTS" = 2 ] && [ "$U5TREES" = 2 ] \
+  && ok "C7-3: 4 concurrent leases with --pool 2 lease exactly 2, record both, create 2 worktrees" \
+  || bad "C7-3: 4 concurrent leases with --pool 2 lease exactly 2, record both, create 2 worktrees" "leased=$U5LEASED recorded=$U5SLOTS trees=$U5TREES"
+
+# C7-9: a writer waits out a live holder longer than the old 5s, rather than refusing.
+mkdir -p "$TMP/u5-lock"
+node --input-type=module -e '
+const { withFileLock } = await import(process.argv[1]);
+withFileLock(process.argv[2], () => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 6500); });
+' "$HERE/lib/atomic.mjs" "$TMP/u5-lock/log" & U5H=$!
+sleep 1
+assert_exit 0 "C7-9: a lock waiter outlasts a live 6s holder instead of refusing at 5s" node --input-type=module -e '
+const { withFileLock } = await import(process.argv[1]);
+withFileLock(process.argv[2], () => {});
+' "$HERE/lib/atomic.mjs" "$TMP/u5-lock/log"
+wait "$U5H"
+
+# C7-10: messages.mjs and run-ledger.mjs share withFileLock, so a lock left by a DEAD holder is
+# reaped once aged — run-ledger had no reaping at all, messages.mjs a directory lock of its own.
+sh -c 'exit 0' & U5DEAD=$!; wait "$U5DEAD"
+mkdir -p "$TMP/u5-rl"
+printf '%s\n' "$U5DEAD" > "$TMP/u5-rl/runs.jsonl.lock"; touch -t 202001010000 "$TMP/u5-rl/runs.jsonl.lock"
+assert_exit 0 "C7-10: run-ledger reaps a dead holder's aged lock instead of blocking every claim" \
+  node "$HERE/run-ledger.mjs" start --ledger "$TMP/u5-rl/runs.jsonl" --ticket T-1 --role ios-developer
+U5M="$TMP/u5-msg"; rm -rf "$U5M"; mkdir -p "$U5M/docs/team"
+printf '%s\n' "$U5DEAD" > "$U5M/docs/team/messages.jsonl.lock"; touch -t 202001010000 "$U5M/docs/team/messages.jsonl.lock"
+assert_exit 0 "C7-10: messages.mjs takes the same shared lock and reaps the same dead holder" \
+  node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from tech-lead --to ios-developer \
+    --ticket APP-050 --kind fyi --summary "lock probe"
+
+# R7-2: the CTO's prescribed ADR command works on a fresh ticket — readers are not chain roles.
+assert_exit 0 "R7-2: messages.mjs artifact ADR --by cto --ticket APP-060 is not chain_too_deep" \
+  node "$HERE/messages.mjs" artifact ADR --ledger "$U5M/docs/team/messages.md" --by cto --title "SQLite is a projection" --ticket APP-060
+# R7-11: a WAIVER registration does not close the ticket to release-manager's prescribed question.
+node "$HERE/messages.mjs" artifact WAIVER --ledger "$U5M/docs/team/messages.md" --by cto --title "S3 bugs" \
+  --ticket APP-004 --expires 2099-01-01 --owner amol >/dev/null 2>&1
+assert_exit 0 "R7-11: an artifact registration does not close the ticket thread to a later question" \
+  node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from release-manager --to qa-engineer \
+    --ticket APP-004 --kind question --summary "Sign-off on APP-004 before I cut vX.Y.Z?"
+node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from cto --to tech-lead \
+  --ticket APP-006 --kind decision --summary "Use SQLite" --artifact ADR-001 >/dev/null 2>&1
+assert_exit 1 "R7-11: ...while a real decision still refuses a reopen without evidence" \
+  node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from release-manager --to qa-engineer \
+    --ticket APP-006 --kind question --summary "Sign-off on APP-006?"
+
+# R7-3: review-pattern-scan reads the verdict format the board accepts.
+U5R="$TMP/u5-reviews"; rm -rf "$U5R"; mkdir -p "$U5R/docs/53-reviews"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-101\nScope: a..b\nBlocking: app/Store.swift:42 force unwrap — guard it\nNotes (non-blocking): none\n\n## Not checked\nNothing.\n' \
+  > "$U5R/docs/53-reviews/APP-101-cycle-1.md"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-102\nScope: a..b\nBlocking:\n- `app/Store.swift:42` same force unwrap\nNotes (non-blocking): none\n\n## Not checked\nNothing.\n' \
+  > "$U5R/docs/53-reviews/APP-102.md"
+node "$HERE/review-pattern-scan.mjs" --root "$U5R" >"$TMP/u5-rps.txt" 2>&1
+assert_has "$TMP/u5-rps.txt" "SHARED FILE: app/Store.swift blocked 2 ticket(s): APP-101, APP-102" \
+  "R7-3: two current-format verdicts blocking on one file are correlated"
+
+# S7-11: the proposer cannot review its own memory, and propose names its proposer.
+U5MEM="$TMP/u5-memory.jsonl"; rm -f "$U5MEM"
+U5MID=$(node "$HERE/memory-curator.mjs" propose --ledger "$U5MEM" --class project --content "x" --source s.md --by tech-lead \
+  | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>console.log(JSON.parse(s).memory_id))')
+assert_exit 1 "S7-11: memory review by the proposer is refused" \
+  node "$HERE/memory-curator.mjs" review --ledger "$U5MEM" --id "$U5MID" --reason promote --content ok --by tech-lead
+assert_exit 0 "S7-11: ...and a different reviewer may promote it" \
+  node "$HERE/memory-curator.mjs" review --ledger "$U5MEM" --id "$U5MID" --reason promote --content ok --by cto
+assert_exit 2 "S7-11: ...and propose without --by is refused" \
+  node "$HERE/memory-curator.mjs" propose --ledger "$U5MEM" --class project --content "y" --source s.md
+
+# S7-1: the build cache build-env.sh creates is operational, not a dirty tree.
+U5C="$TMP/u5-cache"; rm -rf "$U5C"; mkdir -p "$U5C"
+( cd "$U5C" && git init -q -b main . && echo a > a.txt && git add a.txt && git commit -q -m init && mkdir -p .studio-cache/gradle && echo c > .studio-cache/gradle/c ) >/dev/null 2>&1
+node --input-type=module -e 'const m = await import(process.argv[1]); process.exit(m.treeDirty(process.argv[2]) ? 1 : 0);' \
+  "$HERE/lib/readiness.mjs" "$U5C" \
+  && ok "S7-1: a .studio-cache/ build cache does not make the tree dirty" \
+  || bad "S7-1: a .studio-cache/ build cache does not make the tree dirty"
+
+# S7-4: run-doctor honours --root and names each live attempt's run and attempt ids.
+U5RD="$TMP/u5-rd"; rm -rf "$U5RD"; mkdir -p "$U5RD/docs/team"
+node "$HERE/run-ledger.mjs" start --ledger "$U5RD/docs/team/runs.jsonl" --ticket APP-009 --role ios-developer >/dev/null 2>&1
+( cd "$TMP" && node "$HERE/run-doctor.mjs" --root "$U5RD" ) >"$TMP/u5-rd.txt" 2>&1
+assert_has_re "$TMP/u5-rd.txt" "ACTIVE  APP-009  run RUN-[^ ]*  attempt ATT-" "S7-4: run-doctor --root reads that project and lists the live attempt's run and attempt ids"
+
+# W7-12: printed next steps use the plugin path, which exists from a project root.
+! grep -n 'node scripts/' "$HERE/verify-done.sh" "$HERE/merge-reconcile.mjs" >"$TMP/u5-relpath.txt" \
+  && ok "W7-12: verify-done and merge-reconcile print \${CLAUDE_PLUGIN_ROOT} paths, not relative ones" \
+  || bad "W7-12: verify-done and merge-reconcile print \${CLAUDE_PLUGIN_ROOT} paths, not relative ones" "$(cat "$TMP/u5-relpath.txt")"
+
+# N3: M32 and M35 each get the assertion their mutate.sh label names.
+mkdir -p "$TMP/u5-a11y"
+printf 'Button("x") { Image(systemName: "x") }\n.frame(width: 24)\n' > "$TMP/u5-a11y/Plain.swift"
+printf 'Button("x") { Image(systemName: "x") } // accessibilityLabel\n.frame(width: 24)\n' > "$TMP/u5-a11y/Comment.swift"
+node "$HERE/accessibility-scan.mjs" "$TMP/u5-a11y/Plain.swift" >/dev/null 2>&1; U5A=$?
+node "$HERE/accessibility-scan.mjs" "$TMP/u5-a11y/Comment.swift" >/dev/null 2>&1; U5B=$?
+[ "$U5A" = 1 ] && [ "$U5B" = 1 ] \
+  && ok "comment-only and unlabelled SwiftUI controls remain detectable" \
+  || bad "comment-only and unlabelled SwiftUI controls remain detectable" "plain=$U5A comment=$U5B"
+U5F="$TMP/u5-money"; rm -rf "$U5F"; mkdir -p "$U5F/docs" "$U5F/src"
+printf '# PRD\n\nMoney uses half-up rounding.\n' > "$U5F/docs/10-prd.md"
+printf 'let total = amount.rounded(.toNearestOrEven)\n' > "$U5F/src/Money.swift"
+assert_exit 1 "a bankers rounding implementation under a half-up rule blocks release" \
+  node "$HERE/financial-constant-scan.mjs" "$U5F"
+
+# N6: a real CLEAR ship-gate run carries the G-F13 limit, not only the source text.
+rm -rf "$TMP/u5-shipclear"; cp -R "$FIX/ship-clear" "$TMP/u5-shipclear"
+sh "$HERE/ship-gate.sh" "$TMP/u5-shipclear" >"$TMP/u5-ship.txt" 2>&1; U5S=$?
+[ "$U5S" = 0 ] && grep -q '^RESULT: CLEAR' "$TMP/u5-ship.txt" \
+  && grep -qF 'only replay KNOWN defect classes' "$TMP/u5-ship.txt" && grep -qF 'red-team-agent and defect-hunting' "$TMP/u5-ship.txt" \
+  && ok "N6: a CLEAR ship-gate run itself states it only replays known defects (G-F13)" \
+  || bad "N6: a CLEAR ship-gate run itself states it only replays known defects (G-F13)" "rc=$U5S"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

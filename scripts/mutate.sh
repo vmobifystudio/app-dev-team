@@ -499,6 +499,24 @@ U414@@scripts/spawn-prompt.mjs@@readPolicy(ROOT);  // C7-12@@void ROOT;  // C7-1
 U415@@scripts/lib/contract.mjs@@'ASO BLOCKED', 'ASO:'],@@'ASO BLOCKED'],@@Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)@@Sprint 7 U4
 U416@@scripts/prompt-registry.mjs@@...TEMPLATES.map((rel)@@...[].map((rel)@@Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)@@Sprint 7 U4
 U417@@scripts/spawn-prompt.mjs@@'You write no board event: the orchestrator records a FAIL as `changes`.',@@...tokenLines(ROOT, role, row.id),@@Sprint 7 U4: ...mints no token for a spawn that writes no board event, and clears verify (R7-13)@@Sprint 7 U4
+
+M7U5-01@@scripts/test.sh@@if [ "$_after" != "$PLUGIN_STATUS_BEFORE" ]; then@@if false; then@@C7-1: a run that writes a tracked plugin file fails loudly on exit@@Sprint 7 U5
+M7U5-02@@scripts/test.sh@@grep -qF -- "$2" "$1" && ok "$3"@@grep -q -- "$2" "$1" && ok "$3"@@C7-11: assert_has reads its needle as a fixed string — 'a.c' does not match 'abc'@@Sprint 7 U5
+M7U5-03@@scripts/test.sh@@for _kt in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$_kt"; done@@:@@C7-11: assert_exit_within kills the hung command's children, not only its subshell@@Sprint 7 U5
+M7U5-04@@scripts/worktree-slot.mjs@@case 'lease': withFileLock(STATE, cmdLease, { die }); break;@@case 'lease': cmdLease(); break;@@C7-3: 4 concurrent leases with --pool 2 lease exactly 2, record both, create 2 worktrees@@Sprint 7 U5
+M7U5-05@@scripts/lib/atomic.mjs@@const LOCK_WAIT_MS = 30_000;@@const LOCK_WAIT_MS = 5000;@@C7-9: a lock waiter outlasts a live 6s holder instead of refusing at 5s@@Sprint 7 U5
+M7U5-06@@scripts/run-ledger.mjs@@withFileLock(ledger, () => {@@((fn) => { if (existsSync(ledger + '.lock')) die(2, 'locked'); return fn(); })(() => {@@C7-10: run-ledger reaps a dead holder's aged lock instead of blocking every claim@@Sprint 7 U5
+M7U5-07@@scripts/messages.mjs@@return withFileLock(ledgerPaths(options).jsonl, () => cmdSend(options), { die: lockDie });@@if (existsSync(ledgerPaths(options).jsonl + '.lock')) die('locked'); return cmdSend(options);@@C7-10: messages.mjs takes the same shared lock and reaps the same dead holder@@Sprint 7 U5
+M7U5-08@@scripts/lib/messages.mjs@@const roles = new Set([from, ...(isRegistration(candidate) ? [] : to)]);@@const roles = new Set([from, ...to]);@@R7-2: messages.mjs artifact ADR --by cto --ticket APP-060 is not chain_too_deep@@Sprint 7 U5
+M7U5-09@@scripts/lib/messages.mjs@@m.kind === 'decision' && !isRegistration(m)@@m.kind === 'decision'@@R7-11: an artifact registration does not close the ticket thread to a later question@@Sprint 7 U5
+M7U5-10@@scripts/review-pattern-scan.mjs@@if (/^REVIEW VERDICT:\s*REQUEST CHANGES\s*$/m.test(text)) {@@if (false) {@@R7-3: two current-format verdicts blocking on one file are correlated@@Sprint 7 U5
+M7U5-11@@scripts/memory-curator.mjs@@if (candidate.by === by) die(1,@@if (false) die(1,@@S7-11: memory review by the proposer is refused@@Sprint 7 U5
+M7U5-12@@scripts/memory-curator.mjs@@by: required('by') });@@by: flags.by || null });@@S7-11: ...and propose without --by is refused@@Sprint 7 U5
+M7U5-13@@scripts/lib/operational-paths.txt@@.studio-cache@@.studio-cache-x@@S7-1: a .studio-cache/ build cache does not make the tree dirty@@Sprint 7 U5
+M7U5-14@@scripts/run-doctor.mjs@@for (const a of active) console.log(@@for (const a of []) console.log(@@S7-4: run-doctor --root reads that project and lists the live attempt's run and attempt ids@@Sprint 7 U5
+M7U5-15@@scripts/run-doctor.mjs@@resolve(String(flags.root || '.'), String(flags.ledger@@resolve(String(flags.ledger@@S7-4: run-doctor --root reads that project and lists the live attempt's run and attempt ids@@Sprint 7 U5
+M7U5-16@@scripts/verify-done.sh@@    node \"\${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs\" --root . --wave <N> --base $BASE@@    node scripts/wave-integrate.mjs --root . --wave <N> --base $BASE@@W7-12: verify-done and merge-reconcile print ${CLAUDE_PLUGIN_ROOT} paths, not relative ones@@Sprint 7 U5
+M7U5-17@@scripts/ship-gate.sh@@echo "        red-team-agent and defect-hunting, not by this gate."@@:@@N6: a CLEAR ship-gate run itself states it only replays known defects (G-F13)@@Sprint 7 U5
 CATALOGUE
 }
 
