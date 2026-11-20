@@ -371,7 +371,7 @@ MP03@@scripts/lib/evidence.mjs@@return !qa && PROSE_ANYWHERE.test(f);@@return PR
 MP04@@scripts/board.mjs@@base: name === 'closed' ? recordedMergeBase(events, ticket) : ''@@base: ''@@P1: a QA- ticket fast-forwarded into main BEFORE closed still closes (C4G-G2)@@Sprint 5 track P1
 MP05@@scripts/board.mjs@@const qaBase = isQaDocs(tickets.get(key(ticket))) ? docsOnlyDiff(g, subj.sha, { qa: true }).base : '';@@const qaBase = '';@@P1: merged records the merge-base its docs-only proof was taken against (C4G-G2)@@Sprint 5 track P1
 MP06@@scripts/board.mjs@@if (name === 'closed' && isQaDocs(state)) printQaLanding(ticket, events);@@if (false) printQaLanding(ticket, events);@@P1: ...and closed prints the exact ff-only command that lands its files (C4W-2)@@Sprint 5 track P1
-MP07@@scripts/lib/events.mjs@@return withCorrection(['qa_passed', 'verified'@@return ((x) => x)(['qa_passed', 'verified'@@P1: corrected is legal while a ticket sits in qa (C4G-G3)@@Sprint 5 track P1
+MP07@@scripts/lib/events.mjs@@if (isQaTicket(state)) return withCorrection(['closed'@@if (isQaTicket(state)) return ((x) => x)(['closed'@@P1: corrected is legal while a ticket sits in qa (C4G-G3)@@Sprint 5 track P1
 MP08@@scripts/lib/evidence.mjs@@if (text !== null) return { commands: testsOf(text)@@if (false) return { commands: testsOf(text)@@P1: the board freezes main's committed profile, not an uncommitted working-tree edit (C4G-G4)@@Sprint 5 track P1
 MP09@@scripts/lib/approval.mjs@@if (mb && base !== mb && !isAncestor(git, base, mb)) {@@if (false) {@@P1: merged refuses an approval bound to tip~1..tip@@Sprint 5 track P1
 MP10@@scripts/project-profile.mjs@@blocked += coldDeps.length;@@blocked += 0;@@P1: project-profile check BLOCKS a bare 'npm test'@@Sprint 5 track P1
