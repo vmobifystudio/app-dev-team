@@ -124,16 +124,36 @@ case "$CMD" in *git*) ;; *) exit 0 ;; esac
 
 BASE=$(json_str cwd)
 [ -n "$BASE" ] && [ -d "$BASE" ] || BASE=$(pwd)
+AGENT=$(json_str agent_id)
+# This hook's own plugin: the shared wrapper table (G7-8), the branch resolver (G7-11) and the
+# operational-paths list (W7-9) all live beside it.
+PLUGIN=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)
 
-SEGS=$(printf '%s\n' "$CMD" | awk -v base="$BASE" -v home="${HOME:-}" '
-function emit(kind, ref, dir, why) { printf "%s\t%s\t%s\t%s\n", kind, (ref == "" ? "-" : ref), dir, why }
+# G7-10: a segment may run in one of SEVERAL directories — a `cd` that may not run or may fail
+# (after && / ||, in a pipeline or behind &, inside if/while/case/a function body, popd, a cd the
+# command redefines, a directory it cannot enter) keeps the old one as a candidate. Candidates are
+# joined by \034; every verdict line is printed once per candidate.
+SEGS=$(printf '%s\n' "$CMD" | awk -v base="$BASE" -v home="${HOME:-}" -v wrapfile="$PLUGIN/hooks/wrappers.txt" '
+function emit(kind, ref, dir, why,    C, n, j) {
+  n = split(dir, C, SEP)
+  for (j = 1; j <= n; j++) printf "%s\t%s\t%s\t%s\n", kind, (ref == "" ? "-" : ref), C[j], why
+}
+function addc(list, d) { if (list == "") return d; if (index(SEP list SEP, SEP d SEP)) return list; return list SEP d }
+function union(a, b,    C, n, j) { n = split(b, C, SEP); for (j = 1; j <= n; j++) a = addc(a, C[j]); return a }
+# Every candidate is a directory the shell can enter (so a cd to it cannot fail).
+function enterable(list,    C, n, j) {
+  n = split(list, C, SEP)
+  for (j = 1; j <= n; j++) if (C[j] == "?" || index(C[j], "\047") || system("test -d \047" C[j] "\047 && test -x \047" C[j] "\047")) return 0
+  return 1
+}
 
 # A directory a segment runs in, or "?" when it cannot be known without running anything.
-function joindir(cur, x) {
+function joindir1(cur, x) {
   if (cur == "?" || x == "" || x == "-" || x ~ /[$`*?]/) return "?"
   if (x ~ /^~/) { if (home == "") return "?"; x = home substr(x, 2) }
   return (x ~ /^\//) ? x : cur "/" x
 }
+function joindir(cur, x,    C, n, j, out) { n = split(cur, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, joindir1(C[j], x)); return out }
 
 # A pathspec that names the whole tree.
 function whole(x) { return x == "." || x == "./" || x == ":/" || x == ":/." || x == ":(top)" || x == "*" }
@@ -155,7 +175,7 @@ function cmdat(W, nw,    i, w, k) {
     if (W[i] ~ /^[A-Za-z_][A-Za-z0-9_]*=/ || W[i] in SKIP) { i++; continue }
     w = W[i]; sub(/^.*\//, "", w)
     if (!(w in WRAP)) break
-    for (i++; i <= nw && (W[i] ~ /^-/ || (w == "env" && W[i] ~ /^[A-Za-z_][A-Za-z0-9_]*=/)); i++)
+    for (i++; i <= nw && (W[i] ~ /^-/ || W[i] ~ /^[A-Za-z_][A-Za-z0-9_]*=/); i++)
       if (index(WV[w], " " W[i] " ")) i++
     for (k = WP[w]; k > 0 && i <= nw; k--) i++
   }
@@ -172,6 +192,14 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
       emit("D", "", d, "a forced checkout/switch discards every uncommitted change in the tree")
     else if (sc == "checkout" && anywhole(P, np))
       emit("D", "", d, "git checkout -- . discards every uncommitted change in the tree")
+    # R7-7: a branch switch (judged below: only a subagent, only in the main checkout of a studio project).
+    if (sc == "switch" || has(A, na, "-b") || has(A, na, "-B") || has(A, na, "--orphan") || has(A, na, "--detach")) emit("S", "", d, sc)
+    else if (np == 1 && !has(A, na, "--")) emit("S", P[1], d, sc)
+  } else if (sc == "read-tree") {
+    if (has(A, na, "-u")) emit("D", "", d, "git read-tree -u rewrites the working tree from the index it reads")
+  } else if (sc == "checkout-index") {
+    if ((has(A, na, "-f") || has(A, na, "--force")) && (has(A, na, "-a") || has(A, na, "--all")))
+      emit("D", "", d, "git checkout-index -f -a overwrites every tracked file in the tree")
   } else if (sc == "restore") {
     st = has(A, na, "-S") || has(A, na, "--staged"); wt = has(A, na, "-W") || has(A, na, "--worktree")
     if (has(A, na, "-SW") || has(A, na, "-WS")) st = wt = 1
@@ -250,14 +278,20 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
   }
 }
 
-# One segment. Returns the directory later segments run in (a `cd` carries forward).
-function seg(W, nw, dir,    i, j, cmd, g, A, na, x) {
+# One segment. Returns the directory later segments run in (a `cd` carries forward). `unsure`:
+# the cd may not run here (see SEGS above), so the old directory stays a candidate.
+function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   i = cmdat(W, nw)
   if (i > nw) return dir
   cmd = W[i]
-  if (cmd == "cd" || cmd == "pushd") {
-    for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
-    return joindir(dir, (j <= nw) ? W[j] : home)
+  if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
+    if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1 }
+    else {
+      for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
+      nd = joindir(dir, (j <= nw) ? W[j] : home)
+      if (cmd == "pushd") PSTK[++PN] = dir
+    }
+    return (unsure || SHADOW || !enterable(nd)) ? union(nd, dir) : nd
   }
   if (cmd ~ /(^|\/)(ba|z|da|k)?sh$/) {
     for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) { if (j < nw) parse(W[j + 1], dir); break }
@@ -360,8 +394,8 @@ function dq(s, i, dir,    n, c, e, k, out) {
   return i
 }
 
-function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k) {
-  n = length(s); nw = 0; w = ""; inw = 0; np = 0; split("", W)
+function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last, depth, j) {
+  n = length(s); nw = 0; w = ""; inw = 0; np = 0; split("", W); last = ""; depth = 0
   for (i = 1; i <= n + 1; i++) {
     c = (i <= n) ? substr(s, i, 1) : "\n"
     if (c == "\\") { i++; if (i <= n && substr(s, i, 1) != "\n") { w = w substr(s, i, 1); inw = 1 } continue }
@@ -379,7 +413,10 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k) {
     if (c == "(" && !inw) { e = matchclose(s, i + 1); parse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
     if (c == "\n" || c == ";" || c == "|" || c == ")" || (c == "&" && substr(s, i - 1, 1) !~ /[<>]/ && substr(s, i + 1, 1) != ">")) {
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
-      if (nw) { dir = seg(W, nw, dir); nw = 0; split("", W) }
+      op = c; if ((c == "&" || c == "|") && substr(s, i + 1, 1) == c) { op = c c; i++ }
+      for (j = 1; j <= nw; j++) { if (W[j] in OPEN) depth++; else if (W[j] in CLOSE) { if (depth) depth-- } else if (!(W[j] in SKIP)) break }
+      if (nw) { dir = seg(W, nw, dir, depth > 0 || last == "&&" || last == "||" || last == "|" || op == "|" || op == "||" || op == "&"); nw = 0; split("", W) }
+      last = op
       if (c == "\n" && np) { i = bodies(s, i, PD, PT, PS, np, dir); np = 0 }
       continue
     }
@@ -388,34 +425,35 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k) {
 }
 
 BEGIN {
+  SEP = "\034"
   split("then do else elif if while until ! { }", t, " "); for (k in t) SKIP[t[k]] = 1
-  split("command exec nohup time env sudo doas nice timeout gtimeout xargs stdbuf ionice chrt caffeinate flock builtin", t, " "); for (k in t) WRAP[t[k]] = 1
-  # Wrapper flags that take a separate value, and how many operands come before the command.
-  WV["env"] = " -u -C -S --unset --chdir --split-string "; WV["exec"] = " -a "
-  WV["sudo"] = " -u -g -C -h -p -D -r -t -U --user --group --host --prompt --chdir --role --type --other-user "
-  WV["doas"] = " -u -C "; WV["nice"] = " -n --adjustment "; WV["timeout"] = " -s -k --signal --kill-after "
-  WV["gtimeout"] = WV["timeout"]; WV["xargs"] = " -n -I -J -L -P -d -s -E -a -R -S --max-args --replace --max-lines --max-procs --delimiter --max-chars --eof --arg-file "
-  WV["stdbuf"] = " -i -o -e --input --output --error "; WV["ionice"] = " -c -n -p --class --classdata --pid "
-  WV["caffeinate"] = " -t -w "; WV["flock"] = " -w -E --timeout --conflict-exit-code "
-  WP["timeout"] = 1; WP["gtimeout"] = 1; WP["chrt"] = 1; WP["flock"] = 1
+  split("if while until for select case function {", t, " "); for (k in t) OPEN[t[k]] = 1
+  split("fi done esac }", t, " "); for (k in t) CLOSE[t[k]] = 1
+  # G7-8: the wrapper table is hooks/wrappers.txt, shared with contract-hooks.mjs — name, the
+  # operands before the command (WP), the flags that take a separate value (WV).
+  while ((getline line < wrapfile) > 0) {
+    if (line ~ /^#/ || line !~ /[^ \t]/) continue
+    nf = split(line, F, /[ \t]+/); WRAP[F[1]] = 1; WP[F[1]] = F[2] + 0; WV[F[1]] = " "
+    for (k = 3; k <= nf; k++) WV[F[1]] = WV[F[1]] F[k] " "
+  }
+  close(wrapfile)
 }
 { s = s (NR > 1 ? "\n" : "") $0 }
-END { parse(s, base) }
+END {
+  # A command that defines its own cd/pushd/popd: no cd in it can be trusted to have moved.
+  SHADOW = (s ~ /(^|[^A-Za-z0-9_-])(cd|pushd|popd)[ \t]*\([ \t]*\)/ || s ~ /function[ \t]+(cd|pushd|popd)([^A-Za-z0-9_-]|$)/)
+  parse(s, base)
+}
 ')
 [ -n "$SEGS" ] || exit 0
 
-# Mirror scripts/integration-branch.sh's own resolution — declared in docs/23-git-strategy.md
-# (or docs/20-architecture.md), falling back to `main` only when no such doc exists at all. Kept
-# deliberately minimal and dependency-free rather than shelling out to that script, because this
-# hook must not assume any repo-relative path (like $CLAUDE_PLUGIN_ROOT) is set in its own process.
+# G7-11: the declared branch comes from scripts/integration-branch.sh itself — ONE parser. A copy
+# here drifted (it kept the `.` of "Integration branch: main.", so main went unprotected). The script
+# is found beside this hook (its own plugin root), never through $CLAUDE_PLUGIN_ROOT. When it cannot
+# resolve (exit 2: a doc that declares nothing, a declared branch that does not exist), `main`.
 # Resolved per repository, because a segment's `cd`/`-C` can name a different one.
 declared_for() {
-  d=""
-  for doc in "$1/docs/23-git-strategy.md" "$1/docs/20-architecture.md"; do
-    [ -f "$doc" ] || continue
-    d=$(sed -nE 's/.*[Ii]ntegration branch[[:space:]]*(:|=|—|–|-|\||is)[[:space:]]*[^A-Za-z0-9_/-]*([A-Za-z0-9._/-]+).*/\2/p' "$doc" | head -n 1)
-    [ -n "$d" ] && break
-  done
+  d=$(sh "$PLUGIN/scripts/integration-branch.sh" "$1" 2>/dev/null) || d=""
   printf '%s' "${d:-main}"
 }
 
@@ -423,6 +461,9 @@ declared_for() {
 DARWIN=""; [ "$(uname -s 2>/dev/null)" = Darwin ] && DARWIN=1
 lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 same_ref() { if [ -n "$DARWIN" ]; then [ "$(lc "$1")" = "$(lc "$2")" ]; else [ "$1" = "$2" ]; fi; }
+
+EXCL=""
+[ -f "$PLUGIN/scripts/lib/operational-paths.txt" ] && EXCL=$(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(top,exclude)/' "$PLUGIN/scripts/lib/operational-paths.txt")
 
 TAB=$(printf '\t')
 while IFS="$TAB" read -r KIND REF DIR WHY; do
@@ -442,9 +483,11 @@ while IFS="$TAB" read -r KIND REF DIR WHY; do
     # **uncommitted work exists in the tree this command runs in.** A clean tree keeps every
     # command, so this still cannot fire on everything — a gate that refuses constantly gets
     # switched off, and a switched-off gate protects nothing.
+    # W7-9: the studio's own operational files (scripts/lib/operational-paths.txt — the board log,
+    # the register, release candidates) are the loop's bookkeeping, not work this command destroys.
     if [ -n "$ROOT" ]; then
-      DIRTY=$(git -C "$GDIR" status --porcelain -uall 2>/dev/null | head -n 1)
-      DIRTY_N=$(git -C "$GDIR" status --porcelain -uall 2>/dev/null | grep -c . || echo "?")
+      DIRTY=$(git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | head -n 1)
+      DIRTY_N=$(git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | grep -c . || echo "?")
     elif [ -n "$GDIR" ] && [ -d "$GDIR" ]; then
       continue   # a real directory that is not a repository: nothing here to guard
     else
@@ -470,6 +513,28 @@ Instead:
                                     never clean the tree others are working in
   - found changes you did not make? STOP and report them. Do not discard
                                     anything you did not write (Rule 5).
+EOF
+    exit 2
+  fi
+
+  if [ "$KIND" = "S" ]; then
+    # --- R7-7: a SUBAGENT switching branches in a studio project's MAIN checkout ----------------------
+    # A subagent's Bash cwd resets to the session cwd — the orchestrator's checkout. An IC told
+    # "git checkout -b feat/…" without its slot path switches the branch every other role reads.
+    # A path restore (`git checkout src/a.swift`) is not a switch: a lone operand must name a commit.
+    [ -n "$AGENT" ] && [ -n "$ROOT" ] && [ -f "$ROOT/docs/31-board-events.jsonl" ] || continue
+    [ "$(git -C "$GDIR" rev-parse --absolute-git-dir 2>/dev/null)" = "$(git -C "$GDIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ] || continue
+    [ "$REF" = "-" ] || git -C "$GDIR" rev-parse --verify --quiet "$REF^{commit}" >/dev/null 2>&1 || continue
+    cat >&2 <<EOF
+BLOCKED — a subagent switching branches in the studio's MAIN checkout ($ROOT).
+
+  command : $CMD
+  why     : your Bash cwd resets to the orchestrator's checkout on every call; a checkout or switch
+            here moves the branch the orchestrator and every other role are reading (R7-7).
+
+Instead: work in the slot your prompt names, by its absolute path, on every call —
+  git -C <absolute slot path> checkout -b feat/<TICKET>-<slug>
+  cd <absolute slot path> && <command>
 EOF
     exit 2
   fi

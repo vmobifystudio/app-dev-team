@@ -25,7 +25,7 @@
  *
  * NEVER FIRES OUTSIDE A STUDIO PROJECT: no docs/31-board-events.jsonl (in the cwd or the main tree
  * of its git repo) means allow — and the shell wrappers check that before starting node at all
- * (C2-27). NOT TICKET WORK IS NOT POLICED: a spawn whose prompt names no ticket on the board
+ * (C2-27); guard-gate-writes alone also looks at each absolute TARGET's project (G7-12). NOT TICKET WORK IS NOT POLICED: a spawn whose prompt names no ticket on the board
  * (planning, grooming, an audit) passes; a stop whose report names none is persisted but never
  * blocked. Ticket IDs are WHOLE board IDs: `QA-1-w1` is not `QA-1`, `APP-001-analytics` is not
  * `APP-001` (the longest board ID a mention spells wins).
@@ -33,7 +33,7 @@
  * FAIL OPEN, like every hook here: unparseable payload, missing node, unreadable state → exit 0.
  * Exit 2 blocks, with the reason on stderr (Claude Code feeds it back to the model).
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -291,12 +291,14 @@ function shellCommands(src) {
       i = pos; continue;
     }
     if (c === '|' && src[i + 1] !== '|') { // a pipe: remember who feeds the next command
-      endCmd(); ops += '|'; const from = cmds[cmds.length - 1]; cur.pipedFrom = from; i += src[i + 1] === '&' ? 2 : 1; continue;
+      endCmd(); ops += '|'; const from = cmds[cmds.length - 1]; if (from) from.pipeTo = true; cur.pipedFrom = from; i += src[i + 1] === '&' ? 2 : 1; continue;
     }
     if (c === '|') { endCmd(); ops += '||'; i += 2; continue; }
     if (/[;&\n()]/.test(c)) {
       if (c === '&' && src[i + 1] === '>') { endWord(); cur.push({ op: '>' }); i += src[i + 2] === '>' ? 3 : 2; continue; }
-      endCmd(); ops += c; i++; continue;
+      endCmd(); ops += c;
+      if (c === '&' && src[i + 1] !== '&' && src[i - 1] !== '&' && cmds.length) cmds[cmds.length - 1].bg = true; // G7-9: `x &` runs in a subshell
+      i++; continue;
     }
     if ((c === '>' || c === '<') && src[i + 1] === '(') { const [b, j] = balanced(i + 2, '(', ')'); part('sub', b); i = j; continue; } // <(…) runs
     if (c === '>' || c === '<') {
@@ -386,9 +388,21 @@ const isDir = (pat, cwd, dir) => {
   return same(p) || (!p.some((s) => WILD.test(s)) && same(toSegs(realish(`/${p.join('/')}`))));
 };
 
-const WRAPPERS = new Set(['env', 'exec', 'nohup', 'command', 'time', 'sudo', 'nice', 'xargs', 'builtin', 'npx', 'bunx']);
-const WRAPPER_VALUE = /^-(n|I|L|P|d|s|E|a|u|g|C)$/; // xargs -n 1 / sudo -u x / nice -n 10: the flag's value is not the command
+// G7-8: hooks/wrappers.txt — the ONE wrapper table, shared with block-shared-tree-destructive-git.sh.
+// name → { ops: operands before the command (`timeout 30`), vals: flags whose value is a separate word }.
+const WRAPPERS = new Map();
+try {
+  for (const line of readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'wrappers.txt'), 'utf8').split('\n')) {
+    const [n, ops, ...vals] = line.trim().split(/\s+/);
+    if (n && !n.startsWith('#')) WRAPPERS.set(n, { ops: Number(ops) || 0, vals: new Set(vals) });
+  }
+} catch { /* no table: no wrappers seen through — the hooks' fail-open rule */ }
 const RESERVED = new Set(['!', '{', '}', 'if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'while', 'until']);
+// G7-9: a command inside one of these may not run (if/while/case/a function body) — a cd there is uncertain.
+const OPENS = new Set(['if', 'while', 'until', 'for', 'select', 'case', 'function', '{']);
+const CLOSES = new Set(['fi', 'done', 'esac', '}']);
+const PKG_WRITERS = /^(prettier|eslint|biome|stylelint|standard|xo|rimraf|del-cli)$/;
+const enterable = (abs) => { try { accessSync(abs, constants.X_OK); return statSync(abs).isDirectory(); } catch { return false; } };
 const INTERPRETERS = /^(node|deno|bun|tsx|ts-node|python[0-9.]*|perl|ruby|php|osascript)$/;
 const SHELLS = /^(sh|bash|zsh|dash|ksh)$/;
 const WRITERS = new Set(['rm', 'rmdir', 'mv', 'cp', 'ln', 'install', 'rsync', 'scp', 'touch', 'truncate', 'mkdir', 'tee', 'chmod', 'chown',
@@ -479,6 +493,24 @@ function writeTargets(name, rest, ctx) {
     if (out1) path(out1); else if (pl[0]) path(pl[0]);
     const text = ctx.read(input || pl[1] || ctx.stdinFile) ?? ctx.stdin;
     if (!out1 && !pl[0]) { if (text == null) tree(dir || DOT); else patchPaths(text).forEach((w) => path(dir ? under(dir, w) : w)); }
+  }
+  // G7-18: more writers — `python3 -m json.tool in out`, `-o out` decoders/converters, `cmake -E`, and a
+  // package run through npx/bunx (or a known formatter) that rewrites what it is given.
+  if (/^python[0-9.]*$/.test(name)) {
+    const m = rest.findIndex((a) => a.v.text === '-m');
+    if (m >= 0 && rest[m + 1]?.v.text === 'json.tool') { const p = rest.slice(m + 2).filter((a) => !a.v.text.startsWith('-')); if (p[1]) path(p[1]); }
+  }
+  if (/^(g?base64|uudecode|plutil)$/.test(name)) opt('o', ['--output', '--output-file']).forEach(path);
+  if (name === 'plutil' && flagged(/^-(convert|insert|replace|remove)$/) && !opt('o', []).length) plain.forEach(path);
+  if (name === 'cmake' && rest[0]?.v.text === '-E' && rest[1]) {
+    const v = rest[1].v.text; const xs = rest.slice(2).filter((a) => !a.v.text.startsWith('-'));
+    if (/^(copy|rename)/.test(v) && xs.length) { tree(xs[xs.length - 1]); if (v === 'rename') tree(xs[0]); }
+    else if (/^(rm|remove|remove_directory|touch|touch_nocreate|make_directory|create_symlink|create_hardlink)$/.test(v)) xs.forEach(tree);
+  }
+  if (/^(rimraf|del-cli)$/.test(name)) plain.forEach(tree);
+  if (ctx.viaPkg || PKG_WRITERS.test(name)) {
+    if (flagged(/^(--write|-w|--fix|--apply|--apply-unsafe)$/)) plain.forEach(tree);
+    opt('o', ['--output', '--out-file', '--outfile', '--out-dir', '--outdir']).forEach(path);
   }
   if (name === 'git') {
     let i = 0; let base = null;
@@ -629,27 +661,46 @@ function pluginLib(body, hereAbs) {
  */
 function guardGateWrites() {
   if (!payload.agent_id) allow();
-  const root = projectRoot(payload.cwd);
-  if (!root) allow();
   const input = payload.tool_input || {};
   const cwd = realish(resolve(payload.cwd || process.cwd()));
+  // G7-12: the studio a target belongs to comes from the TARGET, not only from the cwd — `rm -rf
+  // /abs/proj/docs/team/evidence` from /tmp names a studio root too. Each absolute path's nearest
+  // existing directory is resolved like the cwd (its git main tree, else an ancestor holding a board log).
+  const roots = new Set();
+  const addRoot = (p) => {
+    let d = resolve(cwd, /^~(\/|$)/.test(p) ? homedir() + p.slice(1) : p);
+    while (!existsSync(d) && dirname(d) !== d) d = dirname(d);
+    try { if (!statSync(d).isDirectory()) d = dirname(d); } catch { return; }
+    if ([...roots].some((r) => d === r || d.startsWith(`${r}/`))) return;
+    let r = projectRoot(d);
+    for (let a = d; !r && dirname(a) !== a; a = dirname(a)) if (existsSync(join(a, 'docs', '31-board-events.jsonl'))) r = a;
+    if (r) roots.add(realish(resolve(r)));
+  };
+  addRoot(cwd);
+  const pathText = payload.tool_name === 'Bash' ? String(input.command || '') : [input.file_path, input.notebook_path, input.path].filter(Boolean).join('\n');
+  // ponytail: the first 20 distinct absolute spellings; a command naming more is past the bound.
+  [...new Set(pathText.match(/(?<![\w.$-])[~/][^\s'"`;|&<>(){}]*/g) || [])].slice(0, 20).forEach(addRoot);
+  if (!roots.size) allow();
   const TOKENS = 'docs/team/actor-tokens.jsonl';
   // PR46-3: actors.json (the actor registry and its HMAC keys) and .studio-stop (the spawn kill switch) are control files too.
   const CONTROL = ['docs/team/project-profile.json', 'docs/team/risk-policy.json', 'docs/team/capabilities.json', '.studio-policy.json', 'docs/team/actors.json', '.studio-stop'];
   // Evidence, tokens and results live under the studio root (evidenceRoot) — an agent's own worktree copy is not them.
-  const R = realish(resolve(root));
-  let common = '';
-  try { common = realish(execFileSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()); } catch { common = join(R, '.git'); }
-  const G = {
-    transcripts: [join(realish(homedir()), '.claude', 'projects'), join(homedir(), '.claude', 'projects')],
-    tokens: [join(R, TOKENS)],
-    anchor: [join(common, 'studio'), join(R, '.git', 'studio')],
-    evidence: [join(R, 'docs', 'team', 'evidence')],
-    control: CONTROL.map((c) => join(R, c)),
-    log: [join(R, 'docs', '31-board-events.jsonl')],
-    teamDir: [join(R, 'docs', 'team')],
-    results: ['*-result.json', 'ship-gate-verdict.json', 'audit-anchor.json'].map((f) => join(R, 'docs', 'team', f.replace('*', STAR))),
-  };
+  const G = { transcripts: [join(realish(homedir()), '.claude', 'projects'), join(homedir(), '.claude', 'projects')],
+    tokens: [], anchor: [], evidence: [], control: [], log: [], teamDir: [], results: [] };
+  for (const R of roots) {
+    let common = '';
+    try { common = realish(execFileSync('git', ['-C', R, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()); } catch { common = join(R, '.git'); }
+    const g = {
+      tokens: [join(R, TOKENS)],
+      anchor: [join(common, 'studio'), join(R, '.git', 'studio')],
+      evidence: [join(R, 'docs', 'team', 'evidence')],
+      control: CONTROL.map((c) => join(R, c)),
+      log: [join(R, 'docs', '31-board-events.jsonl')],
+      teamDir: [join(R, 'docs', 'team')],
+      results: ['*-result.json', 'ship-gate-verdict.json', 'audit-anchor.json'].map((f) => join(R, 'docs', 'team', f.replace('*', STAR))),
+    };
+    for (const k of Object.keys(g)) G[k].push(...g[k]);
+  }
   const WRITE_WHAT = [
     ['tokens', 'write the actor token registry (board.mjs mints and revokes; reading it is fine)'],
     ['anchor', 'touch the board anchor under <git dir>/studio/'],
@@ -658,6 +709,8 @@ function guardGateWrites() {
     ['log', 'write the board log by hand (docs/31-board-events.jsonl — board.mjs appends it)'],
     ['results', 'write a gate result by hand (docs/team/*-result.json — the gate scripts write them)'],
   ];
+  // G7-14: re-trusting the board log is the founder's, at a real terminal — never a subagent's, as `actor` is not.
+  const ADOPT = 'run `board.mjs adopt` (re-trusting the board log is the founder\'s, at a real terminal; a faked TTY is still a subagent)';
   const refuse = (what) => block(`guard-gate-writes: a subagent may not ${what}.\n` +
     '  The orchestrator composes every spawn prompt and mints every token in it; gate evidence is written by\n' +
     '  the scripts that produce it (verify-done.sh, journey-gate, runtime-gate); control files change on the\n' +
@@ -674,6 +727,10 @@ function guardGateWrites() {
     // directory that does not exist) cannot MOVE the guard: what runs after its and-or list is checked
     // against every cwd it could be in (`alts`), so an uncertain cd only ever adds refusals.
     let alts = []; let pend = null; const stack = [];
+    // G7-9: …and so can a cd inside if/while/case/a function body (`depth`), in a pipeline or behind `&`
+    // (a subshell), from a nested shell, a popd, a cd the command redefines, or into a dir it cannot enter.
+    let depth = 0; const dirStack = [];
+    const cdShadow = /(^|[^\w-])(cd|pushd|popd)\s*\(\s*\)|\bfunction\s+(cd|pushd|popd)\b|\balias\s+(cd|pushd|popd)=/.test(src);
     const heres = () => [here, ...alts];
     const hitsH = (pat, guards, tree = false) => heres().some((h) => hits(pat, h, guards, tree));
     const hereAbs = () => (here.some((s) => WILD.test(s)) ? '' : `/${here.join('/')}`);
@@ -689,6 +746,7 @@ function guardGateWrites() {
         if (into && heres().some((h) => isDir(w.v.pat, h, G.teamDir[0]))) {
           refuse('copy or move a file into docs/team/ — the studio\'s machine state (profile, policy, tokens, results)');
         }
+        if (into && heres().some((h) => G.teamDir.slice(1).some((t) => isDir(w.v.pat, h, t)))) refuse('copy or move a file into docs/team/ of another studio project');
         for (const [key, what] of WRITE_WHAT) {
           if (hitsH(w.v.pat, G[key], tree)) {
             refuse(tree ? `${what.replace(/^write /, 'remove, move or overwrite ')} — not even by sweeping the directory that holds it` : what);
@@ -724,6 +782,7 @@ function guardGateWrites() {
         if (w.op === '>') redirects.push(next); else if (w.op === '<') stdinFile = next; else if (w.op === '<<<') hereString = next.v.pat;
       }
       if (raw.stdin) redirects.forEach((r) => { fileBodies[r.v.text] = raw.stdin; });
+      for (const a of args) { const t = a.v.text; if (OPENS.has(t)) depth++; else if (CLOSES.has(t)) depth = Math.max(0, depth - 1); else if (!RESERVED.has(t)) break; }
       // Assignments: `NAME=value` words before the command (or alone) bind for the rest of the line.
       let k = 0;
       for (; k < args.length; k++) {
@@ -736,20 +795,23 @@ function guardGateWrites() {
         if (ps.at(-1)?.t === 'sub' && ps.slice(0, -1).every((p) => p.t === 'u') && MKTEMP.test(ps.at(-1).body)) vars[m[1]] = lit(join(vars.TMPDIR.text, 'mktemp.anon')).v;
       }
       // Reserved words and wrappers (`if`, `do`, `env -i`, `xargs -0`, `sudo -u x`) are not the command.
-      let xargs = false;
+      let xargs = false; let viaPkg = false;
       while (k < args.length) {
         const t = args[k].v.text;
         if (RESERVED.has(t)) { k++; continue; }
-        if (!WRAPPERS.has(fold(basename(t)))) break;
-        if (fold(basename(t)) === 'xargs') xargs = true;
+        const wn = fold(basename(t)); const wr = WRAPPERS.get(wn);
+        if (!wr) break;
+        if (wn === 'xargs') xargs = true;
+        if (wn === 'npx' || wn === 'bunx') viaPkg = true;
         k++;
-        while (k < args.length && (args[k].v.text.startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(args[k].v.text))) k += WRAPPER_VALUE.test(args[k].v.text) ? 2 : 1;
+        while (k < args.length && (args[k].v.text.startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(args[k].v.text))) k += wr.vals.has(args[k].v.text) ? 2 : 1;
+        k += wr.ops;
       }
       const cmdWords = args.slice(k);
       // C5G-2: `{ …; } > f`, `( … ) > f`, `exec 3> f` — a redirect with no command word still opens its file.
       if (!cmdWords.length) { checkWrites(redirects.map((w) => ({ w, tree: false }))); continue; }
       const texts = cmdWords.map((w) => w.v.text);
-      const name = fold(basename(texts[0]));
+      const name = fold(basename(texts[0])).replace(/(.)@[^/]*$/, '$1'); // `npx prettier@3`
       if (['case', 'for', 'select', 'function'].includes(name)) continue;
       const rest = cmdWords.slice(1);
       const pure = (w) => w.v.text === '' && /^\u0003+$/.test(w.v.pat);
@@ -759,14 +821,25 @@ function guardGateWrites() {
       if (name === 'claude' || name === 'claude-code' || texts.some((t) => /@anthropic-ai\/claude-code\b/.test(t))) {
         refuse('start a nested `claude` session (it would carry no agent_id past these checks)');
       }
+      if (name === 'popd') { // back to where the matching pushd stood — uncertain, so where it is now stays too
+        const before = heres();
+        [here, ...alts] = dirStack.pop() || [[ANY]];
+        alts = [...alts, ...before];
+        pend = { cwds: [...(pend?.cwds || []), ...before], sure: false };
+        vars.PWD = { text: '', pat: ANY }; // uncertain: $PWD could be either
+        continue;
+      }
       if (name === 'cd' || name === 'pushd') {
-        const t = cmdWords[1];
+        const t = cmdWords.slice(1).find((w) => !/^-[LPe@]+$/.test(w.v.text));
         const before = heres();
         const to = (h) => (!t ? toSegs(homedir()) : t.v.text === '-' ? [ANY] : patSegs(t.v.pat.includes(ANY) || /[\u0001\u0002]/.test(t.v.pat) ? t.v.pat : t.v.text, h));
+        if (name === 'pushd') dirStack.push(before);
         [here, ...alts] = before.map(to);
         const abs = hereAbs();
-        const exists = abs && (abs.includes('/mktemp.anon') || (existsSync(abs) && statSync(abs).isDirectory()));
-        pend = { cwds: [...(pend?.cwds || []), ...before], sure: !pend && raw.top && !chained && Boolean(exists) };
+        const exists = abs && (abs.includes('/mktemp.anon') || (existsSync(abs) && enterable(abs)));
+        const unsure = depth > 0 || raw.bg || raw.pipedFrom || raw.pipeTo || cdShadow || !raw.top;
+        if (unsure) alts = [...alts, ...before]; // it may not run, or not here: the old cwds stay possible at once
+        pend = { cwds: [...(pend?.cwds || []), ...before], sure: !unsure && !pend && !chained && Boolean(exists) };
         vars.PWD = hereAbs() ? lit(hereAbs()).v : { text: '', pat: ANY };
         continue;
       }
@@ -820,6 +893,7 @@ function guardGateWrites() {
         }
         const actorCmd = script === 'board.mjs' && after.some((w) => w.v.text === 'actor');
         if (actorCmd) refuse('mint, revoke or list actor tokens (any `board.mjs actor` subcommand)');
+        if (script === 'board.mjs' && after.some((w) => w.v.text === 'adopt')) refuse(ADOPT);
         if (script === 'spawn-prompt.mjs' && after.some((w) => w.v.text === 'compose')) refuse('run `spawn-prompt.mjs compose` — composing a prompt MINTS its tokens; the orchestrator composes');
         if (script === 'audit-anchor.mjs' && after.some((w) => w.v.text === 'create')) refuse('re-seal the board log (`audit-anchor.mjs create`) — the release manager\'s orchestrator does, at ship');
       }
@@ -864,7 +938,7 @@ function guardGateWrites() {
           if (cmd.length) queue.push(cmd);
         });
       }
-      checkWrites(writeTargets(name, rest, { redirects, stdin: fed ?? null, stdinFile, read, xargs }));
+      checkWrites(writeTargets(name, rest, { redirects, stdin: fed ?? null, stdinFile, read, xargs, viaPkg }));
       if (name === 'ln' && rest.some((w) => /^(-[a-zA-Z]*s[a-zA-Z]*|--symbolic)$/.test(w.v.text))) {
         const [t, l] = rest.filter((w) => !w.v.text.startsWith('-'));
         if (t) {
@@ -881,6 +955,7 @@ function guardGateWrites() {
         const has = (s) => (DARWIN ? body.toLowerCase().includes(s.toLowerCase()) : body.includes(s));
         if (has('.claude/projects')) refuse('read Claude Code session transcripts under ~/.claude/projects');
         if (has('.git/studio')) refuse('touch the board anchor under <git dir>/studio/');
+        if (/board\.mjs/.test(body) && /\badopt\b/.test(body)) refuse(ADOPT); // G7-14: `python3 -c "…pty.spawn([…'board.mjs','adopt'])"`
         if (pluginLib(body, hereAbs()) || /\b(mintActorToken|revokeActorToken|writeTestEvidence|writeEvidenceLog|writeAnchor)\b/.test(body)) {
           refuse('load the actor, evidence or events library into a program of its own');
         }
