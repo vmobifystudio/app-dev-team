@@ -70,7 +70,8 @@ function withFileLock(target, fn, { timeoutMs = LOCK_WAIT_MS, die = defaultDie }
         die(2,
           `could not acquire ${lockPath} within ${timeoutMs}ms — another writer is holding it.\n` +
           '  This is contention, not corruption: nothing has been written and nothing is lost.\n' +
-          '  Re-run the command. If it persists, a process died holding the lock; remove the file.');
+          '  Re-run the command. A live holder may be waiting on founder input (adopt or a founder mint) —\n' +
+          '  finish that first. A dead holder\'s lock is reaped automatically; never delete it by hand.');
       }
       try { execFileSync('sleep', ['0.02']); } catch { /* best-effort backoff */ }
     }

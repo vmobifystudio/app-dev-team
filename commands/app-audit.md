@@ -131,8 +131,10 @@ Dimension (optional, default = all): $ARGUMENTS
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move AUDIT-NNN unblocked --by tech-manager \
-     --detail "approved by the founder at the /app-audit gate, <date>"
+     --detail "approved by the founder at the /app-audit gate, <date>" --token <tech-manager token>
    ```
+   Releasing a `needs-approval:` block is a gate event (S7-2): only tech-manager or founder, and under
+   `requireActorTokens` with that role's token — a worker's `unblocked` on it is refused.
 
    A Risky ticket the user did not approve stays `blocked` with its `needs-approval:` reason.
 

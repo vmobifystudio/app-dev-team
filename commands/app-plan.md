@@ -111,7 +111,7 @@ Focus (optional): $ARGUMENTS
    billing, release) carries at least one `--invariant`** (`;`-separated), or `review_requested`
    is refused later and the ticket can never be reviewed. Missed one? Fix it in place — the
    sanctioned route, never a re-add:
-   `board.mjs move APP-001 corrected --by tech-manager --invariant "I1; I2"` (it replaces the list).
+   `board.mjs move APP-001 corrected --by tech-manager --invariant "I1; I2" --token <tech-manager token>` (it replaces the list).
 
    Each `add` re-renders `docs/31-board.md`, so the board exists as a side effect of the tickets
    existing. Every `APP-NNN-analytics` ticket is owned per the roster: `data-analyst` where it is

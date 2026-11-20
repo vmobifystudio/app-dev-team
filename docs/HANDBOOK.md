@@ -806,7 +806,9 @@ with the same access, and nothing here claims to be.
   in their own terminal (not a Claude Code `!` command, which has no TTY; their terminal has no
   `CLAUDE_PLUGIN_ROOT`, so the path is printed resolved) and types `ADOPT`. It accepts a log whose
   hash chain is intact and anchors it as it stands, so a log rewritten and re-hashed before the copy
-  is adopted as-is. With no old checkout to copy from, the board history is gone; that is a founder
+  is adopted as-is. Adopt runs only when there is no anchor; if an anchor exists and disagrees, it
+  prints both counts and refuses unless the founder names what they accept with
+  `--mismatch deleted|appended|rewritten`. With no old checkout to copy from, the board history is gone; that is a founder
   decision (start a new board), not something an agent recovers.
 - **Tests and journeys prove what they ran.** The suite runs in a fresh detached worktree of the
   exact tip, with the test commands frozen at the first gate event; journeys run only through the

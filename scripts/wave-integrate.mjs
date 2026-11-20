@@ -306,7 +306,8 @@ const conflicted = [];
 for (const c of candidates) {
   const r = gitTry(['merge', '--no-ff', '-m', `Merge ${c.id} into ${WAVE_BRANCH}`, c.ref], { cwd: WT });
   if (r.ok) {
-    const files = (gitTry(['diff', '--name-only', `${BASE}...${c.ref}`], { cwd: WT }).out || '').split('\n').filter(Boolean);
+    // G7-4: --no-renames -z, so a rename lists its old path and a non-ASCII path is not quoted out of a tier.
+    const files = (gitTry(['diff', '--no-renames', '--name-only', '-z', `${BASE}...${c.ref}`], { cwd: WT }).out || '').split('\0').filter(Boolean);
     merged.push({ ...c, files });
     continue;
   }

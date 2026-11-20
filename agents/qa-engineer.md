@@ -103,7 +103,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_failed --by qa-en
 ```
 
 `--evidence` is the journey-gate PASS record, or — no journey driver could run — the wave's test record from `verify-done.sh <integration branch> <base> full` run after the
-merge (its `test-*.json` record in `docs/team/evidence/`). Never on a runtime `FAIL`. A refusal is a finding: report
+ticket landed on it (its `test-*.json` record in `docs/team/evidence/`) — a run of the ticket's own branch is refused. Never on a runtime `FAIL`. A refusal is a finding: report
 it, never route around it. Your own `QA-` ticket is docs-only; it closes from `merged` and is not on
 your list.
 

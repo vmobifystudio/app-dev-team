@@ -180,13 +180,13 @@
     },
     {
       "id": "qa-engineer",
-      "version": "1.0.14",
+      "version": "1.0.15",
       "owner": "qa-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-19",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.13",
-      "content_hash": "27b5280acc074bfd78ba2d92d9f8d76fd20807fffdee56898b89f720a051e799"
+      "rollback_version": "1.0.14",
+      "content_hash": "5e39f49baaedddfd1baed23ed4f4997cfc36e2a1ee546c55c509f00c043bc4c4"
     },
     {
       "id": "red-team-agent",
@@ -250,13 +250,13 @@
     },
     {
       "id": "tech-manager",
-      "version": "1.0.13",
+      "version": "1.0.14",
       "owner": "tech-manager",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.12",
-      "content_hash": "0017131fac4a27ee277de16c12048b5170b906a93b3be55088db1042b5cea7ae"
+      "rollback_version": "1.0.13",
+      "content_hash": "973a1a06937dc66bf4d5e8a41fc654b7a67bf4972579bd8f2e5dae458d6e1959"
     },
     {
       "id": "test-automation-engineer",

@@ -61,8 +61,9 @@ Every ticket is one `board.mjs add` (flags in `sprint-planner`). What is yours t
 
   ```bash
   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-001 corrected --by tech-manager \
-    --detail '{"files":["app/Store.swift","app/StoreTests.swift"]}'
+    --detail '{"files":["app/Store.swift","app/StoreTests.swift"]}' --token <your token>
   ```
+  `corrected` is yours alone and token-gated under `requireActorTokens`: it rewrites what review and QA check.
 - `--rollback <note>` records the recovery path for anything not trivially reversible; read it back
   before `/app-ship` on anything that touches stored data.
 - `Status` and `Cycles` are DERIVED from the log — there is no setter, because anything two agents
