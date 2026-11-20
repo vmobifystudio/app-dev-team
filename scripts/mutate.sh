@@ -221,7 +221,7 @@ M122@@hooks/contract-hooks.mjs@@existsSync(join(r, 'docs', '31-board-events.json
 M123@@hooks/contract-hooks.mjs@@if (check.status !== 1 && !noDone) allow();@@allow();@@C10: an IC stopping with an incomplete DONE report is BLOCKED@@Sprint 2 track B
 M124@@hooks/contract-hooks.mjs@@if (c.status === 1) block(@@if (false) block(@@C10: the pre-spawn hook BLOCKS a ticket whose files overlap in-flight work@@Sprint 2 track B
 M125@@hooks/contract-hooks.mjs@@if (gate.status === 1) block(@@if (false) block(@@C10: the pre-spawn hook honours .studio-stop (spawn-gate)@@Sprint 2 track B
-M126@@scripts/spawn-prompt.mjs@@.filter((p) => res.some((r) => r.test(p)))@@.filter(() => false)@@C7: an IC prompt inlines the impl-spec section that names its ticket@@Sprint 2 track B
+M126@@scripts/spawn-prompt.mjs@@.filter((p) => res.some((r) => r.test(p.join('\n'))))@@.filter(() => false)@@C7: an IC prompt inlines the impl-spec section that names its ticket@@Sprint 2 track B
 M127@@scripts/spawn-prompt.mjs@@.sort().pop()@@.sort().shift()@@C7: the reviewer prompt carries the LATEST persisted DONE report for the ticket@@Sprint 2 track B
 M128@@scripts/context-manifest.mjs@@if (moved && flags['strict-head'])@@if (moved)@@C11: a merge moving HEAD alone does not make the context manifest STALE@@Sprint 2 track B
 MA01@@skills/defect-hunting/SKILL.md@@`references/round-trip.md`@@`references/round-trip-moved.md`@@every references/ file a SKILL.md or command names exists, and every reference is named@@Sprint 2 track A
@@ -289,7 +289,7 @@ ME09@@hooks/contract-hooks.mjs@@const real = /[*?[]/.test(abs) ? abs : realish(a
 ME10@@hooks/contract-hooks.mjs@@|| lastAssistantText(payload.agent_transcript_path) ||@@||@@S3E: with no last_assistant_message the transcript's last assistant text is persisted and checked (C2-26)@@Sprint 3 track E
 ME11@@hooks/in-studio.sh@@[ "$_studio" = 1 ] || [ -z "$_cwd" ] || exit 0@@true@@S3E: outside a studio project the hook wrapper exits before starting node (C2-27)@@Sprint 3 track E
 ME12@@hooks/require-review-verdict.sh@@[ -e "$_m" ] && exit 0@@true@@S3E: the review hook blocks ONCE per agent_id, and lets stop_hook_active through@@Sprint 3 track E
-ME13@@scripts/spawn-prompt.mjs@@...fence(`git checkout -b ${branchName} ${base}`)]@@...fence('')]@@S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)@@Sprint 3 track E
+ME13@@scripts/spawn-prompt.mjs@@...fence(`git -C "${slot}" checkout -b ${branchName} ${base}`)]@@...fence('')]@@S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)@@Sprint 3 track E
 ME14@@scripts/lib/contract.mjs@@export const ARTIFACT_CONTRACT = ['Worktree:', 'Branch:',@@export const ARTIFACT_CONTRACT = ['Worktree:',@@S3E: report-check refuses an artifact DONE with no Branch: (C2-8)@@Sprint 3 track E
 MF01@@scripts/lib/integration.mjs@@return o.length > want.length && o.startsWith(`${want}-`) && bare(n, o);@@return false;@@F1: ...with all three branches present, each ticket's tip is its own branch (no ambiguity, no theft)@@Sprint 3 track F1
 MF02@@scripts/lib/integration.mjs@@const bare = (name, id) => new RegExp(`(^|/)${esc(id)}${SLUG}$`).test(name);@@const bare = (name, id) => name.includes(id);@@F1: matchesTicket is whole-id and gives a branch to the LONGEST board id (APP-001 / APP-001-analytics / APP-0010)@@Sprint 3 track F1
@@ -395,7 +395,7 @@ MR08@@scripts/spawn-gate.sh@@if [ -n "$missing" ] && { [ -e "$DIR/$1" ] ||@@if f
 MR09@@scripts/register.mjs@@if (!b.closed || !OPEN_STATUSES.has(existing.status)) continue;@@continue;@@Q1: import-bugs moves an OPEN register item to FIXED when its row's Resolution says so (C5W-8)@@Sprint 6 track Q1
 MR10@@scripts/approval-check.mjs@@if (!counted.length && flags.ticket) {@@if (false) {@@Q1: approval-check --ticket with zero approvals exits 1, never 'CLEAR' (C5W-10)@@Sprint 6 track Q1
 MR11@@scripts/orchestrator.mjs@@.filter(Boolean).join(' ') || detail || '';@@.find(Boolean) || detail || '';@@Q1: the round's ci row shows the unresolved-branch reason through to its remedy (C5W-11)@@Sprint 6 track Q1
-MR12@@scripts/spawn-prompt.mjs@@const SKILL_DEPS = { 'ic-workflow': ['agent-isolation'] };@@const SKILL_DEPS = { 'ic-workflow': ['agent-isolation', 'defect-hunting'] };@@Q1: developer and verification-engineer composes are within their word budgets (C5W-12)@@Sprint 6 track Q1
+MR12@@scripts/spawn-prompt.mjs@@const SKILL_DEPS = { 'ic-workflow': ['agent-isolation', 'context-preflight'] };@@const SKILL_DEPS = { 'ic-workflow': ['agent-isolation', 'context-preflight', 'defect-hunting', 'mutation-testing'] };@@Q1: developer and verification-engineer composes are within their word budgets (C5W-12)@@Sprint 6 track Q1
 MR13@@commands/app-ship.md@@--project-root . --write`.@@--project-root .`.@@Q1: app-ship 1a re-records the waiver's founder decision, and the record reads INTACT (C5W-7)@@Sprint 6 track Q1
 MQ01@@hooks/contract-hooks.mjs@@else if (fed !== undefined) queue.push(...shellCommands(fed));@@else if (false) queue.push(...shellCommands(fed));@@MQ: guard exit 2 — heredoc into sh minting@@Sprint 5 track P2
 MQ02@@hooks/contract-hooks.mjs@@else if (fed === null) refuse(@@else if (false) refuse(@@MQ: guard exit 2 — unknown text piped into sh@@Sprint 5 track P2
@@ -482,6 +482,23 @@ MU19@@scripts/wave-integrate.mjs@@const run = waveDirty@@const run = false@@MU: 
 MU20@@scripts/lib/integration.mjs@@if (r.status === 0 && name && /\(declared in /.test(r.stderr || '')) return name;@@void name;@@MU: a declared 'Integration branch: main' wins over an existing develop branch@@PR46 review
 MU21@@scripts/wave-integrate.mjs@@['high', 'critical'].includes(tier(m)) || runtimeRequired(m));@@['high', 'critical'].includes(tier(m)));@@MU: a medium ticket whose policy requires runtime-gate does not land on a failing runtime gate@@PR46 review
 MU22@@scripts/board.mjs@@  if (!c.ok) {@@  if (false) {@@MU: adopt without a terminal is refused and writes no anchor@@PR46 review
+U401@@scripts/context-preflight.mjs@@if (inSlot) notes.push(@@if (false) notes.push(@@Sprint 7 U4: preflight clears a freshly leased, detached slot (C7-2)@@Sprint 7 U4
+U402@@scripts/context-preflight.mjs@@const writer = role ? Boolean(contractFor(role)) : inSlot;@@const writer = true;@@Sprint 7 U4: a reviewer in the main checkout on the integration branch is not blocked, --ticket first (C7-2)@@Sprint 7 U4
+U403@@scripts/context-preflight.mjs@@const row = rows && rows[ticket.toUpperCase()];@@const row = null;@@Sprint 7 U4: ...reading the ticket from the main project's board, not a docs/31-board.md the slot lacks (C7-2)@@Sprint 7 U4
+U404@@scripts/spawn-prompt.mjs@@if (row.owner === 'qa-engineer' && row.status === 'qa') return composeQaVerdict(@@if (false) return composeQaVerdict(@@Sprint 7 U4: the VE QA-verdict prompt's own qa_passed command is accepted, and the ticket closes (R7-1)@@Sprint 7 U4
+U405@@scripts/spawn-prompt.mjs@@const mine = wave.filter(own);@@const mine = [];@@Sprint 7 U4: the QA wave refuses a qa-engineer-owned ticket (it cannot pass its own work) (R7-1)@@Sprint 7 U4
+U406@@scripts/spawn-prompt.mjs@@e.by === 'code-reviewer' && (e.event === 'approved' || e.event === 'changes') && e.detail?.verdict_path@@false@@Sprint 7 U4: after REQUEST CHANGES the VE prompt carries the constants routed in the verdict the reviewer cited (R7-5, C7-4)@@Sprint 7 U4
+U407@@scripts/spawn-prompt.mjs@@const artifact = contract.tier === 'artifact' && !qa;@@const artifact = false;@@Sprint 7 U4: an artifact owner (ux-architect on docs/12-flows.md) is told to edit its Spec, not forbidden to (R7-6)@@Sprint 7 U4
+U408@@scripts/spawn-prompt.mjs@@...fence(`git -C "${slot}" checkout -b@@...fence(`git checkout -b@@Sprint 7 U4: the IC prompt prints the absolute slot, git -C <slot>, and cd <slot> on every Bash call (R7-7)@@Sprint 7 U4
+U409@@scripts/spawn-prompt.mjs@@+ skillWords + packWords;@@+ skillWords;@@Sprint 7 U4: the budget total includes the role's mandatory KB packs (C7-6)@@Sprint 7 U4
+U410@@scripts/spawn-prompt.mjs@@if (inFence) kept.push(@@if (false) kept.push(@@Sprint 7 U4: ...and a fence cut open is closed, so every later fence pairs (C7-7)@@Sprint 7 U4
+U411@@scripts/spawn-prompt.mjs@@out.push('', n > left ? cutLines(body.split('\n'), left) : body);@@out.push('', n > left ? `${body.split(/\s+/).slice(0, left).join(' ')} […truncated]` : body);@@Sprint 7 U4: a truncated excerpt keeps its lines, and a # comment in a code block does not split the section (C7-7)@@Sprint 7 U4
+U412@@scripts/spawn-prompt.mjs@@[...new Set(['docs/10-prd.md', PLATFORM_SPEC[role], specFile]@@[...new Set([PLATFORM_SPEC[role], specFile, 'docs/10-prd.md']@@Sprint 7 U4: ...with the PRD's acceptance first, before the impl spec spends the budget (C7-7)@@Sprint 7 U4
+U413@@scripts/spawn-prompt.mjs@@die(2, `slot ${slot} does not exist.@@process.stderr.write(`slot ${slot} does not exist.@@Sprint 7 U4: compose refuses a slot that does not exist (C7-12)@@Sprint 7 U4
+U414@@scripts/spawn-prompt.mjs@@readPolicy(ROOT);  // C7-12@@void ROOT;  // C7-12@@Sprint 7 U4: compose refuses an unparseable .studio-policy.json, as the board does (C7-12)@@Sprint 7 U4
+U415@@scripts/lib/contract.mjs@@'ASO BLOCKED', 'ASO:'],@@'ASO BLOCKED'],@@Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)@@Sprint 7 U4
+U416@@scripts/prompt-registry.mjs@@...TEMPLATES.map((rel)@@...[].map((rel)@@Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)@@Sprint 7 U4
+U417@@scripts/spawn-prompt.mjs@@'You write no board event: the orchestrator records a FAIL as `changes`.',@@...tokenLines(ROOT, role, row.id),@@Sprint 7 U4: ...mints no token for a spawn that writes no board event, and clears verify (R7-13)@@Sprint 7 U4
 CATALOGUE
 }
 
