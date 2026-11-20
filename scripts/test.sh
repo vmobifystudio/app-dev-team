@@ -2370,12 +2370,21 @@ bm_evidence() {  # <dir> <ticket>  -> prints the record path, or nothing
     else
       _blob=$(printf 'evidence fixture for %s\n' "$_et" | git hash-object -w --stdin)
       _tree=$(printf '100644 blob %s\tev-fixture.txt\n' "$_blob" | git mktree)
+      # Sprint 7 U2 (G7-2): QA evidence is a run on the INTEGRATION branch — the fixture commit
+      # (HEAD's tree plus one file) is fast-forwarded onto the checked-out branch first.
+      if [ "${3:-}" = qa_passed ]; then
+        _blob=$(printf 'qa evidence fixture for %s %s\n' "$_et" "$(git rev-parse HEAD)" | git hash-object -w --stdin)
+        _tree=$(GIT_INDEX_FILE="$_ed/.git/ev-index" sh -c 'git read-tree HEAD && git update-index --add --cacheinfo "100644,$1,ev-fixture-$2.txt" && git write-tree' _ "$_blob" "$_et")
+        rm -f "$_ed/.git/ev-index"
+      fi
       _c=$(_gi commit-tree "$_tree" -p HEAD -m "evidence fixture")
+      _pre=$(git rev-parse HEAD)
+      [ "${3:-}" = qa_passed ] && git merge -q --ff-only "$_c" >/dev/null 2>&1
       # C3G-9: evidence for a ticket must come from a branch NAMED FOR it. A remote-only ref keeps
       # "no local branch is named for this ticket" true for the assertions about that.
       _br="evfixture/$_et-ev$(date +%s)$$"
       git update-ref "refs/remotes/origin/$_br" "$_c"
-      _base=$(git rev-parse HEAD)
+      _base=$_pre
     fi
     [ -n "$_base" ] || _base=$(git rev-parse "$_br^")
     # `verified` needs a run of a command the PROJECT PROFILE declares (lib/evidence.mjs, G2-3) —
@@ -2384,6 +2393,14 @@ bm_evidence() {  # <dir> <ticket>  -> prints the record path, or nothing
     if [ ! -f docs/team/project-profile.json ]; then
       mkdir -p docs/team
       printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 1 tests, with 0 failures\\""}}\n' > docs/team/project-profile.json
+    fi
+    # Sprint 7 U2 (G7-2): QA evidence for a ticket whose own branch is not yet on the integration
+    # branch is the WAVE's record (wave-integrate ran the merged wave tree) — a verify-done re-run of
+    # the ticket branch is refused.
+    if [ "${3:-}" = qa_passed ] && [ "${_br#evfixture/}" = "$_br" ]; then
+      node --input-type=module -e "import { runTestEvidence, evidenceRoot } from '$HERE/lib/evidence.mjs';
+process.stdout.write(runTestEvidence(evidenceRoot(), { branch: process.argv[1], base: process.argv[2], dir: '.', scope: 'fast', producedBy: 'wave-integrate.mjs' }).record || '')" "$_br" "$_base" 2>/dev/null
+      exit 0
     fi
     sh "$HERE/verify-done.sh" "$_br" "$_base" fast 2>/dev/null \
       | sed -n 's/^  Evidence: //p' )
@@ -2437,7 +2454,7 @@ bm() {
     _has_ev=''
     for _a in "$@"; do [ "$_a" = '--evidence' ] && _has_ev=1; done
     if [ -z "$_has_ev" ]; then
-      _ev=$(bm_evidence "$d" "$2")
+      _ev=$(bm_evidence "$d" "$2" "$3")
       [ -n "$_ev" ] && set -- "$@" --evidence "$_ev"
     fi
   fi
@@ -10054,10 +10071,13 @@ tc_vd() {  # tc_vd <proj> <branch> [test-command, default: fast] -> record path
 tc_gate() {
   ( cd "$1" && node --input-type=module -e "
 import { writeFileSync } from 'node:fs';
-import { writeEvidenceLog } from '$HERE/lib/evidence.mjs';
+import { writeEvidenceLog, committedP0Journeys } from '$HERE/lib/evidence.mjs';
 const [gate, result, head, out, text] = process.argv.slice(1);
 const log = writeEvidenceLog('.', gate + '-' + Date.now(), text + 'RESULT: ' + result.replace('_', ' ') + '\\nGATE-SUBJECT: ' + head + '\\n');
-writeFileSync(out, JSON.stringify({ schema: 'gate-result/v1', gate, subject: { head, dirty: false }, evaluated_at: new Date().toISOString(), result, ...log }, null, 2));
+// Sprint 7 U2 (G7-7): a journey result covers the committed P0 declarations at its head, as journey-gate records.
+const decl = gate === 'journey-gate' ? committedP0Journeys('.', head) : [];
+const cover = gate === 'journey-gate' ? { selection: { only: null, dir: 'docs/team/journeys', declarations: decl }, journeys: decl.map((d) => ({ id: d.id, state: result === 'PASS' ? 'PASS' : 'UNKNOWN', evidence: [] })) } : {};
+writeFileSync(out, JSON.stringify({ schema: 'gate-result/v1', gate, subject: { head, dirty: false }, evaluated_at: new Date().toISOString(), result, ...cover, ...log }, null, 2));
 " "$2" "$3" "$4" "$5" "$6" )
 }
 tcm() { ( cd "$1" && shift && node "$BD" "$@" ); }
@@ -10122,12 +10142,17 @@ printf '{"schema":"gate-result/v1","gate":"journey-gate","subject":{"head":"%s",
   "$(git -C "$E" rev-parse feat/TC-1-x)" > "$E/docs/team/journey-result.json"
 assert_exit 1 "TC: qa_passed on a hand-written journey-result.json is refused" tcm "$E" move TC-1 qa_passed --by qa-engineer --evidence docs/team/journey-result.json
 assert_has "$TMP/err" "raw log pointer" "TC: ...because it carries no raw log to re-derive from"
-EV3=$(tc_vd "$E" feat/TC-1-x)
+# Sprint 7 U2 (G7-2): the post-merge run is on the integration branch once the ticket landed there.
+TCB=$(git -C "$E" rev-parse main); ( cd "$E" && tcg merge -q --no-edit feat/TC-1-x ) >/dev/null 2>&1
+EV3=$( cd "$E" && sh "$HERE/verify-done.sh" main "$TCB" fast 2>/dev/null | sed -n 's/^  Evidence: //p' )
 assert_exit 0 "TC: qa_passed on a run recorded after the merge is accepted" tcm "$E" move TC-1 qa_passed --by qa-engineer --evidence "$EV3"
 
 # ·· G-F6: readiness refuses a gate result that does not re-derive
 R=$(tc_proj ready)
-( cd "$R" && printf 'docs/team\ndocs/31-board*\n' > .gitignore && git add .gitignore && tcg commit -qm ignore ) >/dev/null 2>&1
+# Sprint 7 U2 (G7-7): a journey PASS covers a COMMITTED P0 declaration, so the fixture commits one.
+TC_JOURNEY='{"schema":"journey/v1","id":"home","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"hi"}]}'
+( cd "$R" && printf 'docs/team\ndocs/31-board*\n' > .gitignore && mkdir -p docs/team/journeys && printf '%s\n' "$TC_JOURNEY" > docs/team/journeys/home.json \
+  && git add .gitignore && git add -f docs/team/journeys/home.json && tcg commit -qm ignore ) >/dev/null 2>&1
 RH=$(git -C "$R" rev-parse HEAD)
 mkdir -p "$R/docs/team"
 printf '{"schema":"gate-result/v1","gate":"journey-gate","subject":{"head":"%s","dirty":false},"result":"PASS","journeys":[]}\n' "$RH" > "$R/docs/team/journey-result.json"
@@ -10561,7 +10586,9 @@ f2git() { git -c user.email=t@t.t -c user.name=T "$@"; }
 # ·· G2-11: readiness — a dirty tree is never PASS, and a result must be the gate it is filed as
 F2R="$F2/ready"; mkdir -p "$F2R/build"
 ( cd "$F2R" && git init -q -b main . && printf 'BIN' > build/app.ipa && echo a > a.txt && mkdir -p web-src && echo '<p>' > web-src/index.html \
-  && mkdir -p docs/team && echo '{}' > docs/team/risk-policy.json && git add -A && f2git commit -qm init ) >/dev/null 2>&1
+  && mkdir -p docs/team/journeys && echo '{}' > docs/team/risk-policy.json \
+  && printf '{"schema":"journey/v1","id":"home","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"hi"}]}\n' > docs/team/journeys/home.json \
+  && git add -A && f2git commit -qm init ) >/dev/null 2>&1
 F2H=$(git -C "$F2R" rev-parse HEAD)
 printf 'ran\n' > "$F2/gl.txt"
 f2gate() {  # <gate> <out> [dirty] — no dirty argument records null ("could not tell")
@@ -10570,8 +10597,10 @@ f2gate() {  # <gate> <out> [dirty] — no dirty argument records null ("could no
   node -e 'import(process.argv[2]).then((m) => { const [, , , root, gate, out, head, dirty] = process.argv;
     const text = `ran\nRESULT: PASS\nGATE-SUBJECT: ${head}\n`;
     const ev = m.writeEvidenceLog(root, `${gate}-fixture-${Date.now()}`, text);
+    const decl = gate === "journey-gate" ? m.committedP0Journeys(root, head) : []; // Sprint 7 U2 (G7-7): it covers the committed P0 set
+    const cover = gate === "journey-gate" ? { selection: { only: null, dir: "docs/team/journeys", declarations: decl }, journeys: decl.map((d) => ({ id: d.id, state: "PASS", evidence: [] })) } : {};
     require("fs").writeFileSync(require("path").join(root, out), JSON.stringify({ schema: "gate-result/v1", gate,
-      subject: { head, dirty: dirty === "" ? null : dirty === "true" }, evaluated_at: new Date().toISOString(), result: "PASS", ...ev }, null, 2)); })' \
+      subject: { head, dirty: dirty === "" ? null : dirty === "true" }, evaluated_at: new Date().toISOString(), result: "PASS", ...cover, ...ev }, null, 2)); })' \
     fixture "$HERE/lib/evidence.mjs" "$F2R" "$1" "$2" "$F2H" "${3:-}" >/dev/null 2>&1; }
 f2gate journey-gate docs/team/journey-result.json false
 f2gate runtime-gate docs/team/runtime-result.json false
@@ -11100,7 +11129,9 @@ assert_exit 1 "F1: ...and with --head naming it, the diff escalates to the polic
 assert_has "$TMP/err" "security-reviewer" "F1: ...requiring the escalated tier's approval"
 rm -f "$F1N/docs/team/risk-policy.json"
 f1m "$F1N" move F-1 merged --by tech-manager --head feat/unnamed >/dev/null 2>&1
-( cd "$F1N" && git checkout -q feat/unnamed ) >/dev/null 2>&1; F1NQ=$(f1_run "$F1N" feat/unnamed); ( cd "$F1N" && git checkout -q main ) >/dev/null 2>&1
+# Sprint 7 U2 (G7-2): QA evidence on code not yet on main is only the WAVE's record (the merged wave tree).
+F1NQ=$( cd "$F1N" && node --input-type=module -e "import { runTestEvidence, evidenceRoot } from '$HERE/lib/evidence.mjs';
+process.stdout.write(runTestEvidence(evidenceRoot(), { branch: 'feat/unnamed', base: 'feat/unnamed', dir: '.', scope: 'fast', producedBy: 'wave-integrate.mjs' }).record || '')" 2>/dev/null )
 f1m "$F1N" move F-1 qa_passed --by qa-engineer --evidence "$F1NQ" >/dev/null 2>&1
 assert_exit 1 "F1: closed with no branch named for the ticket and no --head is refused (G2-8)" f1m "$F1N" move F-1 closed --by tech-manager
 assert_has "$TMP/err" "the commit recorded at merged" "F1: ...naming the commit recorded at merged, which is not on main"
@@ -11850,17 +11881,20 @@ node "$HERE/lib/evidence.mjs" token-flag --root "$MU/tk" --role tech-manager --t
 
 # PR46-11 — with the ticket's branch gone, a journey PASS must contain the commit recorded at merged.
 MUJ="$MU/jq"; mkdir -p "$MUJ/docs/team"
-( cd "$MUJ" && git init -q -b main . && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m old \
+mkdir -p "$MUJ/docs/team/journeys"; printf '%s\n' '{"schema":"journey/v1","id":"home","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"hi"}]}' > "$MUJ/docs/team/journeys/home.json"  # Sprint 7 U2 (G7-7): a committed P0 declaration
+( cd "$MUJ" && git init -q -b main . && git config user.email t@t && git config user.name t && git add docs/team/journeys && git commit -q -m old \
   && node "$HERE/board.mjs" add TC-1 --title t --owner ios-developer --by tech-manager && echo code > a.txt && git add a.txt && git commit -qm ticket ) >/dev/null 2>&1
 MUJOLD=$(git -C "$MUJ" rev-parse HEAD~1); MUJNEW=$(git -C "$MUJ" rev-parse HEAD)
 mujq() { ( cd "$MUJ" && node --input-type=module -e "
 import { writeFileSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { writeEvidenceLog, verifyQaEvidence } from '$HERE/lib/evidence.mjs';
+import { writeEvidenceLog, verifyQaEvidence, committedP0Journeys } from '$HERE/lib/evidence.mjs';
 const [head, merged] = process.argv.slice(1);
 const sha = createHash('sha256').update(readFileSync('$HERE/drivers/web.sh')).digest('hex');
 const log = writeEvidenceLog('.', 'journey-' + Date.now(), 'GATE-DRIVER: scripts/drivers/web.sh ' + sha + '\nRESULT: PASS\nGATE-SUBJECT: ' + head + '\n');
-writeFileSync('docs/team/journey-result.json', JSON.stringify({ schema: 'gate-result/v1', gate: 'journey-gate', subject: { head, dirty: false }, evaluated_at: new Date().toISOString(), result: 'PASS', journeys: [], driver: { path: 'scripts/drivers/web.sh', sha256: sha }, ...log }));
+const decl = committedP0Journeys('.', head);
+writeFileSync('docs/team/journey-result.json', JSON.stringify({ schema: 'gate-result/v1', gate: 'journey-gate', subject: { head, dirty: false }, evaluated_at: new Date().toISOString(), result: 'PASS',
+  selection: { only: null, dir: 'docs/team/journeys', declarations: decl }, journeys: decl.map((d) => ({ id: d.id, state: 'PASS', evidence: [] })), driver: { path: 'scripts/drivers/web.sh', sha256: sha }, ...log }));
 const r = verifyQaEvidence('.', 'docs/team/journey-result.json', { ticket: 'TC-1', mergedTs: '', mergedHead: merged, cwd: '.' });
 process.stdout.write(r.ok ? 'OK' : r.reason);" "$1" "$2" ); }
 case $(mujq "$MUJOLD" "$MUJNEW") in *"merged commit"*) ok "MU: a journey PASS on an ancestor made before the ticket's merged commit is refused" ;;
@@ -12128,7 +12162,7 @@ Q1L=$(sed -n "/^   sh -c 'for f in \.gitignore CLAUDE\.md/,/done; true'/p" "$HER
 # ·· C5W-2: re-QA after qa_failed cannot pass on the record QA just failed; compose offers the newest one.
 # Self-contained (so mutate.sh can score this section on its own): TC-1 on feat/TC-1-x, profile test.fast.
 q1m() { ( cd "$1" && shift && node "$HERE/board.mjs" "$@" ); }
-q1_vd() { ( cd "$1" && sh "$HERE/verify-done.sh" "$2" main fast 2>/dev/null | sed -n 's/^  Evidence: //p' ); }
+q1_vd() { ( cd "$1" && sh "$HERE/verify-done.sh" "$2" "${3:-main}" fast 2>/dev/null | sed -n 's/^  Evidence: //p' ); }
 q1_tc_proj() {
   _p="$TMP/q1-reqa"; rm -rf "$_p"; mkdir -p "$_p/docs/team" "$_p/src"
   printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$_p/docs/team/project-profile.json"
@@ -12146,9 +12180,10 @@ q1m "$Q1Q" move TC-1 review_requested --by ios-developer >/dev/null 2>&1
 mkdir -p "$Q1Q/docs/53-reviews"; printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\nsrc/A.swift read.\n\n## Not checked\nNothing.\n' > "$Q1Q/docs/53-reviews/v.md"
 q1m "$Q1Q" move TC-1 approved --by code-reviewer --verdict docs/53-reviews/v.md >/dev/null 2>&1
 q1m "$Q1Q" move TC-1 merged --by tech-manager >/dev/null 2>&1
+Q1PRE=$(git -C "$Q1Q" rev-parse main); ( cd "$Q1Q" && git merge -q --ff-only feat/TC-1-x ) >/dev/null 2>&1  # Sprint 7 U2 (G7-2): QA runs on the landed code
 ( cd "$Q1Q" && node "$HERE/board.mjs" add QA-1-w1 --title qa --owner qa-engineer ) >/dev/null 2>&1
 q1qa() { ( cd "$Q1Q" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-1-w1 --role qa-engineer --tickets TC-1 ) 2>/dev/null | sed -n 's/^Evidence on record: //p'; }
-Q1E1=$(q1_vd "$Q1Q" feat/TC-1-x)
+Q1E1=$(q1_vd "$Q1Q" feat/TC-1-x "$Q1PRE")
 q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E1" >/dev/null 2>&1
 [ -n "$Q1E1" ] && [ "$(q1qa)" = "$Q1E1" ] && ok "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" \
   || bad "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" "got '$(q1qa)' want '$Q1E1'"
@@ -12158,7 +12193,7 @@ assert_exit 1 "Q1: qa_passed citing the record QA already failed is refused afte
 assert_has "$TMP/err" "last qa_failed" "Q1: ...naming the qa_failed it predates (C5W-2)"
 case "$(q1qa)" in "none newer than the merge and any qa_failed"*) ok "Q1: ...and compose no longer offers the failed build's record (C5W-2)" ;;
   *) bad "Q1: ...and compose no longer offers the failed build's record (C5W-2)" "$(q1qa)" ;; esac
-Q1E2=$(q1_vd "$Q1Q" feat/TC-1-x)
+Q1E2=$(q1_vd "$Q1Q" feat/TC-1-x "$Q1PRE")
 q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E2" >/dev/null 2>&1
 [ -n "$Q1E2" ] && [ "$(q1qa)" = "$Q1E2" ] && ok "Q1: after the fix's run, compose offers that newer record (C5W-2)" \
   || bad "Q1: after the fix's run, compose offers that newer record (C5W-2)" "got '$(q1qa)'"
@@ -12389,6 +12424,192 @@ grep -q 'exit `1` with `runtime`/`journey` \*\*STALE\*\*' "$HERE/../commands/app
   && grep -qF 'npm ci && npm test' "$HERE/../agents/devops-engineer.md" && grep -qF 'npm ci && npm test' "$HERE/../commands/app-plan.md" \
   && ok "MQ: ship's STALE first pass, release-manager's release-doc commit, and lockfile-installing web tests are spelled (C4W-10/11, C4G-G7)" \
   || bad "MQ: ship's STALE first pass, release-manager's release-doc commit, and lockfile-installing web tests are spelled (C4W-10/11, C4G-G7)"
+
+# --- Sprint 7 U2: gate evidence — rename-proof file lists, integrated QA evidence, full journey coverage, gated unblock/correct, honest adopt ---
+echo
+u2g() { git -c user.name=t -c user.email=t@localhost "$@"; }
+u2m() { ( cd "$1" && shift && node "$HERE/board.mjs" "$@" ); }
+u2vd() { ( cd "$1" && sh "$HERE/verify-done.sh" "$2" "${3:-main}" fast 2>/dev/null | sed -n 's/^  Evidence: //p' ); }
+U2R=$(cd "$HERE/.." && pwd -P)  # node prints real paths (/var -> /private/var on macOS)
+# ·· G7-1: a rename does not hide the code it deletes from the QA docs-only fast path.
+U2D="$TMP/u2-docs"; rm -rf "$U2D"; mkdir -p "$U2D/src/auth"
+( cd "$U2D" && git init -q -b main . && echo 'login' > src/auth/login.ts && git add src && u2g commit -qm base \
+  && git checkout -q -b qa/QA-1-w1 && mkdir -p docs && git mv src/auth/login.ts docs/50-test-plan.md && u2g commit -qm plan ) >/dev/null 2>&1
+u2docs() { node --input-type=module -e "
+import { docsOnlyDiff, changedFiles } from '$HERE/lib/evidence.mjs';
+import { gitAt } from '$HERE/lib/integration.mjs';
+const g = gitAt(process.argv[1]); const r = docsOnlyDiff(g, 'qa/QA-1-w1', { qa: true });
+process.stdout.write((r.ok ? 'OK' : r.reason) + ' | ' + changedFiles(g, 'main', 'qa/QA-1-w1').join(','));" "$U2D"; }
+case "$(u2docs)" in *"non-document files"*src/auth/login.ts*"| docs/50-test-plan.md,src/auth/login.ts") ok "U2: a QA- branch that renames code into docs/ is not docs-only — both sides of the rename are listed (G7-1)" ;;
+  *) bad "U2: a QA- branch that renames code into docs/ is not docs-only — both sides of the rename are listed (G7-1)" "$(u2docs)" ;; esac
+# ·· G7-4: file lists are raw (no core.quotePath escaping), so ^src/auth/ matches a non-ASCII auth file.
+( cd "$U2D" && git checkout -q main && printf 'x\n' > "src/auth/sessión.ts" && git add src && u2g commit -qm accent ) >/dev/null 2>&1
+u2raw() { node --input-type=module -e "
+import { changedFiles } from '$HERE/lib/evidence.mjs';
+import { routeFiles } from '$HERE/lib/risk.mjs';
+import { gitAt } from '$HERE/lib/integration.mjs';
+const f = changedFiles(gitAt(process.argv[1]), 'main~1', 'main');
+const r = routeFiles({ rules: [{ pattern: '^src/auth/', risk: 'high', model: 'o', approvals: ['security-reviewer'] }], default: { risk: 'low', model: 's' } }, f);
+process.stdout.write(f.join(',') + ' ' + r.risk);" "$U2D"; }
+[ "$(u2raw)" = "src/auth/sessión.ts high" ] && ok "U2: a non-ASCII path is listed raw and routes to its tier (G7-4)" \
+  || bad "U2: a non-ASCII path is listed raw and routes to its tier (G7-4)" "$(u2raw)"
+# ·· G7-5: every same-tier rule's approvals and evidence are owed, across files and within one file.
+u2route() { node --input-type=module -e "
+import { routeFiles, route } from '$HERE/lib/risk.mjs';
+const p = { default: { risk: 'low', model: 's' }, rules: [
+  { pattern: 'src/billing', risk: 'high', model: 'o', approvals: ['security-reviewer'] },
+  { pattern: 'db/migrations', risk: 'high', model: 'o', required_evidence: ['migration-plan'] },
+  { pattern: 'billing', risk: 'high', model: 'o', approvals: ['cto'] }] };
+const a = routeFiles(p, ['src/billing/pay.ts', 'db/migrations/1.sql']); const b = route(p, 'src/billing/x');
+process.stdout.write([a.approvals.sort().join('+'), a.required_evidence.join('+'), b.approvals.sort().join('+')].join(' '));"; }
+[ "$(u2route)" = "cto+security-reviewer migration-plan cto+security-reviewer" ] \
+  && ok "U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)" \
+  || bad "U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)" "$(u2route)"
+
+# ·· Lifecycle fixture: TC-1 renames src/auth/login.ts out of auth/; policy ^src/auth/ is high (security-reviewer).
+U2P="$TMP/u2-life"; rm -rf "$U2P"; mkdir -p "$U2P/docs/team" "$U2P/src/auth" "$U2P/docs/53-reviews"
+printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$U2P/docs/team/project-profile.json"
+printf '{"schema":"risk-policy/v1","default":{"risk":"low","model":"s","approvals":[],"required_evidence":[]},"rules":[{"pattern":"^src/auth/","risk":"high","model":"o","approvals":["security-reviewer"],"required_evidence":[]}]}\n' > "$U2P/docs/team/risk-policy.json"
+( cd "$U2P" && git init -q -b main . && echo 'login' > src/auth/login.ts && git add src docs/team && u2g commit -qm base \
+  && node "$HERE/board.mjs" add TC-1 --title t --owner ios-developer --by tech-manager \
+  && git checkout -q -b feat/TC-1-x && git mv src/auth/login.ts src/login.ts && echo 'v2' >> src/login.ts && git add src && u2g commit -qm move \
+  && git checkout -q main \
+  && node "$HERE/board.mjs" move TC-1 claimed --by ios-developer && node "$HERE/board.mjs" move TC-1 done_reported --by ios-developer ) >/dev/null 2>&1
+u2m "$U2P" move TC-1 verified --by tech-manager --evidence "$(u2vd "$U2P" feat/TC-1-x)" >/dev/null 2>&1
+u2m "$U2P" move TC-1 review_requested --by ios-developer >/dev/null 2>&1
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\nsrc/login.ts read.\n\n## Not checked\nNothing.\n' > "$U2P/docs/53-reviews/v.md"
+u2m "$U2P" move TC-1 approved --by code-reviewer --verdict docs/53-reviews/v.md >/dev/null 2>&1
+assert_exit 1 "U2: merged is refused when a rename moves code out of a high-risk path (G7-4)" u2m "$U2P" move TC-1 merged --by tech-manager
+assert_has "$TMP/err" "approval by security-reviewer" "U2: ...naming the high tier's approval the old path demands (G7-4)"
+u2m "$U2P" move TC-1 approved --by security-reviewer --verdict docs/53-reviews/v.md >/dev/null 2>&1
+assert_exit 0 "U2: ...and merges once security-reviewer approved" u2m "$U2P" move TC-1 merged --by tech-manager
+# ·· G7-2: QA evidence must be on the integration branch, after the ticket landed there.
+U2E1=$(u2vd "$U2P" feat/TC-1-x)
+assert_exit 1 "U2: qa_passed on a post-merge re-run of the ticket's own unintegrated branch is refused (G7-2)" \
+  u2m "$U2P" move TC-1 qa_passed --by qa-engineer --evidence "$U2E1"
+assert_has "$TMP/err" "is not on main yet" "U2: ...because the merged commit has not landed on the integration branch (G7-2)"
+U2BASE=$(git -C "$U2P" rev-parse main)
+( cd "$U2P" && git merge -q --ff-only feat/TC-1-x ) >/dev/null 2>&1
+# ·· S7-5: a UI project with no journey declared cannot pass QA on a test record.
+( cd "$U2P" && printf '{"schema":"project-profile/v1","platform":"web","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > docs/team/project-profile.json \
+  && git add docs/team/project-profile.json && u2g commit -qm ui ) >/dev/null 2>&1
+assert_exit 1 "U2: qa_passed on a web project with no journey declared is refused (S7-5)" \
+  u2m "$U2P" move TC-1 qa_passed --by qa-engineer --evidence "$(u2vd "$U2P" main "$U2BASE")"
+assert_has "$TMP/err" "no P0 journey is declared in docs/team/journeys on main" "U2: ...naming the missing declaration (S7-5)"
+assert_has "$TMP/err" "$U2R/docs/team/journeys/README.md" "U2: ...and pointing at the plugin's journey contract (S7-13)"
+( cd "$U2P" && mkdir -p docs/team/journeys \
+  && printf '{"schema":"journey/v1","id":"home","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"hi"}]}\n' > docs/team/journeys/home.json \
+  && git add docs/team/journeys && u2g commit -qm journey ) >/dev/null 2>&1
+assert_exit 0 "U2: ...and accepted on the integration branch once a P0 journey is declared (G7-2, S7-5)" \
+  u2m "$U2P" move TC-1 qa_passed --by qa-engineer --evidence "$(u2vd "$U2P" main "$U2BASE")"
+# ·· U1 hand-off: a wave FAIL/CONFLICT sends a merged ticket back (qa -> in_progress), approvals void.
+assert_exit 1 "U2: only the orchestrator sends a merged ticket back to rework" u2m "$U2P" move TC-1 changes --by code-reviewer --detail "x"
+assert_exit 1 "U2: ...and it must say why" u2m "$U2P" move TC-1 changes --by tech-manager
+assert_exit 0 "U2: tech-manager moves a qa ticket back with a reason (wave FAIL/CONFLICT)" \
+  u2m "$U2P" move TC-1 changes --by tech-manager --detail "wave 1 CONFLICT: src/login.ts"
+u2show() { u2m "$U2P" show TC-1 --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s)["TC-1"];process.stdout.write(x.status+" "+(x.approvals||[]).length)})'; }
+[ "$(u2show)" = "in_progress 0" ] && ok "U2: ...it is in_progress with no approvals — re-review before it merges again" \
+  || bad "U2: ...it is in_progress with no approvals — re-review before it merges again" "$(u2show)"
+u2m "$U2P" add TC-2 --title d --owner ios-developer --by tech-manager --depends TC-1 >/dev/null 2>&1
+assert_exit 1 "U2: ...and a ticket depending on it is not claimable until it merges again" u2m "$U2P" move TC-2 claimed --by ios-developer
+
+# ·· G7-7: a journey PASS must cover every committed P0 declaration, unselected, from the committed dir.
+U2J="$TMP/u2-jr"; rm -rf "$U2J"; mkdir -p "$U2J/docs/team/journeys"
+printf '{"schema":"journey/v1","id":"home","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"hi"}]}\n' > "$U2J/docs/team/journeys/home.json"
+printf '{"schema":"journey/v1","id":"pay","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"paid"}]}\n' > "$U2J/docs/team/journeys/pay.json"
+( cd "$U2J" && git init -q -b main . && git add docs && u2g commit -qm j ) >/dev/null 2>&1
+u2jr() { ( cd "$U2J" && node --input-type=module -e "
+import { readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { writeEvidenceLog, checkGateLog, verifyQaEvidence } from '$HERE/lib/evidence.mjs';
+const h = (b) => createHash('sha256').update(b).digest('hex');
+const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const [only, dir, ids] = process.argv.slice(1);
+const decl = ids.split(',').filter(Boolean).map((id) => ({ id, file: id + '.json', sha256: h(readFileSync('docs/team/journeys/' + id + '.json')) }));
+const dsha = h(readFileSync('$HERE/drivers/web.sh'));
+const log = writeEvidenceLog('.', 'journey-' + Date.now(), 'GATE-DRIVER: scripts/drivers/web.sh ' + dsha + '\nRESULT: PASS\nGATE-SUBJECT: ' + head + '\n');
+const v = { schema: 'gate-result/v1', gate: 'journey-gate', subject: { head, dirty: false }, result: 'PASS', driver: { path: 'scripts/drivers/web.sh', sha256: dsha },
+  evaluated_at: '2001-01-01T00:00:00Z', selection: { only: only || null, dir, declarations: decl }, journeys: decl.map((d) => ({ id: d.id, state: 'PASS', evidence: [] })), ...log };
+writeFileSync('docs/team/journey-result.json', JSON.stringify(v));
+const r = process.argv[4] ? verifyQaEvidence('.', 'docs/team/journey-result.json', { ticket: 'TC-1', mergedTs: '2020-01-01T00:00:00Z', cwd: '.' }) : checkGateLog('.', v);
+process.stdout.write(r.ok ? 'OK' : r.reason);" "$1" "$2" "$3" "${4:-}" ); }
+case "$(u2jr '' docs/team/journeys home,pay qa)" in *"before TC-1 merged"*) ok "U2: a journey PASS evaluated before the ticket merged is not QA evidence (G7-2)" ;;
+  *) bad "U2: a journey PASS evaluated before the ticket merged is not QA evidence (G7-2)" "$(u2jr '' docs/team/journeys home,pay qa)" ;; esac
+[ "$(u2jr '' docs/team/journeys home,pay)" = OK ] && ok "U2: a journey PASS over every committed P0 declaration re-derives (G7-7)" \
+  || bad "U2: a journey PASS over every committed P0 declaration re-derives (G7-7)" "$(u2jr '' docs/team/journeys home,pay)"
+case "$(u2jr home docs/team/journeys home)" in *"--only home"*) ok "U2: a journey PASS from --only <id> does not count (G7-7)" ;;
+  *) bad "U2: a journey PASS from --only <id> does not count (G7-7)" "$(u2jr home docs/team/journeys home)" ;; esac
+case "$(u2jr '' docs/team/journeys home)" in *"P0 journey pay"*) ok "U2: a journey PASS missing a committed P0 declaration does not count (G7-7)" ;;
+  *) bad "U2: a journey PASS missing a committed P0 declaration does not count (G7-7)" "$(u2jr '' docs/team/journeys home)" ;; esac
+case "$(u2jr '' elsewhere home,pay)" in *"read declarations from elsewhere"*) ok "U2: a journey PASS read from another --journeys dir does not count (G7-7)" ;;
+  *) bad "U2: a journey PASS read from another --journeys dir does not count (G7-7)" "$(u2jr '' elsewhere home,pay)" ;; esac
+printf '{"schema":"journey/v1","id":"pay","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"edited"}]}\n' > "$U2J/docs/team/journeys/pay.json"
+case "$(u2jr '' docs/team/journeys home,pay)" in *"P0 journey pay"*"as committed"*) ok "U2: a journey run on an edited, uncommitted declaration does not count (G7-7)" ;;
+  *) bad "U2: a journey run on an edited, uncommitted declaration does not count (G7-7)" "$(u2jr '' docs/team/journeys home,pay)" ;; esac
+( cd "$U2J" && git checkout -q docs/team/journeys/pay.json && STUDIO_WEB_URL= node "$HERE/journey-gate.mjs" --root . --only home --driver "$HERE/drivers/web.sh" ) >/dev/null 2>&1
+node -e 'const s=require(process.argv[1]).selection||{};process.exit(s.only==="home"&&s.dir==="docs/team/journeys"&&s.declarations.length===1&&/^[0-9a-f]{64}$/.test(s.declarations[0].sha256)?0:1)' "$U2J/docs/team/journey-result.json" \
+  && ok "U2: journey-gate records its selection, directory and declaration sha256 (G7-7)" \
+  || bad "U2: journey-gate records its selection, directory and declaration sha256 (G7-7)" "$(head -20 "$U2J/docs/team/journey-result.json" 2>/dev/null)"
+# ·· S7-13: the journey contract is printed at the plugin's path.
+U2N="$TMP/u2-nojr"; rm -rf "$U2N"; mkdir -p "$U2N"
+node "$HERE/journey-gate.mjs" --root "$U2N" >"$TMP/u2n.txt" 2>&1
+node "$HERE/criterion-check.mjs" --root "$U2N" >>"$TMP/u2n.txt" 2>&1
+[ "$(grep -c "$U2R/docs/team/journeys/README.md" "$TMP/u2n.txt")" = 2 ] && [ -f "$U2R/docs/team/journeys/README.md" ] \
+  && ok "U2: journey-gate and criterion-check name the plugin's journey README, which exists (S7-13)" \
+  || bad "U2: journey-gate and criterion-check name the plugin's journey README, which exists (S7-13)" "$(cat "$TMP/u2n.txt")"
+
+# ·· S7-2 / S7-3: unblocking a needs-approval ticket and correcting a ticket are gates.
+U2A="$TMP/u2-gates"; rm -rf "$U2A"; mkdir -p "$U2A"
+( cd "$U2A" && git init -q -b main . && u2g commit -q --allow-empty -m init && printf '{"requireActorTokens": true}\n' > .studio-policy.json \
+  && node "$HERE/board.mjs" add AUDIT-1 --title risky --owner web-developer --by tech-manager --status blocked --reason "needs-approval: Risky change, awaiting the founder" \
+  && node "$HERE/board.mjs" add AUDIT-2 --title plain --owner web-developer --by tech-manager --status blocked --reason "waiting on an API key" \
+  && node "$HERE/board.mjs" add APP-3 --title t --owner web-developer --by tech-manager --invariant "secret never logged" ) >/dev/null 2>&1
+u2tm() { ( cd "$U2A" && node "$HERE/board.mjs" actor mint --role tech-manager --ticket "$1" 2>/dev/null ); }
+assert_exit 1 "U2: a worker cannot release a needs-approval ticket (S7-2)" u2m "$U2A" move AUDIT-1 unblocked --by web-developer --detail "approved by the founder"
+assert_exit 1 "U2: ...nor can --by tech-manager without the orchestrator's token (S7-2)" u2m "$U2A" move AUDIT-1 unblocked --by tech-manager --detail "approved"
+assert_exit 0 "U2: ...the orchestrator's inline token releases it (S7-2)" \
+  u2m "$U2A" move AUDIT-1 unblocked --by tech-manager --detail "approved by the founder" --token "$(u2tm AUDIT-1)"
+assert_exit 0 "U2: an ordinary block is still released by anyone (S7-2)" u2m "$U2A" move AUDIT-2 unblocked --by web-developer
+assert_exit 1 "U2: a worker cannot rewrite a ticket's invariants with corrected (S7-3)" u2m "$U2A" move APP-3 corrected --by web-developer --invariant "n/a"
+assert_exit 1 "U2: ...nor tech-manager without its token (S7-3)" u2m "$U2A" move APP-3 corrected --by tech-manager --invariant "n/a"
+assert_exit 0 "U2: ...the orchestrator with its token can (S7-3)" \
+  u2m "$U2A" move APP-3 corrected --by tech-manager --invariant "secret never logged; wiped on signout" --token "$(u2tm APP-3)"
+
+# ·· G7-13 / G7-15 / C7-8 / W7-6: adopt is for an absent anchor; a mismatch must be named; the printed command works.
+U2B="$TMP/u2-adopt"; rm -rf "$U2B"; mkdir -p "$U2B/src"
+( cd "$U2B/src" && git init -q -b main . && node "$HERE/board.mjs" add APP-1 --title a --owner ios-developer --by tech-manager \
+  && git add docs/31-board-events.jsonl && u2g commit -qm board && node "$HERE/board.mjs" add APP-2 --title b --owner ios-developer --by tech-manager \
+  && git checkout -q docs/31-board-events.jsonl ) >/dev/null 2>&1
+U2ANC=$(cat "$U2B/src/.git/studio/"board-anchor-*.json 2>/dev/null)
+( cd "$U2B/src" && node "$HERE/board.mjs" adopt </dev/null ) >"$TMP/u2b.txt" 2>&1; U2RC=$?
+[ "$U2RC" = 1 ] && grep -q 'anchor exists and disagrees' "$TMP/u2b.txt" && grep -q 'anchor recorded 2 chained line(s)' "$TMP/u2b.txt" \
+  && grep -q 'the log has 1 ' "$TMP/u2b.txt" && [ "$(cat "$U2B/src/.git/studio/"board-anchor-*.json)" = "$U2ANC" ] \
+  && ok "U2: adopt refuses a log the anchor disagrees with unless the mismatch is named, printing both counts (G7-13)" \
+  || bad "U2: adopt refuses a log the anchor disagrees with unless the mismatch is named, printing both counts (G7-13)" "rc=$U2RC $(cat "$TMP/u2b.txt")"
+grep -qF "node \"$U2R/scripts/board.mjs\" adopt --mismatch deleted" "$TMP/u2b.txt" && ! grep -q '! node' "$TMP/u2b.txt" \
+  && ok "U2: ...naming the exact absolute-path command for the founder's terminal, with no ! form (G7-15)" \
+  || bad "U2: ...naming the exact absolute-path command for the founder's terminal, with no ! form (G7-15)" "$(cat "$TMP/u2b.txt")"
+( cd "$U2B" && git clone -q src clone ) >/dev/null 2>&1
+# A live writer holds the log lock: the founder is asked BEFORE the lock is taken, so this is the TTY refusal, not a 5s lock timeout.
+printf '%s' "$$" > "$U2B/clone/docs/31-board-events.jsonl.lock"
+( cd "$U2B/clone" && node "$HERE/board.mjs" adopt </dev/null ) >"$TMP/u2c.txt" 2>&1; U2RC=$?
+rm -f "$U2B/clone/docs/31-board-events.jsonl.lock"
+[ "$U2RC" = 1 ] && grep -qF "node \"$U2R/scripts/board.mjs\" adopt" "$TMP/u2c.txt" && grep -q 'no anchor for this log' "$TMP/u2c.txt" \
+  && ! grep -q 'board.mjs" board.mjs\|! node\|actor mint\|CLAUDE_PLUGIN_ROOT' "$TMP/u2c.txt" \
+  && ok "U2: adopt without a terminal prints its own message and one runnable command (C7-8, G7-15, W7-6)" \
+  || bad "U2: adopt without a terminal prints its own message and one runnable command (C7-8, G7-15, W7-6)" "rc=$U2RC $(cat "$TMP/u2c.txt")"
+( cd "$U2B/clone" && node "$HERE/board.mjs" show ) >/dev/null 2>"$TMP/u2d.txt"
+grep -qF "node \"$U2R/scripts/board.mjs\" adopt" "$TMP/u2d.txt" && ! grep -q 'CLAUDE_PLUGIN_ROOT' "$TMP/u2d.txt" \
+  && ok "U2: a board read refusing a missing anchor prints the resolved adopt command (W7-6)" \
+  || bad "U2: a board read refusing a missing anchor prints the resolved adopt command (W7-6)" "$(cat "$TMP/u2d.txt")"
+mkdir -p "$U2B/clone/docs/team"; printf '%s' "$$" > "$U2B/clone/docs/team/actor-tokens.jsonl.lock"
+( cd "$U2B/clone" && node "$HERE/board.mjs" actor mint --role founder --ticket APP-1 </dev/null ) >/dev/null 2>"$TMP/u2e.txt"; U2RC=$?
+rm -f "$U2B/clone/docs/team/actor-tokens.jsonl.lock"
+[ "$U2RC" = 1 ] && grep -qF "node \"$U2R/scripts/board.mjs\" actor mint --role founder --ticket APP-1" "$TMP/u2e.txt" && ! grep -q '<plugin>\|could not acquire' "$TMP/u2e.txt" \
+  && ok "U2: the founder mint refusal names the resolved path, and no registry lock was taken to ask (C7-8)" \
+  || bad "U2: the founder mint refusal names the resolved path, and no registry lock was taken to ask (C7-8)" "$(cat "$TMP/u2e.txt")"
+rm -rf "$U2D" "$U2P" "$U2J" "$U2N" "$U2A" "$U2B"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

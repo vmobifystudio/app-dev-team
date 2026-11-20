@@ -86,6 +86,27 @@ const HUMAN_GATES = { reopened: ['founder'] };
 
 const GATE_EVENTS = new Set([...Object.keys(ROLE_GATES), ...Object.keys(HUMAN_GATES)]);
 
+/**
+ * S7-2 / S7-3: events that are gates BECAUSE OF WHAT THEY CHANGE. Kept out of GATE_EVENTS (which
+ * freezes test commands and is the static roster) — the board treats these exactly like a gate:
+ * a closed role list here, and a token under requireActorTokens (board.mjs stampActor).
+ *   corrected   rewrites invariants, acceptance, files and owner — what the reviewer checks and QA
+ *               tests. The orchestrator's route (app-plan), never a worker's.
+ *   unblocked   of a `needs-approval:` block (app-audit's Risky ticket) — the founder's approval,
+ *               recorded by the founder or by the orchestrator relaying it (its inline token).
+ */
+const needsApproval = (state) => {
+  if (state?.status !== 'blocked') return false;
+  const d = (state.events || []).findLast((e) => e.event === 'blocked')?.detail;
+  const text = typeof d === 'string' ? d : (d && (d.reason || d.note)) || '';
+  return /^\s*needs-approval:/i.test(String(text));
+};
+function conditionalGate(state, name) {
+  if (name === 'corrected') return ['tech-manager'];
+  if (name === 'unblocked' && needsApproval(state)) return ['tech-manager', 'founder'];
+  return null;
+}
+
 /** Every role named anywhere in this file — team-doctor checks each one is a real agent. */
 const ROLES_IN_MATRIX = [...new Set(Object.values(ROLE_GATES).flat())].sort();
 
@@ -94,9 +115,8 @@ const ROLES_IN_MATRIX = [...new Set(Object.values(ROLE_GATES).flat())].sort();
  */
 function checkCapability(state, candidate, legal) {
   const { event: name, by } = candidate;
-  if (!GATE_EVENTS.has(name)) return { ok: true };
-
-  const allowed = ROLE_GATES[name] || HUMAN_GATES[name];
+  const allowed = ROLE_GATES[name] || HUMAN_GATES[name] || conditionalGate(state, name);
+  if (!allowed) return { ok: true };
   const actor = String(by || '').trim();
 
   if (!actor) {
@@ -141,4 +161,4 @@ function checkCapability(state, candidate, legal) {
   return { ok: true };
 }
 
-export { ROLE_GATES, HUMAN_GATES, GATE_EVENTS, NOT_ON_OWN_TICKET, ROLES_IN_MATRIX, checkCapability };
+export { ROLE_GATES, HUMAN_GATES, GATE_EVENTS, NOT_ON_OWN_TICKET, ROLES_IN_MATRIX, checkCapability, conditionalGate };

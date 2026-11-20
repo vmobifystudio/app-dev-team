@@ -28,6 +28,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
 
 const die = (code, message) => { process.stderr.write(`criterion-check: ${message}\n`); process.exit(code); };
@@ -43,7 +44,7 @@ if (!existsSync(registryPath)) {
   process.stdout.write(
     `CRITERION CHECK: CANNOT EVALUATE — no ${registryPath}.\n` +
     '  Nothing states which evidence would settle each acceptance criterion, so nothing was checked.\n' +
-    '  This is not a pass. Declare the criteria (see docs/team/journeys/README.md for the evidence contract).\n'
+    `  This is not a pass. Declare the criteria (see ${fileURLToPath(new URL('../docs/team/journeys/README.md', import.meta.url))} for the evidence contract).\n`
   );
   process.exit(2);
 }

@@ -128,6 +128,10 @@
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync } from 'node:fs';
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/** The board CLI by its resolved path: the founder's own terminal has no ${CLAUDE_PLUGIN_ROOT} (W7-6). */
+export const BOARD_CLI = fileURLToPath(new URL('../board.mjs', import.meta.url));
 
 const REGISTRY = 'docs/team/actors.json';
 
@@ -355,14 +359,17 @@ function readLineBlocking(fd, read = readSync, { maxWaitMs = 10 * 60000 } = {}) 
   return line;
 }
 
-function founderConfirms(ticket, { stdin = process.stdin, read = readSync, openTty = () => openSync('/dev/tty', 'r') } = {}) {
+// C7-8 / W7-6: `prompt` and `refusal` let a caller (adopt) say what is being confirmed; the default is
+// the founder-token mint. Printed commands carry the RESOLVED plugin path and the project root.
+function founderConfirms(ticket, { stdin = process.stdin, read = readSync, openTty = () => openSync('/dev/tty', 'r'), prompt = '', refusal = '', root = '' } = {}) {
   if (!stdin.isTTY) {
-    return { ok: false, reason: 'a founder token is minted only by the human founder at a terminal (stdin is not a TTY here, and an agent Bash call never has one).\n' +
+    const cd = root ? `cd "${root}" && ` : '';
+    return { ok: false, reason: refusal || ('a founder token is minted only by the human founder at a terminal (stdin is not a TTY here, and an agent Bash call never has one).\n' +
       '  Founder: in your own terminal run\n' +
-      `    node "<plugin>/scripts/board.mjs" actor mint --role founder --ticket ${ticket}\n` +
-      `  then in Claude Code:  ! node "<plugin>/scripts/board.mjs" move ${ticket} reopened --by founder --token <the token>` };
+      `    ${cd}node "${BOARD_CLI}" actor mint --role founder --ticket ${ticket}\n` +
+      `  then in Claude Code:  ! ${cd}node "${BOARD_CLI}" move ${ticket} reopened --by founder --token <the token>`) };
   }
-  process.stderr.write(`Founder override for ${ticket}. Type the ticket id to mint a single-use founder token: `);
+  process.stderr.write(prompt || `Founder override for ${ticket}. Type the ticket id to mint a single-use founder token: `);
   // C3G-10: read the CONTROLLING TERMINAL, opened fresh and blocking. fd 0 of a node process on a
   // real pty is non-blocking, so readSync(0) threw EAGAIN the instant before the founder typed —
   // the mint only ever worked when input was already queued. `openTty` is injectable for tests.
@@ -371,7 +378,7 @@ function founderConfirms(ticket, { stdin = process.stdin, read = readSync, openT
   let line;
   try { line = readLineBlocking(fd, read); } catch (e) { return { ok: false, reason: `could not read the confirmation: ${e.message}` }; }
   finally { try { if (fd !== 0) closeSync(fd); } catch { /* already closed */ } }
-  if (line.trim().toUpperCase() !== String(ticket).toUpperCase()) return { ok: false, reason: `confirmation "${line.trim()}" is not ${ticket} — nothing minted` };
+  if (line.trim().toUpperCase() !== String(ticket).toUpperCase()) return { ok: false, reason: `confirmation "${line.trim()}" is not ${ticket} — nothing ${prompt ? 'done' : 'minted'}` };
   return { ok: true };
 }
 

@@ -482,6 +482,25 @@ MU19@@scripts/wave-integrate.mjs@@const run = waveDirty@@const run = false@@MU: 
 MU20@@scripts/lib/integration.mjs@@if (r.status === 0 && name && /\(declared in /.test(r.stderr || '')) return name;@@void name;@@MU: a declared 'Integration branch: main' wins over an existing develop branch@@PR46 review
 MU21@@scripts/wave-integrate.mjs@@['high', 'critical'].includes(tier(m)) || runtimeRequired(m));@@['high', 'critical'].includes(tier(m)));@@MU: a medium ticket whose policy requires runtime-gate does not land on a failing runtime gate@@PR46 review
 MU22@@scripts/board.mjs@@  if (!c.ok) {@@  if (false) {@@MU: adopt without a terminal is refused and writes no anchor@@PR46 review
+MV01@@scripts/lib/evidence.mjs@@git(['diff', '--no-renames', '--name-only', '-z', from, to]);@@git(['diff', '--name-only', '-z', from, to]);@@U2: a QA- branch that renames code into docs/ is not docs-only — both sides of the rename are listed (G7-1)@@Sprint 7 U2
+MV02@@scripts/lib/evidence.mjs@@'--no-renames', '--name-only', '-z', from, to]);@@'--no-renames', '--name-only', from, to]);@@U2: a non-ASCII path is listed raw and routes to its tier (G7-4)@@Sprint 7 U2
+MV03@@scripts/board.mjs@@const files = mb ? changedFiles(g, mb, tip.sha) : null;@@const files = mb ? (g(['diff', '--name-only', mb, tip.sha]) || '').split('\n').filter(Boolean) : null;@@U2: merged is refused when a rename moves code out of a high-risk path (G7-4)@@Sprint 7 U2
+MV04@@scripts/lib/risk.mjs@@approvals: union(tier, 'approvals')@@approvals: selected.approvals || []@@U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)@@Sprint 7 U2
+MV05@@scripts/lib/risk.mjs@@best.approvals = [...new Set([...best.approvals, ...r.approvals])];@@void 0;@@U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)@@Sprint 7 U2
+MV06@@scripts/lib/evidence.mjs@@const away = rec.produced_by === 'wave-integrate.mjs' ? '' : notIntegrated(git, ticket, rec.head, mergedHead, root);@@const away = '';@@U2: qa_passed on a post-merge re-run of the ticket's own unintegrated branch is refused (G7-2)@@Sprint 7 U2
+MV07@@scripts/lib/evidence.mjs@@if (mergedTs && !(Date.parse(v.evaluated_at) > Date.parse(mergedTs))) return fail(@@if (false) return fail(@@U2: a journey PASS evaluated before the ticket merged is not QA evidence (G7-2)@@Sprint 7 U2
+MV08@@scripts/lib/evidence.mjs@@const undeclared = journeyDeclarationGap(root, git);@@const undeclared = '';@@U2: qa_passed on a web project with no journey declared is refused (S7-5)@@Sprint 7 U2
+MV09@@scripts/lib/evidence.mjs@@if (sel.only) return@@if (false) return@@U2: a journey PASS from --only <id> does not count (G7-7)@@Sprint 7 U2
+MV10@@scripts/lib/evidence.mjs@@if (!d || d.sha256 !== w.sha256) return@@if (!d) return@@U2: a journey run on an edited, uncommitted declaration does not count (G7-7)@@Sprint 7 U2
+MV11@@scripts/journey-gate.mjs@@only: flags.only ? String(flags.only) : null,@@only: null,@@U2: journey-gate records its selection, directory and declaration sha256 (G7-7)@@Sprint 7 U2
+MV12@@scripts/lib/capabilities.mjs@@if (name === 'unblocked' && needsApproval(state)) return@@if (false) return@@U2: a worker cannot release a needs-approval ticket (S7-2)@@Sprint 7 U2
+MV13@@scripts/lib/capabilities.mjs@@if (name === 'corrected') return@@if (false) return@@U2: a worker cannot rewrite a ticket's invariants with corrected (S7-3)@@Sprint 7 U2
+MV14@@scripts/board.mjs@@const gate = GATE_EVENTS.has(eventName) || conditional;@@const gate = GATE_EVENTS.has(eventName);@@U2: ...nor can --by tech-manager without the orchestrator's token (S7-2)@@Sprint 7 U2
+MV15@@scripts/lib/events.mjs@@if (state.status === 'qa') { state.approvals = []; state.qaPassed = false; }@@if (false) {}@@U2: ...it is in_progress with no approvals — re-review before it merges again@@Sprint 7 U2
+MV16@@scripts/lib/events.mjs@@if (state.status === 'qa' && (by !== 'tech-manager' ||@@if (state.status === 'qa' && (false ||@@U2: only the orchestrator sends a merged ticket back to rework@@Sprint 7 U2
+MV19@@scripts/lib/events.mjs@@if (dep.events.findLastIndex((e) => e.event === 'changes') > dep.events.findLastIndex((e) => e.event === 'merged')) return true;@@void 0;@@U2: ...and a ticket depending on it is not claimable until it merges again@@Sprint 7 U2
+MV17@@scripts/board.mjs@@if (s.kind !== 'absent' && flags.mismatch !== s.kind) {@@if (false) {@@U2: adopt refuses a log the anchor disagrees with unless the mismatch is named, printing both counts (G7-13)@@Sprint 7 U2
+MV18@@scripts/board.mjs@@if (String(flags.role || '') === 'founder' && tkt) {@@if (false) {@@U2: the founder mint refusal names the resolved path, and no registry lock was taken to ask (C7-8)@@Sprint 7 U2
 CATALOGUE
 }
 

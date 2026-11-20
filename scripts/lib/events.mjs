@@ -23,6 +23,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { gitAt } from './integration.mjs';
 
@@ -132,9 +133,11 @@ function legalEvents(state) {
       // `done` except lying, and a sprint would have to close by hand — which is what happened.
       // C4G-G3: `corrected` too — the comment above says EVERY state, and the test-profile refusal
       // prints `corrected --test-profile` to a ticket that may well be sitting here.
+      // U2 (for U1's wave FAIL/CONFLICT): `changes` sends a merged ticket back to its developer —
+      // tech-manager only, with a reason, and its approvals are void (it must be re-reviewed).
       return withCorrection(state.qaPassed || isQaTicket(state)
-        ? ['closed', 'verified', 'qa_failed', 'blocked']
-        : ['qa_passed', 'verified', 'qa_failed', 'blocked']);
+        ? ['closed', 'verified', 'qa_failed', 'blocked', 'changes']
+        : ['qa_passed', 'verified', 'qa_failed', 'blocked', 'changes']);
     case 'done':
       return withCorrection([]);
     case 'blocked':
@@ -307,22 +310,26 @@ function anchorPath(logPath) {
 function checkAnchor(logPath, text, chain) {
   const at = anchorPath(logPath);
   if (!at) return { ok: true };
-  const recover = '  The anchor lives outside the tree (G2-10). Restore the log from a backup that matches it;\n' +
-    '  if the log is genuinely the record (a fresh clone, a moved project, or an anchor that is wrong),\n' +
-    '  that is a human decision: the founder runs, at their own terminal,\n' +
-    '    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" adopt\n' +
-    '  knowing it re-trusts whatever the log now says.';
+  // G7-13 / W7-6: adopt is for an ABSENT anchor; a mismatch is adopted only by naming it. The
+  // command carries the resolved path — the founder's terminal has no ${CLAUDE_PLUGIN_ROOT}.
+  const cli = `cd "${dirname(dirname(resolve(logPath)))}" && node "${fileURLToPath(new URL('../board.mjs', import.meta.url))}" adopt`;
+  const recover = (kind) => '  The anchor lives outside the tree (G2-10). ' + (kind
+    ? 'Restore the log from a backup that matches it. Only if the founder accepts exactly this\n' +
+      `  mismatch (adopt prints what is lost or trusted), at their own terminal:\n    ${cli} --mismatch ${kind}`
+    : 'If the log is genuinely the record (a fresh clone, a moved project), that is a human\n' +
+      `  decision: the founder runs, at their own terminal,\n    ${cli}\n  knowing it re-trusts whatever the log now says.`);
   if (!existsSync(at)) {
-    if (/"anchored":true/.test(text)) return { ok: false, reason: `${logPath} was written under an anchor, and the anchor (${at}) is gone — the log cannot be shown to be the one that was written.\n${recover}` };
+    if (/"anchored":true/.test(text)) return { ok: false, reason: `${logPath} was written under an anchor, and the anchor (${at}) is gone — the log cannot be shown to be the one that was written.\n${recover('')}` };
     return { ok: true };
   }
   let a;
-  try { a = JSON.parse(readFileSync(at, 'utf8')); } catch (e) { return { ok: false, reason: `the board anchor ${at} is unreadable (${e.message})\n${recover}` }; }
+  try { a = JSON.parse(readFileSync(at, 'utf8')); } catch (e) { return { ok: false, reason: `the board anchor ${at} is unreadable (${e.message})\n${recover('rewritten')}` }; }
   if (a.chained === chain.chained && a.tip === chain.tip) return { ok: true };
-  const what = chain.chained < a.chained ? `has ${chain.chained} chained line(s), the anchor recorded ${a.chained} — lines were deleted or the log was replaced`
-    : chain.chained > a.chained ? `has ${chain.chained} chained line(s), the anchor recorded ${a.chained} — lines were appended without the CLI`
+  const kind = chain.chained < a.chained ? 'deleted' : chain.chained > a.chained ? 'appended' : 'rewritten';
+  const what = kind === 'deleted' ? `has ${chain.chained} chained line(s), the anchor recorded ${a.chained} — lines were deleted or the log was replaced`
+    : kind === 'appended' ? `has ${chain.chained} chained line(s), the anchor recorded ${a.chained} — lines were appended without the CLI`
       : 'ends at a different hash than the anchor recorded — the history was rewritten and re-hashed';
-  return { ok: false, reason: `the board log ${logPath} ${what}.\n${recover}` };
+  return { ok: false, reason: `the board log ${logPath} ${what}.\n${recover(kind)}` };
 }
 function writeAnchor(logPath, chained, tip) {
   const at = anchorPath(logPath);
@@ -499,6 +506,9 @@ function reduce(events) {
         state.approvals.push({ by, ts: event.ts });
         break;
       case 'changes':
+        // From `qa` (the wave could not land it): the approvals were of the merged commit, and the
+        // fix is a new one — nothing approved survives, and QA starts over.
+        if (state.status === 'qa') { state.approvals = []; state.qaPassed = false; }
         state.cycles += 1;
         state.status = 'in_progress';
         state.reviewer = by || state.reviewer;
@@ -693,6 +703,8 @@ function validateTransition(tickets, candidate) {
         const dep = tickets.get(key(depId));
         if (!dep) return true;
         if (!dep.events.some((e) => e.event === 'merged')) return true;
+        // Sent back from qa (`changes` after its last `merged`): the merge it had no longer stands.
+        if (dep.events.findLastIndex((e) => e.event === 'changes') > dep.events.findLastIndex((e) => e.event === 'merged')) return true;
         return dep.verifiedStatic === true;
       });
       if (unmet.length) {
@@ -785,6 +797,13 @@ function validateTransition(tickets, candidate) {
       return { ok: true };
     }
     case 'changes':
+      if (state.status === 'qa' && (by !== 'tech-manager' || !String(typeof candidate.detail === 'object' && candidate.detail ? JSON.stringify(candidate.detail) : candidate.detail || '').trim())) {
+        return {
+          ok: false,
+          reason: `${id} is merged (qa): only the orchestrator sends it back, with the reason — move ${id} changes --by tech-manager --detail "wave <n> FAIL|CONFLICT: <what>". Its approvals are then void and it is re-reviewed before it merges again.`,
+          legal: legal.filter((e) => e !== 'changes'),
+        };
+      }
       if (state.cycles + 1 > MAX_REVIEW_CYCLES + state.extraCycles) {
         return {
           ok: false,
