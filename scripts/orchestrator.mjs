@@ -121,7 +121,9 @@ const CANDIDATE_ROLES = [...new Set([...ROLES_IN_MATRIX, ...BUILD_SPAWNABLE_OWNE
 function load() {
   if (!existsSync(LOG)) {
     die(2, `no event log at ${LOG}\n` +
-           '  There is no sprint to reason about yet. `/app-plan` creates the board.');
+           '  New project: there is no sprint yet — `/app-plan` creates the board.\n' +
+           '  New checkout of a project with history: do NOT re-plan. Copy the board log from the original\n' +
+           '  checkout, then the founder runs `board.mjs adopt` (HANDBOOK, "A new checkout trusts a carried-over log once").');
   }
   let parsed;
   try { parsed = parseEventLog(readFileSync(LOG, 'utf8')); }

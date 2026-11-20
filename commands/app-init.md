@@ -84,7 +84,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    ```bash
    git rev-parse --is-inside-work-tree >/dev/null 2>&1 || git init -b main
    touch .gitignore
-   for p in .agent-wt/ .studio-stop docs/31-board-events.jsonl docs/31-board.md \
+   for p in .agent-wt/ .studio-stop .studio-cache/ docs/31-board-events.jsonl docs/31-board.md \
             docs/team/runs.jsonl docs/team/runtime-result.json docs/team/journey-result.json \
             docs/team/actors.json docs/team/actor-tokens.jsonl docs/team/reports/ \
             docs/53-reviews/ docs/54-evidence/runtime/ docs/54-evidence/journeys/ \

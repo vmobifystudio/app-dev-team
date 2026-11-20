@@ -440,10 +440,10 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    ```
 
    Spawn `qa-engineer` once, composed with `compose --ticket QA-<sprint>-w<n> --role qa-engineer`:
-   the prompt lists every ticket of the wave with its acceptance criteria and carries one token per
-   listed ticket (`Token for APP-NNN: …`). QA works on branch `qa/QA-<sprint>-w<n>`, exercises the criteria (driving the P0 journey per
-   `runtime-gate` where the toolchain is present), writes defects to `docs/51-bugs.md` (S1/S2 return
-   via step 1), and **records its own verdict per ticket**:
+   the prompt lists each wave ticket with its acceptance criteria and one token per ticket
+   (`Token for APP-NNN: …`). qa-engineer-owned APP rows skip it: compose those `--role verification-engineer`. QA works on `qa/QA-<sprint>-w<n>`, exercises the criteria (driving the P0 journey per
+   `runtime-gate` where the toolchain is present), files defects in `docs/51-bugs.md` (S1/S2 return
+   via step 1), and **records a verdict per ticket**:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN qa_passed --by qa-engineer \

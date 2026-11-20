@@ -459,9 +459,9 @@ fi
 if [ -f "$PLAN" ]; then
   # G2-24: the plan is read only once it is known to exist.
   QAV=$(tr -d '*_' < "$PLAN" | grep -iE '^[[:space:]]*QA VERDICT:' || true)
-  if printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD\b'; then
-    block "$(printf '%s\n' "$QAV" | grep -iE 'QA VERDICT:[[:space:]]*HOLD\b' | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
-  elif printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*GO\b'; then
+  if printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD([^A-Za-z]|$)'; then
+    block "$(printf '%s\n' "$QAV" | grep -iE 'QA VERDICT:[[:space:]]*HOLD([^A-Za-z]|$)' | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
+  elif printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*GO([^A-Za-z]|$)'; then
     :
   elif [ -f "$LOG" ]; then
     : # the board's qa_passed events above ARE the verdict; a missing GO line is not a gap
