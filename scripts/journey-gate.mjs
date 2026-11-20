@@ -47,13 +47,15 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
 import { treeDirty } from './lib/readiness.mjs';
 import { writeEvidenceLog } from './lib/evidence.mjs';
 
 const DRIVERS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), 'drivers');
+// S7-13: the contract lives in the PLUGIN, not the project — print the path that exists.
+const CONTRACT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'team', 'journeys', 'README.md');
 const die = (code, message) => { process.stderr.write(`journey-gate: ${message}\n`); process.exit(code); };
 const { flags } = parseArgs(process.argv.slice(2), {
   valueFlags: new Set(['root', 'journeys', 'driver', 'only', 'out']),
@@ -189,7 +191,7 @@ if (!loaded.ok) {
   process.stdout.write(
     `JOURNEY GATE: CANNOT EVALUATE — ${loaded.reason}.\n` +
     '  This is NOT a pass. Nothing states what this product must do, so nothing was checked.\n' +
-    '  Declare at least one P0 journey (see docs/team/journeys/README.md) and re-run.\n'
+    `  Declare at least one P0 journey (see ${CONTRACT}) and re-run.\n`
   );
   process.exit(2);
 }
@@ -234,7 +236,7 @@ if (!driver || !existsSync(driver)) {
     '  UNKNOWN, never a pass: an unrun journey and a passing journey are different facts, and the\n' +
     '  whole reason this gate exists is that they were being reported as the same one.\n' +
     '  Drivers: --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh" | ios.sh | web.sh\n' +
-    '  (web.sh: Playwright from the project, app URL in STUDIO_WEB_URL). Contract: docs/team/journeys/README.md\n'
+    `  (web.sh: Playwright from the project, app URL in STUDIO_WEB_URL). Contract: ${CONTRACT}\n`
   );
   process.exit(2);
 }
@@ -347,6 +349,12 @@ function writeResultFile() {
     subject: { head: head || null, dirty },
     // Design F: which plugin driver produced the verdict, by name and content.
     driver: { path: `scripts/drivers/${basename(driver)}`, sha256: createHash('sha256').update(readFileSync(driver)).digest('hex') },
+    // G7-7: WHAT this run covered — the board and readiness require every committed P0 declaration.
+    selection: {
+      only: flags.only ? String(flags.only) : null,
+      dir: relative(root, journeyDir).split(sep).join('/'),
+      declarations: selected.map((j) => ({ id: j.id, file: j._file, sha256: createHash('sha256').update(readFileSync(j._path)).digest('hex') })),
+    },
     evaluated_at: new Date().toISOString(),
     result: results.some((r) => r.state === 'FAIL') ? 'FAIL'
       : results.some((r) => r.state === 'UNKNOWN') ? 'CANNOT_EVALUATE' : 'PASS',

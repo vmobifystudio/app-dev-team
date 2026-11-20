@@ -50,7 +50,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { classifyTestRun } from './test-evidence.mjs';
-import { gitAt, integrationBase, isAncestor, matchesTicket, ticketIdsFromBoard, ticketTip } from './integration.mjs';
+import { gitAt, integrationBase, integrationResolve, isAncestor, matchesTicket, ticketIdsFromBoard, ticketTip } from './integration.mjs';
 import { resolveProjectRoot } from './root.mjs';
 import { indexHides, treeDirty } from './readiness.mjs';
 import { inlineTokenFlag } from './actor.mjs';
@@ -59,6 +59,17 @@ import { censusTestFiles, isTestFile } from '../assertion-census.mjs';
 export const EVIDENCE_DIR = 'docs/team/evidence';
 export const PRODUCERS = new Set(['verify-done.sh', 'wave-integrate.mjs']);
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
+
+/**
+ * G7-1 / G7-4: THE FILES A DIFF TOUCHES, as every gate must read them. `git diff --name-only` folds a
+ * rename into its NEW path (the deleted src/auth/login.ts vanished behind docs/50-test-plan.md) and
+ * quotes non-ASCII paths ("src/auth/sessi\303\263n.ts" never matches ^src/auth/). `--no-renames`
+ * lists both sides; `-z` writes paths raw (it implies no quotePath escaping). null when git cannot diff.
+ */
+export function changedFiles(git, from, to) {
+  const out = git(['diff', '--no-renames', '--name-only', '-z', from, to]);
+  return out === null ? null : out.split('\0').filter(Boolean);
+}
 
 /** The project root evidence is written under: the studio root, else the git common dir's parent. */
 export function evidenceRoot(from = process.cwd()) {
@@ -247,11 +258,11 @@ function docsIsServedSite(git, head) {
  */
 export function docsOnlyDiff(git, head, { qa = false, base = '' } = {}) {
   const integration = integrationBase(git);
-  if (!integration) return { ok: false, code: 2, reason: 'no integration branch (develop/main/master) exists, so what the branch changes — and whether it is documents only — is unknown' };
+  if (!integration) return { ok: false, code: 2, reason: `the integration branch is unknown (${integrationResolve(git).reason}), so what the branch changes — and whether it is documents only — is unknown` };
   if (base && !(base === head || isAncestor(git, base, head))) return { ok: false, code: 1, reason: `the merge-base recorded at merged (${String(base).slice(0, 12)}) is not an ancestor of ${String(head).slice(0, 12)}` };
   const mb = base || git(['merge-base', integration, head]);
   if (!mb) return { ok: false, code: 2, reason: `${String(head).slice(0, 12)} shares no history with ${integration}` };
-  const files = (git(['diff', '--name-only', mb, head]) || '').split('\n').filter(Boolean);
+  const files = changedFiles(git, mb, head) || [];
   if (!files.length) return { ok: false, code: 1, reason: `the branch changes no files against ${base ? `the merge-base recorded at merged (${mb.slice(0, 12)})` : integration} (re-derived from git), so a --docs-only record verifies nothing` };
   const isDoc = docFile(docsIsServedSite(git, head), { qa });
   const code = files.filter((f) => !isDoc(f));
@@ -348,7 +359,7 @@ export function verifyTestEvidence(root, given, { ticket, afterTs = '', cwd = pr
  * Does a gate-result/v1 re-derive from its raw log? Used by readiness (G-F6), qa_passed and
  * merged's required_evidence. `{ok, reason}`.
  */
-export function checkGateLog(root, v) {
+export function checkGateLog(root, v, { coverage = true } = {}) {
   const log = readLog(root, v);
   if (!log.ok) return log;
   const words = [...log.text.matchAll(/^RESULT: (PASS|FAIL|CANNOT EVALUATE)\b/gm)];
@@ -364,7 +375,83 @@ export function checkGateLog(root, v) {
       if (!existsSync(abs) || sha256(readFileSync(abs)) !== e.sha256) return { ok: false, reason: `${j.id}: cited evidence ${e.path} is missing or changed since the verdict` };
     }
   }
+  if (coverage && v.gate === 'journey-gate' && v.result === 'PASS') {
+    const gap = journeyCoverageGap(root, v);
+    if (gap) return { ok: false, reason: gap };
+  }
   return { ok: true };
+}
+
+/**
+ * G7-7: A JOURNEY PASS COVERS THE COMMITTED P0 SET, or it is not a pass. `--only <id>` and
+ * `--journeys <any dir>` used to produce a PASS that cleared qa_passed and readiness for everything.
+ * The result now records its selection (only, dir, each declaration's sha256); every P0 declaration
+ * committed in docs/team/journeys/ at the subject commit must be in it, byte for byte, and PASS.
+ * docs/team/ is operational (not "dirty"), so the committed blob — not the working file — decides.
+ */
+export const JOURNEYS_DIR = 'docs/team/journeys';
+export function committedP0Journeys(root, head) {
+  const git = gitAt(root);
+  const names = (git(['ls-tree', '--name-only', '-z', `${head}:${JOURNEYS_DIR}`]) || '').split('\0').filter((f) => f.endsWith('.json'));
+  return names.flatMap((f) => {
+    let buf;
+    try { buf = execFileSync('git', ['show', `${head}:${JOURNEYS_DIR}/${f}`], { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return []; }
+    let j = {};
+    try { j = JSON.parse(buf.toString('utf8')); } catch { /* unparseable: still owed, by file name */ }
+    return (j.priority || 'P0') === 'P0' ? [{ id: j.id || f, file: `${JOURNEYS_DIR}/${f}`, sha256: sha256(buf) }] : [];
+  });
+}
+function journeyCoverageGap(root, v) {
+  const sel = v.selection;
+  if (!sel || !Array.isArray(sel.declarations)) return 'it records no journey selection (which declarations ran), so it cannot be shown to cover the P0 set — re-run journey-gate';
+  if (sel.only) return `it ran only --only ${sel.only}; a pass covers every committed P0 journey — re-run journey-gate without --only`;
+  if (sel.dir !== JOURNEYS_DIR) return `it read declarations from ${sel.dir}, not the committed ${JOURNEYS_DIR} — re-run journey-gate without --journeys`;
+  const head = String(v.subject?.head || '');
+  const want = committedP0Journeys(root, head);
+  if (!want.length) return `no P0 journey is committed in ${JOURNEYS_DIR} at ${head.slice(0, 12)}, so the pass covers nothing declared`;
+  for (const w of want) {
+    const d = sel.declarations.find((x) => x.id === w.id);
+    if (!d || d.sha256 !== w.sha256) return `P0 journey ${w.id} (${w.file}) as committed at ${head.slice(0, 12)} is not a declaration this run executed`;
+    if ((v.journeys || []).find((x) => x.id === w.id)?.state !== 'PASS') return `P0 journey ${w.id} did not PASS in this run`;
+  }
+  return '';
+}
+
+/**
+ * G7-2: QA evidence is about the INTEGRATED code. The ticket's merged commit must be on the
+ * integration branch, and the run must sit on it or contain it — a re-run on the ticket's own
+ * unintegrated branch is the developer's evidence again. A wave record (wave-integrate.mjs ran the
+ * merged wave tree) is the integrated tree by construction. '' or the refusal.
+ */
+function notIntegrated(git, ticket, head, mergedHead, root) {
+  const base = integrationBase(git);
+  const tipI = base ? git(['rev-parse', '--verify', `${base}^{commit}`]) : null;
+  if (!tipI) return `no integration branch resolves here, so the run cannot be shown to be on the merged tree`;
+  const landed = mergedHead || ticketTip(git, ticket, ticketIdsFromBoard(root)).sha;
+  // No commit is known for the ticket (a legacy merge with no branch): the run's place is all we can check.
+  if (landed && !(landed === tipI || isAncestor(git, landed, tipI))) return `${ticket}'s merged commit ${String(landed || '(none)').slice(0, 12)} is not on ${base} yet — QA runs on the merged tree after the wave lands it, not on the ticket's own branch`;
+  if (!(head === tipI || isAncestor(git, head, tipI) || isAncestor(git, tipI, head))) return `it ran on ${String(head).slice(0, 12)}, which is neither on ${base} nor contains it — run it on the integration branch (verify-done.sh ${base} …)`;
+  return '';
+}
+
+/**
+ * S7-5 / W7-11: "no journey declared → rows may not move qa → done". Once the integration branch
+ * declares journeys (docs/team/journeys/*.json) or its profile names a UI platform (ios, android,
+ * web), a qa_passed needs a committed P0 declaration — a test record alone is not QA of a product
+ * nobody said what it must do. '' or the refusal.
+ */
+const UI_PLATFORMS = /^(ios|android|web|web-app)$/i;
+function journeyDeclarationGap(root, git) {
+  const base = integrationBase(git);
+  if (!base) return '';
+  const tipI = git(['rev-parse', '--verify', `${base}^{commit}`]);
+  if (!tipI) return '';
+  const dir = git(['ls-tree', '--name-only', `${tipI}`, `${JOURNEYS_DIR}/`]);
+  let platforms = [];
+  try { const p = JSON.parse(git(['show', `${tipI}:docs/team/project-profile.json`]) || '{}').platform; platforms = Array.isArray(p) ? p : [p]; } catch { /* no profile */ }
+  if (!dir && !platforms.some((p) => UI_PLATFORMS.test(String(p || '')))) return '';
+  if (committedP0Journeys(root, tipI).length) return '';
+  return `no P0 journey is declared in ${JOURNEYS_DIR} on ${base} — rows may not move qa → done until qa-engineer declares one (${PLUGIN_ROOT}/docs/team/journeys/README.md) and it lands`;
 }
 
 /**
@@ -375,7 +462,7 @@ export function checkGateLog(root, v) {
 // the record QA just failed (or anything older) cannot pass the same ticket on re-QA.
 export function verifyQaEvidence(root, given, { ticket, mergedTs, mergedHead = '', failedTs = '', cwd = process.cwd() } = {}) {
   const journey = (abs, rel) => {
-    const r = verifyJourney(root, abs, rel, { ticket, cwd, mergedHead });
+    const r = verifyJourney(root, abs, rel, { ticket, cwd, mergedHead, mergedTs });
     if (!r.ok || !failedTs) return r;
     let at = '';
     try { at = JSON.parse(readFileSync(abs, 'utf8')).evaluated_at || ''; } catch { /* verifyJourney already read it */ }
@@ -394,12 +481,20 @@ export function verifyQaEvidence(root, given, { ticket, mergedTs, mergedHead = '
   if (rec.schema === 'gate-result/v1') return journey(loc.abs, loc.rel);
   const afterFail = failedTs && Date.parse(failedTs) > Date.parse(mergedTs || 0);
   const r = verifyTestEvidence(root, given, { ticket, afterTs: (afterFail ? failedTs : mergedTs) || '1970-01-01T00:00:00Z', mergedHead, cwd });
-  return !r.ok && afterFail && r.reason.includes(`before ${ticket} merged`)
-    ? { ...r, reason: `${loc.rel}: recorded at ${rec.at}, before ${ticket}'s last qa_failed (${failedTs}) — re-QA cites the newest run on the integration branch, not the build QA failed` }
-    : r;
+  if (!r.ok) {
+    return afterFail && r.reason.includes(`before ${ticket} merged`)
+      ? { ...r, reason: `${loc.rel}: recorded at ${rec.at}, before ${ticket}'s last qa_failed (${failedTs}) — re-QA cites the newest run on the integration branch, not the build QA failed` }
+      : r;
+  }
+  const git = gitAt(cwd);
+  const away = rec.produced_by === 'wave-integrate.mjs' ? '' : notIntegrated(git, ticket, rec.head, mergedHead, root);
+  if (away) return { ok: false, code: 1, reason: `${loc.rel}: ${away}` };
+  const undeclared = journeyDeclarationGap(root, git);
+  return undeclared ? { ok: false, code: 1, reason: `${loc.rel}: ${undeclared}` } : r;
 }
 
 const DRIVERS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'drivers');
+const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 function journeyDriverProblem(root, v) {
   const d = v.driver || {};
   const m = /^scripts\/drivers\/([A-Za-z0-9._-]+)$/.exec(String(d.path || ''));
@@ -413,19 +508,23 @@ function journeyDriverProblem(root, v) {
   return '';
 }
 
-function verifyJourney(root, abs, rel, { ticket, cwd, mergedHead = '' }) {
+function verifyJourney(root, abs, rel, { ticket, cwd, mergedHead = '', mergedTs = '' }) {
   let v;
   try { v = JSON.parse(readFileSync(abs, 'utf8')); } catch (e) { return { ok: false, code: 2, reason: `${rel} is unreadable: ${e.message}` }; }
   const fail = (reason, code = 1) => ({ ok: false, code, reason: `${rel}: ${reason}` });
   if (v.schema !== 'gate-result/v1' || v.gate !== 'journey-gate') return fail('is not a journey-gate gate-result/v1');
   if (v.result !== 'PASS') return fail(`journey-gate result is ${v.result}, not PASS`);
   if (v.subject?.dirty !== false) return fail('was recorded against a dirty (or unknown) working tree');
-  const derived = checkGateLog(root, v);
+  const derived = checkGateLog(root, v, { coverage: false });
   if (!derived.ok) return fail(derived.reason);
   // Design F: the verdict came from one of THIS plugin's drivers, byte for byte — named in the
   // result, named again in the raw log (which the sha pins), and still the file shipped beside us.
   const drv = journeyDriverProblem(root, v);
   if (drv) return fail(drv);
+  const covered = checkGateLog(root, v); // G7-7: the committed P0 set, unselected
+  if (!covered.ok) return fail(covered.reason);
+  // G7-2: a journey PASS taken on the tip before review is not QA of the merged code.
+  if (mergedTs && !(Date.parse(v.evaluated_at) > Date.parse(mergedTs))) return fail(`was evaluated at ${v.evaluated_at || 'an unrecorded time'}, before ${ticket} merged (${mergedTs}) — QA's journeys run on the merged tree`);
   const git = gitAt(cwd);
   const tip = ticketTip(git, ticket, ticketIdsFromBoard(root));
   const head = String(v.subject.head);
@@ -436,6 +535,10 @@ function verifyJourney(root, abs, rel, { ticket, cwd, mergedHead = '' }) {
     if (!base || !(git(['rev-parse', base]) === head || isAncestor(git, head, base))) return fail(`no branch is named for ${ticket} and ${head.slice(0, 12)} is not on the integration branch`);
     // PR46-11: with the branch gone, the commit recorded at merged is what proves the journeys ran on its code.
     if (mergedHead && !(mergedHead === head || isAncestor(git, mergedHead, head))) return fail(`the journeys ran on ${head.slice(0, 12)}, which does not contain ${ticket}'s merged commit ${mergedHead.slice(0, 12)}`);
+  }
+  if (mergedTs) {
+    const away = notIntegrated(git, ticket, head, mergedHead, root);
+    if (away) return fail(away);
   }
   return { ok: true, detail: { evidence: rel, evidence_sha256: sha256(readFileSync(abs)), evidence_head: head, evidence_mode: 'journey-gate', log_sha256: v.log_sha256 } };
 }
@@ -483,7 +586,7 @@ export function runTestEvidence(root, { branch, base, dir, scope = '', command =
   const output = `${run.stdout || ''}${run.stderr || ''}${run.error ? `\n${run.error.message}\n` : ''}`;
   const exitCode = run.status === null ? 128 : run.status;
   const mb = git(['merge-base', base, head]);
-  const changed = mb ? (git(['diff', '--name-only', mb, head]) || '').split('\n').filter(Boolean) : [];
+  const changed = mb ? changedFiles(git, mb, head) || [] : [];
   const tests = changed.filter(isTestFile).flatMap((f) => {
     const text = git(['show', `${head}:${f}`]);
     return text === null ? [] : [{ path: f, text }];
@@ -504,7 +607,7 @@ export function writeBranchEvidence(root, { branch, base, mode, cwd = process.cw
   const head = git(['rev-parse', '--verify', `${branch}^{commit}`]);
   if (!head) return { ok: false, reason: `${branch} does not resolve to a commit` };
   const mb = git(['merge-base', base, head]);
-  const files = mb ? (git(['diff', '--name-only', mb, head]) || '').split('\n').filter(Boolean).length : 0;
+  const files = mb ? (changedFiles(git, mb, head) || []).length : 0;
   const commits = Number(git(['rev-list', '--count', `${base}..${head}`]) || 0);
   return { ok: true, record: writeTestEvidence(root, { producedBy: 'verify-done.sh', branch, base, head, mode, commits, files }) };
 }
