@@ -277,12 +277,17 @@ LOG="$ROOT/docs/31-board-events.jsonl"
 if [ -f "$LOG" ]; then
   CHAIN_OUT=$(node "$HERE/board.mjs" verify --log "$LOG" 2>&1)
   CHAIN_RC=$?
-  # W7-5: a log that hashes cleanly but does not match its ANCHOR (a moved project, a fresh clone)
-  # is not a rewritten history, and "Run: board.mjs verify" never named the recovery, `adopt`.
-  if [ "$CHAIN_RC" = 1 ] && printf '%s' "$CHAIN_OUT" | grep -q 'does NOT match its anchor'; then CHAIN_RC=3; fi
+  # W7-5: a log that hashes cleanly but whose ANCHOR is gone (a moved project, a fresh clone) is not a
+  # rewritten history, and "Run: board.mjs verify" never named the recovery, `adopt`. PR47-10: only an
+  # ABSENT anchor is UNKNOWN — one that disagrees (deleted / appended / rewritten) is a tamper signal
+  # and BLOCKS, quoting the `adopt --mismatch <kind>` command board.mjs verify prints.
+  if [ "$CHAIN_RC" = 1 ] && printf '%s' "$CHAIN_OUT" | grep -q 'does NOT match its anchor'; then
+    if printf '%s' "$CHAIN_OUT" | grep -q 'does NOT match its anchor (absent)'; then CHAIN_RC=3; else CHAIN_RC=4; fi
+  fi
   case $CHAIN_RC in
     0) ;;
     3) unknown "the board's event log does not match its anchor (outside the tree) — a moved project, a fresh clone, or lines written without the CLI. If the log is genuinely the record, the founder re-trusts it at their own terminal: node \"$HERE/board.mjs\" adopt. $(printf '%s' "$CHAIN_OUT" | sed -n 2p | sed 's/^ *//')" ;;
+    4) block "the board's event log does NOT match its anchor — $(printf '%s' "$CHAIN_OUT" | sed -n 2p | sed 's/^ *//') Restore the log from a backup that matches it; only if the founder accepts exactly this mismatch, at their own terminal: $(printf '%s' "$CHAIN_OUT" | grep -- '--mismatch' | tail -n 1 | sed 's/^ *//')" ;;
     1) block "the board's audit chain is BROKEN — the event log was edited, reordered or truncated after it was written. Run: node \"$HERE/board.mjs\" verify. Every gate below reads state derived from that log." ;;
     *) unknown "board.mjs verify could not read $LOG — the audit chain was NOT checked." ;;
   esac

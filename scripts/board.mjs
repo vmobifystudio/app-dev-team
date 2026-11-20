@@ -1492,7 +1492,7 @@ function cmdVerify(paths) {
   }
   const anchored = checkAnchor(paths.log, text, chain);
   if (!anchored.ok) {
-    process.stdout.write(`AUDIT CHAIN: does NOT match its anchor\n  ${anchored.reason.split('\n').join('\n  ')}\n`);
+    process.stdout.write(`AUDIT CHAIN: does NOT match its anchor (${anchored.kind})\n  ${anchored.reason.split('\n').join('\n  ')}\n`);
     process.exit(1);
   }
   process.stdout.write(

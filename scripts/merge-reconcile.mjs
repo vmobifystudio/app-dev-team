@@ -44,7 +44,9 @@
  *   N/A (exit 0) no git, no board, or no integration branch: nothing for this class to be true of
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { inlineTokenFlag } from './lib/actor.mjs';
 
 import { parseArgs } from './lib/args.mjs';
 import { isQaDocs, parseEventLog, reduce } from './lib/events.mjs';
@@ -171,7 +173,8 @@ if (lying.length) {
     '  so an unapproved merge is impossible. It cannot confirm the merge afterwards, and nothing\n' +
     '  was doing so: a conflict, a dirty tree, a rejected push, or an agent that simply never ran\n' +
     '  the command all left the board claiming a merge that never happened.\n' +
-    '\n  Merge it, or correct the board with `board.mjs move <ID> corrected` naming what went wrong.\n'
+    '\n  Merge it, or correct the board, naming what went wrong:\n' +
+    lying.map((l) => `    node "${resolve(dirname(fileURLToPath(import.meta.url)), 'board.mjs')}" move ${l.id} corrected --by tech-manager --detail "<what went wrong>"${inlineTokenFlag(ROOT, 'tech-manager', l.id)}\n`).join('')
   );
   process.exit(1);
 }

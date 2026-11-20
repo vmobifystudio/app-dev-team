@@ -323,17 +323,17 @@ function checkAnchor(logPath, text, chain) {
     : 'If the log is genuinely the record (a fresh clone, a moved project), that is a human\n' +
       `  decision: the founder runs, at their own terminal,\n    ${cli}\n  knowing it re-trusts whatever the log now says.`);
   if (!existsSync(at)) {
-    if (/"anchored":true/.test(text)) return { ok: false, reason: `${logPath} was written under an anchor, and the anchor (${at}) is gone — the log cannot be shown to be the one that was written.\n${recover('')}` };
+    if (/"anchored":true/.test(text)) return { ok: false, kind: 'absent', reason: `${logPath} was written under an anchor, and the anchor (${at}) is gone — the log cannot be shown to be the one that was written.\n${recover('')}` };
     return { ok: true };
   }
   let a;
-  try { a = JSON.parse(readFileSync(at, 'utf8')); } catch (e) { return { ok: false, reason: `the board anchor ${at} is unreadable (${e.message})\n${recover('rewritten')}` }; }
+  try { a = JSON.parse(readFileSync(at, 'utf8')); } catch (e) { return { ok: false, kind: 'rewritten', reason: `the board anchor ${at} is unreadable (${e.message})\n${recover('rewritten')}` }; }
   if (a.chained === chain.chained && a.tip === chain.tip) return { ok: true };
   const kind = chain.chained < a.chained ? 'deleted' : chain.chained > a.chained ? 'appended' : 'rewritten';
   const what = kind === 'deleted' ? `has ${chain.chained} chained line(s), the anchor recorded ${a.chained} — lines were deleted or the log was replaced`
     : kind === 'appended' ? `has ${chain.chained} chained line(s), the anchor recorded ${a.chained} — lines were appended without the CLI`
       : 'ends at a different hash than the anchor recorded — the history was rewritten and re-hashed';
-  return { ok: false, reason: `the board log ${logPath} ${what}.\n${recover(kind)}` };
+  return { ok: false, kind, reason: `the board log ${logPath} ${what}.\n${recover(kind)}` };
 }
 function writeAnchor(logPath, chained, tip) {
   const at = anchorPath(logPath);

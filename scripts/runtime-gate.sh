@@ -109,7 +109,9 @@ if [ -n "$GDIRS" ] && [ "$(printf '%s\n' "$GDIRS" | sed -n 1p)" = "$(printf '%s\
    && HEAD_SHA=$(git -C "$ROOT" rev-parse --verify -q HEAD 2>/dev/null) \
    && IB=$(sh "$(dirname "$0")/integration-branch.sh" "$ROOT" 2>/dev/null); then
   IB_SHA=$(git -C "$ROOT" rev-parse --verify -q "refs/heads/$IB" 2>/dev/null || git -C "$ROOT" rev-parse --verify -q "refs/remotes/origin/$IB" 2>/dev/null)
-  if [ -n "$IB_SHA" ] && [ "$IB_SHA" != "$HEAD_SHA" ]; then
+  # PR47-12: a HEAD that CONTAINS the integration tip (a release/<version> cut from develop, per
+  # knowledge/git-workflow.md and /app-ship 3b) is what ships; only a HEAD missing it is refused.
+  if [ -n "$IB_SHA" ] && [ "$IB_SHA" != "$HEAD_SHA" ] && ! git -C "$ROOT" merge-base --is-ancestor "$IB_SHA" "$HEAD_SHA" 2>/dev/null; then
     echo "RUNTIME GATE"
     echo "  -        UNKNOWN  $ROOT is at ${HEAD_SHA%"${HEAD_SHA#????????????}"}, not the tip of the integration branch $IB"
     echo "                    (${IB_SHA%"${IB_SHA#????????????}"}). The gate would certify a tree that is not what ships."

@@ -26,8 +26,8 @@ looking fine is cheap.
 node "${CLAUDE_PLUGIN_ROOT}/scripts/run-doctor.mjs" --ledger docs/team/runs.jsonl
 ```
 
-Run it from the project root (it reads `--ledger`, default `docs/team/runs.jsonl` under the current
-directory; there is no `--root`). **The exit code alone does not answer this question** — read the
+Run it from the project root (it reads `--ledger`, default `docs/team/runs.jsonl`, resolved under
+`--root` when given, else under the current directory). **The exit code alone does not answer this question** — read the
 summary line, `RUN DOCTOR: <CLEAR|ANOMALIES> — N attempt(s), M active`:
 
 - `0 active` (exit `0`) → nothing holds a lease. Continue.
@@ -68,8 +68,11 @@ distinguishes two states that look identical from the outside:
 
   ```bash
   node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN corrected --by tech-manager \
-    --detail "the run died between the merge gate and the merge; the branch is not integrated"
+    --detail "the run died between the merge gate and the merge; the branch is not integrated" \
+    --token "$(node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role tech-manager --ticket APP-NNN)"
   ```
+
+  (Drop the `--token` line only when `.studio-policy.json` does not set `requireActorTokens`.)
 
 A ticket stuck at `in_progress` whose agent is gone is **not** repaired by pretending it finished:
 `board.mjs move APP-NNN blocked --by tech-manager --detail "run <id> died mid-ticket"`, and let the

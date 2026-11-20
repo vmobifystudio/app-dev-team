@@ -440,8 +440,9 @@ function notIntegrated(git, ticket, head, mergedHead, root) {
  * web), a qa_passed needs a committed P0 declaration — a test record alone is not QA of a product
  * nobody said what it must do. '' or the refusal.
  */
-const UI_PLATFORMS = /^(ios|android|web|web-app)$/i;
-function journeyDeclarationGap(root, git) {
+// PR47-13: word-matched, like project-profile.mjs — `platform` is free text ("ios+android", "iOS, Android").
+const UI_PLATFORMS = /\b(ios|android|web|web-app)\b/i;
+export function journeyDeclarationGap(root, git) {
   const base = integrationBase(git);
   if (!base) return '';
   const tipI = git(['rev-parse', '--verify', `${base}^{commit}`]);
@@ -487,7 +488,10 @@ export function verifyQaEvidence(root, given, { ticket, mergedTs, mergedHead = '
       : r;
   }
   const git = gitAt(cwd);
-  const away = rec.produced_by === 'wave-integrate.mjs' ? '' : notIntegrated(git, ticket, rec.head, mergedHead, root);
+  // PR47-14: the wave's record is exempt only when it ran on a WAVE branch — a record that merely
+  // names wave-integrate.mjs as producer, on the ticket's own unintegrated branch, is not one.
+  const wave = rec.produced_by === 'wave-integrate.mjs' && /^integration\/wave-/.test(String(rec.branch || ''));
+  const away = wave ? '' : notIntegrated(git, ticket, rec.head, mergedHead, root);
   if (away) return { ok: false, code: 1, reason: `${loc.rel}: ${away}` };
   const undeclared = journeyDeclarationGap(root, git);
   return undeclared ? { ok: false, code: 1, reason: `${loc.rel}: ${undeclared}` } : r;

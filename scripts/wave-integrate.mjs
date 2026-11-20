@@ -73,7 +73,7 @@ import { classifyTestRun } from './lib/test-evidence.mjs';
 import { writeTestEvidence } from './lib/evidence.mjs';
 import { inlineTokenFlag } from './lib/actor.mjs';
 import { RANK, routeFiles } from './lib/risk.mjs';
-import { matchesTicket } from './lib/integration.mjs';
+import { gitAt, integrationResolve, matchesTicket } from './lib/integration.mjs';
 import { indexHides } from './lib/readiness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -112,16 +112,23 @@ const gitTry = (args, opts = {}) => { try { return { ok: true, out: git(args, op
 if (!gitTry(['rev-parse', '--is-inside-work-tree']).ok) die(2, `not a git repository at ${ROOT} — there is nothing to integrate.`);
 
 // --- the base, resolved once, never guessed ------------------------------------------------------
+// PR47-11: the SAME resolver the board uses (integrationResolve), so the two cannot disagree. In a
+// fresh clone it answers `origin/<name>`; the wave lands by moving a LOCAL ref, so it asks for one.
 let BASE = typeof flags.base === 'string' ? flags.base : '';
 if (!BASE) {
-  const r = spawnSync('sh', [resolve(HERE, 'integration-branch.sh')], { cwd: ROOT, encoding: 'utf8' });
-  if (r.status !== 0) {
-    die(2, `the integration branch could not be resolved:\n${(r.stdout || r.stderr || '').trim()}\n` +
+  const r = integrationResolve(gitAt(ROOT));
+  if (!r.base) {
+    die(2, `the integration branch could not be resolved:\n${r.reason}\n` +
            '  Declare it in docs/23-git-strategy.md as: Integration branch: <name>\n' +
            '  Every base that could be substituted here is a guess, and merging a wave into the wrong\n' +
            '  branch is not recoverable by a later fix.');
   }
-  BASE = (r.stdout || '').trim();
+  if (r.base.startsWith('origin/')) {
+    const name = r.base.slice('origin/'.length);
+    die(2, `the integration branch "${name}" exists here only as ${r.base} (a fresh clone). The wave lands by\n` +
+           `  moving the LOCAL branch, so create the local branch first:\n    git branch ${name} ${r.base}`);
+  }
+  BASE = r.base;
 }
 if (!gitTry(['rev-parse', '--verify', BASE]).ok) die(2, `the integration branch "${BASE}" does not exist in this repository.`);
 

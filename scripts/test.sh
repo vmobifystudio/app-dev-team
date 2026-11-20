@@ -2438,10 +2438,17 @@ bm_evidence() {  # <dir> <ticket>  -> prints the record path, or nothing
     fi
     # Sprint 7 U2 (G7-2): QA evidence for a ticket whose own branch is not yet on the integration
     # branch is the WAVE's record (wave-integrate ran the merged wave tree) — a verify-done re-run of
-    # the ticket branch is refused.
+    # the ticket branch is refused. PR47-14: and the wave's record is honest only on a WAVE branch —
+    # `integration/wave-*` at the integration tip merged with the ticket (a fast-forward when the
+    # ticket already contains it), the tree wave-integrate.mjs itself would have run.
     if [ "${3:-}" = qa_passed ] && [ "${_br#evfixture/}" = "$_br" ]; then
+      _ib=$(git rev-parse HEAD)
+      if git merge-base --is-ancestor "$_ib" "$_br" 2>/dev/null; then _wc=$(git rev-parse "$_br")
+      else _wc=$(_gi commit-tree "$(git merge-tree --write-tree "$_ib" "$_br")" -p "$_ib" -p "$_br" -m "wave fixture") || exit 1; fi
+      _wb="integration/wave-ev$(date +%s)$$"
+      git update-ref "refs/heads/$_wb" "$_wc"
       node --input-type=module -e "import { runTestEvidence, evidenceRoot } from '$HERE/lib/evidence.mjs';
-process.stdout.write(runTestEvidence(evidenceRoot(), { branch: process.argv[1], base: process.argv[2], dir: '.', scope: 'fast', producedBy: 'wave-integrate.mjs' }).record || '')" "$_br" "$_base" 2>/dev/null
+process.stdout.write(runTestEvidence(evidenceRoot(), { branch: process.argv[1], base: process.argv[2], dir: '.', scope: 'fast', producedBy: 'wave-integrate.mjs' }).record || '')" "$_wb" "$_ib" 2>/dev/null
       exit 0
     fi
     sh "$HERE/verify-done.sh" "$_br" "$_base" fast 2>/dev/null \
@@ -11174,8 +11181,9 @@ assert_has "$TMP/err" "security-reviewer" "F1: ...requiring the escalated tier's
 rm -f "$F1N/docs/team/risk-policy.json"
 f1m "$F1N" move F-1 merged --by tech-manager --head feat/unnamed >/dev/null 2>&1
 # Sprint 7 U2 (G7-2): QA evidence on code not yet on main is only the WAVE's record (the merged wave tree).
-F1NQ=$( cd "$F1N" && node --input-type=module -e "import { runTestEvidence, evidenceRoot } from '$HERE/lib/evidence.mjs';
-process.stdout.write(runTestEvidence(evidenceRoot(), { branch: 'feat/unnamed', base: 'feat/unnamed', dir: '.', scope: 'fast', producedBy: 'wave-integrate.mjs' }).record || '')" 2>/dev/null )
+# PR47-14: run on a wave branch (main + the ticket, a fast-forward here), as wave-integrate.mjs does.
+F1NQ=$( cd "$F1N" && git branch integration/wave-f1 feat/unnamed && node --input-type=module -e "import { runTestEvidence, evidenceRoot } from '$HERE/lib/evidence.mjs';
+process.stdout.write(runTestEvidence(evidenceRoot(), { branch: 'integration/wave-f1', base: 'main', dir: '.', scope: 'fast', producedBy: 'wave-integrate.mjs' }).record || '')" 2>/dev/null )
 f1m "$F1N" move F-1 qa_passed --by qa-engineer --evidence "$F1NQ" >/dev/null 2>&1
 assert_exit 1 "F1: closed with no branch named for the ticket and no --head is refused (G2-8)" f1m "$F1N" move F-1 closed --by tech-manager
 assert_has "$TMP/err" "the commit recorded at merged" "F1: ...naming the commit recorded at merged, which is not on main"
@@ -13310,14 +13318,16 @@ echo "PR47 review: Codex and CI follow-ups"
 # CI: the W7-3 tip check is for a studio project's own checkout — a fixture directory inside another
 # repo (eval/crash-on-launch in the plugin's PR merge commit) must not be refused for it.
 P47R="$TMP/p47-rt"; mkdir -p "$P47R/eval/app" && ( cd "$P47R" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
-  && echo x > eval/app/a && git add eval && git commit -qm i && git checkout -q -b pr && git commit -q --allow-empty -m pr && mkdir -p docs && : > docs/31-board-events.jsonl ) >/dev/null 2>&1
+  && echo x > eval/app/a && git add eval && git commit -qm i && git checkout -q -b pr && git commit -q --allow-empty -m pr \
+  && git checkout -q main && git commit -q --allow-empty -m m2 && git checkout -q pr && mkdir -p docs && : > docs/31-board-events.jsonl ) >/dev/null 2>&1
 sh "$HERE/runtime-gate.sh" --project-root "$P47R/eval/app" >"$TMP/p47r.txt" 2>&1
 ! grep -q 'not the tip of the integration branch' "$TMP/p47r.txt" \
   && ok "PR47: the runtime gate's integration-tip check skips a fixture directory inside another repo" \
   || bad "PR47: the runtime gate's integration-tip check skips a fixture directory inside another repo" "$(head -3 "$TMP/p47r.txt")"
 # ...and a repo that is not a studio project (no board log), even at its own toplevel off main.
 P47N="$TMP/p47-plain"; mkdir -p "$P47N" && ( cd "$P47N" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
-  && echo x > a && git add a && git commit -qm i && git checkout -q -b pr && git commit -q --allow-empty -m pr ) >/dev/null 2>&1
+  && echo x > a && git add a && git commit -qm i && git checkout -q -b pr && git commit -q --allow-empty -m pr \
+  && git checkout -q main && git commit -q --allow-empty -m m2 && git checkout -q pr ) >/dev/null 2>&1
 sh "$HERE/runtime-gate.sh" --project-root "$P47N" >"$TMP/p47r2.txt" 2>&1
 ! grep -q 'not the tip of the integration branch' "$TMP/p47r2.txt" \
   && ok "PR47: the runtime gate's integration-tip check skips a repo that is not a studio project" \
@@ -13386,6 +13396,11 @@ p47m move T-1 review_requested --by ios-developer >/dev/null 2>&1
 printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\nsrc/r.ts read.\n\n## Not checked\nNothing.\n' > "$P47RW/docs/53-reviews/v.md"
 p47m move T-1 approved --by code-reviewer --verdict docs/53-reviews/v.md >/dev/null 2>&1
 p47m move T-1 merged --by tech-manager >/dev/null 2>&1
+# PR47-15: the correction merge-reconcile prints for a merged-but-unlanded ticket is runnable (--by, absolute path).
+( cd "$P47RW" && node "$HERE/merge-reconcile.mjs" --root . ) >"$TMP/p47mr.txt" 2>&1
+grep -qF "board.mjs\" move T-1 corrected --by tech-manager" "$TMP/p47mr.txt" \
+  && ok "PR47 fixes: merge-reconcile prints the full corrected command, with --by" \
+  || bad "PR47 fixes: merge-reconcile prints the full corrected command, with --by" "$(tail -4 "$TMP/p47mr.txt")"
 p47m move T-1 rework --by tech-manager --detail "wave 1: CONFLICT src/r.ts" >/dev/null 2>&1
 ( cd "$P47RW" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket T-1 --role ios-developer --slot .agent-wt/ios-developer ) >"$TMP/p47rw.txt" 2>&1
 grep -q 'checkout feat/T-1-x' "$TMP/p47rw.txt" && grep -qF 'wave 1: CONFLICT src/r.ts' "$TMP/p47rw.txt" && grep -q 'rebase main' "$TMP/p47rw.txt" \
@@ -13442,6 +13457,95 @@ P47TD=$(plugin_copy p47td)
   && node "$HERE/team-doctor.mjs" --json ) > "$TMP/p47td.json" 2>/dev/null
 assert_finding "$TMP/p47td.json" prompt_registry_stale \
   "PR47 fixes: a spawn template edited without a registry sync is a team-doctor finding" "template/scripts/spawn-prompt.mjs"
+
+# --- PR47 fixes: an anchor that disagrees blocks; only an absent one is unknown ---
+echo "PR47 fixes: an anchor that disagrees blocks; only an absent one is unknown"
+P47AN="$TMP/p47-anchor"; rm -rf "$P47AN"; mkdir -p "$P47AN"
+( cd "$P47AN" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m i \
+  && node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager \
+  && node "$HERE/board.mjs" add APP-2 --title u --owner ios-developer --by tech-manager && node "$HERE/board.mjs" render ) >/dev/null 2>&1
+P47LN=$(grep -c . "$P47AN/docs/31-board-events.jsonl")
+head -n $((P47LN - 1)) "$P47AN/docs/31-board-events.jsonl" > "$TMP/p47an.jsonl" && cat "$TMP/p47an.jsonl" > "$P47AN/docs/31-board-events.jsonl"
+( cd "$P47AN" && node "$HERE/board-doctor.mjs" docs/31-board.md ) >/dev/null 2>"$TMP/p47anb.txt"
+P47RC=$?
+[ "$P47RC" = 1 ] && grep -q -- '--mismatch deleted' "$TMP/p47anb.txt" \
+  && ok "PR47 fixes: board-doctor exits 1 on a log with lines deleted under its anchor, naming adopt --mismatch deleted" \
+  || bad "PR47 fixes: board-doctor exits 1 on a log with lines deleted under its anchor, naming adopt --mismatch deleted" "rc=$P47RC $(head -3 "$TMP/p47anb.txt")"
+( cd "$P47AN" && sh "$HERE/ship-gate.sh" ) >"$TMP/p47ans.txt" 2>&1
+grep 'does NOT match its anchor' "$TMP/p47ans.txt" | grep -q -- '--mismatch deleted' \
+  && ok "PR47 fixes: ship-gate blocks a deleted-lines anchor mismatch and prints the --mismatch command" \
+  || bad "PR47 fixes: ship-gate blocks a deleted-lines anchor mismatch and prints the --mismatch command" "$(grep -E 'anchor' "$TMP/p47ans.txt" | head -2)"
+
+# --- PR47 fixes: the wave and the board resolve the integration branch one way ---
+echo "PR47 fixes: the wave and the board resolve the integration branch one way"
+P47FC="$TMP/p47-fc"; rm -rf "$P47FC"; mkdir -p "$P47FC/src/docs"
+( cd "$P47FC/src" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf '# Git\nIntegration branch: develop\n' > docs/23-git-strategy.md && git add docs && git commit -qm i && git branch develop \
+  && cd .. && git clone -q src clone ) >/dev/null 2>&1
+( cd "$P47FC/clone" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command true ) >"$TMP/p47fc.txt" 2>&1
+P47RC=$?
+[ "$P47RC" = 2 ] && grep -qF 'git branch develop origin/develop' "$TMP/p47fc.txt" \
+  && ok "PR47 fixes: in a fresh clone the wave names origin/develop and says to create the local branch" \
+  || bad "PR47 fixes: in a fresh clone the wave names origin/develop and says to create the local branch" "rc=$P47RC $(head -3 "$TMP/p47fc.txt")"
+
+# --- PR47 fixes: the runtime gate accepts a release branch that contains the integration tip ---
+echo "PR47 fixes: the runtime gate accepts a release branch that contains the integration tip"
+P47RL="$TMP/p47-rel"; rm -rf "$P47RL"; mkdir -p "$P47RL/docs"
+( cd "$P47RL" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf '# Git\nIntegration branch: develop\n' > docs/23-git-strategy.md && git add docs && git commit -qm i && git branch develop \
+  && git checkout -q -b release/1.0.0 develop && git commit -q --allow-empty -m 'bump 1.0.0' && : > docs/31-board-events.jsonl ) >/dev/null 2>&1
+sh "$HERE/runtime-gate.sh" --project-root "$P47RL" >"$TMP/p47rl.txt" 2>&1
+! grep -q 'not the tip of the integration branch' "$TMP/p47rl.txt" \
+  && ok "PR47 fixes: runtime-gate on a release/* HEAD that contains the develop tip is not refused for the tip" \
+  || bad "PR47 fixes: runtime-gate on a release/* HEAD that contains the develop tip is not refused for the tip" "$(head -3 "$TMP/p47rl.txt")"
+
+# --- PR47 fixes: QA evidence — free-text UI platforms, and the wave exemption needs a wave branch ---
+echo "PR47 fixes: QA evidence — free-text UI platforms, and the wave exemption needs a wave branch"
+P47EV="$TMP/p47-ev"; rm -rf "$P47EV"; mkdir -p "$P47EV/docs/team" "$P47EV/src"
+printf '{"schema":"project-profile/v1","platform":"ios+android","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$P47EV/docs/team/project-profile.json"
+( cd "$P47EV" && git init -q -b main . && echo x > src/a.ts && git add src docs && git -c user.name=t -c user.email=t@t commit -qm base \
+  && git checkout -q -b feat/T-1-x && echo y > src/b.ts && git add src && git -c user.name=t -c user.email=t@t commit -qm b && git checkout -q main ) >/dev/null 2>&1
+P47J=$(node --input-type=module -e '
+import { journeyDeclarationGap } from "'"$HERE"'/lib/evidence.mjs";
+import { gitAt } from "'"$HERE"'/lib/integration.mjs";
+process.stdout.write(journeyDeclarationGap(process.argv[1], gitAt(process.argv[1])) ? "gap" : "none");' "$P47EV" 2>&1)
+[ "$P47J" = gap ] && ok "PR47 fixes: platform \"ios+android\" is a UI platform — no declared journey is a QA gap (S7-5)" \
+  || bad "PR47 fixes: platform \"ios+android\" is a UI platform — no declared journey is a QA gap (S7-5)" "$P47J"
+P47W=$(cd "$P47EV" && node --input-type=module -e '
+import { runTestEvidence, verifyQaEvidence, evidenceRoot } from "'"$HERE"'/lib/evidence.mjs";
+const rec = runTestEvidence(evidenceRoot(), { branch: "feat/T-1-x", base: "main", dir: ".", scope: "fast", producedBy: "wave-integrate.mjs" }).record;
+const v = verifyQaEvidence(evidenceRoot(), rec, { ticket: "T-1", mergedTs: "1970-01-01T00:00:00Z", cwd: process.cwd() });
+process.stdout.write(v.ok ? "accepted" : v.reason);' 2>&1)
+case $P47W in *"is not on main yet"*) ok "PR47 fixes: a wave-integrate.mjs record on the ticket's own unintegrated branch is not exempt from the integration check" ;;
+  *) bad "PR47 fixes: a wave-integrate.mjs record on the ticket's own unintegrated branch is not exempt from the integration check" "$P47W" ;; esac
+
+# --- PR47 fixes: verification of a QA- ticket at qa is not a qa_passed prompt ---
+echo "PR47 fixes: verification of a QA- ticket at qa is not a qa_passed prompt"
+P47QA="$TMP/p47-qa"; rm -rf "$P47QA"; mkdir -p "$P47QA/docs/team" "$P47QA/.agent-wt/verification-engineer"
+printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$P47QA/docs/team/project-profile.json"
+( cd "$P47QA" && git init -q -b main . && git add docs && git -c user.name=t -c user.email=t@t commit -qm base \
+  && node "$HERE/board.mjs" add QA-1 --title "QA pass" --owner qa-engineer --by tech-manager \
+  && git checkout -q -b qa/QA-1 && echo plan > docs/50-test-plan.md && git add docs/50-test-plan.md && git -c user.name=t -c user.email=t@t commit -qm plan && git checkout -q main \
+  && node "$HERE/board.mjs" move QA-1 claimed --by qa-engineer && node "$HERE/board.mjs" move QA-1 done_reported --by qa-engineer \
+  && node "$HERE/board.mjs" move QA-1 verified --by tech-manager --evidence "$(sh "$HERE/verify-done.sh" qa/QA-1 main --docs-only 2>&1 | sed -n 's/^  Evidence: //p')" \
+  && node "$HERE/board.mjs" move QA-1 merged --by tech-manager ) >/dev/null 2>&1
+P47QS=$(cd "$P47QA" && node "$HERE/board.mjs" show QA-1 --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s)["QA-1"].status)}catch{}})')
+( cd "$P47QA" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-1 --role verification-engineer --slot .agent-wt/verification-engineer ) >"$TMP/p47qa.txt" 2>&1
+[ "$P47QS" = qa ] && ! grep -q 'qa_passed' "$TMP/p47qa.txt" && grep -q 'Verify ticket QA-1' "$TMP/p47qa.txt" \
+  && ok "PR47 fixes: a QA- ticket at qa is composed as a verification, never with qa_passed" \
+  || bad "PR47 fixes: a QA- ticket at qa is composed as a verification, never with qa_passed" "status=$P47QS $(grep -m2 'qa_passed\|Verify' "$TMP/p47qa.txt")"
+# PR47-15: dispatch-preflight's correction names board.mjs by absolute path and carries the token when tokens are required.
+P47DP="$TMP/p47-dpf"; rm -rf "$P47DP"; mkdir -p "$P47DP/docs" "$P47DP/src"; echo "# PRD" > "$P47DP/docs/10-prd.md"
+( cd "$P47DP" && git init -q -b main . && git config user.email t@t.com && git config user.name t && echo x > a.txt && git add a.txt docs && git commit -qm base \
+  && node "$HERE/board.mjs" add APP-001 --title "declares nothing" --owner ios-developer --by tech-manager && node "$HERE/team-bootstrap.mjs" --root "$P47DP" ) >/dev/null 2>&1
+printf '{"requireTicketFiles": true, "requireActorTokens": true}\n' > "$P47DP/.studio-policy.json"
+( cd "$P47DP" && node "$HERE/dispatch-preflight.mjs" --root "$P47DP" --ticket APP-001 \
+  --context docs/team/context-manifest.json --schedule docs/team/schedule.json \
+  --capability docs/team/capabilities.json --risk docs/team/risk-policy.json \
+  --role ios-developer --operation write --path src/App.swift --file src/App.swift --change feature ) >"$TMP/p47dp.txt" 2>&1
+grep -qF "$HERE/board.mjs\" move APP-001 corrected --by tech-manager" "$TMP/p47dp.txt" && grep -q -- '--token "$(node' "$TMP/p47dp.txt" \
+  && ok "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" \
+  || bad "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" "$(grep -m3 'corrected\|token\|dispatch' "$TMP/p47dp.txt")"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

@@ -487,7 +487,7 @@ MS7U2-02@@scripts/lib/evidence.mjs@@'--no-renames', '--name-only', '-z', from, t
 MS7U2-03@@scripts/board.mjs@@const files = mb ? changedFiles(g, mb, tip.sha) : null;@@const files = mb ? (g(['diff', '--name-only', mb, tip.sha]) || '').split('\n').filter(Boolean) : null;@@U2: merged is refused when a rename moves code out of a high-risk path (G7-4)@@Sprint 7 U2
 MS7U2-04@@scripts/lib/risk.mjs@@approvals: union(tier, 'approvals')@@approvals: selected.approvals || []@@U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)@@Sprint 7 U2
 MS7U2-05@@scripts/lib/risk.mjs@@best.approvals = [...new Set([...best.approvals, ...r.approvals])];@@void 0;@@U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)@@Sprint 7 U2
-MS7U2-06@@scripts/lib/evidence.mjs@@const away = rec.produced_by === 'wave-integrate.mjs' ? '' : notIntegrated(git, ticket, rec.head, mergedHead, root);@@const away = '';@@U2: qa_passed on a post-merge re-run of the ticket's own unintegrated branch is refused (G7-2)@@Sprint 7 U2
+MS7U2-06@@scripts/lib/evidence.mjs@@const away = wave ? '' : notIntegrated(git, ticket, rec.head, mergedHead, root);@@const away = '';@@U2: qa_passed on a post-merge re-run of the ticket's own unintegrated branch is refused (G7-2)@@Sprint 7 U2
 MS7U2-07@@scripts/lib/evidence.mjs@@if (mergedTs && !(Date.parse(v.evaluated_at) > Date.parse(mergedTs))) return fail(@@if (false) return fail(@@U2: a journey PASS evaluated before the ticket merged is not QA evidence (G7-2)@@Sprint 7 U2
 MS7U2-08@@scripts/lib/evidence.mjs@@const undeclared = journeyDeclarationGap(root, git);@@const undeclared = '';@@U2: qa_passed on a web project with no journey declared is refused (S7-5)@@Sprint 7 U2
 MS7U2-09@@scripts/lib/evidence.mjs@@if (sel.only) return@@if (false) return@@U2: a journey PASS from --only <id> does not count (G7-7)@@Sprint 7 U2
@@ -509,7 +509,7 @@ MS7U2-18@@scripts/board.mjs@@if (String(flags.role || '') === 'founder' && tkt) 
 U401@@scripts/context-preflight.mjs@@if (inSlot) notes.push(@@if (false) notes.push(@@Sprint 7 U4: preflight clears a freshly leased, detached slot (C7-2)@@Sprint 7 U4
 U402@@scripts/context-preflight.mjs@@const writer = role ? Boolean(contractFor(role)) : inSlot;@@const writer = true;@@Sprint 7 U4: a reviewer in the main checkout on the integration branch is not blocked, --ticket first (C7-2)@@Sprint 7 U4
 U403@@scripts/context-preflight.mjs@@const row = rows && rows[ticket.toUpperCase()];@@const row = null;@@Sprint 7 U4: ...reading the ticket from the main project's board, not a docs/31-board.md the slot lacks (C7-2)@@Sprint 7 U4
-U404@@scripts/spawn-prompt.mjs@@if (row.owner === 'qa-engineer' && row.status === 'qa') return composeQaVerdict(@@if (false) return composeQaVerdict(@@Sprint 7 U4: the VE QA-verdict prompt's own qa_passed command is accepted, and the ticket closes (R7-1)@@Sprint 7 U4
+U404@@scripts/spawn-prompt.mjs@@if (row.owner === 'qa-engineer' && row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict(@@if (false) return composeQaVerdict(@@Sprint 7 U4: the VE QA-verdict prompt's own qa_passed command is accepted, and the ticket closes (R7-1)@@Sprint 7 U4
 U405@@scripts/spawn-prompt.mjs@@const mine = wave.filter(own);@@const mine = [];@@Sprint 7 U4: the QA wave refuses a qa-engineer-owned ticket (it cannot pass its own work) (R7-1)@@Sprint 7 U4
 U406@@scripts/spawn-prompt.mjs@@e.by === 'code-reviewer' && (e.event === 'approved' || e.event === 'changes') && e.detail?.verdict_path@@false@@Sprint 7 U4: after REQUEST CHANGES the VE prompt carries the constants routed in the verdict the reviewer cited (R7-5, C7-4)@@Sprint 7 U4
 U407@@scripts/spawn-prompt.mjs@@const artifact = contract.tier === 'artifact' && !qa;@@const artifact = false;@@Sprint 7 U4: an artifact owner (ux-architect on docs/12-flows.md) is told to edit its Spec, not forbidden to (R7-6)@@Sprint 7 U4
@@ -552,8 +552,8 @@ MS7U1G@@scripts/wave-integrate.mjs@@if (ahead.length) { moved.push(@@if (false) 
 MS7U1H@@scripts/wave-integrate.mjs@@  || indexHides(WT);@@  || false;@@Sprint 7 U1: a wave suite that hides an edit behind assume-unchanged is CANNOT EVALUATE (G7-17)@@Sprint 7 U1
 MS7U1I@@scripts/wave-integrate.mjs@@const GREEN_REF = `refs/studio/wave-green/${WAVE}`;@@rmSync(WT, { recursive: true, force: true }); const GREEN_REF = `refs/studio/wave-green/${WAVE}`;@@Sprint 7 U1: re-running an existing wave keeps the kept wave tree on disk (W7-8)@@Sprint 7 U1
 MS7U1J@@scripts/board-doctor.mjs@@if (!anchor.ok) {@@if (false) {@@Sprint 7 U1: board-doctor is CANNOT EVALUATE on a log whose anchor is gone, naming adopt (W7-5)@@Sprint 7 U1
-MS7U1K@@scripts/ship-gate.sh@@then CHAIN_RC=3; fi@@then CHAIN_RC=1; fi@@Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)@@Sprint 7 U1
-MS7U1L@@scripts/runtime-gate.sh@@if [ -n "$IB_SHA" ] && [ "$IB_SHA" != "$HEAD_SHA" ]; then@@if false; then@@Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)@@Sprint 7 U1
+MS7U1K@@scripts/ship-gate.sh@@(absent)'; then CHAIN_RC=3;@@(absent)'; then CHAIN_RC=1;@@Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)@@Sprint 7 U1
+MS7U1L@@scripts/runtime-gate.sh@@if [ -n "$IB_SHA" ] && [ "$IB_SHA" != "$HEAD_SHA" ]@@if false@@Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)@@Sprint 7 U1
 
 MV01@@hooks/contract-hooks.mjs@@if (n && !n.startsWith('#')) WRAPPERS.set(n, { ops: Number(ops) || 0, vals: new Set(vals) });@@void n;@@U3: guard exit 2 — wrappers.txt row 'timeout' wraps rm@@Sprint 7 U3
 MV02@@hooks/block-shared-tree-destructive-git.sh@@nf = split(line, F, /[ \t]+/); WRAP[F[1]] = 1;@@nf = split(line, F, /[ \t]+/);@@U3: git hook exit 2 — wrappers.txt row 'setsid' wraps git@@Sprint 7 U3
@@ -585,6 +585,15 @@ MF47H@@scripts/messages.mjs@@      registration: true,@@      registration: fals
 MF47I@@scripts/lib/atomic.mjs@@const ownerFile = (lockPath) => (statSync(lockPath).isDirectory() ? join(lockPath, 'owner') : lockPath);@@const ownerFile = (lockPath) => lockPath;@@PR47 fixes: main's directory lock with a dead owner is reaped, not waited out@@PR47 fixes
 MF47J@@scripts/lib/atomic.mjs@@if ((Number.isInteger(pid) && pid > 0) || age < ORPHAN_AGE_MS) return '';@@return '';@@PR47 fixes: an aged lock naming no holder says how to clear it@@PR47 fixes
 MF47K@@scripts/team-doctor.mjs@@for (const entry of registry.entries.filter((e) => String(e.id).startsWith('template/') && e.content_hash)) {@@for (const entry of []) {@@PR47 fixes: a spawn template edited without a registry sync is a team-doctor finding@@PR47 fixes
+MF47L@@scripts/board-doctor.mjs@@process.exit(anchor.kind === 'absent' ? 2 : 1);@@process.exit(2);@@PR47 fixes: board-doctor exits 1 on a log with lines deleted under its anchor@@PR47 fixes
+MF47M@@scripts/ship-gate.sh@@then CHAIN_RC=3; else CHAIN_RC=4; fi@@then CHAIN_RC=3; else CHAIN_RC=3; fi@@PR47 fixes: ship-gate blocks a deleted-lines anchor mismatch@@PR47 fixes
+MF47N@@scripts/wave-integrate.mjs@@if (r.base.startsWith('origin/')) {@@if (false) {@@PR47 fixes: in a fresh clone the wave names origin/develop@@PR47 fixes
+MF47O@@scripts/runtime-gate.sh@@ && ! git -C "$ROOT" merge-base --is-ancestor "$IB_SHA" "$HEAD_SHA" 2>/dev/null; then@@; then@@PR47 fixes: runtime-gate on a release/* HEAD that contains the develop tip@@PR47 fixes
+MF47P@@scripts/lib/evidence.mjs@@const UI_PLATFORMS = /\b(ios|android|web|web-app)\b/i;@@const UI_PLATFORMS = /^(ios|android|web|web-app)$/i;@@PR47 fixes: platform@@PR47 fixes
+MF47Q@@scripts/lib/evidence.mjs@@&& /^integration\/wave-/.test(String(rec.branch || ''));@@;@@PR47 fixes: a wave-integrate.mjs record on the ticket's own unintegrated branch@@PR47 fixes
+MF47R@@scripts/spawn-prompt.mjs@@row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict@@row.status === 'qa') return composeQaVerdict@@PR47 fixes: a QA- ticket at qa is composed as a verification@@PR47 fixes
+MF47S@@scripts/merge-reconcile.mjs@@corrected --by tech-manager --detail "<what went wrong>"@@corrected --detail "<what went wrong>"@@PR47 fixes: merge-reconcile prints the full corrected command, with --by@@PR47 fixes
+MF47T@@scripts/dispatch-preflight.mjs@@${inlineTokenFlag(resolve(String(flags.root)), 'tech-manager', flags.ticket)}@@@@PR47 fixes: dispatch-preflight's corrected command is absolute@@PR47 fixes
 CATALOGUE
 }
 

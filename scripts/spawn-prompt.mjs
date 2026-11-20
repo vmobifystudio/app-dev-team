@@ -673,7 +673,8 @@ function composeDesignQa({ ROOT, row, allIds, base, role }) {
 
 /** Verification of what a reviewer routed: the constants and rules named in its verdict file. */
 function composeVerify({ ROOT, row, allIds, base, role }) {
-  if (row.owner === 'qa-engineer' && row.status === 'qa') return composeQaVerdict({ ROOT, row, allIds, base, role });
+  // PR47-15: not on a QA- ticket — its legal events at `qa` are closed/verified/qa_failed, never qa_passed.
+  if (row.owner === 'qa-engineer' && row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict({ ROOT, row, allIds, base, role });
   const { branch, tip } = reviewSubject(ROOT, row, allIds, base);
   // R7-5 / C7-4: the file the latest code-reviewer verdict CITED — `changes` bumps `cycles`, so
   // recomputing `<ID>-cycle-<cycles>.md` named a file nobody wrote after every REQUEST CHANGES.
