@@ -310,13 +310,13 @@
     },
     {
       "id": "template/scripts/spawn-prompt.mjs",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "owner": "template/scripts/spawn-prompt.mjs",
       "eval_suite": "eval/manifest.json",
       "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.2",
-      "content_hash": "6667c38ac318c1db52d7648df5df5921000ce886dd04c1f76aae4ece6a31e915"
+      "rollback_version": "1.0.3",
+      "content_hash": "73f1f4761410f79e81634d92f1bbbd131f13a13e9972f4b4be62bc33fa309a0b"
     },
     {
       "id": "template/scripts/lib/contract.mjs",

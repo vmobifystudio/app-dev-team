@@ -172,10 +172,11 @@ wrote under `docs/team/evidence/` (`wave-integrate`'s, or `verify-done.sh <integ
 
 **First declarations land before verdicts.** `qa_passed` on a UI project needs a P0 journey
 declaration already committed on the integration branch — a declaration still on QA's branch is
-refused, even with the full-suite fallback. So when QA writes the first `docs/team/journeys/*.json`
+refused, even with the full-suite fallback. So when QA writes the first `docs/team/journeys/<journey-id>.json`
 (or a new P0 one), it returns its `QA-` ticket WITHOUT verdicts; land it (app-build step 5), re-run
-the journey gate, then re-spawn QA with `compose --ticket QA-<sprint>-w<n> --role qa-engineer` to
-record each `qa_passed`/`qa_failed` against the landed declarations. Only then close.
+the journey gate, then lease QA a slot and re-spawn it with `compose --ticket QA-<sprint>-w<n> --role
+qa-engineer` — it composes a VERDICT PASS on the landed tree (no new branch) — to record each
+`qa_passed`/`qa_failed` against the landed declarations. Only then close.
 
 **`qa_failed` → the fix.** The rejected ticket stays in `qa`. Add
 `BUG-NNN-fix --owner <platform dev> --depends APP-NNN` (branch `feat/BUG-NNN-fix-<slug>`): a

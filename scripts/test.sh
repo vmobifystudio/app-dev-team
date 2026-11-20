@@ -13423,6 +13423,19 @@ grep -q 'First declarations land before verdicts' "$HERE/../skills/parallel-orch
   && grep -q 'unless its P0 journeys are new' "$HERE/../commands/app-build.md" \
   && ok "PR47 round 2: app-build sends new P0 declarations to land before QA records verdicts" \
   || bad "PR47 round 2: app-build sends new P0 declarations to land before QA records verdicts"
+# Codex PR #47 round 3: the re-spawn after landing composes a VERDICT PASS, not `checkout -b` of the
+# QA branch that already exists (fatal: a branch named 'qa/QA-1' already exists).
+P47Q="$TMP/p47-qa"; rm -rf "$P47Q"; mkdir -p "$P47Q/docs/team" "$P47Q/.agent-wt/qa-engineer"
+( cd "$P47Q" && git init -q -b main . && echo x > a && git add a && p47g commit -qm base \
+  && node "$HERE/board.mjs" add QA-1 --title "QA pass — wave 1" --owner qa-engineer --by tech-manager \
+  && node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager ) >/dev/null 2>&1
+( cd "$P47Q" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-1 --role qa-engineer --tickets APP-1 --slot .agent-wt/qa-engineer ) >"$TMP/p47q1.txt" 2>&1
+( cd "$P47Q" && git branch qa/QA-1 main ) >/dev/null 2>&1
+( cd "$P47Q" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-1 --role qa-engineer --tickets APP-1 --slot .agent-wt/qa-engineer ) >"$TMP/p47q2.txt" 2>&1
+grep -q 'checkout -b qa/QA-1' "$TMP/p47q1.txt" && grep -q 'VERDICT PASS' "$TMP/p47q2.txt" && ! grep -q 'checkout -b' "$TMP/p47q2.txt" \
+  && grep -q 'checkout --detach main' "$TMP/p47q2.txt" \
+  && ok "PR47 round 3: QA's first spawn cuts qa/QA-1; the re-spawn once it exists is a verdict pass on the landed tree" \
+  || bad "PR47 round 3: QA's first spawn cuts qa/QA-1; the re-spawn once it exists is a verdict pass on the landed tree" "$(head -c 400 "$TMP/p47q2.txt")"
 
 # --- PR47 fixes: the guard finds a studio root from a relative target ---
 echo "PR47 fixes: the guard finds a studio root from a relative target"

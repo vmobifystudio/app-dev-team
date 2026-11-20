@@ -415,6 +415,15 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
       ...(/CONFLICT/i.test(why) && base ? [`It CONFLICTED with \`${base}\`: rebase first and resolve — \`git -C "${slot}" rebase ${base}\`.`] : []),
       'Why it came back (the `rework` event, verbatim):', '', ...fence(why || '(no detail recorded)'),
     ];
+  } else if (qa && base && tryGit(ROOT, ['rev-parse', '--verify', '-q', `refs/heads/${branchName}`])) {
+    // Codex PR #47 R3: first P0 declarations land BEFORE verdicts (build-loop-branches §Step 5), so QA
+    // is re-spawned on its own QA- ticket after landing. Its branch exists; `checkout -b` is fatal.
+    start = [
+      `**This is the VERDICT PASS.** \`${branchName}\` already exists and its declarations have landed on \`${base}\`.`,
+      `Do NOT create a branch and do NOT redo the plan: \`git -C "${slot}" checkout --detach ${base}\` (the landed tree),`,
+      're-run the journey gate there, then record a verdict for every ticket below. Return the contract with',
+      `\`Branch: ${branchName}\` and \`Files:\` listing only evidence you added (usually none).`,
+    ];
   } else {
     start = base
       ? [`Base: \`${base}\` (the integration branch). Your FIRST action, before writing any file:`, '',
