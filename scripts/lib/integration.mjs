@@ -22,23 +22,33 @@ export function gitAt(cwd) {
 }
 
 /**
- * The branch DECLARED in docs/23-git-strategy.md (or 20-architecture.md), resolved by the one
- * resolver wave-integrate lands on (integration-branch.sh) — else `develop`, then `main`, then
- * `master`. Codex on PR #46: a project declaring `main` that still had a `develop` branch got its
- * waves landed on main while `closed` checked develop and refused. '' when none.
+ * The integration branch, as `{base, reason}` — ONE answer, integration-branch.sh's, everywhere.
+ *
+ * W7-2 / C7-5: this used to trust the script only when it said "declared in", and otherwise fell
+ * back develop → main → master. With no strategy doc the script says `main` and this said `develop`
+ * (a stale brownfield branch), so compose/verify-done/the wave measured from main while approval,
+ * `merged` and `closed` measured from develop; and a doc that could not be resolved (exit 2) quietly
+ * became develop here while the wave refused. Now: the script's exit 0 is the answer; its exit 2 is
+ * '' with its reason (fail closed — never a branch nobody declared).
+ *
+ * G7-16: the answer is a ref that RESOLVES. In a fresh clone the declared `develop` exists only as
+ * `origin/develop`, and every `rev-parse develop` below came back null ("not merged into develop"
+ * for merged code). That case returns `origin/<name>`.
  */
-export function integrationBase(git, explicit = '') {
-  if (explicit) return explicit;
+export function integrationResolve(git, explicit = '') {
+  if (explicit) return { base: explicit, reason: '' };
   const top = git(['rev-parse', '--show-toplevel']);
-  if (top) {
-    const r = spawnSync('sh', [resolve(HERE, '..', 'integration-branch.sh')], { cwd: top, encoding: 'utf8' });
-    const name = (r.stdout || '').trim();
-    if (r.status === 0 && name && /\(declared in /.test(r.stderr || '')) return name;
-  }
-  for (const candidate of ['develop', 'main', 'master']) {
-    if (git(['rev-parse', '--verify', '--quiet', candidate]) !== null) return candidate;
-  }
-  return '';
+  if (!top) return { base: '', reason: 'not a git repository, so there is no integration branch' };
+  const r = spawnSync('sh', [resolve(HERE, '..', 'integration-branch.sh')], { cwd: top, encoding: 'utf8' });
+  const name = (r.stdout || '').trim();
+  if (r.status !== 0 || !name) return { base: '', reason: name || (r.stderr || '').trim() || 'integration-branch.sh could not resolve the integration branch' };
+  if (git(['rev-parse', '--verify', '--quiet', `refs/heads/${name}`]) !== null) return { base: name, reason: '' };
+  if (git(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${name}`]) !== null) return { base: `origin/${name}`, reason: '' };
+  return { base: '', reason: `the integration branch ${name} does not exist here, locally or as origin/${name}` };
+}
+/** The integration branch ref, or '' (integrationResolve's reason says why). */
+export function integrationBase(git, explicit = '') {
+  return integrationResolve(git, explicit).base;
 }
 
 /**

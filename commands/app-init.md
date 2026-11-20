@@ -84,12 +84,14 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    ```bash
    git rev-parse --is-inside-work-tree >/dev/null 2>&1 || git init -b main
    touch .gitignore
-   for p in .agent-wt/ .studio-stop docs/31-board-events.jsonl docs/31-board.md \
+   for p in .agent-wt/ .studio-stop .studio-cache/ docs/31-board-events.jsonl docs/31-board.md \
             docs/team/runs.jsonl docs/team/runtime-result.json docs/team/journey-result.json \
             docs/team/actors.json docs/team/actor-tokens.jsonl docs/team/reports/ \
-            docs/53-reviews/ docs/54-evidence/ docs/33-rounds.jsonl docs/team/evidence/ \
+            docs/53-reviews/ docs/54-evidence/runtime/ docs/54-evidence/journeys/ \
+            docs/33-rounds.jsonl docs/team/evidence/ \
             docs/team/worktree-slots.json docs/team/ship-gate-verdict.json \
-            docs/32-board-view.md docs/team/messages.md; do
+            docs/32-board-view.md docs/team/messages.md \
+            docs/90-register.jsonl docs/90-register.md docs/team/release-candidates.jsonl; do
      grep -qxF "$p" .gitignore || printf '%s\n' "$p" >> .gitignore
    done
    ```
@@ -98,9 +100,15 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    `devops-engineer` wrote (plus `docs/team/actors.json` and `docs/team/actor-tokens.jsonl`, which hold actor keys and
    per-spawn tokens). Every entry is in `${CLAUDE_PLUGIN_ROOT}/scripts/lib/operational-paths.txt`;
    review verdicts (`docs/53-reviews/`) and evidence records stay uncommitted in the main checkout,
-   where the board and the gates read them. The rest of that file (`docs/daily/`, the channel,
-   `schedule.json`, `memory.jsonl`, `incidents.jsonl`, `release-candidates.jsonl`,
-   `audit-anchor.json`, the register `docs/90-register.jsonl`) is tracked on purpose: dirty checks skip it, history keeps it. The
+   where the board and the gates read them. **QA evidence bundles stay TRACKED** (R7-4): QA commits
+   `docs/54-evidence/<journey>-<build>.md` on its branch, so only the script-written
+   `docs/54-evidence/runtime/` and `journeys/` are ignored — ignoring all of `docs/54-evidence/` made
+   `git add` refuse every bundle, and release-auditor then marked every test claim unverified.
+   The register (`docs/90-register.jsonl` / `.md`) and `docs/team/release-candidates.jsonl` are
+   written in the main checkout after init and nothing commits them, so they are ignored too (W7-9):
+   as untracked files they made the destructive-git hook treat the checkout as holding uncommitted
+   work. The rest of that file (`docs/daily/`, the channel, `schedule.json`, `memory.jsonl`,
+   `incidents.jsonl`, `audit-anchor.json`) is tracked on purpose: dirty checks skip it, history keeps it. The
    board log and its rendering live in the main checkout only — a
    `git checkout` must not roll the board back, and ICs get their ticket through the spawn prompt,
    not from the board file. `docs/team/messages.jsonl` and the dispatch manifests stay
@@ -181,6 +189,21 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    git commit -m "docs: project plan from /app-init"
    git status --short               # anything left is a file nobody committed: commit it or say why
    ```
+
+   **Then create and check out the declared integration branch, and verify it (W7-3).** Nothing
+   else creates it: devops-engineer runs at step 4, before this repository had a commit, so its
+   check could only fail, and every later commit (this one, `/app-plan`'s) landed on whatever was
+   checked out — `main` — while tickets were cut from a `develop` that lacked the plan:
+
+   ```bash
+   B=$(sed -nE 's/^Integration branch:[[:space:]]*`?([A-Za-z0-9._/-]+).*/\1/p' docs/23-git-strategy.md | head -n 1)
+   [ -n "$B" ] && [ "$B" != "$(git branch --show-current)" ] && { git rev-parse --verify -q "refs/heads/$B" >/dev/null || git branch "$B"; git checkout "$B"; }
+   sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh" .   # must print $B, exit 0 — exit 2: STOP and fix the doc
+   ```
+
+   The main checkout stays on the integration branch from here on: `/app-plan` commits onto it,
+   worktrees are cut from it, and the runtime gate refuses (CANNOT EVALUATE) a main checkout whose
+   HEAD is not its tip. The declaration is read from the COMMITTED doc, so this runs after the commit.
 
    The platform manifests are in the list because a worktree without `package.json` /
    `Package.swift` / the Gradle files cannot build, and the wave's fresh test worktree sees only

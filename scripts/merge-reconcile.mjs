@@ -185,7 +185,7 @@ if (pending.length) {
     `  AWAITING INTEGRATION: ${pending.map((p) => p.id).join(', ')}\n` +
     '  Merge-gated and carrying `verified_static`, so the wave pass has not run for them yet. This\n' +
     '  is the wave model working, not the board lying: the gate is permission, the wave is the fact.\n' +
-    '  Land them with:  node scripts/wave-integrate.mjs --root . --wave <N>\n' +
+    '  Land them with:  node "${CLAUDE_PLUGIN_ROOT}/scripts/wave-integrate.mjs" --root . --wave <N>\n' +
     '  They cannot reach `closed` and `ship-gate.sh` blocks the release until it has.\n'
   );
 }

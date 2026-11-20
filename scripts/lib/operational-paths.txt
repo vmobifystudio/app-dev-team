@@ -33,3 +33,5 @@ docs/team/ship-gate-verdict.json
 docs/team/worktree-slots.json
 .agent-wt
 .studio-stop
+# S7-1: build-env.sh points Gradle/SwiftPM caches here; the first build creates it.
+.studio-cache

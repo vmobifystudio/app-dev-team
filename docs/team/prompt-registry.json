@@ -20,13 +20,13 @@
     },
     {
       "id": "aso-specialist",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "owner": "aso-specialist",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.3",
-      "content_hash": "e3221a0f7ee56eb433efd52a597189970b4bc58a39ffb405896dfecea88fb2da"
+      "rollback_version": "1.0.4",
+      "content_hash": "3ad8a0b1589084d290f7bdcde45ae59730430f92388ee88f69489759a721a2b8"
     },
     {
       "id": "backend-developer",
@@ -60,13 +60,13 @@
     },
     {
       "id": "code-reviewer",
-      "version": "1.0.14",
+      "version": "1.0.15",
       "owner": "code-reviewer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.13",
-      "content_hash": "2b2c2ba0981b9192fcc1e17210f51d910d729f04b0cec3386d03f6e2b33ab8ad"
+      "rollback_version": "1.0.14",
+      "content_hash": "ab9e1ce4c287b809eabd80e211e1972e019553e58a0ad2ad8381d56efd7a8d5b"
     },
     {
       "id": "cpo",
@@ -100,13 +100,13 @@
     },
     {
       "id": "devops-engineer",
-      "version": "1.0.11",
+      "version": "1.0.12",
       "owner": "devops-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.10",
-      "content_hash": "b1e6bd594b3ef092fb4fd76548266bb5af15c502707d23c619754f2de5f6b435"
+      "rollback_version": "1.0.11",
+      "content_hash": "03a9c2b6adee44ffa8994a451c4b582ddc3a1f942910da84aa453c8a9af6ceeb"
     },
     {
       "id": "ios-developer",
@@ -210,13 +210,13 @@
     },
     {
       "id": "release-manager",
-      "version": "1.0.10",
+      "version": "1.0.12",
       "owner": "release-manager",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.9",
-      "content_hash": "f8a6360405d2ceb9301a0e467a692b8a7b7da87870db7965d901dee1e8a9e935"
+      "rollback_version": "1.0.11",
+      "content_hash": "a751d10e292cf3929d712eaf592631fe827d9a06861cdd0d70fed90314cb1c23"
     },
     {
       "id": "reliability-engineer",
@@ -230,13 +230,13 @@
     },
     {
       "id": "security-reviewer",
-      "version": "1.0.6",
+      "version": "1.0.7",
       "owner": "security-reviewer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.5",
-      "content_hash": "cf382bd25f1c6c1795df7e964998a9825a21fb62ed9b17dabe440140b6b3ca1a"
+      "rollback_version": "1.0.6",
+      "content_hash": "0b998c4b273c1883fa352e32b4ab14043cbaa621cc62a06019df04d08e02aab2"
     },
     {
       "id": "tech-lead",
@@ -280,13 +280,13 @@
     },
     {
       "id": "verification-engineer",
-      "version": "1.0.4",
+      "version": "1.0.6",
       "owner": "verification-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.3",
-      "content_hash": "03800199cadb75814ffe1b2fe98a1007fe55f17306a1dd72ac60da052f97ac2d"
+      "rollback_version": "1.0.5",
+      "content_hash": "7a53242153ff6d4d18e8c3131379d3db35fccf0ad8003404383ab8933d5c5ba1"
     },
     {
       "id": "web-developer",
@@ -307,6 +307,26 @@
       "change_reason": "agent file content changed",
       "rollback_version": "1.0.3",
       "content_hash": "438b9679e998b0070223978b42c5047c461f3630db5f36d470065c418791d9f3"
+    },
+    {
+      "id": "template/scripts/spawn-prompt.mjs",
+      "version": "1.0.0",
+      "owner": "template/scripts/spawn-prompt.mjs",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-11-20",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "422911cd2bd34f95e56c639fafc1e12bd2b1615c4c55b8f89412ad65887c5b21"
+    },
+    {
+      "id": "template/scripts/lib/contract.mjs",
+      "version": "1.0.0",
+      "owner": "template/scripts/lib/contract.mjs",
+      "eval_suite": "eval/manifest.json",
+      "validated_on": "2026-11-20",
+      "change_reason": "initial registration",
+      "rollback_version": "0.0.0",
+      "content_hash": "e34c09f1ca22e5a56dc4d1a568c4680d6033bfa196c946f3332eab4013882db5"
     }
   ]
 }

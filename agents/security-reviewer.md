@@ -51,7 +51,8 @@ Code-reviewer enforces correctness against the spec. You enforce safety against 
 
   `changes` instead of `approved` for `REQUEST CHANGES` (same `--token` and `--verdict`). `<base>`
   and `<tip>` are the `Range:` line. No `Evidence:`/`Context:` given → the newest
-  `test-*.json` record in `docs/team/evidence/` for this tip and `docs/20-architecture.md`.
+  `test-*.json` record in `docs/team/evidence/` for this tip and `docs/team/context-manifest.json`
+  (a context-manifest/v2 — `--bind` refuses an architecture doc as `--context`).
 
 # Checklist
 

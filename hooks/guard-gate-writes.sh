@@ -8,10 +8,17 @@
 # reading ~/.claude/projects transcripts (directly or by a recursive search above them). A backstop
 # that reads the shell command, not a sandbox: logic and its stated bound in contract-hooks.mjs.
 # PR46-9: only a SUBAGENT (a payload with "agent_id") is restricted — the main session's every tool
-# call exits here, before node and before in-studio.sh's git rev-parse.
+# call exits here, before node. G7-12: a call that spells an absolute path (or ~) is NOT pre-filtered by
+# its cwd — `rm -rf /abs/proj/docs/team/evidence` from /tmp targets a studio too, and node derives the
+# root from each path. Any other call still skips node outside a studio project (in-studio.sh, C2-27).
 _P=$(cat 2>/dev/null || true)
 case $_P in *'"agent_id"'*) ;; *) exit 0 ;; esac
-printf '%s' "$_P" | {
-  . "$(dirname "$0")/in-studio.sh"
-  printf '%s' "$PAYLOAD" | node "$(dirname "$0")/contract-hooks.mjs" guard-gate-writes
-}
+command -v node >/dev/null 2>&1 || exit 0
+_rest=$(printf '%s' "$_P" | tr '\n' ' ' | sed -e 's/"cwd"[[:space:]]*:[[:space:]]*"[^"]*"//g' -e 's/"[a-z_]*transcript_path"[[:space:]]*:[[:space:]]*"[^"]*"//g')
+case $_rest in
+  *[/~]*) printf '%s' "$_P" | node "$(dirname "$0")/contract-hooks.mjs" guard-gate-writes ;;
+  *) printf '%s' "$_P" | {
+       . "$(dirname "$0")/in-studio.sh"
+       printf '%s' "$PAYLOAD" | node "$(dirname "$0")/contract-hooks.mjs" guard-gate-writes
+     } ;;
+esac

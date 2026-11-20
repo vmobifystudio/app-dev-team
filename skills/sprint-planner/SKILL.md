@@ -141,8 +141,11 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
    ```
    - Tests green — verified by:
-       sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> <integration-branch> "<test cmd>"
-     NOT by the developer's own report.
+       sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> <integration-branch> fast
+     (`fast` per ticket, `full` at merge — the commands declared in docs/team/project-profile.json),
+     NOT by the developer's own report, and never a hand-typed test command: the board refuses a
+     record whose command is not the one it froze from the profile, so verify-done reports it
+     CANNOT EVALUATE.
    ```
 
    An independent verifier once graded this `NOT-GATED` because the script was nowhere in the

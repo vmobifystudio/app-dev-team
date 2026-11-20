@@ -13,7 +13,7 @@ Every IC runs the same loop. The language, conventions pack and hazards live in 
   not yours): your worktree, explicit-path staging, no repo-wide destructive git, confirm the
   mutation landed, stop if HEAD moves. **Branch before you write, never after.** If you were given
   no worktree, say so in your first line.
-- **Preflight:** run `context-preflight` against the project and ticket. For a dependency, SDK, API
+- **Preflight:** run the `context-preflight` line your prompt prints. For a dependency, SDK, API
   or toolchain change also run `dependency-policy`; never choose versions from memory.
 - **Choke point** (`defect-hunting` §1 — this is the whole procedure; do not load that skill for
   it): before you edit a function that touches persisted or user-visible state, name the data, then

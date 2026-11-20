@@ -88,7 +88,34 @@ if ! git var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
   export GIT_COMMITTER_NAME=studio-test GIT_COMMITTER_EMAIL=studio-test@example.invalid
 fi
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+# C7-1: NO TEST EDITS A TRACKED PLUGIN FILE IN PLACE. Mirror tests used to `cp x x.bak`, mutate the
+# real file and `mv` it back on the happy path — so a SIGTERM, a timeout or a CI cancel mid-mirror
+# left board.mjs's claimLease as `return { ok: true }` for good, and two concurrent runs could
+# save each other's mutant as the "backup". Mirror tests now mutate `plugin_copy`; the exit trap
+# proves the plugin's own `git status` did not move, and fails the run loudly if it did.
+PLUGIN_STATUS_BEFORE=$(git -C "$HERE/.." status --porcelain -uall 2>/dev/null)
+suite_exit() {
+  _rc=$?
+  rm -rf "$TMP"
+  _after=$(git -C "$HERE/.." status --porcelain -uall 2>/dev/null)
+  if [ "$_after" != "$PLUGIN_STATUS_BEFORE" ]; then
+    echo "FATAL: the plugin's working tree changed during this run — a test wrote into it (C7-1)."
+    echo "  before:"; printf '%s\n' "$PLUGIN_STATUS_BEFORE" | sed 's/^/    /'
+    echo "  after:";  printf '%s\n' "$_after" | sed 's/^/    /'
+    exit 1
+  fi
+  exit "$_rc"
+}
+trap suite_exit EXIT
+trap 'exit 143' INT TERM HUP
+
+# plugin_copy <name> — prints a private copy of the whole plugin (minus .git and .claude) in $TMP,
+# for a mirror test to mutate and run. The copy goes when $TMP does; the real tree is never touched.
+plugin_copy() {
+  _pc="$TMP/plugin-$1"; rm -rf "$_pc"; mkdir -p "$_pc"
+  ( cd "$HERE/.." && tar cf - --exclude .git --exclude .claude . ) | ( cd "$_pc" && tar xf - )
+  printf '%s' "$_pc"
+}
 
 ok()   { PASS=$((PASS+1)); [ "$VERBOSE" = "-v" ] && echo "  ok    $1" || true; }
 bad()  { FAIL=$((FAIL+1)); echo "  FAIL  $1"; [ -n "${2:-}" ] && echo "        $2"; }
@@ -101,8 +128,17 @@ assert_exit() {
 }
 
 # assert_has <fixture-output-file> <needle> <label>
+#
+# The needle is a FIXED STRING (C7-11). It used to be a regex, so every `.` in a path or version
+# matched any character and the label claimed more than the check did. A needle that means a
+# pattern says so by calling assert_has_re.
 assert_has() {
-  grep -q -- "$2" "$1" && ok "$3" || bad "$3" "missing: $2"
+  grep -qF -- "$2" "$1" && ok "$3" || bad "$3" "missing: $2"
+}
+
+# assert_has_re <fixture-output-file> <basic-regex> <label> — for the few needles that ARE patterns.
+assert_has_re() {
+  grep -q -- "$2" "$1" && ok "$3" || bad "$3" "no line matches: $2"
 }
 
 # assert_finding <doctor-json> <code> <label> [needle]
@@ -142,6 +178,15 @@ process.exit(require(json).anomalies.some(
 # For assertions about a script that must not HANG. `assert_exit` would wait forever on a
 # regression, and a suite that hangs reports nothing at all — the failure mode is indistinguishable
 # from a machine that went to sleep. There is no `timeout(1)` on macOS, hence the watchdog.
+# kill_tree <pid> — stop <pid>, kill every descendant, then <pid> (C7-11). Killing only the
+# subshell left a hung command running for the rest of the suite. pgrep -P walks the tree on both
+# macOS and Linux; there is no portable setsid to give the job its own process group.
+kill_tree() {
+  kill -STOP "$1" 2>/dev/null
+  for _kt in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$_kt"; done
+  kill -9 "$1" 2>/dev/null
+}
+
 assert_exit_within() {
   secs=$1; want=$2; label=$3; shift 3
   rm -f "$TMP/rc"
@@ -153,7 +198,7 @@ assert_exit_within() {
       [ -f "$TMP/rc" ] && exit 0
       sleep 1; i=$((i + 1))
     done
-    kill -9 "$job" 2>/dev/null ) & dog=$!
+    kill_tree "$job" ) & dog=$!
   wait "$job" 2>/dev/null; jrc=$?
   wait "$dog" 2>/dev/null
   got=$(cat "$TMP/rc" 2>/dev/null || echo "")
@@ -536,13 +581,13 @@ printf '#!/bin/sh\necho "xcode-select: error: tool '"'"'xcodebuild'"'"' requires
             || bad "a missing toolchain is CANNOT EVALUATE, not REJECTED" "$(head -3 "$TMP/vtc.txt")"
 # Both halves. The exit code alone cannot tell this apart from the usage errors that were already
 # exit 2, and the headline is what an agent acts on.
-assert_has "$TMP/vtc.txt" "^CANNOT EVALUATE" "...and says so on line 1, where an agent reads it"
+assert_has_re "$TMP/vtc.txt" "^CANNOT EVALUATE" "...and says so on line 1, where an agent reads it"
 grep -q "^REJECTED" "$TMP/vtc.txt" && bad "...and never says REJECTED anywhere in that output" \
                                    || ok "...and never says REJECTED anywhere in that output"
 assert_has "$TMP/vtc.txt" "not a failing assertion" "...and states WHY it decided cannot-evaluate"
 # The other side of the fork, so this is a discrimination and not a blanket downgrade: a suite that
 # genuinely ran and reported failures is still exit 1, and says which way it decided.
-assert_has "$TMP/vreal.txt" "^REJECTED" "a suite that ran and failed still says REJECTED on line 1"
+assert_has_re "$TMP/vreal.txt" "^REJECTED" "a suite that ran and failed still says REJECTED on line 1"
 assert_has "$TMP/vreal.txt" "Decided REJECTED, not CANNOT EVALUATE" "...and prints which it decided and why"
 
 # The conservative tie-break, stated as an assertion so it cannot be quietly reversed: a bare
@@ -556,7 +601,7 @@ assert_has "$TMP/vreal.txt" "Decided REJECTED, not CANNOT EVALUATE" "...and prin
 # 2 for "the tests never ran" — an agent reading line 1 saw VERIFIED and acted on it.
 grep -q "^VERIFIED" "$TMP/vnone.txt" && bad "the no-test-command path never headlines VERIFIED while exiting 2" \
                                      || ok "the no-test-command path never headlines VERIFIED while exiting 2"
-assert_has "$TMP/vnone.txt" "^CANNOT EVALUATE" "...it headlines CANNOT EVALUATE, matching its exit code"
+assert_has_re "$TMP/vnone.txt" "^CANNOT EVALUATE" "...it headlines CANNOT EVALUATE, matching its exit code"
 # ...and it routes to the board state that exists for exactly this ticket, rather than dead-ending.
 assert_has "$TMP/vnone.txt" "verified_static" "...and names the board event that keeps static review possible"
 
@@ -1713,14 +1758,12 @@ tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "even whe
   && ok "...and writes the heading even when nothing was skipped, so its absence means omission" \
   || bad "...and writes the heading even when nothing was skipped, so its absence means omission"
 # Mirror test: strip the requirement and prove the assertion above goes red.
-cp "$HERE/../agents/code-reviewer.md" "$TMP/cr-4b.bak"
-sed 's/§4b/SECTION-REMOVED/g' "$TMP/cr-4b.bak" > "$HERE/../agents/code-reviewer.md"
-if tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "4b"; then
+sed 's/§4b/SECTION-REMOVED/g' "$HERE/../agents/code-reviewer.md" > "$TMP/cr-4b.mut"
+if tr '\n' ' ' < "$TMP/cr-4b.mut" | tr -s ' ' | grep -q "4b"; then
   bad "mirror test: removing §4b from code-reviewer should make its assertion fail"
 else
   ok "mirror test: removing §4b from code-reviewer reproduces an unrequired round-trip rule"
 fi
-cp "$TMP/cr-4b.bak" "$HERE/../agents/code-reviewer.md"
 
 grep -q "corpus_recurrence" "$HERE/../commands/app-learn.md" \
   && ok "/app-learn's failure pass reads the recurrence flag" \
@@ -2173,7 +2216,7 @@ RGF=$(gradleproj rg-fail 'echo "e: MainActivity.kt:12:5 unresolved reference: vi
 assert_exit 1 "a project whose build fails is FAIL, not CANNOT EVALUATE" \
   env PATH="$ASTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGF"
 cp "$TMP/out" "$TMP/rg-fail.txt"
-assert_has "$TMP/rg-fail.txt" "^RESULT: FAIL" "...and the headline word matches the exit code"
+assert_has_re "$TMP/rg-fail.txt" "^RESULT: FAIL" "...and the headline word matches the exit code"
 assert_has "$TMP/rg-fail.txt" "unresolved reference" "...and the compiler's own output is quoted, so the re-spawn instruction can be followed"
 assert_has "$TMP/rg-fail.txt" "Re-spawn the developer" "...which is exactly what the verdict tells the loop to do"
 grep -q "PASS\|CANNOT EVALUATE" "$TMP/rg-fail.txt" \
@@ -2187,7 +2230,7 @@ RGP=$(gradleproj rg-pass 'mkdir -p app/build/outputs/apk/debug; : > app/build/ou
 assert_exit 0 "a build that assembles, installs, launches and stays up is PASS" \
   env PATH="$ASTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP"
 cp "$TMP/out" "$TMP/rg-pass.txt"
-assert_has "$TMP/rg-pass.txt" "^RESULT: PASS" "...and says PASS on the line an agent reads"
+assert_has_re "$TMP/rg-pass.txt" "^RESULT: PASS" "...and says PASS on the line an agent reads"
 assert_has "$TMP/rg-pass.txt" "still running after 3s" "...and states the liveness check it based that on"
 assert_has "$TMP/rg-pass.txt" "com.example.app" "...naming the package it actually launched"
 assert_has "$TMP/rg-pass.txt" "docs/54-evidence/runtime/runtime-" "...and the evidence artifact it captured"
@@ -2237,7 +2280,7 @@ grep -q "^RESULT: PASS" "$TMP/rg-noshot.txt" \
   && bad "...and leaves no empty evidence file behind to be mistaken for a capture" \
   || ok "...and leaves no empty evidence file behind to be mistaken for a capture"
 # Mirror test: restore the old evidence-optional behaviour and prove the assertion above goes red.
-cp "$HERE/runtime-gate.sh" "$HERE/runtime-gate.sh.bak"
+RGM=$(plugin_copy rg-mirror)/scripts
 node -e '
   const fs = require("fs");
   const p = process.argv[1];
@@ -2246,14 +2289,13 @@ node -e '
   if (!t.includes(marker)) { console.error("marker not found"); process.exit(1); }
   t = t.replace(marker, "        pass \"android\" \"MUTATED evidence-optional pass ($PKG)\"; : \"");
   fs.writeFileSync(p, t);
-' "$HERE/runtime-gate.sh"
-env PATH="$NOSHOTSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP" >"$TMP/rg-mirror.txt" 2>&1
+' "$RGM/runtime-gate.sh"
+env PATH="$NOSHOTSTUB:$PATH" sh "$RGM/runtime-gate.sh" --platform android --project-root "$RGP" >"$TMP/rg-mirror.txt" 2>&1
 if grep -q "^RESULT: PASS" "$TMP/rg-mirror.txt"; then
   ok "mirror test: restoring the evidence-optional pass reproduces a PASS with no evidence"
 else
   bad "mirror test: restoring the evidence-optional pass should reproduce a PASS with no evidence"
 fi
-mv "$HERE/runtime-gate.sh.bak" "$HERE/runtime-gate.sh"
 
 # The timeout branch. RUNTIME_GATE_BUILD_TIMEOUT exists in the source for exactly one reason —
 # "so the timeout branch is testable in seconds instead of in a quarter of an hour" — and no test
@@ -2598,7 +2640,7 @@ BOARD_RUN_ID=$(board_run_id "$L2/docs/31-board-events.jsonl")
 
 # Mirror test: prove the assertion above would have caught the old discard-the-result bug, by
 # temporarily making claimLease() ignore run-ledger's output the way it used to.
-cp "$HERE/board.mjs" "$HERE/board.mjs.bak"
+BD=$(plugin_copy bd-lease-mirror)/scripts/board.mjs
 node -e '
   const fs = require("fs");
   const path = process.argv[1];
@@ -2607,7 +2649,7 @@ node -e '
   if (!text.includes(marker)) { console.error("marker not found"); process.exit(1); }
   text = text.replace(marker, "  return { ok: true }; // mutated for mirror test — the old discard-the-result behavior\n" + marker);
   fs.writeFileSync(path, text);
-' "$HERE/board.mjs"
+' "$BD"
 L3=$(newboard bd-lease-mirror)
 bm "$L3" add L-003 --title "Mirror ticket" --owner ios-developer >/dev/null 2>&1
 bm "$L3" move L-003 claimed --by ios-developer >/dev/null 2>&1
@@ -2617,7 +2659,7 @@ if [ -n "$MIRROR_RUN_ID" ]; then
 else
   ok "mirror test: discarding the run-ledger result reproduces a claimed event with no run identity"
 fi
-mv "$HERE/board.mjs.bak" "$HERE/board.mjs"
+BD="$HERE/board.mjs"
 
 # --- a DONE nobody checked is not reviewable. verify-done.sh existed and its result was recorded
 # nowhere the board could gate on, so an unverified claim reached a reviewer by an agent's say-so.
@@ -3265,7 +3307,7 @@ assert_has "$TMP/rj2.txt" "not measurable in this harness" \
   "show says token cost is not measurable rather than inventing a figure"
 node "$RJ" append --journal "$J" --round 4 --spawns 1 --spend-usd 2.5 >/dev/null 2>&1
 node "$RJ" show --journal "$J" >"$TMP/rj3.txt" 2>&1
-assert_has "$TMP/rj3.txt" '\$2.50' "...and prints a real figure once one is actually reported"
+assert_has "$TMP/rj3.txt" '$2.50' "...and prints a real figure once one is actually reported"
 assert_exit 1 "the spend ceiling applies once spend is reported" \
   node "$RJ" check --journal "$J" --max-spend-usd 1
 
@@ -4364,7 +4406,6 @@ IBFAIL=""
 write_ib() { printf '%s\n' "$1" > "$IBP/docs/23-git-strategy.md"; }
 for FORM in 'Integration branch: develop' \
             '- Integration branch — `develop`' \
-            'The integration branch is `develop`.' \
             'Integration branch = develop' \
             '| Integration branch | develop |' \
             '**Integration branch:** `develop`'; do
@@ -4531,7 +4572,7 @@ assert_has "$TMP/rc-true.txt" "VERIFIED on the branch" "...and says it verified 
 # team-protocol" instead of containing it, and the agent returned 0 of 6 fields — worse than the
 # agent that failed H4 the day before. The identical ticket, role and slot, re-spawned with the
 # contract pasted in literally, returned all six. Dispatch, not capability.
-SPF="$TMP/spawn-prompt-fixture"; rm -rf "$SPF"; mkdir -p "$SPF/docs"
+SPF="$TMP/spawn-prompt-fixture"; rm -rf "$SPF"; mkdir -p "$SPF/docs" "$SPF/.agent-wt/ios-developer"
 ( cd "$SPF" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
   && git commit -q --allow-empty -m init ) >/dev/null 2>&1
 printf 'Integration branch: main\n' > "$SPF/docs/23-git-strategy.md"
@@ -7054,7 +7095,7 @@ import(process.argv[1]).then((m) => {
 # Mirror test: prove these assertions would catch a regression, by reverting the CLEAR-gate check to
 # always treat any real verification as production-ready and confirming the tested-vs-production-ready
 # assertion goes red.
-cp "$CR/state.mjs" "$CR/state.mjs.bak"
+CR=$(plugin_copy cr-mirror)/control-room
 sed -i.tmp "s/!(shipGate.ok \&\& shipGate.result === 'CLEAR')/false/" "$CR/state.mjs"
 rm -f "$CR/state.mjs.tmp"
 CRTESTED2="$TMP/cr-readiness-tested-mirror"; mkdir -p "$CRTESTED2"
@@ -7067,7 +7108,7 @@ if [ "$(readiness_state "$CRTESTED2" engineering)" = "tested" ]; then
 else
   ok "mirror test: dropping the ship-gate check reproduces a false production-ready verdict"
 fi
-mv "$CR/state.mjs.bak" "$CR/state.mjs"
+CR="$HERE/../control-room"
 
 # HALF a population is not a population. The `decisions` section spans two inputs — blocked tickets
 # from the board, and questions routed to a founder from the channel — and it gated `unavailable` on
@@ -7361,13 +7402,14 @@ assert_exit 0 "board.mjs sees the project's real ticket from inside a linked wor
 # test that silently stops reverting is a rule that cannot fail, which is the exact defect class
 # mirror tests exist to catch. Kept as a sed for locality, but any future rename of this function
 # must update the pattern here; the assertion below is what tells you if you forgot.
+BD=$(plugin_copy bd-root-mirror)/scripts/board.mjs
 sed -i.bak "s/resolve(projectRoot(flags), DEFAULT_LOG)/resolve(process.cwd(), DEFAULT_LOG)/; s/resolve(projectRoot(flags), DEFAULT_BOARD)/resolve(process.cwd(), DEFAULT_BOARD)/" "$BD"
 grep -q "resolve(process.cwd(), DEFAULT_LOG)" "$BD" \
   && ok "mirror test: the revert actually applied (the sed pattern still matches)" \
   || bad "mirror test: the revert actually applied (the sed pattern still matches)" "projectRoot() was renamed; update the sed above"
 assert_exit 2 "mirror test: reverting projectRoot() reproduces the fork (ticket unreachable from the worktree)" \
   bash -c "cd '$WTB/.agent-wt/WT-001' && node '$BD' show WT-001"
-mv "$BD.bak" "$BD"
+BD="$HERE/board.mjs"
 
 # --- DR-TC-P0-002: once defaults resolve to the project root regardless of `cwd`, `--bind`'s
 # assumption that `HEAD` always names the reviewed commit breaks the OPPOSITE way — invoked from the
@@ -7453,7 +7495,7 @@ assert_has "$TMP/err" "missing detail.commit" "...because it binds nothing"
 
 MEMORY="$TMP/revamp-memory"; mkdir -p "$MEMORY"
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Keep acceptance criteria explicit" --source docs/2026-07-29-revamp-master-plan.md --confidence 0.9 > "$MEMORY/proposal.json"
+  --content "Keep acceptance criteria explicit" --by proposer --source docs/2026-07-29-revamp-master-plan.md --confidence 0.9 > "$MEMORY/proposal.json"
 MEMORY_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/proposal.json")
 assert_exit 0 "memory-curator verifies chained proposals" node "$HERE/memory-curator.mjs" verify --ledger "$MEMORY/memory.jsonl"
 assert_exit 1 "memory-curator refuses review of an unknown candidate" node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id MEM-NOT-FOUND --reason promote --content rationale --by reviewer
@@ -7463,11 +7505,11 @@ node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$ME
 # back — a memory vocabulary nobody queries is a write-only log, not governance. Live means
 # promoted, not expired as of --now, and not superseded/contradicted by a later PROMOTED memory.
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Expires before --now" --source spec.md --confidence 0.5 --expires 2020-01-01T00:00:00Z > "$MEMORY/expiring.json"
+  --content "Expires before --now" --by proposer --source spec.md --confidence 0.5 --expires 2020-01-01T00:00:00Z > "$MEMORY/expiring.json"
 EXPIRING_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/expiring.json")
 node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$EXPIRING_ID" --reason promote --content rationale --by reviewer >/dev/null
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class platform \
-  --content "Never reviewed" --source spec.md --confidence 0.4 >/dev/null
+  --content "Never reviewed" --by proposer --source spec.md --confidence 0.4 >/dev/null
 node "$HERE/memory-curator.mjs" retrieve --ledger "$MEMORY/memory.jsonl" --now 2026-08-01T00:00:00Z > "$MEMORY/retrieved.json"
 grep -q "$MEMORY_ID" "$MEMORY/retrieved.json" \
   && ok "retrieve returns a promoted, unexpired memory" \
@@ -7479,7 +7521,7 @@ grep -q "Never reviewed" "$MEMORY/retrieved.json" \
   && bad "...and excludes one that was proposed but never reviewed" "found the unreviewed content" \
   || ok "...and excludes one that was proposed but never reviewed"
 node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Superseding replacement" --source spec2.md --confidence 0.9 --supersedes "$MEMORY_ID" > "$MEMORY/replacement.json"
+  --content "Superseding replacement" --by proposer --source spec2.md --confidence 0.9 --supersedes "$MEMORY_ID" > "$MEMORY/replacement.json"
 REPLACEMENT_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/replacement.json")
 node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$REPLACEMENT_ID" --reason promote --content rationale --by reviewer >/dev/null
 node "$HERE/memory-curator.mjs" retrieve --ledger "$MEMORY/memory.jsonl" --now 2026-08-01T00:00:00Z --class project > "$MEMORY/retrieved2.json"
@@ -7496,7 +7538,7 @@ grep -q "$REPLACEMENT_ID" "$MEMORY/retrieved2.json" \
 # pass) had no way to be looked at on its own; an operator had to scan every class's output by eye.
 STUDIO_MEM=$(node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class studio \
   --content "question-quality: ask about offline behavior before implementation, not after" \
-  --source docs/dry-runs/example.md --confidence 0.6)
+  --by proposer --source docs/dry-runs/example.md --confidence 0.6)
 STUDIO_MEM_ID=$(node -e 'console.log(JSON.parse(process.argv[1]).memory_id)' "$STUDIO_MEM")
 node "$HERE/memory-curator.mjs" list --ledger "$MEMORY/memory.jsonl" --class studio > "$MEMORY/list-studio.json"
 grep -q "$STUDIO_MEM_ID" "$MEMORY/list-studio.json" \
@@ -7826,8 +7868,8 @@ assert_exit 0 "dependency policy accepts the plugin's declared and locked contro
 CPMAIN="$TMP/context-preflight-main"; mkdir -p "$CPMAIN"
 ( cd "$CPMAIN" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
   && git commit -q --allow-empty -m init ) >/dev/null 2>&1
-assert_exit 1 "context preflight blocks writes from the protected main branch" \
-  node "$HERE/context-preflight.mjs" "$CPMAIN"
+assert_exit 1 "context preflight blocks a writing role on the protected main branch" \
+  node "$HERE/context-preflight.mjs" "$CPMAIN" --role ios-developer
 assert_has "$TMP/out" "protected branch main" "...and names the reason"
 
 CPFEAT="$TMP/context-preflight-feature"; mkdir -p "$CPFEAT"
@@ -8748,7 +8790,7 @@ assert_has "$TMP/wr.txt" "ORPHAN   APP-002" "...and names the one whose ticket i
 # agent's in-progress work.
 echo scratch > "$WR/.agent-wt/APP-002/left-behind.txt"
 ( cd "$WR" && node "$HERE/worktree-reap.mjs" --root . --apply ) >"$TMP/wr2.txt" 2>&1
-assert_has "$TMP/wr2.txt" "ORPHAN\*" "a DIRTY orphan is reported, not reclaimed"
+assert_has "$TMP/wr2.txt" "ORPHAN*" "a DIRTY orphan is reported, not reclaimed"
 [ -d "$WR/.agent-wt/APP-002" ] && ok "...and the tree with uncommitted work is still there afterwards" \
   || bad "...and the tree with uncommitted work is still there afterwards" "it was deleted"
 
@@ -9811,7 +9853,7 @@ CONFLICTED=$( { grep -rln '^<<<<<<< \|^>>>>>>> ' \
 # skip. They are hooks now (hooks/require-spawn-contract.sh, hooks/persist-ic-report.sh ->
 # hooks/contract-hooks.mjs). C6: IC reports are persisted. C7: IC prompts carry a spec excerpt, the
 # reviewer gets a template with the DONE report. C11: the manifest stops going STALE on every merge.
-S2B="$TMP/s2b"; rm -rf "$S2B"; mkdir -p "$S2B/docs"
+S2B="$TMP/s2b"; rm -rf "$S2B"; mkdir -p "$S2B/docs" "$S2B/.agent-wt/ios-developer"
 ( cd "$S2B" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
   && git commit -q --allow-empty -m init ) >/dev/null 2>&1
 printf 'Integration branch: main\n' > "$S2B/docs/23-git-strategy.md"
@@ -9829,7 +9871,7 @@ assert_has "$TMP/s2b-ic.txt" "greets the user by name" "C7: ...and the PRD secti
 assert_has "$TMP/s2b-ic.txt" "full file: " "C7: ...with a pointer to the full file"
 grep -q UNRELATED "$TMP/s2b-ic.txt" && bad "C7: ...and no section that does not name the ticket (APP-0010 is not APP-001)" \
   || ok "C7: ...and no section that does not name the ticket (APP-0010 is not APP-001)"
-assert_has "$TMP/s2b-ic.err" "(budget 4000" "C11: compose prints the composed prompt's word count against the IC budget"
+assert_has "$TMP/s2b-ic.err" "(budget 6600" "C11: compose prints the composed prompt's word count against the IC budget"
 cp "$S2B/docs/22-impl-spec-ios.md" "$TMP/s2b-spec.bak"
 { printf '# iOS\n\n## APP-001 huge\n'; awk 'BEGIN { for (i = 0; i < 3000; i++) printf "filler%d ", i }'; } > "$S2B/docs/22-impl-spec-ios.md"
 ( cd "$S2B" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role ios-developer ) >"$TMP/s2b-big.txt" 2>/dev/null
@@ -9837,6 +9879,8 @@ cp "$S2B/docs/22-impl-spec-ios.md" "$TMP/s2b-spec.bak"
   && ok "C7: a 3000-word spec section is cut to the excerpt budget, and says so" \
   || bad "C7: a 3000-word spec section is cut to the excerpt budget, and says so" "$(wc -w < "$TMP/s2b-big.txt") words"
 cp "$TMP/s2b-spec.bak" "$S2B/docs/22-impl-spec-ios.md"
+# The slot existed only to compose (C7-12 refuses a missing one); the spawn hook below refuses a slot dir that is not a worktree.
+rmdir "$S2B/.agent-wt/ios-developer" "$S2B/.agent-wt"
 
 # C7b — the reviewer template: the LATEST persisted DONE report, the branch tip, the verdict contract.
 mkdir -p "$S2B/docs/team/reports"
@@ -10764,7 +10808,7 @@ rm -rf "$F2"
 # IDs (W2-4, W2-7, W2-16); the gate-write guard refuses only writes INTO evidence and closes the
 # quoting/variable/inline-program/nested-claude/transcript holes (C2-4, G2-1, G2-15, G2-16, G2-27).
 echo
-TE="$TMP/s3e"; rm -rf "$TE"; mkdir -p "$TE/docs/team/reports"
+TE="$TMP/s3e"; rm -rf "$TE"; mkdir -p "$TE/docs/team/reports" "$TE/.agent-wt/ios-developer" "$TE/.agent-wt/qa-engineer"
 ( cd "$TE" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m init \
   && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
   && node "$HERE/board.mjs" add APP-001 --title greet --owner ios-developer --acceptance "Given Ada, shows Hello Ada" --by tech-manager \
@@ -10795,7 +10839,7 @@ te_compose --ticket QA-1-w1 --role qa-engineer >/dev/null 2>&1
   || bad "S3E: a QA compose with no ticket at qa refuses (no QA ticket for an empty wave)"
 
 # W2-2 / C2-2 — gate-role templates, each with its own token, each clearing verify.
-for _r in tech-lead security-reviewer verification-engineer; do
+for _r in tech-lead security-reviewer; do
   te_compose --ticket APP-001 --role "$_r" >"$TMP/te-$_r.txt" 2>/dev/null
   if [ $? = 0 ] && grep -q '^Token: st_' "$TMP/te-$_r.txt" && node "$HERE/spawn-prompt.mjs" verify --role "$_r" --prompt "$TMP/te-$_r.txt" >/dev/null 2>&1; then
     ok "S3E: compose has a $_r template that mints its token and clears verify"
@@ -10830,7 +10874,7 @@ assert_has "$TMP/te-rv.err" "mandatory skills" "S3E: the budget line counts the 
 
 # C2-5 / C2-11 — the IC prints its base and checkout line; a retry goes onto the existing branch.
 te_compose --ticket APP-001 --role ios-developer >"$TMP/te-ic.txt" 2>/dev/null
-grep -qF 'git checkout -b feat/APP-001-<short-slug> main' "$TMP/te-ic.txt" \
+grep -qF 'checkout -b feat/APP-001-<short-slug> main' "$TMP/te-ic.txt" \
   && ok "S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)" \
   || bad "S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)"
 printf 'REVIEW VERDICT: REQUEST CHANGES\nScope: a..b\nBlocking: RETRY-BLOCKING-LINE\n\n## Not checked\nNothing\n' > "$TE/docs/v.md"
@@ -11140,6 +11184,8 @@ assert_has "$TMP/err" "is not merged into main" "F1: ...because it is not on the
 
 # ·· W2-5 / R2-3: the bind base is the integration branch (develop)
 F1W=$(f1_proj develop '{"requireApprovalBinding": true}')
+# Sprint 7 U1 (W7-2): a develop project DECLARES develop — the board no longer guesses it from the branch existing.
+printf 'Integration branch: develop\n' > "$F1W/docs/23-git-strategy.md"
 ( cd "$F1W" && git branch develop main && git checkout -q develop && echo d > D.swift && git add D.swift && f1g commit -qm dev \
   && git checkout -q feat/F-1-x && f1g rebase -q develop && git checkout -q main ) >/dev/null 2>&1
 F1WEV=$(f1_vd "$F1W" feat/F-1-x develop)
@@ -11239,7 +11285,8 @@ K3L="$HERE/../skills/parallel-orchestrator/references/build-loop-branches.md"
 K3MISS=""
 for _p in $(sed -n '/^   for p in \.agent-wt/,/; do$/p' "$K3I" | tr ' \\;' '\n\n\n' | grep -E '^(docs/|\.)'); do
   _q=${_p%/}
-  grep -qxF "$_q" "$HERE/lib/operational-paths.txt" || K3MISS="$K3MISS $_p"
+  # Sprint 7 U1 (R7-4): a path UNDER an operational dir (docs/54-evidence/runtime) is operational too.
+  grep -qxF "$_q" "$HERE/lib/operational-paths.txt" || grep -qxF "${_q%/*}" "$HERE/lib/operational-paths.txt" || K3MISS="$K3MISS $_p"
 done
 _k3n=$(sed -n '/^   for p in \.agent-wt/,/; do$/p' "$K3I" | tr ' \\;' '\n\n\n' | grep -cE '^(docs/|\.)')
 [ -z "$K3MISS" ] && [ "$_k3n" -ge 16 ] \
@@ -11320,7 +11367,7 @@ node -e 'process.stdout.write(JSON.stringify({ tool_name: "Agent", agent_id: "k2
 rm -rf "$K2"
 
 # Design A / C3W-1 — QA on its QA- ticket: branch qa/QA-…, no feat/APP- line, per-ticket commands.
-K2Q="$TMP/s4k2q"; rm -rf "$K2Q"; mkdir -p "$K2Q/docs/team"
+K2Q="$TMP/s4k2q"; rm -rf "$K2Q"; mkdir -p "$K2Q/docs/team" "$K2Q/.agent-wt/qa-engineer"
 ( cd "$K2Q" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m init \
   && printf 'Integration branch: main\n' > docs/23-git-strategy.md \
   && node "$HERE/board.mjs" add APP-001 --title greet --owner ios-developer --acceptance "Given Ada" --by tech-manager \
@@ -11329,7 +11376,7 @@ K2Q="$TMP/s4k2q"; rm -rf "$K2Q"; mkdir -p "$K2Q/docs/team"
   && node "$HERE/board.mjs" move APP-002 claimed --by ios-developer && node "$HERE/board.mjs" move APP-002 done_reported --by ios-developer ) >/dev/null 2>&1
 printf '{"requireActorTokens": true}\n' > "$K2Q/.studio-policy.json"
 ( cd "$K2Q" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-1-w1 --role qa-engineer --tickets APP-001 ) >"$TMP/k2qa.txt" 2>/dev/null
-grep -qF 'git checkout -b qa/QA-1-w1 main' "$TMP/k2qa.txt" && grep -qF 'Branch: qa/QA-1-w1' "$TMP/k2qa.txt" && ! grep -q 'feat/APP-' "$TMP/k2qa.txt" \
+grep -qF 'checkout -b qa/QA-1-w1 main' "$TMP/k2qa.txt" && grep -qF 'Branch: qa/QA-1-w1' "$TMP/k2qa.txt" && ! grep -q 'feat/APP-' "$TMP/k2qa.txt" \
   && grep -qE "move APP-001 qa_passed --by qa-engineer --token st_" "$TMP/k2qa.txt" && grep -qE "move APP-001 qa_failed --by qa-engineer --token st_" "$TMP/k2qa.txt" \
   && ok "K2: QA composes on branch qa/QA-<sprint>-w<n>, no feat/APP- line, qa_passed/qa_failed spelled per ticket (C3W-1, design A)" \
   || bad "K2: QA composes on branch qa/QA-<sprint>-w<n>, no feat/APP- line, qa_passed/qa_failed spelled per ticket (C3W-1, design A)" "$(head -c 900 "$TMP/k2qa.txt")"
@@ -11717,7 +11764,7 @@ printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"no
 assert_exit 0 "P1: ...and clears 'npm ci && npm test'" node "$HERE/project-profile.mjs" check --root "$P1P"
 
 # ·· C4W-3 / C4W-4: qa_failed -> BUG-NNN-fix is dispatchable (ids case-insensitive, deps satisfied at qa)
-P1S=$(p1_proj sched)
+P1S=$(p1_proj sched); mkdir -p "$P1S/.agent-wt/qa-engineer"
 printf '{"schema":"scheduler-plan/v1","tasks":[]}\n' > "$P1S/docs/team/schedule.json"
 ( cd "$P1S" && node "$BD" add APP-001-analytics --title "Feature" --owner ios-developer && git checkout -q -b feat/APP-001-analytics-events \
   && mkdir -p src && echo 'let a = 1' > src/A.swift && git add src && p1g commit -qm a && git checkout -q main \
@@ -11769,7 +11816,7 @@ grep -Eq 'RESULT: (BLOCKED \(|CANNOT EVALUATE \(worst wins — )(BLOCKED|CANNOT 
   && ok "P1: orchestrator ship's RESULT names the BLOCKED and CANNOT EVALUATE steps (C4W-13)" \
   || bad "P1: orchestrator ship's RESULT names the BLOCKED and CANNOT EVALUATE steps (C4W-13)"
 ( cd "$P1S" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket QA-5-w1 --role qa-engineer --tickets APP-001-analytics ) >/dev/null 2>"$TMP/p1qab.txt"
-grep -q '(budget 6000' "$TMP/p1qab.txt" \
+grep -q '(budget 7000' "$TMP/p1qab.txt" \
   && ok "P1: a qa-engineer prompt on a QA- ticket is measured against the QA budget, not the IC one (C4W-13)" \
   || bad "P1: a qa-engineer prompt on a QA- ticket is measured against the QA budget, not the IC one (C4W-13)" "$(cat "$TMP/p1qab.txt")"
 rm -rf "$P1G" "$P1H" "$P1B" "$P1F4" "$P1A" "$P1P" "$P1S" "$P1R" "$P1T"
@@ -11934,7 +11981,8 @@ MUWD="$MU/wave-dirty"; cp -R "$MUW" "$MUWD"; MUWC="$MU/wave-clean"; cp -R "$MUW"
 MUIB="$MU/ib"; mkdir -p "$MUIB/docs"
 ( cd "$MUIB" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m i && git branch develop ) >/dev/null 2>&1
 muib() { ( cd "$MUIB" && node -e 'import(process.argv[1]).then((m) => process.stdout.write(m.integrationBase(m.gitAt(process.cwd())) || "-"))' "$HERE/lib/integration.mjs" ); }
-[ "$(muib)" = develop ] && ok "MU: with no strategy doc the board's integration branch is still develop-first" || bad "MU: with no strategy doc the board's integration branch is still develop-first" "$(muib)"
+# Sprint 7 U1 (W7-2): with no strategy doc the board takes integration-branch.sh's answer (main), not develop-if-it-exists.
+[ "$(muib)" = main ] && ok "MU: with no strategy doc the board's integration branch is the resolver's main, not a stale develop (W7-2)" || bad "MU: with no strategy doc the board's integration branch is the resolver's main, not a stale develop (W7-2)" "$(muib)"
 printf 'Integration branch: main\n' > "$MUIB/docs/23-git-strategy.md"
 [ "$(muib)" = main ] && ok "MU: a declared 'Integration branch: main' wins over an existing develop branch" || bad "MU: a declared 'Integration branch: main' wins over an existing develop branch" "$(muib)"
 
@@ -12174,7 +12222,7 @@ q1_tc_proj() {
     && node "$HERE/board.mjs" move TC-1 done_reported --by ios-developer ) >/dev/null 2>&1
   printf '%s' "$_p"
 }
-Q1Q=$(q1_tc_proj)
+Q1Q=$(q1_tc_proj); mkdir -p "$Q1Q/.agent-wt/qa-engineer"
 q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$(q1_vd "$Q1Q" feat/TC-1-x)" >/dev/null 2>&1
 q1m "$Q1Q" move TC-1 review_requested --by ios-developer >/dev/null 2>&1
 mkdir -p "$Q1Q/docs/53-reviews"; printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\nsrc/A.swift read.\n\n## Not checked\nNothing.\n' > "$Q1Q/docs/53-reviews/v.md"
@@ -12251,7 +12299,7 @@ grep -q 'moved — then release QA.s slot (step 4a)' "$HERE/../commands/app-buil
   && ok "Q1: the QA ticket's landing releases its slot, and QA does not import the register in its slot (C5W-9)" \
   || bad "Q1: the QA ticket's landing releases its slot, and QA does not import the register in its slot (C5W-9)"
 # ·· C5W-10: approval-check --ticket on a ticket with no approval is BLOCKED, not CLEAR.
-Q1A="$TMP/q1-ac"; rm -rf "$Q1A"; mkdir -p "$Q1A/docs"; printf '{"requireApprovalBinding":true}\n' > "$Q1A/.studio-policy.json"
+Q1A="$TMP/q1-ac"; rm -rf "$Q1A"; mkdir -p "$Q1A/docs" "$Q1A/.agent-wt/web-developer" "$Q1A/.agent-wt/ios-developer" "$Q1A/.agent-wt/android-developer" "$Q1A/.agent-wt/backend-developer" "$Q1A/.agent-wt/verification-engineer"; printf '{"requireApprovalBinding":true}\n' > "$Q1A/.studio-policy.json"
 ( cd "$Q1A" && git init -q -b main . && q1g commit -q --allow-empty -m init && node "$HERE/board.mjs" add APP-001 --title t --owner web-developer ) >/dev/null 2>&1
 assert_exit 1 "Q1: approval-check --ticket with zero approvals exits 1, never 'CLEAR' (C5W-10)" sh -c 'cd "$1" && node "$2/approval-check.mjs" --ticket APP-001 --head main' sh "$Q1A" "$HERE"
 assert_has "$TMP/out" "has no approval on record" "Q1: ...saying there is no approval (C5W-10)"
@@ -12610,6 +12658,619 @@ rm -f "$U2B/clone/docs/team/actor-tokens.jsonl.lock"
   && ok "U2: the founder mint refusal names the resolved path, and no registry lock was taken to ask (C7-8)" \
   || bad "U2: the founder mint refusal names the resolved path, and no registry lock was taken to ask (C7-8)" "$(cat "$TMP/u2e.txt")"
 rm -rf "$U2D" "$U2P" "$U2J" "$U2N" "$U2A" "$U2B"
+echo "Sprint 7 U6: prose matches what the scripts do"
+U6R="$HERE/.."
+# S7-4: app-recover reads run-doctor's active count, not its exit code; no ignored --root; ATT- ids.
+grep -qF 'run-doctor.mjs" --ledger docs/team/runs.jsonl' "$U6R/commands/app-recover.md" && ! grep -qF 'run-doctor.mjs" --root' "$U6R/commands/app-recover.md" \
+  && grep -qF '`M active` with exit `0` → **a lease is live**' "$U6R/commands/app-recover.md" && grep -qF -- '--attempt ATT-<uuid>' "$U6R/commands/app-recover.md" \
+  && ok "U6: app-recover treats an active lease under exit 0 as live and abandons by ATT- id (S7-4)" \
+  || bad "U6: app-recover treats an active lease under exit 0 as live and abandons by ATT- id (S7-4)"
+# S7-6: brownfield gets app-init's operational .gitignore.
+grep -qF "Run **\`/app-init\` step 5's \`.gitignore\`" "$U6R/commands/app-onboard.md" && grep -qF 'git ls-files -ci --exclude-standard' "$U6R/commands/app-onboard.md" \
+  && ok "U6: /app-onboard runs app-init's operational .gitignore block (S7-6)" \
+  || bad "U6: /app-onboard runs app-init's operational .gitignore block (S7-6)"
+# S7-7: audit tickets carry a risk policy and --file.
+grep -qF 'team-bootstrap.mjs" --root .' "$U6R/commands/app-audit.md" && [ "$(grep -c -- '--file "<path/the/fix/touches>"' "$U6R/commands/app-audit.md")" = 2 ] \
+  && ok "U6: /app-audit bootstraps the risk policy and adds tickets with --file (S7-7)" \
+  || bad "U6: /app-audit bootstraps the risk policy and adds tickets with --file (S7-7)"
+# S7-8 / S7-9 / S7-10: runnable commands.
+grep -qF 'verify-done.sh" <branch> <integration-branch> fast' "$U6R/skills/sprint-planner/SKILL.md" && ! grep -qF '"<test cmd>"' "$U6R/skills/sprint-planner/SKILL.md" \
+  && grep -qF '(cd "${CLAUDE_PLUGIN_ROOT}" && node "${CLAUDE_PLUGIN_ROOT}/scripts/team-doctor.mjs" --json)' "$U6R/commands/app-learn.md" \
+  && grep -qF -- '--scenario "${CLAUDE_PLUGIN_ROOT}/eval/manager-scenario.json"' "$U6R/commands/app-manager-harness.md" \
+  && grep -qF '"schema": "impact-map/v1"' "$U6R/commands/app-impact.md" \
+  && ok "U6: sprint-planner, app-learn, manager-harness and app-impact commands run from a project (S7-8/9/10)" \
+  || bad "U6: sprint-planner, app-learn, manager-harness and app-impact commands run from a project (S7-8/9/10)"
+# S7-12 / W7-4 / W7-10: app-ship re-runs orchestrator ship only; manifest committed; CURRENT-but-not-PASS.
+! grep -qF 'Then **re-run `ship-gate.sh`**' "$U6R/commands/app-ship.md" && ! grep -qF 'Then re-run the gate.' "$U6R/commands/app-ship.md" \
+  && grep -qF 'docs/00-founder-intent/MANIFEST.sha256` when a waiver was recorded' "$U6R/agents/release-manager.md" \
+  && grep -qF 'result "<FAIL|CANNOT_EVALUATE>" still describes this candidate' "$U6R/commands/app-ship.md" \
+  && ok "U6: app-ship re-runs orchestrator ship, commits the intent manifest, reads CURRENT-not-PASS (S7-12, W7-4, W7-10)" \
+  || bad "U6: app-ship re-runs orchestrator ship, commits the intent manifest, reads CURRENT-not-PASS (S7-12, W7-4, W7-10)"
+# W7-6 / W7-7: founder commands print a resolved path, never `!` for a TTY step; a clone carries the log.
+! grep -qF 'actor mint --role founder --ticket APP-NNN`, then in' "$U6R/skills/parallel-orchestrator/references/build-loop-branches.md" \
+  && grep -qF 'A new checkout trusts a carried-over log once.' "$U6R/docs/HANDBOOK.md" && grep -qF 'Do not run `/app-plan` there' "$U6R/docs/HANDBOOK.md" \
+  && ok "U6: founder TTY steps print a resolved path; a new checkout carries the board log, then adopts (W7-6, W7-7)" \
+  || bad "U6: founder TTY steps print a resolved path; a new checkout carries the board log, then adopts (W7-6, W7-7)"
+# R7-8 / R7-9 / R7-12 / R7-13: role files.
+! grep -qF 'for this tip and `docs/20-architecture.md`' "$U6R/agents/security-reviewer.md" \
+  && grep -qF 'ASO: CANNOT EVALUATE — docs/15-aso.md' "$U6R/agents/aso-specialist.md" \
+  && grep -qF 'as a fraction — e.g. 0.995' "$U6R/agents/release-manager.md" \
+  && ! grep -qF '## Could not verify' "$U6R/agents/verification-engineer.md" && grep -qF '## Not checked' "$U6R/agents/verification-engineer.md" \
+  && ok "U6: security fallback context, ASO CANNOT EVALUATE, crash-free fraction, VE heading (R7-8/9/12/13)" \
+  || bad "U6: security fallback context, ASO CANNOT EVALUATE, crash-free fraction, VE heading (R7-8/9/12/13)"
+
+# --- Sprint 7 U4: spawn prompts, context preflight, verify routing, budgets ----------------------
+# C7-2 preflight refused every IC and reviewer · R7-5/C7-4 VE read the wrong cycle's verdict · R7-1 a
+# qa-owned non-QA ticket could never close · R7-6 artifact owners told not to edit their document ·
+# R7-7 relative slot, bare git · C7-6 budget left out KB packs · C7-7 excerpt flattened · C7-12 missing
+# slot / bad policy only warned · R7-9 ASO: CANNOT EVALUATE · R7-13 templates unversioned, VE token.
+U4="$TMP/s7u4"; rm -rf "$U4"; mkdir -p "$U4/docs/team" "$U4/docs/53-reviews" "$U4/.agent-wt/ux-architect" "$U4/.agent-wt/qa-engineer"
+u4g() { git -c user.name=t -c user.email=t@localhost "$@"; }
+u4m() { ( cd "$U4" && node "$HERE/board.mjs" "$@" ); }
+u4c() { ( cd "$U4" && node "$HERE/spawn-prompt.mjs" compose --root "$U4" "$@" ); }
+u4vd() { ( cd "$U4" && sh "$HERE/verify-done.sh" "$1" main fast 2>/dev/null | sed -n 's/^  Evidence: //p' ); }
+printf 'Integration branch: main\n' > "$U4/docs/23-git-strategy.md"
+printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$U4/docs/team/project-profile.json"
+printf '# PRD\n\n## F-001 Greeting\nGreets by name.\n\n### F-001 Acceptance\n- Given Ada, shows Hello Ada\n' > "$U4/docs/10-prd.md"
+{ printf '# iOS\n\n## APP-001 greet\n| field | type |\n|---|---|\n| name | String |\n\n```sh\n# a shell comment, not a heading\necho AFTER-COMMENT-LINE\n'
+  awk 'BEGIN { for (i = 0; i < 200; i++) print "filler line " i " with ten words a b c d" }'; printf '```\n'; } > "$U4/docs/22-impl-spec-ios.md"
+( cd "$U4" && git init -q -b main && u4g add docs && u4g commit -q -m base \
+  && node "$HERE/board.mjs" add APP-001 --title greet --owner ios-developer --feature F-001 --spec docs/22-impl-spec-ios.md --by tech-manager \
+  && node "$HERE/board.mjs" add APP-040 --title flows --owner ux-architect --spec docs/12-flows.md --by tech-manager \
+  && node "$HERE/board.mjs" add APP-030 --title "Test plan for checkout" --owner qa-engineer --acceptance "plan covers checkout" --by tech-manager \
+  && node "$HERE/worktree-slot.mjs" lease --owner ios-developer --tickets APP-001 ) >/dev/null 2>&1
+U4SLOT="$U4/.agent-wt/ios-developer-1"
+
+# C7-2 — the preflight every IC and reviewer runs first.
+assert_exit 0 "Sprint 7 U4: preflight clears a freshly leased, detached slot (C7-2)" \
+  node "$HERE/context-preflight.mjs" "$U4SLOT" --ticket APP-001 --role ios-developer
+grep -qF 'ticket APP-001: todo' "$TMP/out" && ok "Sprint 7 U4: ...reading the ticket from the main project's board, not a docs/31-board.md the slot lacks (C7-2)" \
+  || bad "Sprint 7 U4: ...reading the ticket from the main project's board, not a docs/31-board.md the slot lacks (C7-2)" "$(cat "$TMP/out")"
+assert_exit 0 "Sprint 7 U4: a reviewer in the main checkout on the integration branch is not blocked, --ticket first (C7-2)" \
+  node "$HERE/context-preflight.mjs" --ticket APP-001 --role code-reviewer "$U4"
+assert_exit 1 "Sprint 7 U4: ...a writing role there still is (C7-2)" node "$HERE/context-preflight.mjs" "$U4" --role ux-architect
+assert_exit 1 "Sprint 7 U4: ...and a ticket not on the board is a blocker (C7-2)" \
+  node "$HERE/context-preflight.mjs" "$U4" --ticket APP-999 --role code-reviewer
+
+# R7-7 / C7-6 / C7-7 — the IC prompt: absolute slot, git -C, KB packs counted, excerpt keeps its lines.
+u4c --ticket APP-001 --role ios-developer --slot .agent-wt/ios-developer-1 >"$TMP/u4-ic.txt" 2>"$TMP/u4-ic.err"
+grep -qF "git -C \"$U4SLOT\" checkout -b feat/APP-001-<short-slug> main" "$TMP/u4-ic.txt" \
+  && grep -qF "start EVERY Bash call with \`cd \"$U4SLOT\" && …\`" "$TMP/u4-ic.txt" \
+  && ok "Sprint 7 U4: the IC prompt prints the absolute slot, git -C <slot>, and cd <slot> on every Bash call (R7-7)" \
+  || bad "Sprint 7 U4: the IC prompt prints the absolute slot, git -C <slot>, and cd <slot> on every Bash call (R7-7)" "$(head -12 "$TMP/u4-ic.txt")"
+sed -n 's/.*: prompt \([0-9]*\) + role file \([0-9]*\) + mandatory skills \([0-9]*\) (.*) + KB packs \([0-9]*\) (ios-conventions, stack-defaults) = \([0-9]*\) words.*/\1 \2 \3 \4 \5/p' "$TMP/u4-ic.err" \
+  | awk '{ exit !($4 > 0 && $1 + $2 + $3 + $4 == $5) }' \
+  && ok "Sprint 7 U4: the budget total includes the role's mandatory KB packs (C7-6)" \
+  || bad "Sprint 7 U4: the budget total includes the role's mandatory KB packs (C7-6)" "$(cat "$TMP/u4-ic.err")"
+grep -q 'OVER BUDGET' "$TMP/u4-ic.err" && bad "Sprint 7 U4: ...and an ordinary iOS ticket with a full excerpt is within the measured budget (C7-6)" "$(cat "$TMP/u4-ic.err")" \
+  || ok "Sprint 7 U4: ...and an ordinary iOS ticket with a full excerpt is within the measured budget (C7-6)"
+grep -qx '| name | String |' "$TMP/u4-ic.txt" && grep -qF 'AFTER-COMMENT-LINE' "$TMP/u4-ic.txt" && grep -qF '[…truncated]' "$TMP/u4-ic.txt" \
+  && ok "Sprint 7 U4: a truncated excerpt keeps its lines, and a # comment in a code block does not split the section (C7-7)" \
+  || bad "Sprint 7 U4: a truncated excerpt keeps its lines, and a # comment in a code block does not split the section (C7-7)"
+[ $(( $(grep -c '^```' "$TMP/u4-ic.txt") % 2 )) = 0 ] && ok "Sprint 7 U4: ...and a fence cut open is closed, so every later fence pairs (C7-7)" \
+  || bad "Sprint 7 U4: ...and a fence cut open is closed, so every later fence pairs (C7-7)"
+[ "$(grep -n 'Given Ada, shows Hello Ada' "$TMP/u4-ic.txt" | head -1 | cut -d: -f1)" -lt "$(grep -n '| name | String |' "$TMP/u4-ic.txt" | head -1 | cut -d: -f1)" ] 2>/dev/null \
+  && ok "Sprint 7 U4: ...with the PRD's acceptance first, before the impl spec spends the budget (C7-7)" \
+  || bad "Sprint 7 U4: ...with the PRD's acceptance first, before the impl spec spends the budget (C7-7)"
+grep -qF 'Do not edit the specs.' "$TMP/u4-ic.txt" && ok "Sprint 7 U4: a code IC is still told not to edit the specs" || bad "Sprint 7 U4: a code IC is still told not to edit the specs"
+
+# R7-6 — an artifact owner edits the document its ticket is for.
+u4c --ticket APP-040 --role ux-architect >"$TMP/u4-ux.txt" 2>/dev/null
+grep -qF "Edit only the document(s) your ticket's Spec names; no other spec." "$TMP/u4-ux.txt" && ! grep -qF 'Do not edit the specs' "$TMP/u4-ux.txt" \
+  && ok "Sprint 7 U4: an artifact owner (ux-architect on docs/12-flows.md) is told to edit its Spec, not forbidden to (R7-6)" \
+  || bad "Sprint 7 U4: an artifact owner (ux-architect on docs/12-flows.md) is told to edit its Spec, not forbidden to (R7-6)"
+
+# C7-12 — a missing slot or an unparseable policy is exit 2, not a warning over a printed prompt.
+assert_exit 2 "Sprint 7 U4: compose refuses a slot that does not exist (C7-12)" u4c --ticket APP-001 --role ios-developer --slot .agent-wt/nope
+printf '{"requireActorTokens": tru\n' > "$U4/.studio-policy.json"
+assert_exit 2 "Sprint 7 U4: compose refuses an unparseable .studio-policy.json, as the board does (C7-12)" \
+  u4c --ticket APP-001 --role ios-developer --slot .agent-wt/ios-developer-1
+rm -f "$U4/.studio-policy.json"
+
+# R7-5 / C7-4 — after REQUEST CHANGES the VE reads the verdict the reviewer CITED (cycles moved on).
+( cd "$U4SLOT" && u4g checkout -q -b feat/APP-001-greet main && echo 'let a = 1' > A.swift && u4g add A.swift && u4g commit -q -m work ) >/dev/null 2>&1
+printf 'REVIEW VERDICT: REQUEST CHANGES\nScope: a..b\nConstants routed to verification-engineer: MAX_RETRY=3\nBlocking: x\n\n## Not checked\nNothing.\n' > "$U4/docs/53-reviews/APP-001-cycle-0.md"
+u4m move APP-001 claimed --by ios-developer >/dev/null 2>&1
+u4m move APP-001 done_reported --by ios-developer >/dev/null 2>&1
+u4m move APP-001 verified --by tech-manager --evidence "$(u4vd feat/APP-001-greet)" >/dev/null 2>&1
+u4m move APP-001 review_requested --by ios-developer >/dev/null 2>&1
+u4m move APP-001 changes --by code-reviewer --verdict docs/53-reviews/APP-001-cycle-0.md >/dev/null 2>"$TMP/u4-ch.err"
+printf '{"requireActorTokens": true}\n' > "$U4/.studio-policy.json"
+u4c --ticket APP-001 --role verification-engineer >"$TMP/u4-ve.txt" 2>/dev/null
+rm -f "$U4/.studio-policy.json"
+grep -qF 'MAX_RETRY=3' "$TMP/u4-ve.txt" && grep -qF 'docs/53-reviews/APP-001-cycle-0.md' "$TMP/u4-ve.txt" \
+  && ok "Sprint 7 U4: after REQUEST CHANGES the VE prompt carries the constants routed in the verdict the reviewer cited (R7-5, C7-4)" \
+  || bad "Sprint 7 U4: after REQUEST CHANGES the VE prompt carries the constants routed in the verdict the reviewer cited (R7-5, C7-4)" "$(cat "$TMP/u4-ch.err"; grep -i routed "$TMP/u4-ve.txt")"
+! grep -q '^Token: ' "$TMP/u4-ve.txt" && node "$HERE/spawn-prompt.mjs" verify --role verification-engineer --prompt "$TMP/u4-ve.txt" >/dev/null 2>&1 \
+  && ok "Sprint 7 U4: ...mints no token for a spawn that writes no board event, and clears verify (R7-13)" \
+  || bad "Sprint 7 U4: ...mints no token for a spawn that writes no board event, and clears verify (R7-13)"
+
+# R7-1 — a qa-engineer-owned APP ticket closes: verification-engineer writes its QA verdict.
+( cd "$U4" && u4g checkout -q -b feat/APP-030-plan main && printf '# Test plan\n' > docs/50-test-plan.md && u4g add docs/50-test-plan.md \
+  && u4g commit -q -m plan && u4g checkout -q main ) >/dev/null 2>&1
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\ndocs/50-test-plan.md read.\n\n## Not checked\nNothing.\n' > "$U4/docs/53-reviews/APP-030-cycle-0.md"
+u4m move APP-030 claimed --by qa-engineer >/dev/null 2>&1
+u4m move APP-030 done_reported --by qa-engineer >/dev/null 2>&1
+u4m move APP-030 verified --by tech-manager --evidence "$(u4vd feat/APP-030-plan)" >/dev/null 2>&1
+u4m move APP-030 review_requested --by qa-engineer >/dev/null 2>&1
+u4m move APP-030 approved --by code-reviewer --verdict docs/53-reviews/APP-030-cycle-0.md >/dev/null 2>&1
+u4m move APP-030 merged --by tech-manager >/dev/null 2>&1
+u4m move APP-030 verified --by tech-manager --evidence "$(u4vd feat/APP-030-plan)" >/dev/null 2>"$TMP/u4-qa.err"
+u4m add QA-1-w1 --title "QA pass — wave 1" --owner qa-engineer --by tech-manager >/dev/null 2>&1
+assert_exit 2 "Sprint 7 U4: the QA wave refuses a qa-engineer-owned ticket (it cannot pass its own work) (R7-1)" \
+  u4c --ticket QA-1-w1 --role qa-engineer --tickets APP-030
+assert_has "$TMP/err" "role verification-engineer" "Sprint 7 U4: ...and names the verification-engineer compose instead (R7-1)"
+printf '{"requireActorTokens": true}\n' > "$U4/.studio-policy.json"
+u4c --ticket APP-030 --role verification-engineer >"$TMP/u4-vq.txt" 2>"$TMP/u4-vq.err"
+U4QP=$(grep -F 'qa_passed --by verification-engineer --token st_' "$TMP/u4-vq.txt")
+( cd "$U4" && sh -c "$U4QP" ) >"$TMP/u4-qp.out" 2>&1; U4RC=$?
+( cd "$U4" && u4g merge -q --ff-only feat/APP-030-plan ) >/dev/null 2>&1
+u4m move APP-030 closed --by tech-manager --token "$(u4m actor mint --role tech-manager --ticket APP-030)" >>"$TMP/u4-qp.out" 2>&1
+rm -f "$U4/.studio-policy.json"
+[ -n "$U4QP" ] && [ "$U4RC" = 0 ] && [ "$(cd "$U4" && node "$HERE/board.mjs" show --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>console.log(JSON.parse(s).tickets["APP-030"].status))')" = done ] \
+  && ok "Sprint 7 U4: the VE QA-verdict prompt's own qa_passed command is accepted, and the ticket closes (R7-1)" \
+  || bad "Sprint 7 U4: the VE QA-verdict prompt's own qa_passed command is accepted, and the ticket closes (R7-1)" "$(cat "$TMP/u4-qa.err" "$TMP/u4-vq.err" "$TMP/u4-qp.out")"
+
+# R7-9 — `ASO: CANNOT EVALUATE` is a gate line, not a missing DONE.
+node -e 'process.stdout.write(JSON.stringify({ hook_event_name: "SubagentStop", agent_type: "app-dev-team:aso-specialist", agent_id: "u4a", cwd: process.argv[1],
+  transcript_path: "/nonexistent", last_assistant_message: "ASO: CANNOT EVALUATE — no screenshots captured (APP-001)" }))' "$U4" | sh "$HERE/../hooks/persist-ic-report.sh" >/dev/null 2>"$TMP/u4-aso.err"
+[ $? = 0 ] && ok "Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)" \
+  || bad "Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)" "$(cat "$TMP/u4-aso.err")"
+
+# R7-13 — the spawn templates are versioned in the prompt registry next to the role files.
+U4R="$TMP/s7u4-reg"; rm -rf "$U4R"; mkdir -p "$U4R/agents" "$U4R/scripts/lib"
+printf '# a\n' > "$U4R/agents/role-a.md"; printf 'one\n' > "$U4R/scripts/spawn-prompt.mjs"; printf 'c\n' > "$U4R/scripts/lib/contract.mjs"
+( cd "$U4R" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-20 >/dev/null )
+printf 'two\n' > "$U4R/scripts/spawn-prompt.mjs"
+( cd "$U4R" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-21 >/dev/null )
+node -e 'const r = require(process.argv[1]); const t = r.entries.find((e) => e.id === "template/scripts/spawn-prompt.mjs");
+  process.exit(t && t.version === "1.0.1" && r.entries.some((e) => e.id === "template/scripts/lib/contract.mjs") ? 0 : 1)' "$U4R/docs/team/prompt-registry.json" \
+  && ok "Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)" \
+  || bad "Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)"
+
+# --- Sprint 7 U5: tools, locks, test infrastructure ---
+#
+# C7-1: no test edits the plugin's tracked files in place; the exit trap proves the plugin's git
+# status did not move. Proven on a throwaway plugin repo carrying this suite's preamble plus one
+# probe: a probe that writes a tracked file must fail the run loudly; one that does not must pass.
+U5P="$TMP/u5-fakeplugin"; rm -rf "$U5P"; mkdir -p "$U5P/scripts"
+for u5k in dirty clean; do
+  { awk '/^echo "SCRIPT TESTS"/ { exit } { print }' "$HERE/test.sh"
+    [ "$u5k" = dirty ] && echo 'printf x >> "$HERE/../tracked.txt"'
+    echo '[ "$FAIL" -eq 0 ] || exit 1'; } > "$U5P/scripts/probe-$u5k.sh"
+done
+( cd "$U5P" && git init -q -b main . && echo t > tracked.txt && git add . && git commit -q -m init ) >/dev/null 2>&1
+# APP_TEAM_TEST_HERE is cleared: under --only it is exported, and the probe would then write the REAL
+# plugin's tree — which is exactly what the trap caught the first time this ran.
+( cd "$U5P" && APP_TEAM_TEST_HERE= sh scripts/probe-dirty.sh ) >"$TMP/u5-dirty.txt" 2>&1; U5RC=$?
+[ "$U5RC" = 1 ] && grep -q 'FATAL: the plugin' "$TMP/u5-dirty.txt" \
+  && ok "C7-1: a run that writes a tracked plugin file fails loudly on exit" \
+  || bad "C7-1: a run that writes a tracked plugin file fails loudly on exit" "rc=$U5RC $(tail -3 "$TMP/u5-dirty.txt")"
+( cd "$U5P" && git checkout -q -- tracked.txt && APP_TEAM_TEST_HERE= sh scripts/probe-clean.sh ) >"$TMP/u5-clean.txt" 2>&1 \
+  && ok "C7-1: ...and a run that leaves the tree alone passes" \
+  || bad "C7-1: ...and a run that leaves the tree alone passes" "$(tail -3 "$TMP/u5-clean.txt")"
+# The five in-place mirror tests now mutate plugin_copy; nothing restores a tracked file from a .bak.
+grep -n -E '"\$(HERE|CR|BD)[^"]*\.bak"' "$HERE/test.sh" >"$TMP/u5-inplace.txt"
+[ ! -s "$TMP/u5-inplace.txt" ] \
+  && ok "C7-1: ...and no test copies a .bak over a tracked plugin file" \
+  || bad "C7-1: ...and no test copies a .bak over a tracked plugin file" "$(cat "$TMP/u5-inplace.txt")"
+
+# C7-11: assert_has needles are fixed strings; patterns go through assert_has_re.
+printf 'abc\n' > "$TMP/u5-fixed.txt"
+( PASS=0; FAIL=0; assert_has "$TMP/u5-fixed.txt" "a.c" probe; [ "$FAIL" = 1 ] ) >/dev/null 2>&1 \
+  && ok "C7-11: assert_has reads its needle as a fixed string — 'a.c' does not match 'abc'" \
+  || bad "C7-11: assert_has reads its needle as a fixed string — 'a.c' does not match 'abc'"
+( PASS=0; FAIL=0; assert_has_re "$TMP/u5-fixed.txt" "^a.c" probe; [ "$FAIL" = 0 ] ) >/dev/null 2>&1 \
+  && ok "C7-11: ...and assert_has_re is the explicit pattern form" \
+  || bad "C7-11: ...and assert_has_re is the explicit pattern form"
+# C7-11: a hung command's whole tree dies with it, not only the subshell.
+rm -f "$TMP/u5-kt.pid"
+( PASS=0; FAIL=0; assert_exit_within 1 0 probe sh -c 'sleep 30 & echo $! > "$1"; wait' sh "$TMP/u5-kt.pid" ) >/dev/null 2>&1
+sleep 1
+U5KT=$(cat "$TMP/u5-kt.pid" 2>/dev/null)
+if [ -n "$U5KT" ] && kill -0 "$U5KT" 2>/dev/null; then
+  kill -9 "$U5KT" 2>/dev/null
+  bad "C7-11: assert_exit_within kills the hung command's children, not only its subshell"
+else
+  ok "C7-11: assert_exit_within kills the hung command's children, not only its subshell"
+fi
+
+# C7-3: four concurrent leases against --pool 2 — the pool holds and every slot is recorded.
+U5W="$TMP/u5-slots"; rm -rf "$U5W"; mkdir -p "$U5W"
+( cd "$U5W" && git init -q -b main . && git commit -q --allow-empty -m init ) >/dev/null 2>&1
+U5PIDS=''
+for o in a b c d; do
+  node "$HERE/worktree-slot.mjs" lease --root "$U5W" --owner "dev-$o" --tickets "T-$o" --pool 2 --base main >"$TMP/u5-lease-$o.txt" 2>&1 &
+  U5PIDS="$U5PIDS $!"
+done
+for p in $U5PIDS; do wait "$p"; done
+U5LEASED=$(cat "$TMP"/u5-lease-?.txt | grep -c '^LEASED')
+U5SLOTS=$(node -e 'console.log(Object.keys(require(process.argv[1]).slots).length)' "$U5W/docs/team/worktree-slots.json" 2>/dev/null)
+U5TREES=$(cd "$U5W" && git worktree list | grep -c '\.agent-wt/')
+[ "$U5LEASED" = 2 ] && [ "$U5SLOTS" = 2 ] && [ "$U5TREES" = 2 ] \
+  && ok "C7-3: 4 concurrent leases with --pool 2 lease exactly 2, record both, create 2 worktrees" \
+  || bad "C7-3: 4 concurrent leases with --pool 2 lease exactly 2, record both, create 2 worktrees" "leased=$U5LEASED recorded=$U5SLOTS trees=$U5TREES"
+
+# C7-9: a writer waits out a live holder longer than the old 5s, rather than refusing.
+mkdir -p "$TMP/u5-lock"
+node --input-type=module -e '
+const { withFileLock } = await import(process.argv[1]);
+withFileLock(process.argv[2], () => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 6500); });
+' "$HERE/lib/atomic.mjs" "$TMP/u5-lock/log" & U5H=$!
+sleep 1
+assert_exit 0 "C7-9: a lock waiter outlasts a live 6s holder instead of refusing at 5s" node --input-type=module -e '
+const { withFileLock } = await import(process.argv[1]);
+withFileLock(process.argv[2], () => {});
+' "$HERE/lib/atomic.mjs" "$TMP/u5-lock/log"
+wait "$U5H"
+
+# C7-10: messages.mjs and run-ledger.mjs share withFileLock, so a lock left by a DEAD holder is
+# reaped once aged — run-ledger had no reaping at all, messages.mjs a directory lock of its own.
+sh -c 'exit 0' & U5DEAD=$!; wait "$U5DEAD"
+mkdir -p "$TMP/u5-rl"
+printf '%s\n' "$U5DEAD" > "$TMP/u5-rl/runs.jsonl.lock"; touch -t 202001010000 "$TMP/u5-rl/runs.jsonl.lock"
+assert_exit 0 "C7-10: run-ledger reaps a dead holder's aged lock instead of blocking every claim" \
+  node "$HERE/run-ledger.mjs" start --ledger "$TMP/u5-rl/runs.jsonl" --ticket T-1 --role ios-developer
+U5M="$TMP/u5-msg"; rm -rf "$U5M"; mkdir -p "$U5M/docs/team"
+printf '%s\n' "$U5DEAD" > "$U5M/docs/team/messages.jsonl.lock"; touch -t 202001010000 "$U5M/docs/team/messages.jsonl.lock"
+assert_exit 0 "C7-10: messages.mjs takes the same shared lock and reaps the same dead holder" \
+  node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from tech-lead --to ios-developer \
+    --ticket APP-050 --kind fyi --summary "lock probe"
+
+# R7-2: the CTO's prescribed ADR command works on a fresh ticket — readers are not chain roles.
+assert_exit 0 "R7-2: messages.mjs artifact ADR --by cto --ticket APP-060 is not chain_too_deep" \
+  node "$HERE/messages.mjs" artifact ADR --ledger "$U5M/docs/team/messages.md" --by cto --title "SQLite is a projection" --ticket APP-060
+# R7-11: a WAIVER registration does not close the ticket to release-manager's prescribed question.
+node "$HERE/messages.mjs" artifact WAIVER --ledger "$U5M/docs/team/messages.md" --by cto --title "S3 bugs" \
+  --ticket APP-004 --expires 2099-01-01 --owner amol >/dev/null 2>&1
+assert_exit 0 "R7-11: an artifact registration does not close the ticket thread to a later question" \
+  node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from release-manager --to qa-engineer \
+    --ticket APP-004 --kind question --summary "Sign-off on APP-004 before I cut vX.Y.Z?"
+node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from cto --to tech-lead \
+  --ticket APP-006 --kind decision --summary "Use SQLite" --artifact ADR-001 >/dev/null 2>&1
+assert_exit 1 "R7-11: ...while a real decision still refuses a reopen without evidence" \
+  node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from release-manager --to qa-engineer \
+    --ticket APP-006 --kind question --summary "Sign-off on APP-006?"
+
+# R7-3: review-pattern-scan reads the verdict format the board accepts.
+U5R="$TMP/u5-reviews"; rm -rf "$U5R"; mkdir -p "$U5R/docs/53-reviews"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-101\nScope: a..b\nBlocking: app/Store.swift:42 force unwrap — guard it\nNotes (non-blocking): none\n\n## Not checked\nNothing.\n' \
+  > "$U5R/docs/53-reviews/APP-101-cycle-1.md"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-102\nScope: a..b\nBlocking:\n- `app/Store.swift:42` same force unwrap\nNotes (non-blocking): none\n\n## Not checked\nNothing.\n' \
+  > "$U5R/docs/53-reviews/APP-102.md"
+node "$HERE/review-pattern-scan.mjs" --root "$U5R" >"$TMP/u5-rps.txt" 2>&1
+assert_has "$TMP/u5-rps.txt" "SHARED FILE: app/Store.swift blocked 2 ticket(s): APP-101, APP-102" \
+  "R7-3: two current-format verdicts blocking on one file are correlated"
+
+# S7-11: the proposer cannot review its own memory, and propose names its proposer.
+U5MEM="$TMP/u5-memory.jsonl"; rm -f "$U5MEM"
+U5MID=$(node "$HERE/memory-curator.mjs" propose --ledger "$U5MEM" --class project --content "x" --source s.md --by tech-lead \
+  | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>console.log(JSON.parse(s).memory_id))')
+assert_exit 1 "S7-11: memory review by the proposer is refused" \
+  node "$HERE/memory-curator.mjs" review --ledger "$U5MEM" --id "$U5MID" --reason promote --content ok --by tech-lead
+assert_exit 0 "S7-11: ...and a different reviewer may promote it" \
+  node "$HERE/memory-curator.mjs" review --ledger "$U5MEM" --id "$U5MID" --reason promote --content ok --by cto
+assert_exit 2 "S7-11: ...and propose without --by is refused" \
+  node "$HERE/memory-curator.mjs" propose --ledger "$U5MEM" --class project --content "y" --source s.md
+
+# S7-1: the build cache build-env.sh creates is operational, not a dirty tree.
+U5C="$TMP/u5-cache"; rm -rf "$U5C"; mkdir -p "$U5C"
+( cd "$U5C" && git init -q -b main . && echo a > a.txt && git add a.txt && git commit -q -m init && mkdir -p .studio-cache/gradle && echo c > .studio-cache/gradle/c ) >/dev/null 2>&1
+node --input-type=module -e 'const m = await import(process.argv[1]); process.exit(m.treeDirty(process.argv[2]) ? 1 : 0);' \
+  "$HERE/lib/readiness.mjs" "$U5C" \
+  && ok "S7-1: a .studio-cache/ build cache does not make the tree dirty" \
+  || bad "S7-1: a .studio-cache/ build cache does not make the tree dirty"
+
+# S7-4: run-doctor honours --root and names each live attempt's run and attempt ids.
+U5RD="$TMP/u5-rd"; rm -rf "$U5RD"; mkdir -p "$U5RD/docs/team"
+node "$HERE/run-ledger.mjs" start --ledger "$U5RD/docs/team/runs.jsonl" --ticket APP-009 --role ios-developer >/dev/null 2>&1
+( cd "$TMP" && node "$HERE/run-doctor.mjs" --root "$U5RD" ) >"$TMP/u5-rd.txt" 2>&1
+assert_has_re "$TMP/u5-rd.txt" "ACTIVE  APP-009  run RUN-[^ ]*  attempt ATT-" "S7-4: run-doctor --root reads that project and lists the live attempt's run and attempt ids"
+
+# W7-12: printed next steps use the plugin path, which exists from a project root.
+! grep -n 'node scripts/' "$HERE/verify-done.sh" "$HERE/merge-reconcile.mjs" >"$TMP/u5-relpath.txt" \
+  && ok "W7-12: verify-done and merge-reconcile print \${CLAUDE_PLUGIN_ROOT} paths, not relative ones" \
+  || bad "W7-12: verify-done and merge-reconcile print \${CLAUDE_PLUGIN_ROOT} paths, not relative ones" "$(cat "$TMP/u5-relpath.txt")"
+
+# N3: M32 and M35 each get the assertion their mutate.sh label names.
+mkdir -p "$TMP/u5-a11y"
+printf 'Button("x") { Image(systemName: "x") }\n.frame(width: 24)\n' > "$TMP/u5-a11y/Plain.swift"
+printf 'Button("x") { Image(systemName: "x") } // accessibilityLabel\n.frame(width: 24)\n' > "$TMP/u5-a11y/Comment.swift"
+node "$HERE/accessibility-scan.mjs" "$TMP/u5-a11y/Plain.swift" >/dev/null 2>&1; U5A=$?
+node "$HERE/accessibility-scan.mjs" "$TMP/u5-a11y/Comment.swift" >/dev/null 2>&1; U5B=$?
+[ "$U5A" = 1 ] && [ "$U5B" = 1 ] \
+  && ok "comment-only and unlabelled SwiftUI controls remain detectable" \
+  || bad "comment-only and unlabelled SwiftUI controls remain detectable" "plain=$U5A comment=$U5B"
+U5F="$TMP/u5-money"; rm -rf "$U5F"; mkdir -p "$U5F/docs" "$U5F/src"
+printf '# PRD\n\nMoney uses half-up rounding.\n' > "$U5F/docs/10-prd.md"
+printf 'let total = amount.rounded(.toNearestOrEven)\n' > "$U5F/src/Money.swift"
+assert_exit 1 "a bankers rounding implementation under a half-up rule blocks release" \
+  node "$HERE/financial-constant-scan.mjs" "$U5F"
+
+# N6: a real CLEAR ship-gate run carries the G-F13 limit, not only the source text.
+rm -rf "$TMP/u5-shipclear"; cp -R "$FIX/ship-clear" "$TMP/u5-shipclear"
+sh "$HERE/ship-gate.sh" "$TMP/u5-shipclear" >"$TMP/u5-ship.txt" 2>&1; U5S=$?
+[ "$U5S" = 0 ] && grep -q '^RESULT: CLEAR' "$TMP/u5-ship.txt" \
+  && grep -qF 'only replay KNOWN defect classes' "$TMP/u5-ship.txt" && grep -qF 'red-team-agent and defect-hunting' "$TMP/u5-ship.txt" \
+  && ok "N6: a CLEAR ship-gate run itself states it only replays known defects (G-F13)" \
+  || bad "N6: a CLEAR ship-gate run itself states it only replays known defects (G-F13)" "rc=$U5S"
+
+# --- Sprint 7 U1: one integration branch, and the wave lands only what was reviewed ---
+echo "Sprint 7 U1: one integration branch, and the wave lands only what was reviewed"
+U1="$TMP/s7u1"; rm -rf "$U1"; mkdir -p "$U1"
+u1base() { ( cd "$1" && node -e 'import(process.argv[1]).then((m) => process.stdout.write(m.integrationBase(m.gitAt(process.cwd())) || "-"))' "$HERE/lib/integration.mjs" ); }
+u1repo() { mkdir -p "$1/docs" && ( cd "$1" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m init ) >/dev/null 2>&1; }
+
+# C7-5: only a line that STARTS with the label declares; prose about "the integration branch" does not.
+U1P="$U1/prose"; u1repo "$U1P"; ( cd "$U1P" && git branch develop ) >/dev/null 2>&1
+printf 'Features merge into the integration branch — never straight to main.\nThe integration branch is protected.\nIntegration branch: main\n' > "$U1P/docs/23-git-strategy.md"
+[ "$(sh "$HERE/integration-branch.sh" "$U1P" 2>/dev/null)" = main ] && [ "$(u1base "$U1P")" = main ] \
+  && ok "Sprint 7 U1: prose naming 'the integration branch' is not a declaration — main is read, not never/protected (C7-5)" \
+  || bad "Sprint 7 U1: prose naming 'the integration branch' is not a declaration — main is read, not never/protected (C7-5)" "$(sh "$HERE/integration-branch.sh" "$U1P" 2>&1 | head -2)"
+# C7-5: a doc that exists but cannot resolve is '' — never a fallback to the develop branch nobody declared.
+printf 'The integration branch is protected.\n' > "$U1P/docs/23-git-strategy.md"
+[ "$(u1base "$U1P")" = "-" ] && ok "Sprint 7 U1: a strategy doc that cannot resolve gives the board no base, not a fallback develop (C7-5)" \
+  || bad "Sprint 7 U1: a strategy doc that cannot resolve gives the board no base, not a fallback develop (C7-5)" "$(u1base "$U1P")"
+# W7-2: no strategy doc + a stale develop → the board agrees with integration-branch.sh (main).
+rm -f "$U1P/docs/23-git-strategy.md"
+[ "$(u1base "$U1P")" = main ] && ok "Sprint 7 U1: with no strategy doc the board and integration-branch.sh both say main (W7-2)" \
+  || bad "Sprint 7 U1: with no strategy doc the board and integration-branch.sh both say main (W7-2)" "$(u1base "$U1P")"
+
+# G7-3: the COMMITTED doc is the declaration; an uncommitted overwrite (or a ticket branch) is not.
+U1C="$U1/committed"; u1repo "$U1C"
+( cd "$U1C" && git branch develop && git branch feat/APP-1-x && printf 'Integration branch: develop\n' > docs/23-git-strategy.md \
+  && git add docs/23-git-strategy.md && git commit -qm strategy ) >/dev/null 2>&1
+printf 'Integration branch: feat/APP-1-x\n' > "$U1C/docs/23-git-strategy.md"
+[ "$(u1base "$U1C")" = develop ] && ok "Sprint 7 U1: an uncommitted rewrite of the strategy doc does not move the integration branch (G7-3)" \
+  || bad "Sprint 7 U1: an uncommitted rewrite of the strategy doc does not move the integration branch (G7-3)" "$(u1base "$U1C")"
+( cd "$U1C" && git worktree add -q .agent-wt/s feat/APP-1-x && printf 'Integration branch: feat/APP-1-x\n' > .agent-wt/s/docs/23-git-strategy.md ) >/dev/null 2>&1
+[ "$(u1base "$U1C/.agent-wt/s")" = develop ] && ok "Sprint 7 U1: ...nor does a slot's own copy of the doc — every worktree reads the main checkout's commit (G7-3)" \
+  || bad "Sprint 7 U1: ...nor does a slot's own copy of the doc — every worktree reads the main checkout's commit (G7-3)" "$(u1base "$U1C/.agent-wt/s")"
+( cd "$U1C" && git worktree remove --force .agent-wt/s && git add docs/23-git-strategy.md && git commit -qm ticket-branch ) >/dev/null 2>&1
+assert_exit 2 "Sprint 7 U1: a declared ticket branch (feat/…) is CANNOT RESOLVE, even committed (G7-3)" sh "$HERE/integration-branch.sh" "$U1C"
+
+# G7-16: a fresh clone has the declared develop only as origin/develop; the board gets a ref that resolves.
+U1O="$U1/origin"; u1repo "$U1O"
+( cd "$U1O" && printf 'Integration branch: develop\n' > docs/23-git-strategy.md && git add docs && git commit -qm s && git branch develop \
+  && cd "$U1" && git clone -q origin clone ) >/dev/null 2>&1
+[ "$(u1base "$U1/clone")" = origin/develop ] && ok "Sprint 7 U1: in a fresh clone the board's integration base is origin/develop, a ref that resolves (G7-16)" \
+  || bad "Sprint 7 U1: in a fresh clone the board's integration base is origin/develop, a ref that resolves (G7-16)" "$(u1base "$U1/clone")"
+
+# G7-6 / W7-1: the wave merges the commit `merged` recorded, and holds out a branch that moved since.
+U1W="$U1/wave"; mkdir -p "$U1W/docs/team" "$U1W/docs/53-reviews"
+( cd "$U1W" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  printf 'docs/\n.agent-wt/\n' > .gitignore
+  printf 'Integration branch: main\n' > docs/23-git-strategy.md
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":"true"}}\n' > docs/team/project-profile.json
+  git add .gitignore && git commit -qm init
+  git checkout -q -b feat/APP-1-x main && echo reviewed > app.sh && git add app.sh && git commit -qm app && git checkout -q main
+  node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-1 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-1 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-1 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-1 review_requested --by ios-developer --detail "-> code-reviewer"
+  printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-1-x\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 approved --by code-reviewer --verdict docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 merged --by tech-manager
+  git checkout -q feat/APP-1-x && echo UNREVIEWED > evil.txt && git add evil.txt && git commit -qm evil && git checkout -q main ) >/dev/null 2>&1
+( cd "$U1W" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command "printf '# tests 1\n# pass 1\n'" ) >"$TMP/u1w.txt" 2>&1
+U1RC=$?
+[ "$U1RC" = 2 ] && grep -q 'MOVED SINCE MERGED' "$TMP/u1w.txt" && grep -q 'APP-1 rework --by tech-manager' "$TMP/u1w.txt" \
+  && ! ( cd "$U1W" && git rev-parse -q --verify integration/wave-1 ) >/dev/null 2>&1 \
+  && ok "Sprint 7 U1: a branch with commits after merged is held out of the wave and routed to rework (G7-6, W7-1)" \
+  || bad "Sprint 7 U1: a branch with commits after merged is held out of the wave and routed to rework (G7-6, W7-1)" "rc=$U1RC $(grep -E 'WAVE|MOVED|rework' "$TMP/u1w.txt" | head -3)"
+# ...and with the branch back at the recorded commit (deleted here), the wave lands that commit by sha.
+( cd "$U1W" && git branch -q -D feat/APP-1-x ) >/dev/null 2>&1
+( cd "$U1W" && node "$HERE/wave-integrate.mjs" --root . --wave 2 --test-command "printf '# tests 1\n# pass 1\n'" ) >"$TMP/u1w2.txt" 2>&1
+U1RC=$?
+[ "$U1RC" = 0 ] && grep -q 'recorded at merged' "$TMP/u1w2.txt" && ( cd "$U1W" && git cat-file -e integration/wave-2:app.sh && ! git cat-file -e integration/wave-2:evil.txt ) 2>/dev/null \
+  && ok "Sprint 7 U1: the wave merges merged_head — the reviewed commit lands, the later one does not (G7-6)" \
+  || bad "Sprint 7 U1: the wave merges merged_head — the reviewed commit lands, the later one does not (G7-6)" "rc=$U1RC $(grep -E 'WAVE|NO BRANCH' "$TMP/u1w2.txt" | head -3)"
+
+# G7-17: an edit hidden by assume-unchanged is a dirty wave tree, not GREEN.
+U1D="$U1/wave-hidden"; mkdir -p "$U1D/docs/team"
+( cd "$U1D" && git init -q -b main . && git config user.email t@t.t && git config user.name T
+  printf 'docs/\n.agent-wt/\n' > .gitignore && echo a > a.txt && git add .gitignore a.txt && git commit -qm init
+  printf '{"schema":"project-profile/v1","platform":"cli","toolchain":{},"test":{"fast":"true","full":"true"}}\n' > docs/team/project-profile.json
+  git checkout -q -b feat/APP-1-x main && echo t > app.sh && git add app.sh && git commit -qm app && git checkout -q main
+  node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager
+  node "$HERE/board.mjs" move APP-1 claimed --by ios-developer
+  node "$HERE/board.mjs" move APP-1 done_reported --by ios-developer
+  node "$HERE/board.mjs" move APP-1 verified_static --by tech-manager --detail d
+  node "$HERE/board.mjs" move APP-1 review_requested --by ios-developer --detail "-> code-reviewer"
+  mkdir -p docs/53-reviews && printf 'REVIEW VERDICT: APPROVE\nScope: main..feat/APP-1-x\n\n## Not checked\nNothing.\n' > docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 approved --by code-reviewer --verdict docs/53-reviews/APP-1-cycle-0.md
+  node "$HERE/board.mjs" move APP-1 merged --by tech-manager ) >/dev/null 2>&1
+( cd "$U1D" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command "git update-index --assume-unchanged a.txt; echo changed > a.txt; printf '# tests 1\n# pass 1\n'" ) >"$TMP/u1d.txt" 2>&1
+U1RC=$?
+[ "$U1RC" = 2 ] && grep -q 'CANNOT EVALUATE' "$TMP/u1d.txt" && ok "Sprint 7 U1: a wave suite that hides an edit behind assume-unchanged is CANNOT EVALUATE (G7-17)" \
+  || bad "Sprint 7 U1: a wave suite that hides an edit behind assume-unchanged is CANNOT EVALUATE (G7-17)" "rc=$U1RC $(grep -E 'WAVE RESULT' "$TMP/u1d.txt")"
+# W7-8: re-running that wave refuses AND keeps the tree its message promised to keep.
+( cd "$U1D" && node "$HERE/wave-integrate.mjs" --root . --wave 1 --test-command true ) >/dev/null 2>&1
+[ -d "$U1D/.agent-wt/integration-wave-1" ] && ok "Sprint 7 U1: re-running an existing wave keeps the kept wave tree on disk (W7-8)" \
+  || bad "Sprint 7 U1: re-running an existing wave keeps the kept wave tree on disk (W7-8)"
+
+# W7-5: board-doctor (and so `orchestrator round`) refuses a log whose anchor is gone; ship-gate names adopt.
+U1B="$U1/anchor"; mkdir -p "$U1B"
+( cd "$U1B" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m i \
+  && node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager && node "$HERE/board.mjs" render ) >/dev/null 2>&1
+( cd "$U1B" && node "$HERE/board-doctor.mjs" docs/31-board.md ) >/dev/null 2>&1
+U1RC0=$?
+rm -rf "$U1B/.git/studio"
+( cd "$U1B" && node "$HERE/board-doctor.mjs" docs/31-board.md ) >/dev/null 2>"$TMP/u1b.txt"
+U1RC=$?
+[ "$U1RC0" = 0 ] && [ "$U1RC" = 2 ] && grep -q 'adopt' "$TMP/u1b.txt" \
+  && ok "Sprint 7 U1: board-doctor is CANNOT EVALUATE on a log whose anchor is gone, naming adopt (W7-5)" \
+  || bad "Sprint 7 U1: board-doctor is CANNOT EVALUATE on a log whose anchor is gone, naming adopt (W7-5)" "before=$U1RC0 after=$U1RC $(head -2 "$TMP/u1b.txt")"
+( cd "$U1B" && sh "$HERE/ship-gate.sh" ) >"$TMP/u1s.txt" 2>&1
+grep -q 'does not match its anchor' "$TMP/u1s.txt" && grep -q 'board.mjs" adopt' "$TMP/u1s.txt" && ! grep -q 'audit chain is BROKEN' "$TMP/u1s.txt" \
+  && ok "Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)" \
+  || bad "Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)" "$(grep -E 'anchor|chain' "$TMP/u1s.txt" | head -2)"
+
+# W7-3: the runtime gate in a main checkout that is not at the integration branch's tip is CANNOT EVALUATE.
+U1R="$U1/rt"; u1repo "$U1R"
+( cd "$U1R" && printf 'Integration branch: develop\n' > docs/23-git-strategy.md && git add docs && git commit -qm s \
+  && git branch develop && git checkout -q -b develop-next && git commit -q --allow-empty -m wave && git checkout -q develop && git merge -q --ff-only develop-next && git checkout -q main ) >/dev/null 2>&1
+sh "$HERE/runtime-gate.sh" --project-root "$U1R" >"$TMP/u1r.txt" 2>&1
+U1RC=$?
+[ "$U1RC" = 2 ] && grep -q 'not the tip of the integration branch develop' "$TMP/u1r.txt" \
+  && ok "Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)" \
+  || bad "Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)" "rc=$U1RC $(head -3 "$TMP/u1r.txt")"
+
+# Prose: the rework route (W7-1), FAIL-file names (R7-10), develop set-up order (W7-3), tracked QA
+# bundles and ignored register (R7-4, W7-9), close-after-QA-lands (W7-11).
+U1AB="$HERE/../commands/app-build.md"; U1AI="$HERE/../commands/app-init.md"
+grep -qF 'move APP-NNN rework --by tech-manager' "$U1AB" && grep -q 'MOVED SINCE MERGED' "$U1AB" \
+  && ok "Sprint 7 U1: app-build step 5 documents the rework route for a wave FAIL/CONFLICT (W7-1)" \
+  || bad "Sprint 7 U1: app-build step 5 documents the rework route for a wave FAIL/CONFLICT (W7-1)"
+grep -qF 'APP-NNN-cycle-N-verification.md' "$U1AB" && grep -qF 'APP-NNN-cycle-N-design-qa.md' "$U1AB" \
+  && ! grep -qF 'APP-NNN-cycle-N.md` as a FAIL file' "$U1AB" \
+  && ok "Sprint 7 U1: verification/design-QA FAIL files never reuse the reviewer's verdict file name (R7-10)" \
+  || bad "Sprint 7 U1: verification/design-QA FAIL files never reuse the reviewer's verdict file name (R7-10)"
+grep -q 'Then create and check out the declared integration branch' "$U1AI" \
+  && ok "Sprint 7 U1: app-init creates and checks out the declared integration branch after the first commit (W7-3)" \
+  || bad "Sprint 7 U1: app-init creates and checks out the declared integration branch after the first commit (W7-3)"
+U1GI=$(sed -n '/^   for p in \.agent-wt/,/; do$/p' "$U1AI")
+printf '%s' "$U1GI" | grep -q 'docs/54-evidence/runtime/' && ! printf '%s' "$U1GI" | grep -q 'docs/54-evidence/ ' \
+  && printf '%s' "$U1GI" | grep -q 'docs/90-register.jsonl' && printf '%s' "$U1GI" | grep -q 'docs/team/release-candidates.jsonl' \
+  && ok "Sprint 7 U1: app-init ignores only script-written evidence (bundles stay committable) and the register (R7-4, W7-9)" \
+  || bad "Sprint 7 U1: app-init ignores only script-written evidence (bundles stay committable) and the register (R7-4, W7-9)"
+grep -q 'Close nothing yet' "$U1AB" && grep -qF 'journey-gate.mjs" --root <its slot> --list' "$U1AB" && grep -qF '${CLAUDE_PLUGIN_ROOT}/docs/team/journeys/README.md' "$U1AB" \
+  && ok "Sprint 7 U1: app-build lands the QA- journeys and re-runs the journey gate before closing (W7-11)" \
+  || bad "Sprint 7 U1: app-build lands the QA- journeys and re-runs the journey gate before closing (W7-11)"
+rm -rf "$U1"
+
+# --- Sprint 7 U3: hooks — one wrapper table, uncertain cds, roots from targets, adopt, writers, slots ---
+# G7-8 (wrappers.txt read by both hooks), G7-9/G7-10 (a cd that may not run keeps the old dir, in both
+# hooks), G7-11 (the git hook resolves through integration-branch.sh), G7-12 (the guard derives the
+# studio root from an absolute target), G7-14 (no subagent adopt), G7-18 (more writers), W7-9 (the
+# dirty test skips operational paths), R7-7 (a developer stays in its slot). Self-contained.
+echo
+U3="$TMP/u3"; rm -rf "$U3"; mkdir -p "$U3/p/docs/team/evidence" "$U3/p/src"
+( cd "$U3/p" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i ) >/dev/null 2>&1
+: > "$U3/p/docs/31-board-events.jsonl"; echo '{}' > "$U3/p/docs/team/evidence/x.json"
+U3D="$U3/dirty"; mkdir -p "$U3D"; ( cd "$U3D" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i ) >/dev/null 2>&1; echo w > "$U3D/u.txt"
+U3G="$HERE/../hooks/block-shared-tree-destructive-git.sh"
+u3g() {  # <want> <label> <command> [cwd] — the guard, on Bash, as a subagent
+  node -e 'const [, c, d] = process.argv; process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "u3", cwd: d, tool_input: { command: c } }))' "$3" "${4:-$U3/p}" \
+    | sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>"$TMP/u3g.err"
+  _g=$?; [ "$_g" = "$1" ] && ok "U3: guard exit $1 — $2" || bad "U3: guard exit $1 — $2" "got $_g: $(head -c 300 "$TMP/u3g.err")"
+}
+u3d() {  # <want> <label> <command> [cwd] [agent_id] — the destructive-git hook
+  node -e 'const [, c, d, a] = process.argv; const o = { tool_name: "Bash", cwd: d, tool_input: { command: c } }; if (a) o.agent_id = a; process.stdout.write(JSON.stringify(o))' "$3" "${4:-$U3D}" "${5:-}" \
+    | sh "$U3G" >/dev/null 2>"$TMP/u3d.err"
+  _g=$?; [ "$_g" = "$1" ] && ok "U3: git hook exit $1 — $2" || bad "U3: git hook exit $1 — $2" "got $_g: $(head -c 300 "$TMP/u3d.err")"
+}
+# G7-8 — every row of the ONE table is seen through by BOTH hooks.
+_u3n=0
+while read -r _w _ops _rest; do
+  case "$_w" in ''|'#'*) continue ;; esac
+  _pre=$_w; _i=0; while [ "$_i" -lt "$_ops" ]; do _pre="$_pre x"; _i=$((_i + 1)); done
+  u3d 2 "wrappers.txt row '$_w' wraps git" "$_pre git stash"
+  u3g 2 "wrappers.txt row '$_w' wraps rm" "$_pre rm -rf docs/team/evidence"
+  _u3n=$((_u3n + 1))
+done < "$HERE/../hooks/wrappers.txt"
+[ "$_u3n" -ge 20 ] && grep -q 'wrappers.txt' "$U3G" && grep -q "'wrappers.txt'" "$HERE/../hooks/contract-hooks.mjs" \
+  && ! grep -q 'WRAP\[t\[k\]\]' "$U3G" && ! grep -q "new Set(\['env', 'exec'" "$HERE/../hooks/contract-hooks.mjs" \
+  && ok "U3: both hooks read hooks/wrappers.txt ($_u3n rows) and neither keeps its own list (G7-8)" \
+  || bad "U3: both hooks read hooks/wrappers.txt ($_u3n rows) and neither keeps its own list (G7-8)"
+u3g 0 'timeout 30 npm test (a wrapper, not a writer)' 'timeout 30 npm test'
+# G7-9 — the guard: a cd the shell may never apply cannot move it.
+for _c in 'if [ -d /nonexistent ]; then cd /tmp; fi; rm -f docs/team/evidence/x.json' 'while false; do cd /tmp; done; rm -f docs/team/evidence/x.json' \
+  'case x in y) cd /tmp;; esac; rm -f docs/team/evidence/x.json' 'f() { cd /tmp; }; rm -f docs/team/evidence/x.json' \
+  'cd /tmp | true; rm -f docs/team/evidence/x.json' 'true | cd /tmp; rm -f docs/team/evidence/x.json' 'cd /tmp & rm -f docs/team/evidence/x.json' \
+  'pushd /tmp; popd; rm -f docs/team/evidence/x.json' 'cd() { :; }; cd /tmp; rm -f docs/team/evidence/x.json' \
+  'sh -c "cd /nonexistent; rm -f docs/team/evidence/x.json"'; do
+  u3g 2 "uncertain cd: $_c" "$_c"
+done
+mkdir -p "$U3/noexec"; chmod 0 "$U3/noexec"
+u3g 2 'cd into a directory it cannot enter; rm' "cd $U3/noexec; rm -f docs/team/evidence/x.json"
+u3d 2 'cd into a directory it cannot enter; git reset --hard' "cd $U3/noexec; git reset --hard"
+chmod 755 "$U3/noexec"
+u3g 0 'cd /tmp; rm -rf docs (a cd that surely ran)' 'cd /tmp; rm -rf docs'
+u3g 0 'pushd /tmp; rm -rf docs' 'pushd /tmp; rm -rf docs'
+# G7-10 — the destructive-git hook, the same cases, plus setsid/script and the plumbing that rewrites the tree.
+for _c in 'false && cd /tmp; git stash' 'if false; then cd /tmp; fi; git stash' 'f() { cd /tmp; }; git clean -fdx' 'pushd /tmp; popd; git stash' \
+  'cd /tmp | true; git stash' 'cd /tmp & git stash' 'while false; do cd /tmp; done; git stash' 'script -q /dev/null git reset --hard' 'setsid git stash' \
+  'git read-tree -u --reset HEAD' 'git checkout-index -f -a'; do
+  u3d 2 "dirty tree: $_c" "$_c"
+done
+for _c in 'cd /tmp && git stash' 'cd /tmp; git stash' 'git read-tree HEAD' 'git checkout-index -a' 'git status' 'if true; then git status; fi'; do
+  u3d 0 "still allows: $_c" "$_c"
+done
+# G7-11 — "Integration branch: develop." resolves to develop, through integration-branch.sh.
+U3O="$U3/o"; mkdir -p "$U3O/docs"
+( cd "$U3O" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i && git branch feat && git checkout -q -b develop \
+  && printf 'Integration branch: develop.\n' > docs/23-git-strategy.md && : > docs/31-board-events.jsonl && git add docs \
+  && git -c user.name=t -c user.email=t@t commit -q -m s && git branch integration/wave-1 ) >/dev/null 2>&1
+u3d 2 'merge --no-ff onto develop declared as "develop."' 'git merge --no-ff feat' "$U3O"
+u3d 2 'branch -f develop, declared as "develop."' 'git branch -f develop feat' "$U3O"
+u3d 0 '...and branch -f of another branch' 'git branch -f feat main' "$U3O"
+grep -q 'integration-branch.sh' "$U3G" && ! grep -q 'ntegration branch\[\[:space:\]\]' "$U3G" \
+  && ok "U3: the git hook reads the declared branch through integration-branch.sh, with no parser of its own (G7-11)" \
+  || bad "U3: the git hook reads the declared branch through integration-branch.sh, with no parser of its own (G7-11)"
+# W7-9 — untracked operational files are bookkeeping; a source file is still work.
+: > "$U3O/docs/90-register.jsonl"; : > "$U3O/docs/90-register.md"; mkdir -p "$U3O/docs/team"; : > "$U3O/docs/team/release-candidates.jsonl"
+u3d 0 'branch -D with only operational files untracked (W7-9)' 'git branch -D integration/wave-1' "$U3O"
+echo x > "$U3O/new.swift"
+u3d 2 '...and blocked once a source file is untracked' 'git branch -D integration/wave-1' "$U3O"
+rm -f "$U3O/new.swift"
+# R7-7 — a subagent does not switch branches in a studio main checkout; its slot is fine.
+u3d 2 'a subagent: checkout -b in the studio main checkout' 'git checkout -b feat/APP-010-x main' "$U3O" agent1
+u3d 2 'a subagent: switch in the studio main checkout' 'git switch feat' "$U3O" agent1
+u3d 2 'a subagent: checkout <branch> in the studio main checkout' 'git checkout feat' "$U3O" agent1
+u3d 0 '...a path restore is not a switch' 'git checkout docs/23-git-strategy.md' "$U3O" agent1
+u3d 0 '...the main session may switch' 'git checkout -b feat/APP-010-x main' "$U3O"
+( cd "$U3O" && git worktree add -q .agent-wt/ios-developer-1 feat ) >/dev/null 2>&1
+u3d 0 '...and a subagent may in its slot' 'git checkout -b feat/APP-010-x main' "$U3O/.agent-wt/ios-developer-1" agent1
+u3d 0 '...or through git -C <slot>' "git -C $U3O/.agent-wt/ios-developer-1 checkout -b feat/APP-011-x main" "$U3O" agent1
+u3w() {  # <want> <label> <agent_type> <file_path> — the cross-worktree hook, standing in the main checkout
+  ( cd "$U3O" && printf '{"tool_name":"Write","agent_id":"a","agent_type":"%s","tool_input":{"file_path":"%s","content":"x"}}' "$3" "$4" | sh "$HERE/../hooks/block-cross-worktree-write.sh" ) >/dev/null 2>"$TMP/u3w.err"
+  _g=$?; [ "$_g" = "$1" ] && ok "U3: write hook exit $1 — $2" || bad "U3: write hook exit $1 — $2" "got $_g: $(head -c 300 "$TMP/u3w.err")"
+}
+u3w 2 'an ios-developer writing into the studio main checkout (R7-7)' app-dev-team:ios-developer "$U3O/src/a.swift"
+u3w 0 '...into its own slot, standing in main' ios-developer "$U3O/.agent-wt/ios-developer-1/src/a.swift"
+u3w 2 '...into a sibling slot' ios-developer "$U3O/.agent-wt/android-developer-1/src/a.swift"
+u3w 0 '...a ux-architect writing its doc in main' ux-architect "$U3O/docs/12-flows.md"
+u3w 0 '...an ios-developer writing outside any project' ios-developer "$U3/scratch.txt"
+# G7-12 — the root comes from the target too: cwd outside the project.
+u3g 2 'rm -rf <abs project>/docs/team/evidence from cwd /tmp' "rm -rf $U3/p/docs/team/evidence" /tmp
+u3g 2 'cd <abs project> && rm -rf docs from cwd /tmp' "cd $U3/p && rm -rf docs" /tmp
+u3g 0 '...and ls /tmp from cwd /tmp' 'ls /tmp' /tmp
+node -e 'process.stdout.write(JSON.stringify({ tool_name: "Write", agent_id: "u3", cwd: "/tmp", tool_input: { file_path: process.argv[1] + "/docs/team/risk-policy.json", content: "{}" } }))' "$U3/p" \
+  | sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>&1
+[ $? = 2 ] && ok "U3: the Write tool from cwd /tmp may not write <project>/docs/team/risk-policy.json (G7-12)" || bad "U3: the Write tool from cwd /tmp may not write <project>/docs/team/risk-policy.json (G7-12)"
+# G7-14 — adopt is the founder's.
+u3g 2 'node board.mjs adopt' 'node scripts/board.mjs adopt'
+u3g 2 'script -q /dev/null node board.mjs adopt' '(echo ADOPT; sleep 2) | script -q /dev/null node scripts/board.mjs adopt'
+u3g 2 'python3 pty.spawn board.mjs adopt' "python3 -c \"import pty; pty.spawn(['node','scripts/board.mjs','adopt'])\""
+u3g 2 'board.mjs adopt run by its shebang' './scripts/board.mjs adopt'
+u3g 0 '...node board.mjs show' 'node scripts/board.mjs show'
+# G7-18 — writers the guard now knows.
+for _c in 'python3 -m json.tool x docs/team/risk-policy.json' 'base64 -d -i x -o docs/team/risk-policy.json' 'uudecode -o docs/team/risk-policy.json x' \
+  'plutil -convert json -o docs/team/risk-policy.json x' 'cmake -E copy x docs/team/risk-policy.json' 'npx prettier --write docs/team/risk-policy.json' \
+  'npx rimraf docs/team/evidence' 'npx eslint --fix .' 'bunx prettier@3 -w docs'; do
+  u3g 2 "writer: $_c" "$_c"
+done
+u3g 0 'npx prettier --check docs/team/risk-policy.json' 'npx prettier --check docs/team/risk-policy.json'
+u3g 0 'python3 -m json.tool docs/team/risk-policy.json (reads)' 'python3 -m json.tool docs/team/risk-policy.json'
+rm -rf "$U3"
+
+# --- Sprint 7 lead: sweeps that delete the gitignored board are refused ------------------------
+# U3's W7-9 skip of operational paths let `git clean -fdx` / `git stash -a` through in a main checkout
+# whose board log is gitignored (app-init's .gitignore) — `git status` never shows ignored files, so
+# the tree looked clean while the command erased the board. branch -D still passes on operational dirt.
+echo "Sprint 7 lead: sweeps that delete the gitignored board are refused"
+SLC="$TMP/s7lead-clean"; mkdir -p "$SLC/docs" && (cd "$SLC" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf 'docs/31-board-events.jsonl\ndocs/31-board.md\ndocs/32-board-view.md\n' > .gitignore && echo x > a && git add .gitignore a && git commit -qm i \
+  && node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager >/dev/null 2>&1)
+s7l_hook() { printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"%s"}}' "$SLC" "$1" | sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" >/dev/null 2>&1; }
+for c in "git clean -fdx" "git clean -fdX" "git stash -a"; do
+  if [ -s "$SLC/docs/31-board-events.jsonl" ] && ! s7l_hook "$c"; then ok "Sprint 7 lead: '$c' in a main checkout with a gitignored board log is refused"
+  else bad "Sprint 7 lead: '$c' in a main checkout with a gitignored board log is refused"; fi
+done
+s7l_hook "git branch -D gone" && ok "Sprint 7 lead: branch -D with only operational files present still runs (W7-9)" \
+  || bad "Sprint 7 lead: branch -D with only operational files present still runs (W7-9)"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

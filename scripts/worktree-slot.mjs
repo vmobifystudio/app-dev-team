@@ -56,7 +56,7 @@
  *   1  REFUSED — the pool is full, or this owner already holds a slot with different tickets
  *   2  CANNOT EVALUATE — not a git repository, or the state file is unreadable
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -105,9 +105,11 @@ function readState() {
   return null;
 }
 
+// Called only inside the lease/release lock below — the whole read/decide/create/write is one
+// critical section (C7-3). Locking only this write let 4 concurrent leases with --pool 2 all read
+// the same empty state, all pass the pool check and create 4 worktrees, and record just 1.
 function writeState(state) {
-  mkdirSync(dirname(STATE), { recursive: true });
-  withFileLock(STATE, () => { writeFileSync(STATE, `${JSON.stringify(state, null, 2)}\n`); }, { die });
+  writeFileSync(STATE, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 /** Is `<DIR>/<name>` an actual worktree? Same test spawn-gate.sh applies, for the same reason. */
@@ -258,8 +260,8 @@ function cmdList() {
 }
 
 switch (command) {
-  case 'lease': cmdLease(); break;
-  case 'release': cmdRelease(); break;
+  case 'lease': withFileLock(STATE, cmdLease, { die }); break;
+  case 'release': withFileLock(STATE, cmdRelease, { die }); break;
   case 'list': cmdList(); break;
   default:
     die(1, `unknown command "${command ?? ''}"\n` +
