@@ -7,11 +7,11 @@
  * lease is still alive. A process may die between any two records; recovery must inspect the
  * ledger, never silently create a second attempt.
  */
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { parseArgs } from './lib/args.mjs';
+import { withFileLock } from './lib/atomic.mjs';
 
 const die = (code, message) => { process.stderr.write(`run-ledger: ${message}\n`); process.exit(code); };
 
@@ -25,30 +25,10 @@ const die = (code, message) => { process.stderr.write(`run-ledger: ${message}\n`
 // `O_EXCL` lockfile serializes the whole read-decide-append sequence per ledger, the same
 // mechanism every Unix mail spool and package manager uses for exactly this problem — Node has no
 // built-in flock, and this plugin stays dependency-free by design.
-let lockHeld = '';
-process.on('exit', () => { if (lockHeld) { try { unlinkSync(lockHeld); } catch { /* already gone */ } } });
-function withLedgerLock(ledgerPath, fn) {
-  const lockPath = `${ledgerPath}.lock`;
-  mkdirSync(dirname(ledgerPath), { recursive: true });
-  const deadline = Date.now() + 5000;
-  let fd;
-  for (;;) {
-    try { fd = openSync(lockPath, 'wx'); break; }
-    catch (e) {
-      if (e.code !== 'EEXIST') die(2, `could not create lock ${lockPath}: ${e.message}`);
-      if (Date.now() > deadline) die(2, `could not acquire ${lockPath} within 5s — another run-ledger process appears stuck; remove it by hand if it is stale`);
-      try { execFileSync('sleep', ['0.02']); } catch { /* best-effort backoff */ }
-    }
-  }
-  lockHeld = lockPath;
-  try {
-    closeSync(fd);
-    return fn();
-  } finally {
-    lockHeld = '';
-    try { unlinkSync(lockPath); } catch { /* already gone */ }
-  }
-}
+//
+// The lock is lib/atomic.mjs's withFileLock (C7-10). This file used to carry its own O_EXCL lock
+// with no stale reaping, so a SIGKILLed holder blocked every claim until someone deleted the file
+// by hand; the shared primitive reaps a dead holder once the lock has aged past any real section.
 const VALUE_FLAGS = new Set([
   'ledger', 'run', 'ticket', 'role', 'attempt', 'phase', 'lease-seconds', 'detail', 'context',
   'worktree', 'by', 'effect', 'pending', 'now',
@@ -126,7 +106,7 @@ function activeForTicket(records, ticket, now) {
 }
 
 if (!command) die(2, 'usage: start|checkpoint|heartbeat|complete|interrupt');
-withLedgerLock(ledger, () => {
+withFileLock(ledger, () => {
 const records = readRecords();
 if (command === 'start') {
   const run = String(flags.run || `RUN-${randomUUID()}`);
@@ -172,4 +152,4 @@ if (command === 'start') {
     });
   } else die(2, `unknown command ${command}`);
 }
-});
+}, { die });

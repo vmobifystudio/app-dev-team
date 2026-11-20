@@ -41,12 +41,18 @@ if (command === 'propose') {
   const memoryClass = required('class'); if (!classes.has(memoryClass)) die(2, `invalid memory class: ${memoryClass}`);
   const content = required('content'); const source = required('source'); const confidence = Number(flags.confidence || 0.5);
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) die(2, '--confidence must be between 0 and 1');
-  append('proposed', { memory_id: String(flags.id || `MEM-${randomUUID()}`), class: memoryClass, content, source, scope: flags.scope || 'project', confidence, expires: flags.expires || null, supersedes: flags.supersedes || null, contradicts: flags.contradicts || null, by: flags.by || null });
+  append('proposed', { memory_id: String(flags.id || `MEM-${randomUUID()}`), class: memoryClass, content, source, scope: flags.scope || 'project', confidence, expires: flags.expires || null, supersedes: flags.supersedes || null, contradicts: flags.contradicts || null, by: required('by') });
 } else if (command === 'review') {
   const id = required('id'); const candidate = all.find((r) => r.memory_id === id && r.event === 'proposed');
   if (!candidate) die(1, `no proposed memory candidate ${id}`);
   const decision = required('reason'); if (!['promote', 'reject', 'supersede', 'contradict'].includes(decision)) die(2, '--reason must be promote, reject, supersede, or contradict');
-  append('reviewed', { memory_id: id, decision, by: required('by'), rationale: required('content'), source: candidate.source });
+  // S7-11: review is a SECOND pair of eyes. `--by` is required on propose so the proposer is on the
+  // record, and the proposer may not review their own candidate — `review --by tech-lead` used to
+  // promote tech-lead's own proposal, which is self-approval with an extra step.
+  const by = required('by');
+  if (!candidate.by) die(1, `${id} records no proposer, so a review cannot be shown to be independent — re-propose it with --by <role>`);
+  if (candidate.by === by) die(1, `${by} proposed ${id} and may not review it — a reviewer other than the proposer promotes memory`);
+  append('reviewed', { memory_id: id, decision, by, rationale: required('content'), source: candidate.source });
 } else if (command === 'list') {
   // `retrieve` already filtered by `--class` (studio/founder/etc.) so a reviewer could ask "what's
   // live in this class"; `list` — the one place a PENDING proposal is visible before promotion —

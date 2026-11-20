@@ -6,8 +6,9 @@ import { resolve } from 'node:path';
 import { parseArgs } from './lib/args.mjs';
 
 const die = (code, message) => { process.stderr.write(`run-doctor: ${message}\n`); process.exit(code); };
-const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['ledger', 'now']), die });
-const path = resolve(String(flags.ledger || 'docs/team/runs.jsonl'));
+const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['ledger', 'now', 'root']), die });
+// S7-4: `--root` used to be silently ignored, so the ledger was always read from the cwd.
+const path = resolve(String(flags.root || '.'), String(flags.ledger || 'docs/team/runs.jsonl'));
 if (!existsSync(path)) { process.stderr.write(`run-doctor: no ledger at ${path}\n`); process.exit(2); }
 let lines;
 try { lines = readFileSync(path, 'utf8').split('\n').filter(Boolean); } catch (e) { die(2, e.message); }
@@ -37,4 +38,7 @@ for (const state of active) {
 }
 for (const [run, attempts] of byRun) if (attempts.length > 1) { bad = true; console.error(`run-doctor: duplicate active attempts for ${run}: ${attempts.map((a) => a.attempt_id).join(', ')}`); }
 console.log(`RUN DOCTOR: ${bad ? 'ANOMALIES' : 'CLEAR'} — ${runs.size} attempt(s), ${active.length} active`);
+// S7-4: name every live attempt. CLEAR with an active lease means one is LIVE, not that nothing is,
+// and `run-ledger.mjs abandon --attempt` needs the ATT- id, which this never printed.
+for (const a of active) console.log(`  ACTIVE  ${a.ticket || '?'}  run ${a.run_id}  attempt ${a.attempt_id}  ${a.role || ''}  lease until ${a.lease_until || '?'}`);
 process.exit(bad ? 1 : 0);
