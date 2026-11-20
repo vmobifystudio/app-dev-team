@@ -81,7 +81,7 @@ import {
 } from './lib/events.mjs';
 import { VERDICT_EVENTS, readVerdict } from './lib/verdict.mjs';
 import { checkApprovals } from './lib/approval.mjs';
-import { gitAt, integrationBase, ticketTip, isAncestor } from './lib/integration.mjs';
+import { gitAt, integrationBase, integrationResolve, ticketTip, isAncestor } from './lib/integration.mjs';
 
 const DEFAULT_LOG = 'docs/31-board-events.jsonl';
 const DEFAULT_BOARD = 'docs/31-board.md';
@@ -898,8 +898,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
   // verdict document for a ticket they were never allowed to approve is sent to do work that
   // cannot help. "Before believing a refusal, name the layer you expected it from" cuts both ways:
   // the layers have to fire in the order that makes the message actionable.
-  // A merged ticket sent back from `qa` (wave FAIL/CONFLICT) carries the wave's reason, not a review.
-  if (VERDICT_EVENTS.has(name) && !(name === 'changes' && tickets.get(key(ticket))?.status === 'qa')) {
+  if (VERDICT_EVENTS.has(name)) {
     const v = readVerdict(flags.verdict, name, ticket);
     if (!v.ok) {
       process.stderr.write(`board: refused ${ticket} ${name} — ${v.reason}\n`);
@@ -1049,12 +1048,15 @@ function printQaLanding(ticket, events) {
   if (isAncestor(g, head, base)) { process.stdout.write(`  ${ticket}'s files are already on ${base}.\n`); return; }
   const tip = ticketTip(g, ticket, boardIds());
   const branch = tip.sha === head ? tip.branch : head;
+  // U1: a fresh clone's base is origin/<name>; `git checkout <name>` makes the local branch (checking
+  // out origin/<name> would detach HEAD and the fast-forward would land nowhere).
+  const local = base.replace(/^origin\//, '');
   process.stdout.write(
-    `  Land ${ticket}'s documents on ${base} (docs-only, reviewed inline — a fast-forward, no merge commit):\n` +
-    `    git checkout ${base} && git merge --ff-only ${branch}\n` +
+    `  Land ${ticket}'s documents on ${local} (docs-only, reviewed inline — a fast-forward, no merge commit):\n` +
+    `    git checkout ${local} && git merge --ff-only ${branch}\n` +
     (isAncestor(g, g(['rev-parse', base]) || '', head) ? ''
       : `  ${base} has moved since the QA branch was cut, so that is not a fast-forward yet. Rebase it first (documents only, nothing to re-review):\n` +
-        `    git rebase ${base} ${branch} && git checkout ${base} && git merge --ff-only ${branch}\n`)
+        `    git rebase ${base} ${branch} && git checkout ${local} && git merge --ff-only ${branch}\n`)
   );
 }
 
@@ -1128,13 +1130,16 @@ function gitRefusal(name, ticket, flags, events, state) {
     if (!d.ok) return `${ticket} is on the QA- docs-only fast path, but ${d.reason}. A QA ticket that changes code takes the normal path (review_requested -> approved -> merged).`;
     // C5G-1: the docs-only proof is about the commit recorded at merged — a code commit added AFTER it and
     // fast-forwarded onto the integration branch rode in unreviewed, exactly as on the normal path.
-    const base = name === 'closed' && recorded ? integrationBase(git) : '';
+    if (!(name === 'closed' && recorded)) return '';
+    const base = integrationBase(git);
+    if (base === '') return unresolvedBase(git);
     return base ? landedAfterMerge(git, ticket, recorded, base) : '';
   }
   const binding = studioPolicy().policy.requireApprovalBinding === true;
   if (name === 'closed') {
     const base = integrationBase(git);
-    if (!base) return '';
+    // U1/G7-16: a strategy doc that cannot resolve is a refusal, never "nothing to check" (no repo: unchanged).
+    if (!base) return unresolvedBase(git);
     // G2-8: the subject must be known — the merged commit recorded at `merged` (C3G-8), or, for a
     // ticket merged before that was recorded, the branch tip / --head.
     const subj = recorded ? { sha: recorded, source: 'the commit recorded at merged' } : mergeSubject(git, ticket, flags);
@@ -1223,6 +1228,12 @@ const EVIDENCE_CHECKS = {
   'migration-plan': (st) => Boolean(String(st.meta?.rollback || '').trim()),
 };
 const RUNTIME_KINDS = new Set(['runtime-gate', 'runtime-evidence']);
+/** `closed` with no resolvable integration branch: '' only outside a repository (nothing was ever checkable). */
+function unresolvedBase(git) {
+  if (git(['rev-parse', '--git-dir']) === null) return '';
+  return `the integration branch is unknown (${integrationResolve(git).reason}) — "done" asserts code on the integration branch, and where that is cannot be told. Fix docs/23-git-strategy.md's "Integration branch:" line.`;
+}
+
 function mergeRisk(ticket, state, paths, flags = {}) {
   const policyPath = resolve(dirname(paths.log), 'team', 'risk-policy.json');
   if (!state) return {};
@@ -1249,7 +1260,7 @@ function mergeRisk(ticket, state, paths, flags = {}) {
   if (subj.error) return { refusal: `${subj.error}\n  risk-policy.json is in force, so the merge must know which files it lands.` };
   const tip = { sha: subj.sha };
   const base = integrationBase(g);
-  if (!base) return { refusal: 'risk-policy.json is in force and no integration branch (develop/main/master) exists, so the diff — and the risk it carries — is unknown' };
+  if (!base) return { refusal: `risk-policy.json is in force and the integration branch is unknown (${integrationResolve(g).reason}), so the diff — and the risk it carries — is unknown` };
   const mb = g(['merge-base', base, tip.sha]);
   // G7-4: a rename routes BOTH paths (src/auth/login.ts -> src/login.ts still touched auth/), unquoted.
   const files = mb ? changedFiles(g, mb, tip.sha) : null;

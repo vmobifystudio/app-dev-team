@@ -11,7 +11,8 @@ export const RANK = { low: 0, medium: 1, high: 2, critical: 3 };
 // security review and a migration rule's plan are both owed when one diff touches both).
 const union = (rules, k) => [...new Set(rules.flatMap((r) => r[k] || []))];
 export function route(policy, input) {
-  const matched = policy.rules.filter((rule) => new RegExp(rule.pattern).test(input));
+  // U6: paths are matched case-insensitively — App/Persistence/Migrations/ is a migration path too.
+  const matched = policy.rules.filter((rule) => new RegExp(rule.pattern, 'i').test(input));
   const selected = [...matched].sort((a, b) => RANK[b.risk] - RANK[a.risk])[0] || policy.default;
   if (!selected || !selected.model || !selected.risk) return null;
   const tier = matched.length ? matched.filter((r) => r.risk === selected.risk) : [selected];

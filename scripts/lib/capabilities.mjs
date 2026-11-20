@@ -61,6 +61,9 @@ const ROLE_GATES = {
   qa_failed: ['qa-engineer', 'verification-engineer'],
 
   closed: ['tech-manager', 'tech-lead'],
+
+  // The wave could not land a merged ticket: only the orchestrator, which runs the wave, sends it back.
+  rework: ['tech-manager'],
 };
 
 /**

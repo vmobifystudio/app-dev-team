@@ -65,6 +65,10 @@ const EVENTS = new Set([
   // cap's only exit was `approved`: blocked -> unblocked -> review, where another REQUEST CHANGES
   // is refused again (G-F8). Founder-only: lib/capabilities.mjs HUMAN_GATES.
   'reopened',
+  // `rework` — the wave could not land a merged ticket (FAIL / CONFLICT): the orchestrator sends it
+  // back to its developer from `qa`, before qa_passed, with the wave's reason. Its verification and
+  // approvals are void; it goes done_reported -> verified -> review -> approved -> merged again.
+  'rework',
   'closed',
 ]);
 
@@ -133,11 +137,10 @@ function legalEvents(state) {
       // `done` except lying, and a sprint would have to close by hand — which is what happened.
       // C4G-G3: `corrected` too — the comment above says EVERY state, and the test-profile refusal
       // prints `corrected --test-profile` to a ticket that may well be sitting here.
-      // U2 (for U1's wave FAIL/CONFLICT): `changes` sends a merged ticket back to its developer —
-      // tech-manager only, with a reason, and its approvals are void (it must be re-reviewed).
+      // `rework` (wave FAIL/CONFLICT) only before qa_passed, and never on a QA- ticket (none ride a wave).
       return withCorrection(state.qaPassed || isQaTicket(state)
-        ? ['closed', 'verified', 'qa_failed', 'blocked', 'changes']
-        : ['qa_passed', 'verified', 'qa_failed', 'blocked', 'changes']);
+        ? ['closed', 'verified', 'qa_failed', 'blocked']
+        : ['qa_passed', 'verified', 'qa_failed', 'blocked', 'rework']);
     case 'done':
       return withCorrection([]);
     case 'blocked':
@@ -505,10 +508,11 @@ function reduce(events) {
         state.reviewer = by || state.reviewer;
         state.approvals.push({ by, ts: event.ts });
         break;
+      case 'rework':
+        // The approvals and the verification were of the merged commit; the fix is a new one.
+        Object.assign(state, { status: 'in_progress', approvals: [], qaPassed: false, verified: false, verifiedStatic: false, staticUnrun: '', verifyPending: false });
+        break;
       case 'changes':
-        // From `qa` (the wave could not land it): the approvals were of the merged commit, and the
-        // fix is a new one — nothing approved survives, and QA starts over.
-        if (state.status === 'qa') { state.approvals = []; state.qaPassed = false; }
         state.cycles += 1;
         state.status = 'in_progress';
         state.reviewer = by || state.reviewer;
@@ -703,8 +707,8 @@ function validateTransition(tickets, candidate) {
         const dep = tickets.get(key(depId));
         if (!dep) return true;
         if (!dep.events.some((e) => e.event === 'merged')) return true;
-        // Sent back from qa (`changes` after its last `merged`): the merge it had no longer stands.
-        if (dep.events.findLastIndex((e) => e.event === 'changes') > dep.events.findLastIndex((e) => e.event === 'merged')) return true;
+        // Sent back from qa (`rework` after its last `merged`): the merge it had no longer stands.
+        if (dep.events.findLastIndex((e) => e.event === 'rework') > dep.events.findLastIndex((e) => e.event === 'merged')) return true;
         return dep.verifiedStatic === true;
       });
       if (unmet.length) {
@@ -796,14 +800,16 @@ function validateTransition(tickets, candidate) {
       }
       return { ok: true };
     }
-    case 'changes':
-      if (state.status === 'qa' && (by !== 'tech-manager' || !String(typeof candidate.detail === 'object' && candidate.detail ? JSON.stringify(candidate.detail) : candidate.detail || '').trim())) {
+    case 'rework':
+      if (!String(typeof candidate.detail === 'object' && candidate.detail ? JSON.stringify(candidate.detail) : candidate.detail || '').trim()) {
         return {
           ok: false,
-          reason: `${id} is merged (qa): only the orchestrator sends it back, with the reason — move ${id} changes --by tech-manager --detail "wave <n> FAIL|CONFLICT: <what>". Its approvals are then void and it is re-reviewed before it merges again.`,
-          legal: legal.filter((e) => e !== 'changes'),
+          reason: `rework sends a merged ticket back and must say why: move ${id} rework --by tech-manager --detail "wave <n>: FAIL|CONFLICT <what>"`,
+          legal: legal.filter((e) => e !== 'rework'),
         };
       }
+      return { ok: true };
+    case 'changes':
       if (state.cycles + 1 > MAX_REVIEW_CYCLES + state.extraCycles) {
         return {
           ok: false,

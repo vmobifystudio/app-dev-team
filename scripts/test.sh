@@ -12510,6 +12510,9 @@ const p = { default: { risk: 'low', model: 's' }, rules: [
   { pattern: 'billing', risk: 'high', model: 'o', approvals: ['cto'] }] };
 const a = routeFiles(p, ['src/billing/pay.ts', 'db/migrations/1.sql']); const b = route(p, 'src/billing/x');
 process.stdout.write([a.approvals.sort().join('+'), a.required_evidence.join('+'), b.approvals.sort().join('+')].join(' '));"; }
+u2route2() { node --input-type=module -e "
+import { route } from '$HERE/lib/risk.mjs';
+process.stdout.write(route({ default: { risk: 'medium', model: 's' }, rules: [{ pattern: '/migrations/', risk: 'high', model: 'o' }] }, 'App/Persistence/Migrations/V2.swift').risk);"; }
 [ "$(u2route)" = "cto+security-reviewer migration-plan cto+security-reviewer" ] \
   && ok "U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)" \
   || bad "U2: routeFiles/route union the approvals and evidence of every rule at the winning tier (G7-5)" "$(u2route)"
@@ -12551,15 +12554,44 @@ assert_has "$TMP/err" "$U2R/docs/team/journeys/README.md" "U2: ...and pointing a
 assert_exit 0 "U2: ...and accepted on the integration branch once a P0 journey is declared (G7-2, S7-5)" \
   u2m "$U2P" move TC-1 qa_passed --by qa-engineer --evidence "$(u2vd "$U2P" main "$U2BASE")"
 # ·· U1 hand-off: a wave FAIL/CONFLICT sends a merged ticket back (qa -> in_progress), approvals void.
-assert_exit 1 "U2: only the orchestrator sends a merged ticket back to rework" u2m "$U2P" move TC-1 changes --by code-reviewer --detail "x"
-assert_exit 1 "U2: ...and it must say why" u2m "$U2P" move TC-1 changes --by tech-manager
-assert_exit 0 "U2: tech-manager moves a qa ticket back with a reason (wave FAIL/CONFLICT)" \
-  u2m "$U2P" move TC-1 changes --by tech-manager --detail "wave 1 CONFLICT: src/login.ts"
-u2show() { u2m "$U2P" show TC-1 --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s)["TC-1"];process.stdout.write(x.status+" "+(x.approvals||[]).length)})'; }
-[ "$(u2show)" = "in_progress 0" ] && ok "U2: ...it is in_progress with no approvals — re-review before it merges again" \
+assert_exit 1 "U2: rework is not legal once QA passed the ticket" u2m "$U2P" move TC-1 rework --by tech-manager --detail "wave 1: FAIL"
+# TC-3: merged (qa), not yet QA-passed — the wave's FAIL/CONFLICT case.
+( cd "$U2P" && node "$HERE/board.mjs" add TC-3 --title r --owner ios-developer --by tech-manager \
+  && git checkout -q -b feat/TC-3-x && echo r > src/r.ts && git add src/r.ts && u2g commit -qm r && git checkout -q main \
+  && node "$HERE/board.mjs" move TC-3 claimed --by ios-developer && node "$HERE/board.mjs" move TC-3 done_reported --by ios-developer ) >/dev/null 2>&1
+u2m "$U2P" move TC-3 verified --by tech-manager --evidence "$(u2vd "$U2P" feat/TC-3-x)" >/dev/null 2>&1
+u2m "$U2P" move TC-3 review_requested --by ios-developer >/dev/null 2>&1
+printf 'REVIEW VERDICT: APPROVE\nScope: a..b\n\nsrc/r.ts read.\n\n## Not checked\nNothing.\n' > "$U2P/docs/53-reviews/v3.md"
+u2m "$U2P" move TC-3 approved --by code-reviewer --verdict docs/53-reviews/v3.md >/dev/null 2>&1
+u2m "$U2P" move TC-3 merged --by tech-manager >/dev/null 2>&1
+assert_exit 1 "U2: only the orchestrator sends a merged ticket back to rework" u2m "$U2P" move TC-3 rework --by code-reviewer --detail "x"
+assert_exit 1 "U2: ...and it must say why" u2m "$U2P" move TC-3 rework --by tech-manager
+assert_exit 0 "U2: tech-manager moves a qa ticket back with rework and the wave's reason (wave FAIL/CONFLICT)" \
+  u2m "$U2P" move TC-3 rework --by tech-manager --detail "wave 1: CONFLICT src/r.ts"
+u2show() { u2m "$U2P" show TC-3 --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s)["TC-3"];process.stdout.write(x.status+" "+(x.approvals||[]).length+" "+x.verifiedStatic)})'; }
+[ "$(u2show)" = "in_progress 0 false" ] && ok "U2: ...it is in_progress with no approvals — re-review before it merges again" \
   || bad "U2: ...it is in_progress with no approvals — re-review before it merges again" "$(u2show)"
-u2m "$U2P" add TC-2 --title d --owner ios-developer --by tech-manager --depends TC-1 >/dev/null 2>&1
+assert_exit 1 "U2: ...and it cannot go straight to review: verification was voided" u2m "$U2P" move TC-3 review_requested --by ios-developer
+u2m "$U2P" add TC-2 --title d --owner ios-developer --by tech-manager --depends TC-3 >/dev/null 2>&1
 assert_exit 1 "U2: ...and a ticket depending on it is not claimable until it merges again" u2m "$U2P" move TC-2 claimed --by ios-developer
+# ·· U1 hand-off: closed refuses when the declared integration branch cannot resolve; QA landing drops origin/.
+printf 'Integration branch: nosuch\n' > "$U2P/docs/23-git-strategy.md"
+assert_exit 1 "U2: closed refuses, naming why, when the declared integration branch does not resolve" u2m "$U2P" move TC-1 closed --by tech-manager
+assert_has "$TMP/err" "the integration branch is unknown" "U2: ...instead of passing because nothing could be checked"
+rm -f "$U2P/docs/23-git-strategy.md"
+U2Q="$TMP/u2-qaland"; rm -rf "$U2Q"; mkdir -p "$U2Q/docs/team"
+printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$U2Q/docs/team/project-profile.json"
+( cd "$U2Q" && git init -q -b main . && git add docs/team && u2g commit -qm base \
+  && node "$HERE/board.mjs" add QA-9-w1 --title qa --owner qa-engineer --by tech-manager \
+  && git checkout -q -b qa/QA-9-w1 && printf '# plan\n' > docs/50-test-plan.md && git add docs/50-test-plan.md && u2g commit -qm plan && git checkout -q main \
+  && node "$HERE/board.mjs" move QA-9-w1 claimed --by qa-engineer && node "$HERE/board.mjs" move QA-9-w1 done_reported --by qa-engineer ) >/dev/null 2>&1
+u2m "$U2Q" move QA-9-w1 verified --by tech-manager --evidence "$( cd "$U2Q" && sh "$HERE/verify-done.sh" --docs-only qa/QA-9-w1 main 2>/dev/null | sed -n 's/^  Evidence: //p' )" >/dev/null 2>&1
+u2m "$U2Q" move QA-9-w1 merged --by tech-manager >/dev/null 2>&1
+( cd "$U2Q" && git update-ref refs/remotes/origin/develop main && git checkout -q --detach && git branch -q -D main && printf 'Integration branch: develop\n' > docs/23-git-strategy.md ) >/dev/null 2>&1
+assert_exit 0 "U2: a QA- ticket closes in a clone whose integration branch is origin/develop" u2m "$U2Q" move QA-9-w1 closed --by tech-manager
+assert_has "$TMP/out" "git checkout develop && git merge --ff-only qa/QA-9-w1" "U2: ...and the landing command checks out develop, not origin/develop"
+case "$(u2route2)" in "high") ok "U2: risk-policy patterns match case-insensitively (App/Persistence/Migrations)" ;;
+  *) bad "U2: risk-policy patterns match case-insensitively (App/Persistence/Migrations)" "$(u2route2)" ;; esac
 
 # ·· G7-7: a journey PASS must cover every committed P0 declaration, unselected, from the committed dir.
 U2J="$TMP/u2-jr"; rm -rf "$U2J"; mkdir -p "$U2J/docs/team/journeys"
@@ -12657,7 +12689,7 @@ rm -f "$U2B/clone/docs/team/actor-tokens.jsonl.lock"
 [ "$U2RC" = 1 ] && grep -qF "node \"$U2R/scripts/board.mjs\" actor mint --role founder --ticket APP-1" "$TMP/u2e.txt" && ! grep -q '<plugin>\|could not acquire' "$TMP/u2e.txt" \
   && ok "U2: the founder mint refusal names the resolved path, and no registry lock was taken to ask (C7-8)" \
   || bad "U2: the founder mint refusal names the resolved path, and no registry lock was taken to ask (C7-8)" "$(cat "$TMP/u2e.txt")"
-rm -rf "$U2D" "$U2P" "$U2J" "$U2N" "$U2A" "$U2B"
+rm -rf "$U2D" "$U2P" "$U2J" "$U2N" "$U2A" "$U2B" "$U2Q"
 echo "Sprint 7 U6: prose matches what the scripts do"
 U6R="$HERE/.."
 # S7-4: app-recover reads run-doctor's active count, not its exit code; no ignored --root; ATT- ids.
@@ -12708,7 +12740,7 @@ U4="$TMP/s7u4"; rm -rf "$U4"; mkdir -p "$U4/docs/team" "$U4/docs/53-reviews" "$U
 u4g() { git -c user.name=t -c user.email=t@localhost "$@"; }
 u4m() { ( cd "$U4" && node "$HERE/board.mjs" "$@" ); }
 u4c() { ( cd "$U4" && node "$HERE/spawn-prompt.mjs" compose --root "$U4" "$@" ); }
-u4vd() { ( cd "$U4" && sh "$HERE/verify-done.sh" "$1" main fast 2>/dev/null | sed -n 's/^  Evidence: //p' ); }
+u4vd() { ( cd "$U4" && sh "$HERE/verify-done.sh" "$1" "${2:-main}" fast 2>/dev/null | sed -n 's/^  Evidence: //p' ); }
 printf 'Integration branch: main\n' > "$U4/docs/23-git-strategy.md"
 printf '{"schema":"project-profile/v1","test":{"fast":"echo \\"Executed 3 tests, with 0 failures\\""}}\n' > "$U4/docs/team/project-profile.json"
 printf '# PRD\n\n## F-001 Greeting\nGreets by name.\n\n### F-001 Acceptance\n- Given Ada, shows Hello Ada\n' > "$U4/docs/10-prd.md"
@@ -12795,7 +12827,9 @@ u4m move APP-030 verified --by tech-manager --evidence "$(u4vd feat/APP-030-plan
 u4m move APP-030 review_requested --by qa-engineer >/dev/null 2>&1
 u4m move APP-030 approved --by code-reviewer --verdict docs/53-reviews/APP-030-cycle-0.md >/dev/null 2>&1
 u4m move APP-030 merged --by tech-manager >/dev/null 2>&1
-u4m move APP-030 verified --by tech-manager --evidence "$(u4vd feat/APP-030-plan)" >/dev/null 2>"$TMP/u4-qa.err"
+# Sprint 7 U2 (G7-2): QA evidence is about the LANDED code, so the branch reaches main before QA runs.
+U4PRE=$(git -C "$U4" rev-parse main); ( cd "$U4" && u4g merge -q --ff-only feat/APP-030-plan ) >/dev/null 2>&1
+u4m move APP-030 verified --by tech-manager --evidence "$(u4vd feat/APP-030-plan "$U4PRE")" >/dev/null 2>"$TMP/u4-qa.err"
 u4m add QA-1-w1 --title "QA pass — wave 1" --owner qa-engineer --by tech-manager >/dev/null 2>&1
 assert_exit 2 "Sprint 7 U4: the QA wave refuses a qa-engineer-owned ticket (it cannot pass its own work) (R7-1)" \
   u4c --ticket QA-1-w1 --role qa-engineer --tickets APP-030
@@ -12804,7 +12838,6 @@ printf '{"requireActorTokens": true}\n' > "$U4/.studio-policy.json"
 u4c --ticket APP-030 --role verification-engineer >"$TMP/u4-vq.txt" 2>"$TMP/u4-vq.err"
 U4QP=$(grep -F 'qa_passed --by verification-engineer --token st_' "$TMP/u4-vq.txt")
 ( cd "$U4" && sh -c "$U4QP" ) >"$TMP/u4-qp.out" 2>&1; U4RC=$?
-( cd "$U4" && u4g merge -q --ff-only feat/APP-030-plan ) >/dev/null 2>&1
 u4m move APP-030 closed --by tech-manager --token "$(u4m actor mint --role tech-manager --ticket APP-030)" >>"$TMP/u4-qp.out" 2>&1
 rm -f "$U4/.studio-policy.json"
 [ -n "$U4QP" ] && [ "$U4RC" = 0 ] && [ "$(cd "$U4" && node "$HERE/board.mjs" show --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>console.log(JSON.parse(s).tickets["APP-030"].status))')" = done ] \

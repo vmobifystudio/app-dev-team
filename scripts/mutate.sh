@@ -496,9 +496,14 @@ MS7U2-11@@scripts/journey-gate.mjs@@only: flags.only ? String(flags.only) : null
 MS7U2-12@@scripts/lib/capabilities.mjs@@if (name === 'unblocked' && needsApproval(state)) return@@if (false) return@@U2: a worker cannot release a needs-approval ticket (S7-2)@@Sprint 7 U2
 MS7U2-13@@scripts/lib/capabilities.mjs@@if (name === 'corrected') return@@if (false) return@@U2: a worker cannot rewrite a ticket's invariants with corrected (S7-3)@@Sprint 7 U2
 MS7U2-14@@scripts/board.mjs@@const gate = GATE_EVENTS.has(eventName) || conditional;@@const gate = GATE_EVENTS.has(eventName);@@U2: ...nor can --by tech-manager without the orchestrator's token (S7-2)@@Sprint 7 U2
-MS7U2-15@@scripts/lib/events.mjs@@if (state.status === 'qa') { state.approvals = []; state.qaPassed = false; }@@if (false) {}@@U2: ...it is in_progress with no approvals — re-review before it merges again@@Sprint 7 U2
-MS7U2-16@@scripts/lib/events.mjs@@if (state.status === 'qa' && (by !== 'tech-manager' ||@@if (state.status === 'qa' && (false ||@@U2: only the orchestrator sends a merged ticket back to rework@@Sprint 7 U2
-MS7U2-19@@scripts/lib/events.mjs@@if (dep.events.findLastIndex((e) => e.event === 'changes') > dep.events.findLastIndex((e) => e.event === 'merged')) return true;@@void 0;@@U2: ...and a ticket depending on it is not claimable until it merges again@@Sprint 7 U2
+MS7U2-15@@scripts/lib/events.mjs@@status: 'in_progress', approvals: [], qaPassed@@status: 'in_progress', qaPassed@@U2: ...it is in_progress with no approvals — re-review before it merges again@@Sprint 7 U2
+MS7U2-16@@scripts/lib/capabilities.mjs@@rework: ['tech-manager'],@@rework: ['tech-manager', 'code-reviewer'],@@U2: only the orchestrator sends a merged ticket back to rework@@Sprint 7 U2
+MS7U2-19@@scripts/lib/events.mjs@@if (dep.events.findLastIndex((e) => e.event === 'rework') > dep.events.findLastIndex((e) => e.event === 'merged')) return true;@@void 0;@@U2: ...and a ticket depending on it is not claimable until it merges again@@Sprint 7 U2
+MS7U2-20@@scripts/lib/events.mjs@@reason: `rework sends a merged ticket back and must say why@@ok: true, reason: `rework sends a merged ticket back and must say why@@U2: ...and it must say why@@Sprint 7 U2
+MS7U2-21@@scripts/lib/events.mjs@@qaPassed: false, verified: false, verifiedStatic@@qaPassed: false, verifiedStatic@@U2: ...and it cannot go straight to review: verification was voided@@Sprint 7 U2
+MS7U2-22@@scripts/board.mjs@@if (!base) return unresolvedBase(git);@@if (!base) return '';@@U2: closed refuses, naming why, when the declared integration branch does not resolve@@Sprint 7 U2
+MS7U2-23@@scripts/board.mjs@@const local = base.replace(/^origin\//, '');@@const local = base;@@U2: ...and the landing command checks out develop, not origin/develop@@Sprint 7 U2
+MS7U2-24@@scripts/lib/risk.mjs@@new RegExp(rule.pattern, 'i')@@new RegExp(rule.pattern)@@U2: risk-policy patterns match case-insensitively (App/Persistence/Migrations)@@Sprint 7 U2
 MS7U2-17@@scripts/board.mjs@@if (s.kind !== 'absent' && flags.mismatch !== s.kind) {@@if (false) {@@U2: adopt refuses a log the anchor disagrees with unless the mismatch is named, printing both counts (G7-13)@@Sprint 7 U2
 MS7U2-18@@scripts/board.mjs@@if (String(flags.role || '') === 'founder' && tkt) {@@if (false) {@@U2: the founder mint refusal names the resolved path, and no registry lock was taken to ask (C7-8)@@Sprint 7 U2
 U401@@scripts/context-preflight.mjs@@if (inSlot) notes.push(@@if (false) notes.push(@@Sprint 7 U4: preflight clears a freshly leased, detached slot (C7-2)@@Sprint 7 U4

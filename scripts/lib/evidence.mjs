@@ -50,7 +50,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { classifyTestRun } from './test-evidence.mjs';
-import { gitAt, integrationBase, isAncestor, matchesTicket, ticketIdsFromBoard, ticketTip } from './integration.mjs';
+import { gitAt, integrationBase, integrationResolve, isAncestor, matchesTicket, ticketIdsFromBoard, ticketTip } from './integration.mjs';
 import { resolveProjectRoot } from './root.mjs';
 import { indexHides, treeDirty } from './readiness.mjs';
 import { inlineTokenFlag } from './actor.mjs';
@@ -258,7 +258,7 @@ function docsIsServedSite(git, head) {
  */
 export function docsOnlyDiff(git, head, { qa = false, base = '' } = {}) {
   const integration = integrationBase(git);
-  if (!integration) return { ok: false, code: 2, reason: 'no integration branch (develop/main/master) exists, so what the branch changes — and whether it is documents only — is unknown' };
+  if (!integration) return { ok: false, code: 2, reason: `the integration branch is unknown (${integrationResolve(git).reason}), so what the branch changes — and whether it is documents only — is unknown` };
   if (base && !(base === head || isAncestor(git, base, head))) return { ok: false, code: 1, reason: `the merge-base recorded at merged (${String(base).slice(0, 12)}) is not an ancestor of ${String(head).slice(0, 12)}` };
   const mb = base || git(['merge-base', integration, head]);
   if (!mb) return { ok: false, code: 2, reason: `${String(head).slice(0, 12)} shares no history with ${integration}` };
