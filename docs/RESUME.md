@@ -3,8 +3,8 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-11-20 · **Branch:** `fix/sprint-7` (on top of `main` at `33bfab2`, #46)
-**Suite:** 2562 passed, 0 failed · **Mutation anchors:** 443, all unique · **Eval lab:** 7/7 · **Invariants:** 12/12 · **Version:** 3.1.0
+**Last updated:** 2026-11-20 · **Branch:** `main` at `c6cf277` (Sprint 7 merged as #47)
+**Suite:** 2590 passed, 0 failed · **Mutation anchors:** 443, all unique · **Eval lab:** 7/7 · **Invariants:** 12/12 · **Version:** 3.1.0
 
 ## 2026-11-19/20 — fresh audit on main and Sprint 7 (`fix/sprint-7`)
 
