@@ -1,0 +1,29 @@
+# Commands that run the command after them (G7-8). ONE table, read by both hooks:
+# contract-hooks.mjs (guard-gate-writes) and block-shared-tree-destructive-git.sh (its awk).
+# scripts/test.sh runs every row through both, so a row either hook ignores goes red.
+#
+#   name  operands-before-the-command  flags-that-take-a-separate-value...
+#
+# Flags and NAME=value words after a wrapper are skipped; a listed flag also skips its value.
+# ponytail: `script -c "cmd" file` (util-linux) runs a string, not argv — out of reach here.
+command 0
+exec 0 -a
+nohup 0
+time 0
+builtin 0
+env 0 -u -C -S --unset --chdir --split-string
+sudo 0 -u -g -C -h -p -D -r -t -U --user --group --host --prompt --chdir --role --type --other-user
+doas 0 -u -C
+nice 0 -n --adjustment
+timeout 1 -s -k --signal --kill-after
+gtimeout 1 -s -k --signal --kill-after
+xargs 0 -n -I -J -L -P -d -s -E -a -R -S --max-args --replace --max-lines --max-procs --delimiter --max-chars --eof --arg-file
+stdbuf 0 -i -o -e --input --output --error
+ionice 0 -c -n -p --class --classdata --pid
+chrt 1
+caffeinate 0 -t -w
+flock 1 -w -E --timeout --conflict-exit-code
+setsid 0
+script 1 -t -T -E -B -I -O
+npx 0 -p --package
+bunx 0 -p --package

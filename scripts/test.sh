@@ -12920,6 +12920,122 @@ grep -q 'Close nothing yet' "$U1AB" && grep -qF 'journey-gate.mjs" --root <its s
   || bad "Sprint 7 U1: app-build lands the QA- journeys and re-runs the journey gate before closing (W7-11)"
 rm -rf "$U1"
 
+# --- Sprint 7 U3: hooks — one wrapper table, uncertain cds, roots from targets, adopt, writers, slots ---
+# G7-8 (wrappers.txt read by both hooks), G7-9/G7-10 (a cd that may not run keeps the old dir, in both
+# hooks), G7-11 (the git hook resolves through integration-branch.sh), G7-12 (the guard derives the
+# studio root from an absolute target), G7-14 (no subagent adopt), G7-18 (more writers), W7-9 (the
+# dirty test skips operational paths), R7-7 (a developer stays in its slot). Self-contained.
+echo
+U3="$TMP/u3"; rm -rf "$U3"; mkdir -p "$U3/p/docs/team/evidence" "$U3/p/src"
+( cd "$U3/p" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i ) >/dev/null 2>&1
+: > "$U3/p/docs/31-board-events.jsonl"; echo '{}' > "$U3/p/docs/team/evidence/x.json"
+U3D="$U3/dirty"; mkdir -p "$U3D"; ( cd "$U3D" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i ) >/dev/null 2>&1; echo w > "$U3D/u.txt"
+U3G="$HERE/../hooks/block-shared-tree-destructive-git.sh"
+u3g() {  # <want> <label> <command> [cwd] — the guard, on Bash, as a subagent
+  node -e 'const [, c, d] = process.argv; process.stdout.write(JSON.stringify({ tool_name: "Bash", agent_id: "u3", cwd: d, tool_input: { command: c } }))' "$3" "${4:-$U3/p}" \
+    | sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>"$TMP/u3g.err"
+  _g=$?; [ "$_g" = "$1" ] && ok "U3: guard exit $1 — $2" || bad "U3: guard exit $1 — $2" "got $_g: $(head -c 300 "$TMP/u3g.err")"
+}
+u3d() {  # <want> <label> <command> [cwd] [agent_id] — the destructive-git hook
+  node -e 'const [, c, d, a] = process.argv; const o = { tool_name: "Bash", cwd: d, tool_input: { command: c } }; if (a) o.agent_id = a; process.stdout.write(JSON.stringify(o))' "$3" "${4:-$U3D}" "${5:-}" \
+    | sh "$U3G" >/dev/null 2>"$TMP/u3d.err"
+  _g=$?; [ "$_g" = "$1" ] && ok "U3: git hook exit $1 — $2" || bad "U3: git hook exit $1 — $2" "got $_g: $(head -c 300 "$TMP/u3d.err")"
+}
+# G7-8 — every row of the ONE table is seen through by BOTH hooks.
+_u3n=0
+while read -r _w _ops _rest; do
+  case "$_w" in ''|'#'*) continue ;; esac
+  _pre=$_w; _i=0; while [ "$_i" -lt "$_ops" ]; do _pre="$_pre x"; _i=$((_i + 1)); done
+  u3d 2 "wrappers.txt row '$_w' wraps git" "$_pre git stash"
+  u3g 2 "wrappers.txt row '$_w' wraps rm" "$_pre rm -rf docs/team/evidence"
+  _u3n=$((_u3n + 1))
+done < "$HERE/../hooks/wrappers.txt"
+[ "$_u3n" -ge 20 ] && grep -q 'wrappers.txt' "$U3G" && grep -q "'wrappers.txt'" "$HERE/../hooks/contract-hooks.mjs" \
+  && ! grep -q 'WRAP\[t\[k\]\]' "$U3G" && ! grep -q "new Set(\['env', 'exec'" "$HERE/../hooks/contract-hooks.mjs" \
+  && ok "U3: both hooks read hooks/wrappers.txt ($_u3n rows) and neither keeps its own list (G7-8)" \
+  || bad "U3: both hooks read hooks/wrappers.txt ($_u3n rows) and neither keeps its own list (G7-8)"
+u3g 0 'timeout 30 npm test (a wrapper, not a writer)' 'timeout 30 npm test'
+# G7-9 — the guard: a cd the shell may never apply cannot move it.
+for _c in 'if [ -d /nonexistent ]; then cd /tmp; fi; rm -f docs/team/evidence/x.json' 'while false; do cd /tmp; done; rm -f docs/team/evidence/x.json' \
+  'case x in y) cd /tmp;; esac; rm -f docs/team/evidence/x.json' 'f() { cd /tmp; }; rm -f docs/team/evidence/x.json' \
+  'cd /tmp | true; rm -f docs/team/evidence/x.json' 'true | cd /tmp; rm -f docs/team/evidence/x.json' 'cd /tmp & rm -f docs/team/evidence/x.json' \
+  'pushd /tmp; popd; rm -f docs/team/evidence/x.json' 'cd() { :; }; cd /tmp; rm -f docs/team/evidence/x.json' \
+  'sh -c "cd /nonexistent; rm -f docs/team/evidence/x.json"'; do
+  u3g 2 "uncertain cd: $_c" "$_c"
+done
+mkdir -p "$U3/noexec"; chmod 0 "$U3/noexec"
+u3g 2 'cd into a directory it cannot enter; rm' "cd $U3/noexec; rm -f docs/team/evidence/x.json"
+u3d 2 'cd into a directory it cannot enter; git reset --hard' "cd $U3/noexec; git reset --hard"
+chmod 755 "$U3/noexec"
+u3g 0 'cd /tmp; rm -rf docs (a cd that surely ran)' 'cd /tmp; rm -rf docs'
+u3g 0 'pushd /tmp; rm -rf docs' 'pushd /tmp; rm -rf docs'
+# G7-10 — the destructive-git hook, the same cases, plus setsid/script and the plumbing that rewrites the tree.
+for _c in 'false && cd /tmp; git stash' 'if false; then cd /tmp; fi; git stash' 'f() { cd /tmp; }; git clean -fdx' 'pushd /tmp; popd; git stash' \
+  'cd /tmp | true; git stash' 'cd /tmp & git stash' 'while false; do cd /tmp; done; git stash' 'script -q /dev/null git reset --hard' 'setsid git stash' \
+  'git read-tree -u --reset HEAD' 'git checkout-index -f -a'; do
+  u3d 2 "dirty tree: $_c" "$_c"
+done
+for _c in 'cd /tmp && git stash' 'cd /tmp; git stash' 'git read-tree HEAD' 'git checkout-index -a' 'git status' 'if true; then git status; fi'; do
+  u3d 0 "still allows: $_c" "$_c"
+done
+# G7-11 — "Integration branch: develop." resolves to develop, through integration-branch.sh.
+U3O="$U3/o"; mkdir -p "$U3O/docs"
+( cd "$U3O" && git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m i && git branch feat && git checkout -q -b develop \
+  && printf 'Integration branch: develop.\n' > docs/23-git-strategy.md && : > docs/31-board-events.jsonl && git add docs \
+  && git -c user.name=t -c user.email=t@t commit -q -m s && git branch integration/wave-1 ) >/dev/null 2>&1
+u3d 2 'merge --no-ff onto develop declared as "develop."' 'git merge --no-ff feat' "$U3O"
+u3d 2 'branch -f develop, declared as "develop."' 'git branch -f develop feat' "$U3O"
+u3d 0 '...and branch -f of another branch' 'git branch -f feat main' "$U3O"
+grep -q 'integration-branch.sh' "$U3G" && ! grep -q 'ntegration branch\[\[:space:\]\]' "$U3G" \
+  && ok "U3: the git hook reads the declared branch through integration-branch.sh, with no parser of its own (G7-11)" \
+  || bad "U3: the git hook reads the declared branch through integration-branch.sh, with no parser of its own (G7-11)"
+# W7-9 — untracked operational files are bookkeeping; a source file is still work.
+: > "$U3O/docs/90-register.jsonl"; : > "$U3O/docs/90-register.md"; mkdir -p "$U3O/docs/team"; : > "$U3O/docs/team/release-candidates.jsonl"
+u3d 0 'branch -D with only operational files untracked (W7-9)' 'git branch -D integration/wave-1' "$U3O"
+echo x > "$U3O/new.swift"
+u3d 2 '...and blocked once a source file is untracked' 'git branch -D integration/wave-1' "$U3O"
+rm -f "$U3O/new.swift"
+# R7-7 — a subagent does not switch branches in a studio main checkout; its slot is fine.
+u3d 2 'a subagent: checkout -b in the studio main checkout' 'git checkout -b feat/APP-010-x main' "$U3O" agent1
+u3d 2 'a subagent: switch in the studio main checkout' 'git switch feat' "$U3O" agent1
+u3d 2 'a subagent: checkout <branch> in the studio main checkout' 'git checkout feat' "$U3O" agent1
+u3d 0 '...a path restore is not a switch' 'git checkout docs/23-git-strategy.md' "$U3O" agent1
+u3d 0 '...the main session may switch' 'git checkout -b feat/APP-010-x main' "$U3O"
+( cd "$U3O" && git worktree add -q .agent-wt/ios-developer-1 feat ) >/dev/null 2>&1
+u3d 0 '...and a subagent may in its slot' 'git checkout -b feat/APP-010-x main' "$U3O/.agent-wt/ios-developer-1" agent1
+u3d 0 '...or through git -C <slot>' "git -C $U3O/.agent-wt/ios-developer-1 checkout -b feat/APP-011-x main" "$U3O" agent1
+u3w() {  # <want> <label> <agent_type> <file_path> — the cross-worktree hook, standing in the main checkout
+  ( cd "$U3O" && printf '{"tool_name":"Write","agent_id":"a","agent_type":"%s","tool_input":{"file_path":"%s","content":"x"}}' "$3" "$4" | sh "$HERE/../hooks/block-cross-worktree-write.sh" ) >/dev/null 2>"$TMP/u3w.err"
+  _g=$?; [ "$_g" = "$1" ] && ok "U3: write hook exit $1 — $2" || bad "U3: write hook exit $1 — $2" "got $_g: $(head -c 300 "$TMP/u3w.err")"
+}
+u3w 2 'an ios-developer writing into the studio main checkout (R7-7)' app-dev-team:ios-developer "$U3O/src/a.swift"
+u3w 0 '...into its own slot, standing in main' ios-developer "$U3O/.agent-wt/ios-developer-1/src/a.swift"
+u3w 2 '...into a sibling slot' ios-developer "$U3O/.agent-wt/android-developer-1/src/a.swift"
+u3w 0 '...a ux-architect writing its doc in main' ux-architect "$U3O/docs/12-flows.md"
+u3w 0 '...an ios-developer writing outside any project' ios-developer "$U3/scratch.txt"
+# G7-12 — the root comes from the target too: cwd outside the project.
+u3g 2 'rm -rf <abs project>/docs/team/evidence from cwd /tmp' "rm -rf $U3/p/docs/team/evidence" /tmp
+u3g 2 'cd <abs project> && rm -rf docs from cwd /tmp' "cd $U3/p && rm -rf docs" /tmp
+u3g 0 '...and ls /tmp from cwd /tmp' 'ls /tmp' /tmp
+node -e 'process.stdout.write(JSON.stringify({ tool_name: "Write", agent_id: "u3", cwd: "/tmp", tool_input: { file_path: process.argv[1] + "/docs/team/risk-policy.json", content: "{}" } }))' "$U3/p" \
+  | sh "$HERE/../hooks/guard-gate-writes.sh" >/dev/null 2>&1
+[ $? = 2 ] && ok "U3: the Write tool from cwd /tmp may not write <project>/docs/team/risk-policy.json (G7-12)" || bad "U3: the Write tool from cwd /tmp may not write <project>/docs/team/risk-policy.json (G7-12)"
+# G7-14 — adopt is the founder's.
+u3g 2 'node board.mjs adopt' 'node scripts/board.mjs adopt'
+u3g 2 'script -q /dev/null node board.mjs adopt' '(echo ADOPT; sleep 2) | script -q /dev/null node scripts/board.mjs adopt'
+u3g 2 'python3 pty.spawn board.mjs adopt' "python3 -c \"import pty; pty.spawn(['node','scripts/board.mjs','adopt'])\""
+u3g 2 'board.mjs adopt run by its shebang' './scripts/board.mjs adopt'
+u3g 0 '...node board.mjs show' 'node scripts/board.mjs show'
+# G7-18 — writers the guard now knows.
+for _c in 'python3 -m json.tool x docs/team/risk-policy.json' 'base64 -d -i x -o docs/team/risk-policy.json' 'uudecode -o docs/team/risk-policy.json x' \
+  'plutil -convert json -o docs/team/risk-policy.json x' 'cmake -E copy x docs/team/risk-policy.json' 'npx prettier --write docs/team/risk-policy.json' \
+  'npx rimraf docs/team/evidence' 'npx eslint --fix .' 'bunx prettier@3 -w docs'; do
+  u3g 2 "writer: $_c" "$_c"
+done
+u3g 0 'npx prettier --check docs/team/risk-policy.json' 'npx prettier --check docs/team/risk-policy.json'
+u3g 0 'python3 -m json.tool docs/team/risk-policy.json (reads)' 'python3 -m json.tool docs/team/risk-policy.json'
+rm -rf "$U3"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

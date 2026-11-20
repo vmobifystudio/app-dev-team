@@ -530,6 +530,21 @@ MS7U1I@@scripts/wave-integrate.mjs@@const GREEN_REF = `refs/studio/wave-green/${
 MS7U1J@@scripts/board-doctor.mjs@@if (!anchor.ok) {@@if (false) {@@Sprint 7 U1: board-doctor is CANNOT EVALUATE on a log whose anchor is gone, naming adopt (W7-5)@@Sprint 7 U1
 MS7U1K@@scripts/ship-gate.sh@@then CHAIN_RC=3; fi@@then CHAIN_RC=1; fi@@Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)@@Sprint 7 U1
 MS7U1L@@scripts/runtime-gate.sh@@if [ -n "$IB_SHA" ] && [ "$IB_SHA" != "$HEAD_SHA" ]; then@@if false; then@@Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)@@Sprint 7 U1
+
+MV01@@hooks/contract-hooks.mjs@@if (n && !n.startsWith('#')) WRAPPERS.set(n, { ops: Number(ops) || 0, vals: new Set(vals) });@@void n;@@U3: guard exit 2 — wrappers.txt row 'timeout' wraps rm@@Sprint 7 U3
+MV02@@hooks/block-shared-tree-destructive-git.sh@@nf = split(line, F, /[ \t]+/); WRAP[F[1]] = 1;@@nf = split(line, F, /[ \t]+/);@@U3: git hook exit 2 — wrappers.txt row 'setsid' wraps git@@Sprint 7 U3
+MV03@@hooks/contract-hooks.mjs@@if (unsure) alts = [...alts, ...before];@@if (false) alts = [...alts, ...before];@@U3: guard exit 2 — uncertain cd: sh -c "cd /nonexistent@@Sprint 7 U3
+MV04@@hooks/block-shared-tree-destructive-git.sh@@return (unsure || SHADOW || !enterable(nd)) ? union(nd, dir) : nd@@return nd@@U3: git hook exit 2 — dirty tree: false && cd /tmp; git stash@@Sprint 7 U3
+MV05@@hooks/block-shared-tree-destructive-git.sh@@d=$(sh "$PLUGIN/scripts/integration-branch.sh" "$1" 2>/dev/null) || d=""@@d=""@@U3: git hook exit 2 — merge --no-ff onto develop declared as "develop."@@Sprint 7 U3
+MV06@@hooks/contract-hooks.mjs@@.slice(0, 20).forEach(addRoot);@@.slice(0, 0).forEach(addRoot);@@U3: guard exit 2 — rm -rf <abs project>/docs/team/evidence from cwd /tmp@@Sprint 7 U3
+MV07@@hooks/contract-hooks.mjs@@if (script === 'board.mjs' && after.some((w) => w.v.text === 'adopt')) refuse(ADOPT);@@void ADOPT;@@U3: guard exit 2 — board.mjs adopt run by its shebang@@Sprint 7 U3
+MV08@@hooks/contract-hooks.mjs@@if (/^(g?base64|uudecode|plutil)$/.test(name)) opt(@@if (false) opt(@@U3: guard exit 2 — writer: base64@@Sprint 7 U3
+MV09@@hooks/block-shared-tree-destructive-git.sh@@DIRTY=$(git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | head -n 1)@@DIRTY=$(git -C "$GDIR" status --porcelain -uall 2>/dev/null | head -n 1)@@U3: git hook exit 0 — branch -D with only operational files untracked@@Sprint 7 U3
+MV10@@hooks/block-shared-tree-destructive-git.sh@@[ -n "$AGENT" ] && [ -n "$ROOT" ] && [ -f "$ROOT/docs/31-board-events.jsonl" ] || continue@@continue@@U3: git hook exit 2 — a subagent: checkout -b in the studio main checkout@@Sprint 7 U3
+MV11@@hooks/block-cross-worktree-write.sh@@if [ -n "$DEV" ] && [ -z "$TARGET_WT" ]; then@@if false; then@@U3: write hook exit 2 — an ios-developer writing into the studio main checkout@@Sprint 7 U3
+MV12@@hooks/block-shared-tree-destructive-git.sh@@if (has(A, na, "-u")) emit("D", "", d, "git read-tree@@if (0) emit("D", "", d, "git read-tree@@U3: git hook exit 2 — dirty tree: git read-tree@@Sprint 7 U3
+MV13@@hooks/contract-hooks.mjs@@if (/board\.mjs/.test(body) && /\badopt\b/.test(body)) refuse(ADOPT);@@void ADOPT;@@U3: guard exit 2 — python3 pty.spawn board.mjs adopt@@Sprint 7 U3
+MV14@@hooks/guard-gate-writes.sh@@  *[/~]*) printf@@  *NEVER*) printf@@U3: guard exit 2 — rm -rf <abs project>/docs/team/evidence from cwd /tmp@@Sprint 7 U3
 CATALOGUE
 }
 
