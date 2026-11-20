@@ -13305,7 +13305,7 @@ done
 s7l_hook "git branch -D gone" && ok "Sprint 7 lead: branch -D with only operational files present still runs (W7-9)" \
   || bad "Sprint 7 lead: branch -D with only operational files present still runs (W7-9)"
 
-# --- PR #47 review (Codex + CI) -------------------------------------------------------------------
+# --- PR47 review: Codex and CI follow-ups -------------------------------------------------------------------
 echo "PR47 review: Codex and CI follow-ups"
 # CI: the W7-3 tip check is for a studio project's own checkout — a fixture directory inside another
 # repo (eval/crash-on-launch in the plugin's PR merge commit) must not be refused for it.
