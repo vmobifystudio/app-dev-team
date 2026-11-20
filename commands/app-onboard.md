@@ -60,6 +60,22 @@ something to work against.
    stack, build/run commands, and canonical type/property names found in the code, seeded from the
    House KB. Never overwrite a substantial existing `CLAUDE.md` — propose a diff instead.
 
+4a. **Ignore the studio's operational state — before anything writes it.** Only `/app-init` used to
+   do this, so an existing app reached `/app-plan` step 4a with the board log, its renderings,
+   review verdicts and actor keys untracked-but-not-ignored, and the `docs/*.md` commit loop
+   committed `docs/31-board.md` and `docs/32-board-view.md`. Run **`/app-init` step 5's `.gitignore`
+   block exactly as written there** (`${CLAUDE_PLUGIN_ROOT}/commands/app-init.md` — the
+   `touch .gitignore` / `for p in …` loop; skip its `git init`, the repo exists). That file holds
+   the one list; do not retype it here. Then:
+
+   ```bash
+   git add -- .gitignore && git commit -m "chore: ignore the studio's operational state"
+   git ls-files -ci --exclude-standard   # tracked files the new entries cover
+   ```
+
+   Anything the last command prints is already tracked, and `.gitignore` does not untrack it: list
+   it to the founder rather than `git rm --cached`-ing it yourself.
+
 5. **Create the team channel** `docs/team/messages.jsonl` if absent — an empty append-only event log
    (`team-protocol` defines the schema). `docs/team/messages.md` is GENERATED from it on the first
    send and must never be hand-written. A brownfield project that already has only the Markdown

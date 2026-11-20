@@ -42,7 +42,9 @@ Produce the docs the team normally writes, but describing **what exists**, not w
 - `CLAUDE.md` at the project root if missing — seeded from the as-built architecture + the House KB,
   pinning the real stack, build/run commands, and canonical type/property names found in the code.
 
-Do not refactor anything in this step. You are taking a photograph, not renovating.
+Do not refactor anything in this step. You are taking a photograph, not renovating. The one write
+outside `docs/` is `.gitignore`: `/app-onboard` step 4a adds the studio's operational paths before
+any board, review or actor file exists, so none of them is ever committed.
 
 ## Step 3 — Classify every remediation as Safe or Risky
 

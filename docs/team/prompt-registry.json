@@ -20,13 +20,13 @@
     },
     {
       "id": "aso-specialist",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "owner": "aso-specialist",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.3",
-      "content_hash": "e3221a0f7ee56eb433efd52a597189970b4bc58a39ffb405896dfecea88fb2da"
+      "rollback_version": "1.0.4",
+      "content_hash": "3ad8a0b1589084d290f7bdcde45ae59730430f92388ee88f69489759a721a2b8"
     },
     {
       "id": "backend-developer",
@@ -210,13 +210,13 @@
     },
     {
       "id": "release-manager",
-      "version": "1.0.10",
+      "version": "1.0.12",
       "owner": "release-manager",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.9",
-      "content_hash": "f8a6360405d2ceb9301a0e467a692b8a7b7da87870db7965d901dee1e8a9e935"
+      "rollback_version": "1.0.11",
+      "content_hash": "a751d10e292cf3929d712eaf592631fe827d9a06861cdd0d70fed90314cb1c23"
     },
     {
       "id": "reliability-engineer",
@@ -230,13 +230,13 @@
     },
     {
       "id": "security-reviewer",
-      "version": "1.0.6",
+      "version": "1.0.7",
       "owner": "security-reviewer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.5",
-      "content_hash": "cf382bd25f1c6c1795df7e964998a9825a21fb62ed9b17dabe440140b6b3ca1a"
+      "rollback_version": "1.0.6",
+      "content_hash": "0b998c4b273c1883fa352e32b4ab14043cbaa621cc62a06019df04d08e02aab2"
     },
     {
       "id": "tech-lead",
@@ -280,13 +280,13 @@
     },
     {
       "id": "verification-engineer",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "owner": "verification-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-20",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.3",
-      "content_hash": "03800199cadb75814ffe1b2fe98a1007fe55f17306a1dd72ac60da052f97ac2d"
+      "rollback_version": "1.0.4",
+      "content_hash": "42f9d09ae0e6163e5fb1205965cc1fd6935d28b31f64d4a5e9cf00b2d8eb571c"
     },
     {
       "id": "web-developer",

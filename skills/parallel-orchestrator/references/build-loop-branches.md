@@ -69,10 +69,14 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN reopened --by founde
 ```
 
 It moves the ticket back to `in_progress` with exactly one more cycle; re-spawn the owner from there.
-Only the founder writes it. Print both steps for the human: in their own terminal (it needs a TTY
-and the ticket id typed back; the token is single-use, 30 minutes)
-`node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" actor mint --role founder --ticket APP-NNN`, then in
-Claude Code `! node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN reopened --by founder --token <it>`.
+Only the founder writes it. Print both steps for the human, with the plugin path **resolved** — run
+`printf '%s\n' "${CLAUDE_PLUGIN_ROOT}"` yourself and print the absolute path it gives, because the
+founder's own terminal has no `CLAUDE_PLUGIN_ROOT` set. The mint runs in the founder's own terminal,
+from the project root — never through Claude Code's `!`, which has no TTY, and the mint refuses
+without one (it needs the ticket id typed back; the token is single-use, 30 minutes):
+`node "/abs/path/to/plugin/scripts/board.mjs" actor mint --role founder --ticket APP-NNN`. The move
+needs no TTY, so it runs in that terminal or as a Claude Code `!` command:
+`node "/abs/path/to/plugin/scripts/board.mjs" move APP-NNN reopened --by founder --detail "<reason>" --token <it>`.
 **You never mint a `founder` token and never append it on your own judgement.**
 
 A `rejected` verify-done is not a cycle: the row stays `in_progress` and only `changes` counts.

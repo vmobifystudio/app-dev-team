@@ -90,7 +90,17 @@ override the gate because a missing input "isn't written yet".
    Then `node "${CLAUDE_PLUGIN_ROOT}/scripts/version-consistency-check.mjs" .` — exit `1` stops you.
    **Commit the bump in ONE commit with the release docs**, once the notes below are written — the version files plus
    `docs/60-releases.md`, `docs/70-security-review.md` and `docs/71-verification.md`, staged by
-   explicit path. Uncommitted, they dirty the tree and `orchestrator ship` is CANNOT EVALUATE.
+   explicit path — plus `docs/00-founder-intent/decisions.md` and
+   `docs/00-founder-intent/MANIFEST.sha256` when a waiver was recorded (`/app-ship` step 1a appends
+   the founder decision and re-runs `founder-intent.mjs --write`, which rewrites the tracked
+   manifest). Uncommitted, they dirty the tree and `orchestrator ship` is CANNOT EVALUATE.
+   **Your version heading re-opens any waiver written before it:** once `## vX.Y.Z` exists, a waiver without the `— vX.Y.Z` field no longer
+   counts, so append the `— vX.Y.Z` field to each `WAIVED:` line in `docs/60-releases.md`, append to
+   `decisions.md` a decision line quoting the amended text verbatim (the same waiver the founder
+   approved in step 1a, restated for this version — keep the founder's `Approved by <who>`; a
+   waiver they did not approve is not yours to restate), then re-run
+   `node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root . --write` — all before
+   this commit, so the release commit carries them.
 3. **Do not tag.** The tag names the SHA that actually shipped, so it is the last row of the
    founder's checklist (below), after the upload succeeds and the release audit passed.
 
@@ -194,8 +204,11 @@ is a script the founder runs with the numbers from the store dashboards:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/release-health.mjs" \
-  --crash-free-rate <measured> --p0-count <open P0 incidents this window>
+  --crash-free-rate <measured, as a fraction — e.g. 0.995> --p0-count <open P0 incidents this window>
 ```
+
+`--crash-free-rate` is a fraction from 0 to 1. Store dashboards show a percent: 99.5% is `0.995`;
+`99.5` exits `2`.
 
 Exit `0` → widen the next step. Exit `1` → **hold**, reason printed. Exit `2` → a metric was not
 supplied: CANNOT EVALUATE, never clear. Halting is cheap and reversible on both stores (Play halts

@@ -12390,6 +12390,47 @@ grep -q 'exit `1` with `runtime`/`journey` \*\*STALE\*\*' "$HERE/../commands/app
   && ok "MQ: ship's STALE first pass, release-manager's release-doc commit, and lockfile-installing web tests are spelled (C4W-10/11, C4G-G7)" \
   || bad "MQ: ship's STALE first pass, release-manager's release-doc commit, and lockfile-installing web tests are spelled (C4W-10/11, C4G-G7)"
 
+echo "Sprint 7 U6: prose matches what the scripts do"
+U6R="$HERE/.."
+# S7-4: app-recover reads run-doctor's active count, not its exit code; no ignored --root; ATT- ids.
+grep -qF 'run-doctor.mjs" --ledger docs/team/runs.jsonl' "$U6R/commands/app-recover.md" && ! grep -qF 'run-doctor.mjs" --root' "$U6R/commands/app-recover.md" \
+  && grep -qF '`M active` with exit `0` → **a lease is live**' "$U6R/commands/app-recover.md" && grep -qF -- '--attempt ATT-<uuid>' "$U6R/commands/app-recover.md" \
+  && ok "U6: app-recover treats an active lease under exit 0 as live and abandons by ATT- id (S7-4)" \
+  || bad "U6: app-recover treats an active lease under exit 0 as live and abandons by ATT- id (S7-4)"
+# S7-6: brownfield gets app-init's operational .gitignore.
+grep -qF "Run **\`/app-init\` step 5's \`.gitignore\`" "$U6R/commands/app-onboard.md" && grep -qF 'git ls-files -ci --exclude-standard' "$U6R/commands/app-onboard.md" \
+  && ok "U6: /app-onboard runs app-init's operational .gitignore block (S7-6)" \
+  || bad "U6: /app-onboard runs app-init's operational .gitignore block (S7-6)"
+# S7-7: audit tickets carry a risk policy and --file.
+grep -qF 'team-bootstrap.mjs" --root .' "$U6R/commands/app-audit.md" && [ "$(grep -c -- '--file "<path/the/fix/touches>"' "$U6R/commands/app-audit.md")" = 2 ] \
+  && ok "U6: /app-audit bootstraps the risk policy and adds tickets with --file (S7-7)" \
+  || bad "U6: /app-audit bootstraps the risk policy and adds tickets with --file (S7-7)"
+# S7-8 / S7-9 / S7-10: runnable commands.
+grep -qF 'verify-done.sh" <branch> <integration-branch> fast' "$U6R/skills/sprint-planner/SKILL.md" && ! grep -qF '"<test cmd>"' "$U6R/skills/sprint-planner/SKILL.md" \
+  && grep -qF '(cd "${CLAUDE_PLUGIN_ROOT}" && node "${CLAUDE_PLUGIN_ROOT}/scripts/team-doctor.mjs" --json)' "$U6R/commands/app-learn.md" \
+  && grep -qF -- '--scenario "${CLAUDE_PLUGIN_ROOT}/eval/manager-scenario.json"' "$U6R/commands/app-manager-harness.md" \
+  && grep -qF '"schema": "impact-map/v1"' "$U6R/commands/app-impact.md" \
+  && ok "U6: sprint-planner, app-learn, manager-harness and app-impact commands run from a project (S7-8/9/10)" \
+  || bad "U6: sprint-planner, app-learn, manager-harness and app-impact commands run from a project (S7-8/9/10)"
+# S7-12 / W7-4 / W7-10: app-ship re-runs orchestrator ship only; manifest committed; CURRENT-but-not-PASS.
+! grep -qF 'Then **re-run `ship-gate.sh`**' "$U6R/commands/app-ship.md" && ! grep -qF 'Then re-run the gate.' "$U6R/commands/app-ship.md" \
+  && grep -qF 'docs/00-founder-intent/MANIFEST.sha256` when a waiver was recorded' "$U6R/agents/release-manager.md" \
+  && grep -qF 'result "<FAIL|CANNOT_EVALUATE>" still describes this candidate' "$U6R/commands/app-ship.md" \
+  && ok "U6: app-ship re-runs orchestrator ship, commits the intent manifest, reads CURRENT-not-PASS (S7-12, W7-4, W7-10)" \
+  || bad "U6: app-ship re-runs orchestrator ship, commits the intent manifest, reads CURRENT-not-PASS (S7-12, W7-4, W7-10)"
+# W7-6 / W7-7: founder commands print a resolved path, never `!` for a TTY step; a clone carries the log.
+! grep -qF 'actor mint --role founder --ticket APP-NNN`, then in' "$U6R/skills/parallel-orchestrator/references/build-loop-branches.md" \
+  && grep -qF 'A new checkout trusts a carried-over log once.' "$U6R/docs/HANDBOOK.md" && grep -qF 'Do not run `/app-plan` there' "$U6R/docs/HANDBOOK.md" \
+  && ok "U6: founder TTY steps print a resolved path; a new checkout carries the board log, then adopts (W7-6, W7-7)" \
+  || bad "U6: founder TTY steps print a resolved path; a new checkout carries the board log, then adopts (W7-6, W7-7)"
+# R7-8 / R7-9 / R7-12 / R7-13: role files.
+! grep -qF 'for this tip and `docs/20-architecture.md`' "$U6R/agents/security-reviewer.md" \
+  && grep -qF 'ASO: CANNOT EVALUATE — docs/15-aso.md' "$U6R/agents/aso-specialist.md" \
+  && grep -qF 'as a fraction — e.g. 0.995' "$U6R/agents/release-manager.md" \
+  && ! grep -qF '## Could not verify' "$U6R/agents/verification-engineer.md" && grep -qF '## Not checked' "$U6R/agents/verification-engineer.md" \
+  && ok "U6: security fallback context, ASO CANNOT EVALUATE, crash-free fraction, VE heading (R7-8/9/12/13)" \
+  || bad "U6: security fallback context, ASO CANNOT EVALUATE, crash-free fraction, VE heading (R7-8/9/12/13)"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -111,7 +111,7 @@ Do not read reports. Run their work.
 ## 6. That the app runs at all
 
 Read `docs/team/runtime-result.json` (above). `FAIL` is a `FAIL` verdict outright; `CANNOT EVALUATE`
-is `Could not verify` — never a pass. If a QA report or a DONE claims the app launched, open the
+goes under `## Not checked` — never a pass. If a QA report or a DONE claims the app launched, open the
 evidence artifact it names; one missing at the path claimed makes that report a false report.
 
 # Your own checker is subject to the same failure
@@ -123,7 +123,8 @@ cases** and confirm it gets both right. State in your report that you did.
 
 - **Per-ticket certification** (`/app-build` routed a constant or rule to you) → write
   `APP-NNN-cycle-N-verification.md` in `docs/53-reviews/` (N = the ticket's `cycles`) in the verdict format
-  below and return its `VERIFICATION:` line first. You write no board event: the orchestrator
+  below and return its `VERIFICATION:` line first, with the `## Not checked` section your spawn prompt's
+  contract names. You write no board event: the orchestrator
   records a `FAIL` as `changes`. Never overwrite `docs/71-verification.md` for one ticket.
 - **Release pass** (`/app-ship`) → `docs/71-verification.md` and the `VERIFICATION:` line.
 - **You own a board ticket** → the output block your spawn prompt prints, `DONE:` first; your files
@@ -162,7 +163,7 @@ I opened (or CANNOT EVALUATE, and what was missing).
 ## Self-check
 Fixture used to validate my own checker, and its known-good/known-bad result.
 
-## Could not verify
+## Not checked
 <every item where evidence was not conclusive — name it, never fake a verdict>
 ```
 
@@ -184,7 +185,7 @@ rule.
 
 # What you never do
 
-- Never certify by reading. If you did not run it, it is `Could not verify`.
+- Never certify by reading. If you did not run it, it goes under `## Not checked`.
 - Never accept a passing test as proof that the code under it is correct — confirm the test can fail.
 - Never treat a silent no-op as a pass. A refactor that matched nothing looks exactly like one that
   succeeded; confirm the mutation landed with `git diff --numstat`.
