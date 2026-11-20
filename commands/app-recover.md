@@ -23,15 +23,27 @@ looking fine is cheap.
 ## 1. What was running, and is anything still holding a lease?
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/run-doctor.mjs" --root .
+node "${CLAUDE_PLUGIN_ROOT}/scripts/run-doctor.mjs" --ledger docs/team/runs.jsonl
 ```
 
-- Exit `0` → no attempt is live. Continue.
-- A live lease → **do not start a replacement.** Either the attempt is still running somewhere, or
-  it died holding the lease. Establish which before writing anything:
+Run it from the project root (it reads `--ledger`, default `docs/team/runs.jsonl` under the current
+directory; there is no `--root`). **The exit code alone does not answer this question** — read the
+summary line, `RUN DOCTOR: <CLEAR|ANOMALIES> — N attempt(s), M active`:
+
+- `0 active` (exit `0`) → nothing holds a lease. Continue.
+- `M active` with exit `0` → **a lease is live**: an attempt is still inside its lease (a fresh claim
+  holds one for 15 minutes). **Do not start a replacement** — either it is still running somewhere,
+  or it died and the lease has not run out yet. run-doctor lists each active attempt's `run_id` and
+  `attempt_id`; wait for the lease to expire (re-run run-doctor) unless you have established the
+  attempt is dead.
+- Exit `1` with `orphaned lease: <run_id>/<attempt_id> expired …` → the attempt died holding the
+  lease. Exit `2` → the ledger is missing or its chain is broken; stop and report it.
+
+Once you have established the attempt is not running, close it with the IDs run-doctor printed —
+`--attempt` takes the `ATT-<uuid>` ID, not a number:
 
   ```bash
-  node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" abandon --run <id> --attempt <n> \
+  node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" abandon --run <run_id> --attempt ATT-<uuid> \
     --detail "<what actually happened — an interruption is a fact, not an inference>"
   ```
 

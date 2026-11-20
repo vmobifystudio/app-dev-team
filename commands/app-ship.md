@@ -70,8 +70,12 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
    Every gate answers at a moment and then stops thinking. `journey-gate` says PASS, three commits
    land, and the PASS sits there green describing a candidate that no longer exists. Nobody lied;
-   the verdict outlived its subject. Exit `1` → re-run the gate rather than reasoning about how
-   little changed.
+   the verdict outlived its subject. Exit `1` has two shapes — read the line, not just the code:
+   - `STALE: …` → re-run the gate rather than reasoning about how little changed.
+   - `CURRENT — <gate> result "<FAIL|CANNOT_EVALUATE>" still describes this candidate` → the result
+     is fresh; re-running gives the same answer. A FAIL stops the release (step 1b). A
+     `CANNOT_EVALUATE` covered by an accepted waiver (`orchestrator ship` reports that gate
+     `WAIVED`) is settled — do not loop on it. Without one, it is step 1b's produce-or-waive call.
 
    **`orchestrator ship` submits and publishes nothing** — that boundary is constitutional (I-12).
    It reports; you and the user decide.
@@ -100,11 +104,12 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    1. **Produce it.** Name the owning role and spawn it. A brownfield project reaching `/app-ship`
       without `docs/50-test-plan.md` has simply never run a QA wave — that file is only ever written
       inside a `/app-build` QA pass — so `qa-engineer` writes and executes one against the shipped
-      surface. Then re-run the gate.
+      surface. Then re-run `orchestrator ship`.
    2. **Waive it, with the reason written down.** Append to `docs/60-releases.md` under this
       version — the release record `release-manager` already owns — a line reading
-      `WAIVED: <artifact> — <who waived it> — <reason>`. Then **re-run `ship-gate.sh`** — it reads
-      `docs/60-releases.md`, and it is the gate itself that decides the waiver applies, not you.
+      `WAIVED: <artifact> — <who waived it> — <reason>`. Then re-run `orchestrator ship` — the
+      ship gate it runs reads `docs/60-releases.md`, and it is the gate itself that decides the
+      waiver applies, not you.
       A waiver it accepts comes back as `WAIVED: <artifact> by <who> — <reason>` in its output;
       repeat that line in the release summary and in step 4's confirmation question.
 
@@ -134,6 +139,9 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
       record says a human chose it. Then re-record it — `--write` adds a new `decisions.md` and keeps
       an append, and still refuses an edit to any recorded line:
       `node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root . --write`.
+      That rewrites the tracked `docs/00-founder-intent/MANIFEST.sha256`; it and `decisions.md` go
+      into `release-manager`'s release commit (step 3) — until then the tree is dirty and the gates
+      read STALE, the expected first-pass shape. Left uncommitted, step 3b cannot exit `0`.
 
    Asking this is not a third human gate: `/app-ship` **is** Gate 2, and produce-or-waive is part of
    the ship conversation the user is already in. Under `--yolo` from `/app-run`, do not auto-waive —
