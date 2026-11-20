@@ -88,7 +88,34 @@ if ! git var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
   export GIT_COMMITTER_NAME=studio-test GIT_COMMITTER_EMAIL=studio-test@example.invalid
 fi
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+# C7-1: NO TEST EDITS A TRACKED PLUGIN FILE IN PLACE. Mirror tests used to `cp x x.bak`, mutate the
+# real file and `mv` it back on the happy path — so a SIGTERM, a timeout or a CI cancel mid-mirror
+# left board.mjs's claimLease as `return { ok: true }` for good, and two concurrent runs could
+# save each other's mutant as the "backup". Mirror tests now mutate `plugin_copy`; the exit trap
+# proves the plugin's own `git status` did not move, and fails the run loudly if it did.
+PLUGIN_STATUS_BEFORE=$(git -C "$HERE/.." status --porcelain -uall 2>/dev/null)
+suite_exit() {
+  _rc=$?
+  rm -rf "$TMP"
+  _after=$(git -C "$HERE/.." status --porcelain -uall 2>/dev/null)
+  if [ "$_after" != "$PLUGIN_STATUS_BEFORE" ]; then
+    echo "FATAL: the plugin's working tree changed during this run — a test wrote into it (C7-1)."
+    echo "  before:"; printf '%s\n' "$PLUGIN_STATUS_BEFORE" | sed 's/^/    /'
+    echo "  after:";  printf '%s\n' "$_after" | sed 's/^/    /'
+    exit 1
+  fi
+  exit "$_rc"
+}
+trap suite_exit EXIT
+trap 'exit 143' INT TERM HUP
+
+# plugin_copy <name> — prints a private copy of the whole plugin (minus .git and .claude) in $TMP,
+# for a mirror test to mutate and run. The copy goes when $TMP does; the real tree is never touched.
+plugin_copy() {
+  _pc="$TMP/plugin-$1"; rm -rf "$_pc"; mkdir -p "$_pc"
+  ( cd "$HERE/.." && tar cf - --exclude .git --exclude .claude . ) | ( cd "$_pc" && tar xf - )
+  printf '%s' "$_pc"
+}
 
 ok()   { PASS=$((PASS+1)); [ "$VERBOSE" = "-v" ] && echo "  ok    $1" || true; }
 bad()  { FAIL=$((FAIL+1)); echo "  FAIL  $1"; [ -n "${2:-}" ] && echo "        $2"; }
@@ -1713,14 +1740,12 @@ tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "even whe
   && ok "...and writes the heading even when nothing was skipped, so its absence means omission" \
   || bad "...and writes the heading even when nothing was skipped, so its absence means omission"
 # Mirror test: strip the requirement and prove the assertion above goes red.
-cp "$HERE/../agents/code-reviewer.md" "$TMP/cr-4b.bak"
-sed 's/§4b/SECTION-REMOVED/g' "$TMP/cr-4b.bak" > "$HERE/../agents/code-reviewer.md"
-if tr '\n' ' ' < "$HERE/../agents/code-reviewer.md" | tr -s ' ' | grep -q "4b"; then
+sed 's/§4b/SECTION-REMOVED/g' "$HERE/../agents/code-reviewer.md" > "$TMP/cr-4b.mut"
+if tr '\n' ' ' < "$TMP/cr-4b.mut" | tr -s ' ' | grep -q "4b"; then
   bad "mirror test: removing §4b from code-reviewer should make its assertion fail"
 else
   ok "mirror test: removing §4b from code-reviewer reproduces an unrequired round-trip rule"
 fi
-cp "$TMP/cr-4b.bak" "$HERE/../agents/code-reviewer.md"
 
 grep -q "corpus_recurrence" "$HERE/../commands/app-learn.md" \
   && ok "/app-learn's failure pass reads the recurrence flag" \
@@ -2237,7 +2262,7 @@ grep -q "^RESULT: PASS" "$TMP/rg-noshot.txt" \
   && bad "...and leaves no empty evidence file behind to be mistaken for a capture" \
   || ok "...and leaves no empty evidence file behind to be mistaken for a capture"
 # Mirror test: restore the old evidence-optional behaviour and prove the assertion above goes red.
-cp "$HERE/runtime-gate.sh" "$HERE/runtime-gate.sh.bak"
+RGM=$(plugin_copy rg-mirror)/scripts
 node -e '
   const fs = require("fs");
   const p = process.argv[1];
@@ -2246,14 +2271,13 @@ node -e '
   if (!t.includes(marker)) { console.error("marker not found"); process.exit(1); }
   t = t.replace(marker, "        pass \"android\" \"MUTATED evidence-optional pass ($PKG)\"; : \"");
   fs.writeFileSync(p, t);
-' "$HERE/runtime-gate.sh"
-env PATH="$NOSHOTSTUB:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$RGP" >"$TMP/rg-mirror.txt" 2>&1
+' "$RGM/runtime-gate.sh"
+env PATH="$NOSHOTSTUB:$PATH" sh "$RGM/runtime-gate.sh" --platform android --project-root "$RGP" >"$TMP/rg-mirror.txt" 2>&1
 if grep -q "^RESULT: PASS" "$TMP/rg-mirror.txt"; then
   ok "mirror test: restoring the evidence-optional pass reproduces a PASS with no evidence"
 else
   bad "mirror test: restoring the evidence-optional pass should reproduce a PASS with no evidence"
 fi
-mv "$HERE/runtime-gate.sh.bak" "$HERE/runtime-gate.sh"
 
 # The timeout branch. RUNTIME_GATE_BUILD_TIMEOUT exists in the source for exactly one reason —
 # "so the timeout branch is testable in seconds instead of in a quarter of an hour" — and no test
@@ -2581,7 +2605,7 @@ BOARD_RUN_ID=$(board_run_id "$L2/docs/31-board-events.jsonl")
 
 # Mirror test: prove the assertion above would have caught the old discard-the-result bug, by
 # temporarily making claimLease() ignore run-ledger's output the way it used to.
-cp "$HERE/board.mjs" "$HERE/board.mjs.bak"
+BD=$(plugin_copy bd-lease-mirror)/scripts/board.mjs
 node -e '
   const fs = require("fs");
   const path = process.argv[1];
@@ -2590,7 +2614,7 @@ node -e '
   if (!text.includes(marker)) { console.error("marker not found"); process.exit(1); }
   text = text.replace(marker, "  return { ok: true }; // mutated for mirror test — the old discard-the-result behavior\n" + marker);
   fs.writeFileSync(path, text);
-' "$HERE/board.mjs"
+' "$BD"
 L3=$(newboard bd-lease-mirror)
 bm "$L3" add L-003 --title "Mirror ticket" --owner ios-developer >/dev/null 2>&1
 bm "$L3" move L-003 claimed --by ios-developer >/dev/null 2>&1
@@ -2600,7 +2624,7 @@ if [ -n "$MIRROR_RUN_ID" ]; then
 else
   ok "mirror test: discarding the run-ledger result reproduces a claimed event with no run identity"
 fi
-mv "$HERE/board.mjs.bak" "$HERE/board.mjs"
+BD="$HERE/board.mjs"
 
 # --- a DONE nobody checked is not reviewable. verify-done.sh existed and its result was recorded
 # nowhere the board could gate on, so an unverified claim reached a reviewer by an agent's say-so.
@@ -7037,7 +7061,7 @@ import(process.argv[1]).then((m) => {
 # Mirror test: prove these assertions would catch a regression, by reverting the CLEAR-gate check to
 # always treat any real verification as production-ready and confirming the tested-vs-production-ready
 # assertion goes red.
-cp "$CR/state.mjs" "$CR/state.mjs.bak"
+CR=$(plugin_copy cr-mirror)/control-room
 sed -i.tmp "s/!(shipGate.ok \&\& shipGate.result === 'CLEAR')/false/" "$CR/state.mjs"
 rm -f "$CR/state.mjs.tmp"
 CRTESTED2="$TMP/cr-readiness-tested-mirror"; mkdir -p "$CRTESTED2"
@@ -7050,7 +7074,7 @@ if [ "$(readiness_state "$CRTESTED2" engineering)" = "tested" ]; then
 else
   ok "mirror test: dropping the ship-gate check reproduces a false production-ready verdict"
 fi
-mv "$CR/state.mjs.bak" "$CR/state.mjs"
+CR="$HERE/../control-room"
 
 # HALF a population is not a population. The `decisions` section spans two inputs — blocked tickets
 # from the board, and questions routed to a founder from the channel — and it gated `unavailable` on
@@ -7344,13 +7368,14 @@ assert_exit 0 "board.mjs sees the project's real ticket from inside a linked wor
 # test that silently stops reverting is a rule that cannot fail, which is the exact defect class
 # mirror tests exist to catch. Kept as a sed for locality, but any future rename of this function
 # must update the pattern here; the assertion below is what tells you if you forgot.
+BD=$(plugin_copy bd-root-mirror)/scripts/board.mjs
 sed -i.bak "s/resolve(projectRoot(flags), DEFAULT_LOG)/resolve(process.cwd(), DEFAULT_LOG)/; s/resolve(projectRoot(flags), DEFAULT_BOARD)/resolve(process.cwd(), DEFAULT_BOARD)/" "$BD"
 grep -q "resolve(process.cwd(), DEFAULT_LOG)" "$BD" \
   && ok "mirror test: the revert actually applied (the sed pattern still matches)" \
   || bad "mirror test: the revert actually applied (the sed pattern still matches)" "projectRoot() was renamed; update the sed above"
 assert_exit 2 "mirror test: reverting projectRoot() reproduces the fork (ticket unreachable from the worktree)" \
   bash -c "cd '$WTB/.agent-wt/WT-001' && node '$BD' show WT-001"
-mv "$BD.bak" "$BD"
+BD="$HERE/board.mjs"
 
 # --- DR-TC-P0-002: once defaults resolve to the project root regardless of `cwd`, `--bind`'s
 # assumption that `HEAD` always names the reviewed commit breaks the OPPOSITE way — invoked from the
