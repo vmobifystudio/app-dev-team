@@ -462,8 +462,16 @@ DARWIN=""; [ "$(uname -s 2>/dev/null)" = Darwin ] && DARWIN=1
 lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 same_ref() { if [ -n "$DARWIN" ]; then [ "$(lc "$1")" = "$(lc "$2")" ]; else [ "$1" = "$2" ]; fi; }
 
-EXCL=""
-[ -f "$PLUGIN/scripts/lib/operational-paths.txt" ] && EXCL=$(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(top,exclude)/' "$PLUGIN/scripts/lib/operational-paths.txt")
+# W7-9 skips the studio's operational files — but only for commands that leave untracked files alone
+# (branch -D, reset --hard, checkout). `git clean` and `git stash -u/-a` DELETE them, and with -x/-X/-a
+# they delete the gitignored board log too, which `git status` never shows. Those commands count the
+# operational paths, ignored or not (Sprint 7 lead: U3's skip let `git clean -fdx` erase the board).
+EXCL=""; OPS=""; SWEEP=""
+if [ -f "$PLUGIN/scripts/lib/operational-paths.txt" ]; then
+  EXCL=$(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(top,exclude)/' "$PLUGIN/scripts/lib/operational-paths.txt")
+  OPS=$(sed -e '/^#/d' -e '/^$/d' -e 's/^/:(top)/' "$PLUGIN/scripts/lib/operational-paths.txt")
+fi
+case " $CMD " in *[[:space:]]clean[[:space:]]*|*[[:space:]]stash*-u*|*[[:space:]]stash*-a*|*--include-untracked*|*--all*) SWEEP=1; EXCL="" ;; esac
 
 TAB=$(printf '\t')
 while IFS="$TAB" read -r KIND REF DIR WHY; do
@@ -488,6 +496,10 @@ while IFS="$TAB" read -r KIND REF DIR WHY; do
     if [ -n "$ROOT" ]; then
       DIRTY=$(git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | head -n 1)
       DIRTY_N=$(git -C "$GDIR" status --porcelain -uall -- ':/' $EXCL 2>/dev/null | grep -c . || echo "?")
+      if [ -z "$DIRTY" ] && [ -n "$SWEEP" ] && [ -n "$OPS" ]; then
+        DIRTY=$(git -C "$GDIR" status --porcelain -uall --ignored -- $OPS 2>/dev/null | head -n 1)
+        [ -n "$DIRTY" ] && DIRTY_N="the studio's operational (board/register)"
+      fi
     elif [ -n "$GDIR" ] && [ -d "$GDIR" ]; then
       continue   # a real directory that is not a repository: nothing here to guard
     else

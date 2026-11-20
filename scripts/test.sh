@@ -13036,6 +13036,22 @@ u3g 0 'npx prettier --check docs/team/risk-policy.json' 'npx prettier --check do
 u3g 0 'python3 -m json.tool docs/team/risk-policy.json (reads)' 'python3 -m json.tool docs/team/risk-policy.json'
 rm -rf "$U3"
 
+# --- Sprint 7 lead: sweeps that delete the gitignored board are refused ------------------------
+# U3's W7-9 skip of operational paths let `git clean -fdx` / `git stash -a` through in a main checkout
+# whose board log is gitignored (app-init's .gitignore) — `git status` never shows ignored files, so
+# the tree looked clean while the command erased the board. branch -D still passes on operational dirt.
+echo "Sprint 7 lead: sweeps that delete the gitignored board are refused"
+SLC="$TMP/s7lead-clean"; mkdir -p "$SLC/docs" && (cd "$SLC" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf 'docs/31-board-events.jsonl\ndocs/31-board.md\ndocs/32-board-view.md\n' > .gitignore && echo x > a && git add .gitignore a && git commit -qm i \
+  && node "$HERE/board.mjs" add APP-1 --title t --owner ios-developer --by tech-manager >/dev/null 2>&1)
+s7l_hook() { printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"%s"}}' "$SLC" "$1" | sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" >/dev/null 2>&1; }
+for c in "git clean -fdx" "git clean -fdX" "git stash -a"; do
+  if [ -s "$SLC/docs/31-board-events.jsonl" ] && ! s7l_hook "$c"; then ok "Sprint 7 lead: '$c' in a main checkout with a gitignored board log is refused"
+  else bad "Sprint 7 lead: '$c' in a main checkout with a gitignored board log is refused"; fi
+done
+s7l_hook "git branch -D gone" && ok "Sprint 7 lead: branch -D with only operational files present still runs (W7-9)" \
+  || bad "Sprint 7 lead: branch -D with only operational files present still runs (W7-9)"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

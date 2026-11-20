@@ -545,6 +545,7 @@ MV11@@hooks/block-cross-worktree-write.sh@@if [ -n "$DEV" ] && [ -z "$TARGET_WT"
 MV12@@hooks/block-shared-tree-destructive-git.sh@@if (has(A, na, "-u")) emit("D", "", d, "git read-tree@@if (0) emit("D", "", d, "git read-tree@@U3: git hook exit 2 — dirty tree: git read-tree@@Sprint 7 U3
 MV13@@hooks/contract-hooks.mjs@@if (/board\.mjs/.test(body) && /\badopt\b/.test(body)) refuse(ADOPT);@@void ADOPT;@@U3: guard exit 2 — python3 pty.spawn board.mjs adopt@@Sprint 7 U3
 MV14@@hooks/guard-gate-writes.sh@@  *[/~]*) printf@@  *NEVER*) printf@@U3: guard exit 2 — rm -rf <abs project>/docs/team/evidence from cwd /tmp@@Sprint 7 U3
+MS7L01@@hooks/block-shared-tree-destructive-git.sh@@      if [ -z "$DIRTY" ] && [ -n "$SWEEP" ] && [ -n "$OPS" ]; then@@      if false; then@@Sprint 7 lead: 'git clean -fdx' in a main checkout with a gitignored board log is refused@@Sprint 7 lead
 CATALOGUE
 }
 
