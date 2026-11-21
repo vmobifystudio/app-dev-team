@@ -13692,6 +13692,9 @@ v3and() { # v3and <steps json> — android.sh on the stub device; prints its exi
 [ "$(v3and '{"action":"tap","id":"saved_date"},{"assert":"is_checked","id":"saved_date","value":true}')" = 1 ] && grep -q 'tap 33 33' "$V3/taps" \
   && ok "Sprint 8 V3: android taps the target's centre, and is_checked reads its checked state (QA-1, FL-15)" \
   || bad "Sprint 8 V3: android taps the target's centre, and is_checked reads its checked state (QA-1, FL-15)" "taps=$(cat "$V3/taps") $(cat "$V3/a.out")"
+[ "$(v3and '{"assert":"is_checked","id":"Saved","value":true}')" = 0 ] \
+  && ok "Sprint 8 V3: android finds an element by content-desc when no resource-id matches (PR49T-1)" \
+  || bad "Sprint 8 V3: android finds an element by content-desc when no resource-id matches (PR49T-1)" "$(cat "$V3/a.out")"
 printf '{"schema":"journey/v1","id":"k","steps":[{"action":"launch"},{"assert":"is_checked","id":"x","value":"yes"}]}\n' > "$V3/a/k.json"
 assert_exit 1 "Sprint 8 V3: journey-gate refuses an is_checked whose value is not true/false (FL-15)" \
   node "$HERE/journey-gate.mjs" --root "$V3" --journeys "$V3/a" --list
@@ -13974,7 +13977,9 @@ l8h agent-1 "git commit -m 'founder runs fastlane deliver later'"; L8B=$?
 l8h "" "fastlane deliver --ipa x.ipa"; L8C=$?
 L8D=0; for c in "npx eas-cli submit -p ios" "eas build -p ios --auto-submit" "bundle exec fastlane ios release" \
   "./gradlew publishReleaseBundle" "env X=1 fastlane deliver" "sudo -E fastlane deliver" "(fastlane deliver)" \
-  "bash -c \"fastlane deliver\"" "sleep 1 & fastlane pilot upload" "npx firebase-tools deploy" "netlify deploy -p"; do
+  "bash -c \"fastlane deliver\"" "sleep 1 & fastlane pilot upload" "npx firebase-tools deploy" "netlify deploy -p" \
+  "eas submit -p android" "vercel deploy --prod" "netlify deploy --prod" "firebase deploy --only hosting" \
+  "xcrun altool --upload-app -f a.ipa" "xcrun notarytool submit a.zip" "gcloud projects create p1"; do
   l8h agent-1 "$c"; [ $? = 2 ] || { L8D="$c"; break; }; done
 L8E=0; for c in "git commit -m 'docs: notes
 firebase deploy is the founder step'" "bundle exec fastlane test" "./gradlew assembleRelease" "grep -rn 'eas submit' docs"; do
@@ -14065,6 +14070,45 @@ printf '%s\n' '{"ts":"2026-01-01T00:00:00Z","ticket":"APP-001","event":"created"
 ( cd "$L8I" && node "$HERE/board.mjs" show BUG-001-fix --json 2>/dev/null ) | grep -q 'INV-PAY-1' \
   && ok "Sprint 8 lead: a qa_failed fix ticket inherits the failed ticket's invariants (Codex PR #49)" \
   || bad "Sprint 8 lead: a qa_failed fix ticket inherits the failed ticket's invariants (Codex PR #49)" "$(tail -3 "$TMP/s8li.txt")"
+# PR49T-2: `reopened` is not legal from review (the cap turns the 3rd `changes` into blocked).
+L8V=$(node --input-type=module -e '
+const { reduce, validate } = await import(process.argv[1]);
+const mk = (event, by = "tech-manager", detail = "") => ({ ticket: "T-1", event, by, detail });
+const ev = [{ ticket: "T-1", event: "created", by: "tech-manager", detail: { owner: "ios-developer" } }, mk("claimed", "ios-developer"),
+  mk("done_reported", "ios-developer"), mk("verified"), mk("review_requested", "ios-developer")];
+process.stdout.write(String(validate(reduce(ev).tickets, mk("reopened", "tech-lead", "x")).ok));' "$HERE/lib/events.mjs" 2>&1)
+[ "$L8V" = false ] && ok "Sprint 8 lead: reopened is refused on a ticket in review (PR49T-2)" \
+  || bad "Sprint 8 lead: reopened is refused on a ticket in review (PR49T-2)" "$L8V"
+# PR49T-6: a waiver phrase in the founder's own brief does not approve the waiver.
+L8W2="$TMP/s8lead-waiver"; rm -rf "$L8W2"; mkdir -p "$L8W2/docs/00-founder-intent"
+printf '# Brief\nWAIVED: runtime gate — ok to skip\n' > "$L8W2/docs/00-founder-intent/brief.md"
+printf '# Releases\n\nWAIVED: runtime gate — Amol — no simulator\n' > "$L8W2/docs/60-releases.md"
+node "$HERE/trace.mjs" --project-root "$L8W2" --only gates >/dev/null 2>&1; L8WR=$?
+[ "$L8WR" = 1 ] && ok "Sprint 8 lead: a waiver is never pre-approved by the founder's brief (PR49T-6)" \
+  || bad "Sprint 8 lead: a waiver is never pre-approved by the founder's brief (PR49T-6)" "rc=$L8WR"
+# PR49T-4b: a qa ticket waiting on its own BUG-NNN-fix is not STALLED (SM-1, second half).
+L8Q="$TMP/s8lead-qastall"; rm -rf "$L8Q"; mkdir -p "$L8Q/docs"
+( cd "$L8Q" && git init -q -b main . && git config user.email t@t && git config user.name t && echo x > a && git add a && git commit -qm base ) >/dev/null 2>&1
+printf '| BUG-001 | S2 | x |\n' > "$L8Q/docs/51-bugs.md"
+printf '%s\n' '{"ts":"2026-01-01T00:00:00Z","ticket":"APP-1","event":"created","by":"tech-manager","detail":{"owner":"ios-developer"}}' \
+  '{"ts":"2026-01-02T00:00:00Z","ticket":"APP-1","event":"merged","by":"tech-manager"}' > "$L8Q/docs/31-board-events.jsonl"
+( cd "$L8Q" && node "$HERE/board.mjs" move APP-1 qa_failed --by qa-engineer --detail BUG-001 \
+  && node "$HERE/board.mjs" add APP-2 --title f --owner ios-developer \
+  && for _i in 1 2 3 4 5 6 7 8 9 10 11 12; do node "$HERE/board.mjs" move APP-2 corrected --by tech-manager --detail '{"notes":"n"}'; done ) >/dev/null 2>&1
+( cd "$L8Q" && node "$HERE/orchestrator.mjs" round ) >"$TMP/s8lq.txt" 2>&1
+grep -q 'STALLED' "$TMP/s8lq.txt" && ! grep -q 'STALLED APP-1 ' "$TMP/s8lq.txt" \
+  && ok "Sprint 8 lead: a qa ticket waiting on its BUG-fix is not STALLED (PR49T-4b)" \
+  || bad "Sprint 8 lead: a qa ticket waiting on its BUG-fix is not STALLED (PR49T-4b)" "$(grep -m3 'STALLED\|RESULT' "$TMP/s8lq.txt")"
+# PR49T-5: a reworked ticket whose branch is gone is refused, never re-cut from base.
+L8K="$TMP/s8lead-rework"; rm -rf "$L8K"; mkdir -p "$L8K/docs" "$L8K/.agent-wt/s"
+( cd "$L8K" && git init -q -b main . && git config user.email t@t && git config user.name t && echo x > a && git add a && git commit -qm base ) >/dev/null 2>&1
+printf '%s\n' '{"ts":"2026-01-01T00:00:00Z","ticket":"APP-1","event":"created","by":"tech-manager","detail":{"owner":"ios-developer"}}' \
+  '{"ts":"2026-01-02T00:00:00Z","ticket":"APP-1","event":"merged","by":"tech-manager"}' \
+  '{"ts":"2026-01-03T00:00:00Z","ticket":"APP-1","event":"rework","by":"tech-manager","detail":"wave 1: CONFLICT"}' > "$L8K/docs/31-board-events.jsonl"
+( cd "$L8K" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-1 --role ios-developer --slot .agent-wt/s ) >/dev/null 2>"$TMP/s8lk.txt"; L8KR=$?
+[ "$L8KR" = 2 ] && grep -q 'no branch is named for APP-1' "$TMP/s8lk.txt" \
+  && ok "Sprint 8 lead: a reworked ticket with no branch is refused, not re-cut from base (PR49T-5)" \
+  || bad "Sprint 8 lead: a reworked ticket with no branch is refused, not re-cut from base (PR49T-5)" "rc=$L8KR $(head -c 200 "$TMP/s8lk.txt")"
 # FL-16: `trace --only gates` says what it checked, not "no break in the chain".
 L8T="$TMP/s8lead-trace"; rm -rf "$L8T"; mkdir -p "$L8T/docs/00-founder-intent"
 printf '# Brief\nA to-do list.\n' > "$L8T/docs/00-founder-intent/brief.md"

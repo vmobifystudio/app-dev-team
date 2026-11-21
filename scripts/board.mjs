@@ -38,7 +38,7 @@
  *         review_requested · started · approved · changes · merged · qa_passed · qa_failed ·
  *         blocked · unblocked · reopened · descoped · closed
  *
- * `reopened` is tech-lead/cto (`--by tech-lead`), once per ticket: blocked/review -> in_progress with
+ * `reopened` is tech-lead/cto (`--by tech-lead`), once per ticket: a cap-blocked ticket -> in_progress with
  * one more review (and QA-failure) cycle on top of the cap.
  *
  * `verified_static` is `verified`'s honest sibling: the branch, the commits and the changed files
@@ -1930,7 +1930,7 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
           '  move <ID> verified_static --by <role> [--evidence <the --static record verify-done printed>]\n' +
           '  move <ID> corrected --by tech-manager --invariant "I1; I2"   record a ticket\'s invariants\n' +
           '  move <ID> corrected --by tech-manager --test-profile [--token T]   re-freeze the profile\'s test commands\n' +
-          '  move <ID> reopened --by tech-lead  blocked|review -> in_progress, +1 review/QA cycle over the cap, once\n' +
+          '  move <ID> reopened --by tech-lead  blocked (a cap) -> in_progress, +1 cycle over the cap, once\n' +
           '  move <ID> descoped --by tech-manager --detail "<why>"   todo|blocked -> descoped (terminal)\n' +
           '  assign <ID> --to <role>\n' +
           '  show [ID] [--json]\n' +

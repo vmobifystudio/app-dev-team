@@ -137,7 +137,9 @@ function legalEvents(state) {
       // guard nothing reaches breaks no assertion.
       return withCorrection(['review_requested', 'done_reported', 'blocked', 'assigned', ...(isQaDocs(state) ? ['merged'] : [])]);
     case 'review':
-      return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned', 'reopened']);
+      // PR49T-2: no `reopened` here — the cap turns the 3rd `changes` into `blocked`, and `reopened`
+      // lifts only that cap block (PR49C-1).
+      return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned']);
     case 'qa':
       // `verified` is legal here so a ticket merged on a STATIC verification can be upgraded once
       // the executable suite finally runs. Without that there is no path from `qa (static only)` to

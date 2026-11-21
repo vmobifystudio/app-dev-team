@@ -109,10 +109,10 @@ while [ $# -gt 0 ]; do
     --sample) SAMPLE="${2:-}"; shift 2 || exit 2 ;;
     --sample=*) SAMPLE="${1#--sample=}"; shift ;;
     # Ignore every catalogue scope and run the whole suite per mutation, as this script always did.
-    # The nightly `mutation-full.yml` uses it: a scope is a claim that no OTHER section could have
+    # `mutation-full.yml` uses it on manual dispatch only: a scope is a claim that no OTHER section could have
     # caught the mutation, and once a quarter it is worth not taking that claim on trust.
     --full-suite) FULL_SUITE=1; shift ;;
-    -h|--help) sed -n '36,46p' "$0"; exit 0 ;;
+    -h|--help) sed -n '/^# Usage:/,/^#   2  could not run/p' "$0"; exit 0 ;;
     *) echo "mutate: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -662,6 +662,10 @@ MS8L08@@scripts/trace.mjs@@if (id === 'pricing' && /\d/.test(s) && founderWords.
 MS8L09@@scripts/spawn-prompt.mjs@@return evs.filter((e) => ['rework', 'rejected', 'reopened'].includes(e.event)).pop() || evs.filter((e) => e.event === 'blocked').pop();@@return evs.filter((e) => ['rework', 'rejected', 'reopened', 'blocked'].includes(e.event)).pop();@@Sprint 8 lead: a re-spawn after rejected → blocked → unblocked still says why it was rejected (PR49C-4)@@Sprint 8 lead
 MS8L10@@scripts/lib/static-server.cjs@@r.writeHead(200, { 'content-type': T[p.extname(x).toLowerCase()] || 'application/octet-stream' })@@r.writeHead(200, {})@@Sprint 8 lead: journey-gate's static server sends text/javascript for module scripts and refuses ../ (Codex PR #49)@@Sprint 8 lead
 MS8L11@@scripts/board.mjs@@invariants: state.meta.invariants || [],@@invariants: [],@@Sprint 8 lead: a qa_failed fix ticket inherits the failed ticket's invariants (Codex PR #49)@@Sprint 8 lead
+MS8L12@@scripts/drivers/android.sh@@tr '>' '\n' < "$DUMP" | grep "resource-id=\"[^\"]*/$1\"" | head -1 | grep . && return 0@@tr '>' '\n' < "$DUMP" | grep "resource-id=\"[^\"]*/$1\"" | head -1 && return 0@@Sprint 8 V3: android finds an element by content-desc when no resource-id matches (PR49T-1)@@Sprint 8 V3
+MS8L13@@scripts/lib/events.mjs@@return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned']);@@return withCorrection(['started', 'approved', 'changes', 'merged', 'blocked', 'assigned', 'reopened']);@@Sprint 8 lead: reopened is refused on a ticket in review (PR49T-2)@@Sprint 8 lead
+MS8L14@@scripts/spawn-prompt.mjs@@found.ambiguous.length || sentBack(ROOT, row.id)?.event === 'rework'))@@found.ambiguous.length))@@Sprint 8 lead: a reworked ticket with no branch is refused, not re-cut from base (PR49T-5)@@Sprint 8 lead
+MS8L15@@scripts/orchestrator.mjs@@    if (t.status === 'qa' && t.qaFailures > 0 && !t.qaPassed@@    if (false && t.status === 'qa' && t.qaFailures > 0 && !t.qaPassed@@Sprint 8 lead: a qa ticket waiting on its BUG-fix is not STALLED (PR49T-4b)@@Sprint 8 lead
 CATALOGUE
 }
 
