@@ -1,30 +1,24 @@
 #!/bin/sh
 # ios journey driver — actually execute a declared journey against a booted simulator.
 #
-# Written in the same commit as drivers/android.sh, deliberately. Shipping one platform and
-# deferring the other is FC-001, this repository's defining defect: it has recurred six times in two
-# days, twice inside the fixes for it. iOS having an accessibility gate while Android had none was
-# the same shape one layer up.
-#
-# It drives the simulator through `xcrun simctl` and the accessibility inspector's dump, which every
-# Xcode install already has. No Appium, no WebDriverAgent, no dependency — a driver that needs its
-# own toolchain moves "cannot evaluate" one layer out rather than closing it.
-#
 # Contract (docs/team/journeys/README.md): journey/v1 in, one journey-result/v1 on stdout.
 #   0 PASS · 1 FAIL (the product is wrong) · 2 CANNOT EVALUATE (never a pass)
 #
 # A step that could not RUN is 2; a step that ran and whose assertion did not hold is 1. Collapsing
 # them is how "no simulator was booted" gets read as "the feature is broken".
 #
+# QA-2: `xcrun simctl` launches and screenshots but cannot tap or read the accessibility tree, so
+# every step other than `launch` used to be CANNOT EVALUATE and every iOS ship needed a waiver. The
+# steps now run through AXe (`axe describe-ui` / `tap` / `type`, the HID + accessibility CLI that
+# XcodeBuildMCP also uses) — from outside the app, no UITests target. No AXe → CANNOT EVALUATE naming
+# the one install line. `back` stays refused: iOS has no universal Back, so tap the control by id.
+#
 # Usage: ios.sh --journey <path> [--bundle <id>] [--evidence-dir <dir>]
+#   bundle id: --bundle, else STUDIO_IOS_BUNDLE (journey-gate sets it from runtime-gate's record).
+# Ids resolve as AXUniqueId (accessibilityIdentifier), then AXLabel. Sizes are points (dp ≈ pt).
 
 set -u
-
-JOURNEY=""
-BUNDLE="${STUDIO_IOS_BUNDLE:-}"
-EVIDENCE_DIR="artifacts/journeys"
-JID='""'
-
+JOURNEY=""; BUNDLE="${STUDIO_IOS_BUNDLE:-}"; EVIDENCE_DIR="artifacts/journeys"
 while [ $# -gt 0 ]; do
   case "$1" in
     --journey)      JOURNEY="${2:-}"; shift 2 ;;
@@ -34,105 +28,111 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g' | tr -d '\n'; }
+command -v node >/dev/null 2>&1 || {
+  printf '{"schema":"journey-result/v1","journey_id":"","result":"CANNOT_EVALUATE","detail":"node is not on PATH"}\n'; exit 2; }
 
-emit() {
-  _r="$1"; _d="$2"; _s="${3:-}"; shift 3 2>/dev/null || shift 2
-  _ev=""
-  for f in "$@"; do [ -n "$_ev" ] && _ev="$_ev,"; _ev="$_ev\"$(esc "$f")\""; done
-  printf '{"schema":"journey-result/v1","journey_id":%s,"result":"%s","detail":"%s"%s%s}\n' \
-    "$JID" "$_r" "$(esc "$_d")" \
-    "$([ -n "$_s" ] && printf ',"failed_step":%s' "$_s")" \
-    "$([ -n "$_ev" ] && printf ',"evidence":[%s]' "$_ev")"
+exec node - "$JOURNEY" "$BUNDLE" "$EVIDENCE_DIR" <<'JS'
+const { execFileSync } = require('node:child_process');
+const { existsSync, mkdirSync, readFileSync, statSync } = require('node:fs');
+const { join } = require('node:path');
+const [journeyPath, bundle, evDir] = process.argv.slice(2);
+let jid = '';
+const out = (result, detail, extra = {}) => {
+  process.stdout.write(`${JSON.stringify({ schema: 'journey-result/v1', journey_id: jid, result, detail, ...extra })}\n`);
+  process.exit(result === 'PASS' ? 0 : result === 'FAIL' ? 1 : 2);
+};
+const cannot = (d) => out('CANNOT_EVALUATE', d);
+const run = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+if (!journeyPath || !existsSync(journeyPath)) cannot(`no journey declaration at ${journeyPath || '(none given)'}`);
+let journey;
+try { journey = JSON.parse(readFileSync(journeyPath, 'utf8')); } catch (e) { cannot(`journey is not JSON: ${e.message}`); }
+jid = String(journey.id || '');
+if (!jid) cannot('the journey declaration has no top-level id');
+
+let udid = '';
+try {
+  const devs = Object.values(JSON.parse(run('xcrun', ['simctl', 'list', 'devices', 'booted', '-j'])).devices || {}).flat();
+  udid = (devs.find((d) => d.state === 'Booted') || {}).udid || '';
+} catch { cannot('xcrun simctl is unusable here (no Xcode, or xcode-select points at the Command Line Tools) — an ENVIRONMENT fact, not a product fact'); }
+if (!udid) cannot('no booted simulator (xcrun simctl list devices booted is empty)');
+if (!bundle) cannot('no bundle id — run runtime-gate.sh --record first (journey-gate reads the id from it), or pass --bundle / set STUDIO_IOS_BUNDLE');
+try { run('xcrun', ['simctl', 'get_app_container', udid, bundle]); } catch { cannot(`${bundle} is not installed on the booted simulator`); }
+try { run('axe', ['--version']); } catch { cannot('AXe is not installed, and simctl cannot tap or read the accessibility tree — brew install cameroncooke/axe/axe, then re-run. The journey was NOT exercised.'); }
+
+const flat = (nodes) => (Array.isArray(nodes) ? nodes : [nodes]).flatMap((n) => (n && typeof n === 'object' ? [n, ...flat(n.children || [])] : []));
+const tree = (n) => { try { return flat(JSON.parse(run('axe', ['describe-ui', '--udid', udid]))); } catch (e) { cannot(`step ${n}: axe describe-ui failed — the accessibility tree could not be read (${String(e.message).split('\n')[0]})`); } };
+const find = (els, id) => els.find((e) => e.AXUniqueId === id) || els.find((e) => e.AXLabel === id);
+const frame = (e) => {
+  if (e.frame && typeof e.frame === 'object') return e.frame;
+  const m = String(e.AXFrame || '').match(/-?[\d.]+/g) || [];
+  return { x: +m[0] || 0, y: +m[1] || 0, width: +m[2] || 0, height: +m[3] || 0 };
+};
+const value = (e) => String(e.AXValue != null && e.AXValue !== '' ? e.AXValue : e.AXLabel ?? '').trim();
+
+const steps = Array.isArray(journey.steps) ? journey.steps : [];
+for (const [i, s] of steps.entries()) {
+  const n = i + 1;
+  const fail = (d) => out('FAIL', d, { failed_step: n });
+  const waitFor = (id, secs) => {
+    for (let t = 0; t <= secs * 4; t += 1) { const e = find(tree(n), id); if (e) return e; sleep(250); }
+    fail(`step ${n}: no element "${id}" on screen within ${secs}s`);
+  };
+  const tap = (e) => {
+    const f = frame(e);
+    try { run('axe', ['tap', '-x', String(Math.round(f.x + f.width / 2)), '-y', String(Math.round(f.y + f.height / 2)), '--udid', udid]); }
+    catch { cannot(`step ${n}: axe tap failed`); }
+    sleep(500);
+  };
+  switch (s.action) {
+    case undefined: break;
+    case 'launch':
+      try { run('xcrun', ['simctl', 'launch', '--terminate-running-process', udid, bundle]); } catch { cannot(`step ${n}: could not launch ${bundle}`); }
+      sleep(2000); break;
+    case 'tap': tap(waitFor(s.id, 5)); break;
+    case 'enter':
+      tap(waitFor(s.id, 5));
+      try { run('axe', ['type', String(s.value), '--udid', udid]); } catch { cannot(`step ${n}: axe type failed`); }
+      sleep(500); break;
+    case 'wait_for': waitFor(s.id, 10); break;
+    case 'back': cannot(`step ${n}: iOS has no universal Back affordance — declare the control by id instead of using \`back\``); break;
+    default: cannot(`step ${n}: unknown action "${s.action}"`);
+  }
+  if (s.assert === undefined) continue;
+  const els = tree(n);
+  const texts = els.flatMap((e) => [e.AXLabel, e.AXValue]).filter((t) => t != null).map(String);
+  const el = s.id === undefined ? null : find(els, s.id) || (s.assert === 'screen' ? waitFor(s.id, 5) : fail(`step ${n}: no element "${s.id}" on screen`));
+  switch (s.assert) {
+    case 'screen': break;
+    case 'text_visible': if (!texts.some((t) => t.includes(String(s.value)))) fail(`step ${n}: "${s.value}" is not on screen`); break;
+    case 'text_absent': if (texts.some((t) => t.includes(String(s.value)))) fail(`step ${n}: "${s.value}" is on screen and should not be`); break;
+    case 'value_equals':
+      // THE ROUND TRIP: what the product STORED, read back off the screen.
+      if (value(el) !== String(s.value)) fail(`step ${n}: "${s.id}" reads "${value(el)}", expected "${s.value}" — the value did not survive the round trip`);
+      break;
+    case 'min_touch_target': {
+      const f = frame(el); const got = Math.min(f.width, f.height);
+      if (got + 0.5 < Number(s.dp)) fail(`step ${n}: "${s.id}" measures ${got}pt on this simulator, spec says ${s.dp}`);
+      break;
+    }
+    case 'announces': // what VoiceOver reads: the label (then the value)
+      if (String(el.AXLabel ?? '') !== String(s.value) && [el.AXLabel, el.AXValue].filter(Boolean).join(', ') !== String(s.value)) {
+        fail(`step ${n}: "${s.id}" announces "${el.AXLabel ?? ''}", expected "${s.value}"`);
+      }
+      break;
+    case 'is_checked': {
+      const on = ['1', 'true', 'on'].includes(String(el.AXValue ?? '').toLowerCase());
+      if (on !== s.value) fail(`step ${n}: "${s.id}" is ${on ? 'checked' : 'unchecked'}, expected ${s.value ? 'checked' : 'unchecked'}`);
+      break;
+    }
+    default: cannot(`step ${n}: unknown assert "${s.assert}"`);
+  }
 }
-cannot() { emit CANNOT_EVALUATE "$1"; exit 2; }
-fail()   { emit FAIL "$1" "$2" ${3:+"$3"}; exit 1; }
 
-[ -n "$JOURNEY" ] || cannot "no --journey was given"
-[ -f "$JOURNEY" ] || cannot "no journey declaration at $JOURNEY"
-
-# THE TOP-LEVEL id, in both compact and pretty-printed JSON. Two wrong versions preceded this one:
-# "the first line containing id" (picks a STEP's id on a pretty-printed journey, which the gate then
-# rejects as a verdict about a different journey), and "a line STARTING with id" (matches nothing on
-# compact JSON, where the whole declaration is one line — caught by running it).
-# Deleting the steps array first leaves only top-level keys, so both forms parse the same.
-JID_RAW=$(tr -d '\n' < "$JOURNEY" | sed 's/"steps"[[:space:]]*:[[:space:]]*\[.*\]//' \
-          | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
-[ -n "$JID_RAW" ] || cannot "the journey declaration has no top-level id"
-JID="\"$(esc "$JID_RAW")\""
-
-command -v xcrun >/dev/null 2>&1 || cannot "xcrun is not on PATH — an ENVIRONMENT fact, not a product fact"
-BOOTED=$(xcrun simctl list devices booted 2>/dev/null | grep -c "Booted" || true)
-[ "$BOOTED" -ge 1 ] 2>/dev/null || cannot "no booted simulator (xcrun simctl list devices booted is empty)"
-[ -n "$BUNDLE" ] || cannot "no bundle id — pass --bundle or set STUDIO_IOS_BUNDLE"
-xcrun simctl get_app_container booted "$BUNDLE" >/dev/null 2>&1 \
-  || cannot "$BUNDLE is not installed on the booted simulator"
-mkdir -p "$EVIDENCE_DIR" 2>/dev/null || cannot "cannot create the evidence directory $EVIDENCE_DIR"
-
-# The accessibility hierarchy is the only stable, dependency-free view of a running SwiftUI/UIKit
-# app — and using it has a second benefit worth stating: a journey that cannot be driven through
-# the accessibility tree is usually a journey a screen-reader user cannot complete either.
-DUMP="$(mktemp)"; trap 'rm -f "$DUMP"' EXIT
-refresh() {
-  xcrun simctl ui booted appearance >/dev/null 2>&1 || return 1
-  xcrun simctl spawn booted log show --last 1s >/dev/null 2>&1
-  xcrun simctl io booted enumerate 2>/dev/null > "$DUMP" || return 1
-  [ -s "$DUMP" ]
-}
-
-node_for() { grep -n "identifier=\"$1\"\|label=\"$1\"" "$DUMP" | head -1; }
-attr() { printf '%s' "$1" | sed -n "s/.*$2=\"\([^\"]*\)\".*/\1/p"; }
-
-STEP_N=0
-STEPS=$(tr -d '\n' < "$JOURNEY" | sed 's/.*"steps"[[:space:]]*:[[:space:]]*\[//; s/\][[:space:]]*}[[:space:]]*$//' \
-        | sed 's/},[[:space:]]*{/}\
-{/g')
-
-printf '%s\n' "$STEPS" | while IFS= read -r step; do
-  [ -n "$step" ] || continue
-  STEP_N=$((STEP_N + 1))
-  ACTION=$(printf '%s' "$step" | sed -n 's/.*"action"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-  ASSERT=$(printf '%s' "$step" | sed -n 's/.*"assert"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-  SID=$(printf '%s' "$step" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-  SVAL=$(printf '%s' "$step" | sed -n 's/.*"value"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-
-  case "$ACTION" in
-    launch)
-      xcrun simctl launch booted "$BUNDLE" >/dev/null 2>&1 || cannot "step $STEP_N: could not launch $BUNDLE"
-      sleep 2 ;;
-    back)
-      # There is no universal Back on iOS. Refusing to guess is the point: silently tapping at a
-      # coordinate that is usually a back button is how a driver reports a product failure for a
-      # navigation it invented.
-      cannot "step $STEP_N: iOS has no universal Back affordance — declare the control by id instead of using `back`" ;;
-  esac
-
-  # ---------------------------------------------------------------------------------------------
-  # THE STEP EXECUTOR STOPS HERE, HONESTLY.
-  #
-  # `simctl` can launch, screenshot, set permissions and read logs. It CANNOT tap a coordinate or
-  # read the accessibility tree of a running app — that needs XCUITest, which needs a test target
-  # compiled into the app under test. Driving a journey from outside therefore requires a
-  # `UITests` target this studio does not build, and pretending otherwise would produce a driver
-  # that reports PASS from a loop nobody ran.
-  #
-  # So this is CANNOT EVALUATE with a specific, actionable cause — not a stub, and not a lie. The
-  # Android sibling above IS complete, because `adb` genuinely exposes input and `uiautomator dump`
-  # genuinely exposes the hierarchy. Claiming parity by writing a fake iOS executor would be the
-  # green-while-nothing-happened defect the whole gate exists to end.
-  #
-  # What lands next, when a project needs it: generate a small XCUITest target from the journey
-  # declaration, `xcodebuild test` it, and read its result bundle. That is a real piece of work with
-  # a real consumer, and it belongs in the commit that has one.
-  # ---------------------------------------------------------------------------------------------
-  case "${ACTION}${ASSERT}" in
-    ""|launch) : ;;
-    *) cannot "step $STEP_N: driving \"${ACTION}${ASSERT}\" needs XCUITest — simctl cannot tap or read the accessibility tree from outside the app. The journey was NOT exercised; reporting PASS here would be the defect this gate exists to end." ;;
-  esac
-done || exit $?
-
-SHOT="$EVIDENCE_DIR/$JID_RAW.png"
-xcrun simctl io booted screenshot "$SHOT" >/dev/null 2>&1
-[ -s "$SHOT" ] || cannot "the journey ran but the screenshot could not be captured — a PASS with no evidence is not a pass"
-
-emit PASS "every declared step ran on the booted simulator" "" "$SHOT"
+try { mkdirSync(evDir, { recursive: true }); } catch { cannot(`cannot create the evidence directory ${evDir}`); }
+const shot = join(evDir, `${jid}.png`);
+try { run('xcrun', ['simctl', 'io', udid, 'screenshot', shot]); } catch { /* checked below */ }
+if (!existsSync(shot) || !statSync(shot).size) cannot('every step passed, but the screenshot could not be captured — a PASS with no evidence is not a pass');
+out('PASS', `${steps.length} steps ran on simulator ${udid} through AXe`, { evidence: [shot] });
+JS

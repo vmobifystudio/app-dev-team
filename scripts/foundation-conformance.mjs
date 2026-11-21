@@ -26,6 +26,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { checkGateLog, writeEvidenceLog } from './lib/evidence.mjs';
 
 import { parseArgs } from './lib/args.mjs';
 
@@ -427,6 +429,24 @@ invariant('I-08', 'Bidirectional scope coverage', true, () => sandbox((dir) => {
   return /F-002/.test(r.out) && /requirement_not_implemented/.test(r.out)
     ? { state: 'PASS', detail: 'an in-scope requirement that nothing implements is a named finding' }
     : { state: 'FAIL', detail: 'trace follows links forward only: R-002 is in scope, unimplemented, and unreported' };
+}));
+
+// ---------------------------------------------------------------------------------------------
+// I-09  Criterion-level proof
+// ---------------------------------------------------------------------------------------------
+invariant('I-09', 'Criterion-level proof', true, () => sandbox((dir) => {
+  // Sprint 8 (QA-7): criteria are proven by journey assertions, each journey's evidence named by
+  // digest in journey-gate's result. criterion-check.mjs + criteria.json had no writer and no caller.
+  mkdirSync(join(dir, 'artifacts'), { recursive: true });
+  writeFileSync(join(dir, 'artifacts/ac1.png'), 'screenshot bytes\n');
+  const sha256 = createHash('sha256').update(readFileSync(join(dir, 'artifacts/ac1.png'))).digest('hex');
+  const v = { schema: 'gate-result/v1', gate: 'journey-gate', subject: { head: null }, result: 'PASS',
+    journeys: [{ id: 'AC-001', state: 'PASS', evidence: [{ path: 'artifacts/ac1.png', sha256 }] }],
+    ...writeEvidenceLog(dir, 'journey-i09', 'RESULT: PASS\nGATE-SUBJECT: null\n') };
+  if (!checkGateLog(dir, v, { coverage: false }).ok) return { state: 'FAIL', detail: 'a journey verdict whose evidence still matches was refused' };
+  writeFileSync(join(dir, 'artifacts/ac1.png'), 'a DIFFERENT run\n');
+  if (checkGateLog(dir, v, { coverage: false }).ok) return { state: 'FAIL', detail: 'the journey stayed proven after its evidence was overwritten with different bytes' };
+  return { state: 'PASS', detail: 'each journey names its own evidence, matched by digest; a changed artifact blocks' };
 }));
 
 // ---------------------------------------------------------------------------------------------

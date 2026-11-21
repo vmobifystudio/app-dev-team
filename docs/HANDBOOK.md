@@ -848,15 +848,13 @@ with the same access, and nothing here claims to be.
   sync` populates one entry per `agents/*.md` file from a real content hash instead of leaving
   `docs/team/prompt-registry.json` empty (`"entries": []`), and `team-doctor.mjs` now blocks on a
   role missing from a populated registry or whose file changed since its last sync.
-- **Evaluation is deliberately partial, and says so.** `eval/manifest.json` gained five static
-  contract-clause cases (`eval-lab.mjs`, 2026-08-01) that assert the agent files carrying the
-  studio's hardest-won rules — self-review refusal, the no-hand-edited-board instruction,
-  product-validator's independence, release-auditor's separation of duties, mandatory escalation
-  after one unresolved round — still say so, catching a future edit that silently drops one. This
-  is content-checking, not behavior: it proves the RULE IS WRITTEN, not that an agent obeys it under
-  load. A real role/pair/workflow/long-horizon behavioral eval (spawning an agent against a scenario
-  and grading its decision) needs a mechanism `test.sh` cannot provide — the `Agent` tool is not
-  shell-callable — and was deliberately not invented here. That remains open.
+- **Evaluation is deliberately partial, and says so.** The five static contract-clause cases
+  `eval/manifest.json` gained on 2026-08-01 (grep for a sentence in an agent file) were deleted in
+  Sprint 8 (QA-8): `test.sh` already pins that wording, and a grep proves the RULE IS WRITTEN, not
+  that an agent obeys it. `studio-eval.mjs` now plants one product defect per journey driver
+  (`eval/journey-wrong-value-*`) so the drivers themselves are measured. A real role/pair/workflow
+  behavioral eval (spawning an agent against a scenario and grading its decision) needs a mechanism
+  `test.sh` cannot provide — the `Agent` tool is not shell-callable — and remains open.
 - **Product truth:** the team can validate traceability and implementation evidence; it cannot
   determine market desirability or replace founder/user judgment.
 - **Staged-rollout health and incident command closed, 2026-08-01.** `release-manager.md`'s
@@ -1169,7 +1167,7 @@ scanning or push protection at all while still reporting "every server-side cont
 
 The previously open message-ID race and follow-up-obligation gap are closed: writes use a lock,
 non-question obligations require delivery evidence, and the suite covers both behaviors. The
-evaluation lab now detects 12/12 scored planted defects; stale approval is the one intentionally
+evaluation lab now detects 15/15 scored planted defects (three are journey-driver fixtures, Sprint 8); stale approval is the one intentionally
 unmeasured detector class.
 
 **Never exercised:** `/app-ship` end to end — hypothesis **H1** of dry run 5, still unrun. Several
