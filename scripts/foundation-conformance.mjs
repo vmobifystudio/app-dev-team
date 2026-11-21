@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * FOUNDATION CONFORMANCE SUITE — eleven invariants (I-01..I-12; I-09 "criterion-level proof" was
- * retired with criterion-check.mjs, which no flow ever ran — QA-7. Journey assertions carry AC ids).
+ * FOUNDATION CONFORMANCE SUITE — twelve invariants (I-01..I-12; I-09 "criterion-level proof" now
+ * checks journey-gate evidence by digest — criterion-check.mjs, which no flow ever ran, is gone, QA-7).
  *
  * Usage:  node scripts/foundation-conformance.mjs [I-NN ...]    (no ids: every invariant)
  * Exit:   0 all hold · 1 one or more fail · 2 cannot evaluate, or a bad argument

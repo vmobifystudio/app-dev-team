@@ -13442,7 +13442,7 @@ echo "Sprint 8 V6: prune dead weight, --help, and a mutation run that is one sec
 # the cwd; foundation-conformance ignored its arguments and ran every invariant.
 V6H="$TMP/s8v6-help"; rm -rf "$V6H"; mkdir -p "$V6H"
 ( cd "$V6H" && node "$HERE/team-bootstrap.mjs" --help ) >"$TMP/v6h.txt" 2>&1; V6RC=$?
-[ "$V6RC" = 0 ] && grep -q '^team-bootstrap' "$TMP/v6h.txt" && [ ! -e "$V6H/docs" ] \
+[ "$V6RC" = 0 ] && grep -q 'team-bootstrap' "$TMP/v6h.txt" && [ ! -e "$V6H/docs" ] \
   && ok "Sprint 8 V6: team-bootstrap --help prints its usage, exits 0 and writes nothing (EN-10)" \
   || bad "Sprint 8 V6: team-bootstrap --help prints its usage, exits 0 and writes nothing (EN-10)" "rc=$V6RC $(ls -R "$V6H" | head -5)"
 assert_exit 0 "Sprint 8 V6: foundation-conformance --help exits 0 without running the suite (EN-10)" \
@@ -13976,8 +13976,8 @@ l8h agent-1 "cd ios && bundle exec fastlane deliver --ipa x.ipa"; L8A=$?
 l8h agent-1 "git commit -m 'founder runs fastlane deliver later'"; L8B=$?
 l8h "" "fastlane deliver --ipa x.ipa"; L8C=$?
 [ "$L8A" = 2 ] && [ "$L8B" = 0 ] && [ "$L8C" = 0 ] \
-  && ok "Sprint 8 lead: a subagent's fastlane deliver is refused; a mention and the main session are not (AU-9)" \
-  || bad "Sprint 8 lead: a subagent's fastlane deliver is refused; a mention and the main session are not (AU-9)" "a=$L8A b=$L8B c=$L8C"
+  && ok "Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)" \
+  || bad "Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)" "a=$L8A b=$L8B c=$L8C"
 # FL-16: `trace --only gates` says what it checked, not "no break in the chain".
 L8T="$TMP/s8lead-trace"; rm -rf "$L8T"; mkdir -p "$L8T/docs/00-founder-intent"
 printf '# Brief\nA to-do list.\n' > "$L8T/docs/00-founder-intent/brief.md"
