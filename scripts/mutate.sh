@@ -927,9 +927,12 @@ while IFS="$TAB" read -r id file old new expect scope <&3; do
   if [ -n "$scope" ] && [ -z "$USE_SCOPE" ]; then
     echo "        NOTE: the scope '$scope' is not green on its own, so this mutation is judged"
     echo "        against the WHOLE suite instead. A scoped verdict on a red scope proves nothing."
+    # Name what was red, so a CI-only failure is diagnosable from the log.
+    grep -h -A1 '^  FAIL ' "$WORK"/baseline-$(printf '%s' "$scope" | tr -c 'A-Za-z0-9' '-').log 2>/dev/null | head -6 | sed 's/^/        /'
     if [ ! -f "$WORK/baseline.log" ]; then
       BASE_FAIL=$(run_suite "$WORK/baseline.log")
-      [ "$BASE_FAIL" = "0" ] || { echo "        CANNOT RUN: the full suite is not green either ($BASE_FAIL failing)."; RC=2; exit 2; }
+      [ "$BASE_FAIL" = "0" ] || { echo "        CANNOT RUN: the full suite is not green either ($BASE_FAIL failing)."
+        grep -h -A1 '^  FAIL ' "$WORK/baseline.log" | head -6 | sed 's/^/        /'; RC=2; exit 2; }
     fi
   fi
   [ -n "$USE_SCOPE" ] && printf '        scope: %s\n' "$USE_SCOPE"
