@@ -13576,6 +13576,87 @@ grep -qF "$HERE/board.mjs\" move APP-001 corrected --by tech-manager" "$TMP/p47d
   && ok "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" \
   || bad "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" "$(grep -m3 'corrected\|token\|dispatch' "$TMP/p47dp.txt")"
 
+
+# --- Sprint 8 V4: context and agent communication ---
+echo "Sprint 8 V4: context and agent communication"
+V4="$TMP/s8v4"; rm -rf "$V4"; mkdir -p "$V4/docs/53-reviews" "$V4/.agent-wt/android-developer"
+cat > "$V4/docs/10-prd.md" <<'V4PRD'
+# PRD
+
+## Features
+
+| ID | Feature |
+|---|---|
+| F-001 | Log a dose |
+| F-002 | Refill reminder |
+
+## Acceptance
+
+- [AC-001] F-001: a dose is logged in one tap
+- [AC-002] F-002: a reminder fires three days before the pills run out
+V4PRD
+( cd "$V4" && git init -q -b main . && git config user.email t@t && git config user.name t && git add docs && git commit -qm base \
+  && node "$HERE/board.mjs" add APP-101 --feature F-001 --title "Dose" --owner android-developer --acceptance AC-001 --by tech-manager \
+  && node "$HERE/board.mjs" add APP-102 --feature F-002 --title "Refill" --owner android-developer --by tech-manager \
+  && git branch feat/APP-101-dose && node "$HERE/board.mjs" move APP-101 claimed --by android-developer \
+  && node "$HERE/board.mjs" move APP-101 done_reported --by android-developer \
+  && node "$HERE/board.mjs" move APP-101 rejected --by tech-manager --detail "V4MARK no commits on the branch" \
+  && git worktree add -q --detach "$V4/.agent-wt/slot1" ) >/dev/null 2>&1
+
+# CX-1: a question sent from a slot lands in the MAIN checkout's ledger, where step 1b reads it.
+( cd "$V4/.agent-wt/slot1" && sh "$HERE/team-message.sh" --from android-developer --to tech-lead --ticket APP-101 \
+  --kind question --summary "which unit?" ) >/dev/null 2>&1
+[ -f "$V4/docs/team/messages.jsonl" ] && [ ! -e "$V4/.agent-wt/slot1/docs/team/messages.jsonl" ] \
+  && [ "$(cd "$V4/.agent-wt/slot1" && node "$HERE/messages.mjs" open --count 2>/dev/null)" = 1 ] \
+  && ok "Sprint 8 V4: a question sent from a slot lands in the main checkout's ledger (CX-1)" \
+  || bad "Sprint 8 V4: a question sent from a slot lands in the main checkout's ledger (CX-1)" "$(ls "$V4/docs/team" "$V4/.agent-wt/slot1/docs/team" 2>&1 | tr '\n' ' ')"
+( cd "$V4" && node "$HERE/messages.mjs" open --was last ) >/dev/null 2>&1; V4W1=$?
+grep -q 'docs/team/messages.md docs/team/messages.jsonl' "$HERE/../commands/app-init.md" \
+  && ok "Sprint 8 V4: app-init ignores docs/team/messages.jsonl (CX-1)" \
+  || bad "Sprint 8 V4: app-init ignores docs/team/messages.jsonl (CX-1)"
+
+# CX-2 / LN-2 fixtures: tech-lead's answer on APP-101, and a REQUEST CHANGES on APP-102 naming its verdict file.
+printf '%s\n' '{"id":"MSG-0002","v":1,"ts":"2026-11-21T10:00Z","ticket":"APP-101","kind":"answer","from":"tech-lead","to":["android-developer"],"summary":"V4ANSWER milligrams, stored as Decimal","artifact":"docs/22-impl-spec-android.md"}' >> "$V4/docs/team/messages.jsonl"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-102\nScope: a..b\nBlocking:\n- src/b.ts:4 V4CAUGHT uses Float for money — use Decimal\nNotes (non-blocking): none\n\n## Not checked\nNothing\n' > "$V4/docs/53-reviews/APP-102-cycle-0.md"
+chain_append "$V4/docs/31-board-events.jsonl" \
+  '{"ts":"2026-11-21T10:05:00Z","ticket":"APP-102","event":"changes","by":"code-reviewer","detail":{"verdict":"REQUEST CHANGES","verdict_path":"docs/53-reviews/APP-102-cycle-0.md"},"provenance":"cli"}'
+# CX-5: `open --was last` compares against the count `open --count` recorded — nothing to remember.
+( cd "$V4" && node "$HERE/messages.mjs" open --was last ) >/dev/null 2>&1; V4W2=$?
+[ "$V4W1" = 1 ] && [ "$V4W2" = 0 ] \
+  && ok "Sprint 8 V4: open --was last reads the recorded count: unfallen exits 1, answered exits 0 (CX-5)" \
+  || bad "Sprint 8 V4: open --was last reads the recorded count: unfallen exits 1, answered exits 0 (CX-5)" "before-answer=$V4W1 after=$V4W2"
+( cd "$V4" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-101 --role android-developer \
+  --slot .agent-wt/android-developer --integration-branch main ) >"$TMP/v4ic.txt" 2>/dev/null
+
+# CX-3: a re-spawn onto an existing branch checks it out and carries why it came back.
+grep -q 'checkout feat/APP-101-dose' "$TMP/v4ic.txt" && ! grep -q 'checkout -b' "$TMP/v4ic.txt" && grep -q 'V4MARK' "$TMP/v4ic.txt" \
+  && ok "Sprint 8 V4: a rejected ticket's re-spawn checks out its existing branch with the rejection inlined (CX-3)" \
+  || bad "Sprint 8 V4: a rejected ticket's re-spawn checks out its existing branch with the rejection inlined (CX-3)" "$(grep -m2 'checkout' "$TMP/v4ic.txt")"
+# CX-2: the answer reaches the asker's prompt and the reviewer's.
+( cd "$V4" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-101 --role code-reviewer ) >"$TMP/v4rv.txt" 2>/dev/null
+grep -q 'V4ANSWER' "$TMP/v4ic.txt" && grep -q 'V4ANSWER' "$TMP/v4rv.txt" \
+  && ok "Sprint 8 V4: tech-lead's answer on the ticket is inlined in the IC and the reviewer prompt (CX-2)" \
+  || bad "Sprint 8 V4: tech-lead's answer on the ticket is inlined in the IC and the reviewer prompt (CX-2)"
+# LN-2: another ticket's Blocking: line reaches this ticket's IC prompt.
+grep -q 'V4CAUGHT' "$TMP/v4ic.txt" \
+  && ok "Sprint 8 V4: this sprint's REQUEST CHANGES blockers are inlined in the next IC prompt (LN-2)" \
+  || bad "Sprint 8 V4: this sprint's REQUEST CHANGES blockers are inlined in the next IC prompt (LN-2)"
+# CX-8: the excerpt keeps only this ticket's rows of a shared table and criteria list.
+grep -q 'F-001 | Log a dose' "$TMP/v4ic.txt" && grep -q 'AC-001' "$TMP/v4ic.txt" \
+  && ! grep -q 'Refill reminder' "$TMP/v4ic.txt" && ! grep -q 'AC-002' "$TMP/v4ic.txt" \
+  && ok "Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)" \
+  || bad "Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)" "$(grep -n 'F-00\|AC-00' "$TMP/v4ic.txt" | head -5)"
+# CX-11: team-protocol is conditional for release-auditor, so its budget line no longer counts it.
+( cd "$V4" && node "$HERE/spawn-prompt.mjs" compose --root . --role release-auditor ) 2>"$TMP/v4ra.err" >/dev/null
+grep -q 'mandatory skills' "$TMP/v4ra.err" && ! grep 'mandatory skills' "$TMP/v4ra.err" | grep -q 'team-protocol' \
+  && ok "Sprint 8 V4: release-auditor's budget does not count the conditional team-protocol (CX-11)" \
+  || bad "Sprint 8 V4: release-auditor's budget does not count the conditional team-protocol (CX-11)" "$(cat "$TMP/v4ra.err")"
+# CX-4: /app-run resumes from the files before it detects greenfield/brownfield.
+awk '/^0\. \*\*Resume first/{z=NR} /^1\. \*\*Detect greenfield/{d=NR} END{exit !(z && d && z < d)}' "$HERE/../commands/app-run.md" \
+  && grep -q '`docs/31-board-events.jsonl` exists → step 4' "$HERE/../commands/app-run.md" \
+  && ok "Sprint 8 V4: /app-run has a resume step 0 ahead of brownfield detection (CX-4)" \
+  || bad "Sprint 8 V4: /app-run has a resume step 0 ahead of brownfield detection (CX-4)"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

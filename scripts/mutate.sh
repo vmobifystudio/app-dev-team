@@ -596,6 +596,15 @@ MF47Q@@scripts/lib/evidence.mjs@@&& /^integration\/wave-/.test(String(rec.branch
 MF47R@@scripts/spawn-prompt.mjs@@row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict@@row.status === 'qa') return composeQaVerdict@@PR47 fixes: a QA- ticket at qa is composed as a verification@@PR47 fixes
 MF47S@@scripts/merge-reconcile.mjs@@corrected --by tech-manager --detail "<what went wrong>"@@corrected --detail "<what went wrong>"@@PR47 fixes: merge-reconcile prints the full corrected command, with --by@@PR47 fixes
 MF47T@@scripts/dispatch-preflight.mjs@@${inlineTokenFlag(resolve(String(flags.root)), 'tech-manager', flags.ticket)}@@@@PR47 fixes: dispatch-preflight's corrected command is absolute@@PR47 fixes
+MS8V4-01@@scripts/team-message.sh@@ROOT=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)@@ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)@@Sprint 8 V4: a question sent from a slot lands in the main checkout's ledger (CX-1)@@Sprint 8 V4
+MS8V4-02@@scripts/messages.mjs@@    base = r.root;@@    base = process.cwd();@@Sprint 8 V4: a question sent from a slot lands in the main checkout's ledger (CX-1)@@Sprint 8 V4
+MS8V4-03@@scripts/spawn-prompt.mjs@@(found = ticketBranch(ROOT, row.id, allIds)).branch || found.ambiguous.length@@false@@Sprint 8 V4: a rejected ticket's re-spawn checks out its existing branch with the rejection inlined (CX-3)@@Sprint 8 V4
+MS8V4-04@@scripts/spawn-prompt.mjs@@.filter((m) => CLOSING_KINDS.has(m.kind) && String@@.filter((m) => false && String@@Sprint 8 V4: tech-lead's answer on the ticket is inlined in the IC and the reviewer prompt (CX-2)@@Sprint 8 V4
+MS8V4-05@@scripts/spawn-prompt.mjs@@return e.event === 'changes' && e.detail?.verdict_path@@return false && e.detail?.verdict_path@@Sprint 8 V4: this sprint's REQUEST CHANGES blockers are inlined in the next IC prompt (LN-2)@@Sprint 8 V4
+MS8V4-06@@scripts/spawn-prompt.mjs@@const rows = table.slice(head.length).filter(hit);@@const rows = table.slice(head.length);@@Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)@@Sprint 8 V4
+MS8V4-07@@scripts/spawn-prompt.mjs@@if (ITEM_RE.test(l)) { keepItem = hit(l);@@if (ITEM_RE.test(l)) { keepItem = true;@@Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)@@Sprint 8 V4
+MS8V4-08@@scripts/messages.mjs@@if (options.was === 'last') {@@if (false) {@@Sprint 8 V4: open --was last reads the recorded count: unfallen exits 1, answered exits 0 (CX-5)@@Sprint 8 V4
+MS8V4-09@@scripts/spawn-prompt.mjs@@  'release-auditor': ['house-conventions', 'board-doctor'],@@  'release-auditor': ['house-conventions', 'board-doctor', 'team-protocol'],@@Sprint 8 V4: release-auditor's budget does not count the conditional team-protocol (CX-11)@@Sprint 8 V4
 CATALOGUE
 }
 

@@ -13,8 +13,8 @@ purpose is not to create more ceremony; it is to prevent an agent from acting on
 1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/context-preflight.mjs" <project-root or slot> --ticket ID --role <role>`.
    `--role` decides the protected-branch check (writers only); a fresh slot's detached HEAD is fine.
 2. Read the reported branch, dirty-tree, active-worktree, ticket, and required-document findings.
-3. Read the ticket, its dependency ancestors, the architecture/engineering-principles docs, the Git
-   strategy, and the latest relevant decision or follow-up before editing.
+3. Read what your prompt names (the ticket, its spec excerpt, the answers on record) and any doc the
+   ticket actually touches — not the whole doc set.
 4. If the result is `CANNOT EVALUATE`, stop. Do not convert missing context into an assumption.
 5. Record assumptions and the next action in the ticket's daily evidence file.
 
@@ -29,6 +29,6 @@ purpose is not to create more ceremony; it is to prevent an agent from acting on
 
 ## Output
 
-Return: `PREFLIGHT: CLEAR | BLOCKED | CANNOT EVALUATE`, repository identity, branch/worktree state,
-ticket/dependency state, documents read, assumptions, and the next safe action. Keep the report short;
-the evidence files carry detail.
+A NOTE in your daily fragment (a reviewer: its verdict's notes): the `PREFLIGHT:` line the script printed, documents read and
+assumptions. It is not a return value — you return the contract your prompt gives (a preflight that
+cannot clear is a `BLOCKED:` block).

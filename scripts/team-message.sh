@@ -64,7 +64,10 @@ for arg in "$@"; do
 done
 
 if [ "$HAS_LEDGER" = "0" ]; then
-  ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  # CX-1: the MAIN checkout's root, never the slot's own (--show-toplevel): a question sent from a
+  # slot landed in the slot's copy, unseen, and was deleted when the slot was reaped.
+  ROOT=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+  [ -n "$ROOT" ] && ROOT=$(dirname "$ROOT")
   if [ -z "$ROOT" ]; then
     echo "team-message: not inside a git repository, and no --ledger given." >&2
     echo "  Run me from your worktree, or pass --ledger <path>. I will not guess a location:" >&2
