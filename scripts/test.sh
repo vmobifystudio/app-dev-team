@@ -22,10 +22,10 @@
 # whoever is working here to batch up guesses instead of checking one thing at a time, and batched
 # guesses are how you get a wrong fix that looks efficient.
 #
-# --only IS NOT THE GATE, AND CANNOT BE. Sections share fixtures and setup, so a section run alone
-# may fail for want of something an earlier section built. That is a stated limitation, not a bug:
-# the accelerator is for iterating, the full run is what decides. It says so on every invocation,
-# because a fast check that can be mistaken for the real one is worse than no fast check.
+# --only IS NOT THE GATE. A subset gets the fixtures it reads (helpers and constants replayed, and
+# any earlier section that builds a variable or $TMP file it needs pulled in whole, below), so a
+# section run alone passes or fails on behaviour (QA-9). It still runs fewer assertions than the
+# full suite, and the full run is what decides. It says so on every invocation.
 set -u
 # APP_TEAM_TEST_HERE is set only by the --only path below, which re-execs a GENERATED copy of this
 # file from a temp directory — where `dirname "$0"` is /tmp and every `$HERE/board.mjs` resolves to
@@ -52,14 +52,98 @@ if [ -n "$ONLY" ]; then
   # the sections are straight-line shell with no function boundary to skip over.
   SEL=$(mktemp)
   trap 'rm -f "$SEL"' EXIT
-  awk -v pat="$ONLY" -v self="$0" '
-    /^# --- / { inbody = 1; keep = (index($0, pat) > 0); matched += keep }
+  # A LIFTED SECTION GETS THE FIXTURES IT NEEDS (QA-9). `--only "W1 / G-F5"` used to report 14
+  # failures that were all `$VDG` unset: the repo it runs in is built by an earlier section. So:
+  #   1. a skipped section's helper functions and plain `NAME=value` constants are replayed in file
+  #      order (no command, no `$( )`, nothing in a heredoc), so `newrepo`, `vdg_declare` and `$BD`
+  #      exist. Where a function ends is decided by `sh -n`, on a line that could close it; one that
+  #      never completes is dropped, never half-printed.
+  #   2. a variable the selected section (or a function it calls) reads, which it does not set and
+  #      which an earlier section sets with a COMMAND, pulls that earlier section in whole — the
+  #      nearest one before it, and then that section's own needs, to a fixed point. The fixture is
+  #      built the way the full run builds it, in the same order, by the same lines.
+  # Pulled-in sections run their assertions too; the banner line printed for each says why it ran.
+  awk -v pat="$ONLY" -v self="$0" -v fnf="$SEL.fn" '
+    function whole(buf,   rc) { printf "%s", buf > fnf; close(fnf); rc = system("sh -n \"" fnf "\" 2>/dev/null"); return rc == 0 }
+    # tref: a mention of $TMP/<name> (or of a variable holding "$TMP/<name>..."). It PROVIDES the
+    # fixture when it is the exact path being reset, made or redirected into; otherwise it reads it.
+    function tref(sx, name, pre, post) {
+      if (name == "out" || name == "err") return
+      ment[sx, "T:" name] = 1
+      if (post !~ /^\//) {
+        if (pre ~ />[ ]*"?$/ || pre ~ /(^|[;&|( ])(rm -[rf]+|mkdir( -p)?)[ ][^;&|]*$/) { prov[sx, "T:" name] = 1; return }
+      }
+      if (infn != "") fuse[infn] = fuse[infn] " T:" name; else addv(sx, "T:" name)
+    }
+    function addv(sx, v) { if (!((sx, v) in used)) { used[sx, v] = 1; uses[sx] = uses[sx] " " v } }
+    function need(sx,   i, n, w, v, k, f, re, n2, ww) {
+      n = split(uses[sx], w, " ")
+      for (f in fsec) if (fsec[f] > 0) {
+        re = "(^|[^A-Za-z0-9_])" f "([^A-Za-z0-9_]|$)"
+        if (txt[sx] ~ re) { n2 = split(fuse[f], ww, " "); for (i = 1; i <= n2; i++) w[++n] = ww[i] }
+      }
+      for (i = 1; i <= n; i++) {
+        v = w[i]; if (v == "" || ((sx, v) in asg) || ((0, v) in asg) || ((sx, v) in prov)) continue
+        if (substr(v, 1, 2) == "T:") { for (k = sx - 1; k >= 1; k--) if ((k, v) in ment) break }
+        else for (k = sx - 1; k >= 1; k--) if ((k, v) in cmd) break
+        if (k >= 1 && !(k in inc)) { inc[k] = 1; q[++qn] = k }
+      }
+    }
+    FNR == NR {
+      if ($0 ~ /^# --- /) { sec++; infn = ""; ban[sec] = $0 }
+      if ($0 ~ /^echo "─────/) { done = 1 }
+      if (done) next
+      txt[sec] = txt[sec] "\n" $0
+      if (match($0, /^[A-Za-z_][A-Za-z0-9_]*\(\)/)) { infn = substr($0, 1, RLENGTH - 2); fsec[infn] = sec }
+      else if ($0 ~ /^[^ \t}]/ && $0 !~ /^#/) infn = ""
+      if (match($0, /^[ \t]*[A-Za-z_][A-Za-z0-9_]*=/)) {
+        v = substr($0, RSTART, RLENGTH - 1); sub(/^[ \t]+/, "", v); asg[sec, v] = 1
+        if (!($0 ~ /^[A-Za-z_][A-Za-z0-9_]*=("[^"`]*"|\047[^\047]*\047|[^ \t"\047`;&|]*)[ \t]*$/ && $0 !~ /\$\(/)) cmd[sec, v] = 1
+      }
+      if ($0 ~ /^[ \t]*#/) next   # a comment reads nothing
+      if (match($0, /^[A-Za-z_][A-Za-z0-9_]*="?\$TMP\/[A-Za-z0-9._-]+/)) {
+        v = substr($0, 1, RLENGTH); a = v; sub(/=.*/, "", a); sub(/^[^=]*="?\$TMP\//, "", v); alias[a] = v
+      }
+      # A FILE OR DIRECTORY under $TMP is a fixture too (`$TMP/port.txt` read here, written two
+      # sections up), whether it is spelled out or held in a variable (`$DFX`).
+      line = $0; pre = ""
+      while (match(line, /\$\{?[A-Za-z_][A-Za-z0-9_]*\}?(\/[A-Za-z0-9._-]+)?/)) {
+        tok = substr(line, RSTART, RLENGTH); pre = pre substr(line, 1, RSTART - 1); line = substr(line, RSTART + RLENGTH)
+        v = tok; sub(/^\$\{?/, "", v); sub(/[}\/].*/, "", v)
+        if (infn != "") fuse[infn] = fuse[infn] " " v; else addv(sec, v)
+        if (v == "TMP" && tok ~ /\//) { nm = tok; sub(/^[^\/]*\//, "", nm); tref(sec, nm, pre, line) }
+        else if (v in alias) { rest = tok; sub(/^\$\{?[A-Za-z0-9_]*\}?/, "", rest); tref(sec, alias[v], pre, rest line) }
+        pre = pre tok
+      }
+      next
+    }
+    FNR == 1 {
+      for (k = 1; k <= sec; k++) if (index(ban[k], pat)) { inc[k] = 1; sel[k] = 1; q[++qn] = k }
+      for (qi = 1; qi <= qn; qi++) need(q[qi])
+      s2 = 0
+    }
+    /^# --- / {
+      s2++; inbody = 1; keep = (s2 in inc); matched += (s2 in sel); hd = ""; fn = 0
+      if (keep && !(s2 in sel)) print "echo \"  (pulled in by --only: an earlier section that builds a fixture the selected one reads)\""
+    }
     /^echo "─────/ { inbody = 0; insummary = 1 }
-    { if (!inbody || keep || insummary) print }
+    {
+      if (!inbody || keep || insummary) { print; next }
+      if (fn) { buf = buf $0 "\n"; if ($0 ~ /}[ \t;]*(#.*)?$/ && whole(buf)) { printf "%s", buf; fn = 0 } next }
+      if (hd != "") { t = $0; sub(/^\t+/, "", t); if (t == hd) hd = ""; next }
+      if ($0 ~ /^[A-Za-z_][A-Za-z0-9_]*\(\)[ ]*\{/) {
+        buf = $0 "\n"; if ($0 ~ /}[ \t;]*(#.*)?$/ && whole(buf)) printf "%s", buf; else fn = 1; next
+      }
+      if (match($0, /<<-?[ ]*["\047]?[A-Za-z_][A-Za-z0-9_]*/)) {
+        hd = substr($0, RSTART, RLENGTH); sub(/^<<-?[ ]*["\047]?/, "", hd); next
+      }
+      if ($0 ~ /^[A-Za-z_][A-Za-z0-9_]*=("[^"`]*"|\047[^\047]*\047|[^ \t"\047`;&|]*)[ \t]*$/ && $0 !~ /\$\(/) print "set +u; " $0 "; set -u"
+    }
     END { if (!matched) { print "echo \"test.sh: --only " pat " matched no section in " self "\" >&2; exit 2" } }
-  ' "$0" > "$SEL"
-  echo "  RUNNING A SUBSET (--only $ONLY). This is an accelerator, NOT the gate — sections share"
-  echo "  fixtures, so a pass here is not a pass. Run the whole suite before you commit."
+  ' "$0" "$0" > "$SEL"
+  rm -f "$SEL.fn"
+  echo "  RUNNING A SUBSET (--only $ONLY). This is an accelerator, NOT the gate — a pass here is"
+  echo "  not a pass of the suite. Run the whole suite before you commit."
   # A lifted section can find a fixture variable unset (set by an earlier section) and then run its
   # git commands in the cwd — once that was the plugin's own worktree (PR47 fixes: a stray branch
   # with two commits). Run the subset from a throwaway repo so such commands land there instead.
@@ -76,9 +160,9 @@ if [ -n "$ONLY" ]; then
     # fault's clothes. That is DR4-001's class, and an accelerator that produces it silently would
     # send someone to fix a bug that does not exist.
     echo ""
-    echo "  A SUBSET FAILURE IS NOT YET A FINDING. Sections inherit setup from earlier sections, so"
-    echo "  these may be missing a fixture rather than a behaviour. Re-run the full suite before"
-    echo "  believing any failure above:  sh scripts/test.sh"
+    echo "  A subset pulls in the sections that build what it reads, so a failure above is normally a"
+    echo "  real one. If it names an unset variable or a missing file, the dependency is one the"
+    echo "  subset could not see — confirm with the full suite:  sh scripts/test.sh"
   fi
   exit $RC
 fi
@@ -6103,7 +6187,7 @@ assert_exit 0 "...tech-manager may"             bm "$MG" move G-001 merged --by 
 
 # The matrix must name roles that exist. PROVEN BY: misspelling `code-reviewer` as `code-revewier`
 # in ROLE_GATES — team-doctor raised capability_role_unknown and this went from red to green.
-node "$HERE/team-doctor.mjs" --json > "$TMP/td-sec.json" 2>/dev/null
+( cd "$HERE/.." && node "$HERE/team-doctor.mjs" --json ) > "$TMP/td-sec.json" 2>/dev/null  # team-doctor reads the cwd
 node -e '
 const j=require(process.argv[1]);
 process.exit(j.findings.some(f=>f.code==="capability_role_unknown"||f.code==="capability_event_unreachable")?1:0);
@@ -6519,7 +6603,7 @@ assert_exit 0 "...while the same total spread across roles is within budget" \
   sh -c 'node "$1/round-journal.mjs" append --round 2 --journal "$2.b" --spawns 25 --agents a=9,b=8,c=8 >/dev/null && node "$1/round-journal.mjs" check --journal "$2.b" --max-agent-spawns 20' sh "$HERE" "$PJ"
 
 # The kill switch has to be reachable from the loop, or it is a file nobody checks.
-node "$HERE/team-doctor.mjs" --json > "$TMP/td-stop.json" 2>/dev/null
+( cd "$HERE/.." && node "$HERE/team-doctor.mjs" --json ) > "$TMP/td-stop.json" 2>/dev/null  # team-doctor reads the cwd
 node -e '
 const j=require(process.argv[1]);
 process.exit(j.findings.some(f=>f.code==="kill_switch_unreferenced")?1:0);
@@ -7276,7 +7360,7 @@ for FLAG in requireDurableRuns requireApprovalBinding; do
   grep -q "\"$FLAG\": true" "$INIT" && ok "/app-init's default policy turns on $FLAG" \
     || bad "/app-init's default policy turns on $FLAG"
 done
-for FLAG in requireAuditAnchor requirePromptRegistry requireEvaluation; do
+for FLAG in requireAuditAnchor requireEvaluation; do
   grep -q "\"$FLAG\": true" "$INIT" && bad "/app-init's default policy does NOT turn on $FLAG (no bootstrap artifact exists yet)" \
     "found \"$FLAG\": true in the default policy template" \
     || ok "/app-init's default policy does NOT turn on $FLAG (no bootstrap artifact exists yet)"
@@ -7571,38 +7655,8 @@ tr '\n' ' ' < "$HERE/../commands/app-learn.md" | tr -s ' ' | grep -q -- "--class
   && ok "/app-learn documents the studio-process harvest via memory-curator's already-governed pipeline" \
   || bad "/app-learn documents the studio-process harvest via memory-curator's already-governed pipeline"
 
-assert_exit 0 "prompt-registry accepts the shipped, populated registry" node "$HERE/prompt-registry.mjs" --registry "$HERE/../docs/team/prompt-registry.json"
-
-# --- `sync` is the only place a registry entry is ever written from real agent content — an empty
-# registry validates a shape nothing populated, which is scaffolding, not governance.
-PREG="$TMP/revamp-prompt-sync"; mkdir -p "$PREG/agents" "$PREG/docs/team"
-printf '# a\n' > "$PREG/agents/role-a.md"
-printf '# b\n' > "$PREG/agents/role-b.md"
-( cd "$PREG" && node "$HERE/prompt-registry.mjs" sync --now 2026-08-01 >/dev/null )
-node -e 'const r=require(process.argv[1]); if(r.entries.length!==2) process.exit(1); const a=r.entries.find(e=>e.id==="role-a"); if(a.version!=="1.0.0"||a.rollback_version!=="0.0.0"||!a.content_hash) process.exit(1)' "$PREG/docs/team/prompt-registry.json" \
-  && ok "sync seeds one entry per agent file, versioned from a real content hash" \
-  || bad "sync seeds one entry per agent file, versioned from a real content hash"
-printf '# a, edited\n' > "$PREG/agents/role-a.md"
-( cd "$PREG" && node "$HERE/prompt-registry.mjs" sync --now 2026-08-02 >/dev/null )
-node -e 'const r=require(process.argv[1]); const a=r.entries.find(e=>e.id==="role-a"); if(a.version!=="1.0.1"||a.rollback_version!=="1.0.0") process.exit(1)' "$PREG/docs/team/prompt-registry.json" \
-  && ok "...and re-syncing an edited agent file bumps its version, recording the old one as rollback" \
-  || bad "...and re-syncing an edited agent file bumps its version, recording the old one as rollback"
-
-# --- team-doctor reads the registry back: a role missing from a populated registry, or one whose
-# hash has drifted since its last sync, is a blocking finding — not silent staleness. Reuses $PLUG
-# (agents+commands+skills+knowledge, already set up above) rather than a fresh partial copy — a
-# scratch tree missing knowledge/ or docs/02-team-roster.md fails team-doctor for unrelated reasons.
-( cd "$PLUG" && node "$HERE/prompt-registry.mjs" sync --now 2026-08-01 >/dev/null )
-( cd "$PLUG" && node "$HERE/team-doctor.mjs" ) >/dev/null 2>&1
-[ $? = 0 ] && ok "team-doctor is clean once every agent has a fresh registry entry" \
-            || bad "team-doctor is clean once every agent has a fresh registry entry"
-printf '\nstale edit\n' >> "$PLUG/agents/android-developer.md"
-( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdprompt-stale.json" 2>/dev/null
-assert_finding "$TMP/tdprompt-stale.json" prompt_registry_stale \
-  "an agent file edited without re-syncing the registry is a blocking finding" "android-developer"
-cp "$HERE/../agents/android-developer.md" "$PLUG/agents/android-developer.md"
-rm -f "$PLUG/docs/team/prompt-registry.json"
-assert_exit 0 "evaluation lab runs the checked-in baseline suite" node "$HERE/eval-lab.mjs" --manifest "$HERE/../eval/manifest.json"
+# The manifest's cases use plugin-relative paths, so it runs from the plugin root, not the cwd.
+assert_exit 0 "evaluation lab runs the checked-in baseline suite" sh -c 'cd "$1/.." && node "$1/eval-lab.mjs" --manifest eval/manifest.json' sh "$HERE"
 
 SCHED="$TMP/revamp-scheduler"; mkdir -p "$SCHED"
 cat > "$SCHED/plan.json" <<'EOF'
@@ -7614,12 +7668,6 @@ cat > "$SCHED/capabilities.json" <<'EOF'
 EOF
 assert_exit 0 "capability-check allows a declared role operation" node "$HERE/capability-check.mjs" --manifest "$SCHED/capabilities.json" --role reviewer --operation read --path docs
 assert_exit 1 "capability-check rejects an undeclared operation" node "$HERE/capability-check.mjs" --manifest "$SCHED/capabilities.json" --role reviewer --operation write --path docs
-cat > "$SCHED/impact.json" <<'EOF'
-{"schema":"impact-map/v1","rules":[{"pattern":"^docs/","consumers":["reviewer","qa"]}]}
-EOF
-assert_exit 0 "impact-map accepts a declared changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file docs/10-prd.md
-assert_exit 1 "impact-map rejects an unmapped changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file Sources/App.swift
-
 DISPATCH="$TMP/revamp-dispatch"; mkdir -p "$DISPATCH/docs"
 printf 'context\n' > "$DISPATCH/docs/context.md"
 node "$HERE/context-manifest.mjs" create --root "$DISPATCH" --out "$DISPATCH/context.json" --source project:docs/context.md >/dev/null
@@ -7646,7 +7694,7 @@ printf '%s\n' '{"schema":"scheduler-plan/v1","max_parallel":1,"tasks":[{"id":"T1
 assert_exit 1 "...and a ticket whose dependency has not completed is refused the same way, not just an unknown ID" \
   node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH_BLOCKED" --ticket T1 --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 
-# --- audit-anchor, prompt-registry, and eval-lab used to be reachable only through ship-gate.sh at
+# --- audit-anchor and eval-lab used to be reachable only through ship-gate.sh at
 # release time — drift could sit for a whole sprint before anything noticed. Every spawn now composes
 # them too (still opt-in per .studio-policy.json), so this proves the composition catches drift at
 # the NEXT dispatch, not only at the release that happens to follow it.
@@ -7655,10 +7703,9 @@ cp "$DISPATCH/context.json" "$DISPATCH/schedule.json" "$DISPATCH/capabilities.js
 mkdir -p "$DISPATCH2/docs"; printf 'context\n' > "$DISPATCH2/docs/context.md"
 ( cd "$DISPATCH2" && node "$BD" add DP-001 --title "x" --owner ios-developer >/dev/null 2>&1 )
 ( cd "$DISPATCH2" && node "$HERE/audit-anchor.mjs" create --log docs/31-board-events.jsonl --out docs/team/audit-anchor.json >/dev/null )
-printf '{"schema":"prompt-registry/v1","entries":[]}\n' > "$DISPATCH2/docs/team/prompt-registry.json"
 printf '{"schema":"eval-manifest/v1","cases":[{"id":"trivial","command":["true"],"expect_exit":0}]}\n' > "$DISPATCH2/eval/manifest.json"
-printf '{"requireAuditAnchor":true,"requirePromptRegistry":true,"requireEvaluation":true}\n' > "$DISPATCH2/.studio-policy.json"
-assert_exit 0 "dispatch-preflight composes audit-anchor, prompt-registry and eval-lab when policy opts in" \
+printf '{"requireAuditAnchor":true,"requireEvaluation":true}\n' > "$DISPATCH2/.studio-policy.json"
+assert_exit 0 "dispatch-preflight composes audit-anchor and eval-lab when policy opts in" \
   node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH2" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 ( cd "$DISPATCH2" && node "$BD" move DP-001 claimed --by ios-developer >/dev/null 2>&1 )
 assert_exit 1 "...and refuses the NEXT dispatch the moment the audit chain drifts, not only at ship time" \
@@ -7668,10 +7715,6 @@ cp "$DISPATCH/context.json" "$DISPATCH/schedule.json" "$DISPATCH/capabilities.js
 printf 'context\n' > "$DISPATCH3/docs/context.md"
 assert_exit 0 "...and a project with no .studio-policy.json pays nothing extra for controls it never opted into" \
   node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH3" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
-
-node "$HERE/run-ledger.mjs" start --ledger "$RUNX/runs.jsonl" --run RUN-002 --ticket APP-002 --role ios-developer --now 2026-07-31T00:00:00Z --lease-seconds 60 >/dev/null
-assert_exit 0 "manager-failover holds while the primary lease is live" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:00:30Z
-assert_exit 0 "manager-failover recommends replacement after lease expiry" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:02:00Z
 
 assert_exit 0 "risk-router selects the critical route for payment changes" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json" --file Sources/Payment.swift --change billing
 assert_exit 1 "risk-router refuses missing route input" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json"
@@ -8387,34 +8430,6 @@ sh "$HERE/ship-gate.sh" "$OPD" >"$TMP/opd-sg2.txt" 2>&1
 grep -q "working tree is DIRTY" "$TMP/opd-sg2.txt" \
   && ok "ship-gate: a modified source file still makes approval binding UNKNOWN" \
   || bad "ship-gate: a modified source file still makes approval binding UNKNOWN" "$(tail -5 "$TMP/opd-sg2.txt")"
-
-# --- I-09: a criterion names its own proof -----------------------------------------------------
-# verify-done runs the suite; qa_passed records that QA exercised the ticket. Neither says anything
-# about a SPECIFIC criterion, so a green suite can coexist with the one behaviour the founder asked
-# for never having been exercised.
-FCC2="$TMP/fc-criterion"; rm -rf "$FCC2"; mkdir -p "$FCC2/docs/team" "$FCC2/artifacts"
-printf 'screenshot bytes\n' > "$FCC2/artifacts/ac1.png"
-CH=$(node -e "const c=require('crypto'),f=require('fs');process.stdout.write(c.createHash('sha256').update(f.readFileSync('$FCC2/artifacts/ac1.png')).digest('hex'))")
-cat > "$FCC2/docs/team/criteria.json" <<CJ
-{"schema":"criteria/v1","criteria":[
- {"id":"AC-001","ticket":"T-001","text":"a saved reading survives a restart",
-  "evidence":[{"path":"artifacts/ac1.png","sha256":"$CH"}]}]}
-CJ
-assert_exit 0 "a criterion backed by matching evidence is proven" \
-  node "$HERE/criterion-check.mjs" --root "$FCC2"
-# Same path, same name, still non-empty — only the digest can tell it is a different artifact.
-printf "a DIFFERENT run\n" > "$FCC2/artifacts/ac1.png"
-assert_exit 1 "...and becomes UNPROVEN when its evidence is overwritten with different bytes" \
-  node "$HERE/criterion-check.mjs" --root "$FCC2"
-# A criterion with no evidence is UNPROVEN, not trivially satisfied.
-printf '{"schema":"criteria/v1","criteria":[{"id":"AC-002","ticket":"T-001","text":"reachable","evidence":[]}]}\n' \
-  > "$FCC2/docs/team/criteria.json"
-assert_exit 1 "a criterion naming no evidence is unproven, not trivially satisfied" \
-  node "$HERE/criterion-check.mjs" --root "$FCC2"
-# No registry at all is CANNOT EVALUATE, never CLEAR — an absent contract must not read as a passing one.
-FCC3="$TMP/fc-criterion-none"; rm -rf "$FCC3"; mkdir -p "$FCC3"
-assert_exit 2 "no criteria registry is CANNOT EVALUATE, never a pass" \
-  node "$HERE/criterion-check.mjs" --root "$FCC3"
 
 # --- F20: the sanctioned correction path (and why it had to ship WITH the hand-edit ban) --------
 # There was no legal way to fix a typo in a ticket field, so agents edited docs/31-board.md — the
@@ -12647,10 +12662,9 @@ node -e 'const s=require(process.argv[1]).selection||{};process.exit(s.only==="h
 # ·· S7-13: the journey contract is printed at the plugin's path.
 U2N="$TMP/u2-nojr"; rm -rf "$U2N"; mkdir -p "$U2N"
 node "$HERE/journey-gate.mjs" --root "$U2N" >"$TMP/u2n.txt" 2>&1
-node "$HERE/criterion-check.mjs" --root "$U2N" >>"$TMP/u2n.txt" 2>&1
-[ "$(grep -c "$U2R/docs/team/journeys/README.md" "$TMP/u2n.txt")" = 2 ] && [ -f "$U2R/docs/team/journeys/README.md" ] \
-  && ok "U2: journey-gate and criterion-check name the plugin's journey README, which exists (S7-13)" \
-  || bad "U2: journey-gate and criterion-check name the plugin's journey README, which exists (S7-13)" "$(cat "$TMP/u2n.txt")"
+[ "$(grep -c "$U2R/docs/team/journeys/README.md" "$TMP/u2n.txt")" = 1 ] && [ -f "$U2R/docs/team/journeys/README.md" ] \
+  && ok "U2: journey-gate names the plugin's journey README, which exists (S7-13)" \
+  || bad "U2: journey-gate names the plugin's journey README, which exists (S7-13)" "$(cat "$TMP/u2n.txt")"
 
 # ·· S7-2 / S7-3: unblocking a needs-approval ticket and correcting a ticket are gates.
 U2A="$TMP/u2-gates"; rm -rf "$U2A"; mkdir -p "$U2A"
@@ -12721,10 +12735,8 @@ grep -qF 'team-bootstrap.mjs" --root .' "$U6R/commands/app-audit.md" && [ "$(gre
 # S7-8 / S7-9 / S7-10: runnable commands.
 grep -qF 'verify-done.sh" <branch> <integration-branch> fast' "$U6R/skills/sprint-planner/SKILL.md" && ! grep -qF '"<test cmd>"' "$U6R/skills/sprint-planner/SKILL.md" \
   && grep -qF '(cd "${CLAUDE_PLUGIN_ROOT}" && node "${CLAUDE_PLUGIN_ROOT}/scripts/team-doctor.mjs" --json)' "$U6R/commands/app-learn.md" \
-  && grep -qF -- '--scenario "${CLAUDE_PLUGIN_ROOT}/eval/manager-scenario.json"' "$U6R/commands/app-manager-harness.md" \
-  && grep -qF '"schema": "impact-map/v1"' "$U6R/commands/app-impact.md" \
-  && ok "U6: sprint-planner, app-learn, manager-harness and app-impact commands run from a project (S7-8/9/10)" \
-  || bad "U6: sprint-planner, app-learn, manager-harness and app-impact commands run from a project (S7-8/9/10)"
+  && ok "U6: sprint-planner and app-learn commands run from a project (S7-8/9)" \
+  || bad "U6: sprint-planner and app-learn commands run from a project (S7-8/9)"
 # S7-12 / W7-4 / W7-10: app-ship re-runs orchestrator ship only; manifest committed; CURRENT-but-not-PASS.
 ! grep -qF 'Then **re-run `ship-gate.sh`**' "$U6R/commands/app-ship.md" && ! grep -qF 'Then re-run the gate.' "$U6R/commands/app-ship.md" \
   && grep -qF 'docs/00-founder-intent/MANIFEST.sha256` when a waiver was recorded' "$U6R/agents/release-manager.md" \
@@ -12862,17 +12874,6 @@ node -e 'process.stdout.write(JSON.stringify({ hook_event_name: "SubagentStop", 
   transcript_path: "/nonexistent", last_assistant_message: "ASO: CANNOT EVALUATE — no screenshots captured (APP-001)" }))' "$U4" | sh "$HERE/../hooks/persist-ic-report.sh" >/dev/null 2>"$TMP/u4-aso.err"
 [ $? = 0 ] && ok "Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)" \
   || bad "Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)" "$(cat "$TMP/u4-aso.err")"
-
-# R7-13 — the spawn templates are versioned in the prompt registry next to the role files.
-U4R="$TMP/s7u4-reg"; rm -rf "$U4R"; mkdir -p "$U4R/agents" "$U4R/scripts/lib"
-printf '# a\n' > "$U4R/agents/role-a.md"; printf 'one\n' > "$U4R/scripts/spawn-prompt.mjs"; printf 'c\n' > "$U4R/scripts/lib/contract.mjs"
-( cd "$U4R" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-20 >/dev/null )
-printf 'two\n' > "$U4R/scripts/spawn-prompt.mjs"
-( cd "$U4R" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-21 >/dev/null )
-node -e 'const r = require(process.argv[1]); const t = r.entries.find((e) => e.id === "template/scripts/spawn-prompt.mjs");
-  process.exit(t && t.version === "1.0.1" && r.entries.some((e) => e.id === "template/scripts/lib/contract.mjs") ? 0 : 1)' "$U4R/docs/team/prompt-registry.json" \
-  && ok "Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)" \
-  || bad "Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)"
 
 # --- Sprint 7 U5: tools, locks, test infrastructure ---
 #
@@ -13479,14 +13480,6 @@ grep -q 'names no holder pid' "$TMP/p47lk.txt" && grep -qF "rm -rf \"$P47LK/x.lo
   && ok "PR47 fixes: an aged lock naming no holder says how to clear it, not 'never delete'" \
   || bad "PR47 fixes: an aged lock naming no holder says how to clear it, not 'never delete'" "$(head -c 400 "$TMP/p47lk.txt")"
 
-# --- PR47 fixes: team-doctor checks the template hashes ---
-echo "PR47 fixes: team-doctor checks the template hashes"
-P47TD=$(plugin_copy p47td)
-( cd "$P47TD" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-20 >/dev/null && printf '\n// drift\n' >> scripts/spawn-prompt.mjs \
-  && node "$HERE/team-doctor.mjs" --json ) > "$TMP/p47td.json" 2>/dev/null
-assert_finding "$TMP/p47td.json" prompt_registry_stale \
-  "PR47 fixes: a spawn template edited without a registry sync is a team-doctor finding" "template/scripts/spawn-prompt.mjs"
-
 # --- PR47 fixes: an anchor that disagrees blocks; only an absent one is unknown ---
 echo "PR47 fixes: an anchor that disagrees blocks; only an absent one is unknown"
 P47AN="$TMP/p47-anchor"; rm -rf "$P47AN"; mkdir -p "$P47AN"
@@ -13575,6 +13568,53 @@ printf '{"requireTicketFiles": true, "requireActorTokens": true}\n' > "$P47DP/.s
 grep -qF "$HERE/board.mjs\" move APP-001 corrected --by tech-manager" "$TMP/p47dp.txt" && grep -q -- '--token "$(node' "$TMP/p47dp.txt" \
   && ok "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" \
   || bad "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" "$(grep -m3 'corrected\|token\|dispatch' "$TMP/p47dp.txt")"
+
+# --- Sprint 8 V6: prune dead weight, --help, and a mutation run that is one section ---
+echo "Sprint 8 V6: prune dead weight, --help, and a mutation run that is one section"
+# EN-10: `--help` was nobody's flag. team-bootstrap ran its real action and wrote four manifests into
+# the cwd; foundation-conformance ignored its arguments and ran every invariant.
+V6H="$TMP/s8v6-help"; rm -rf "$V6H"; mkdir -p "$V6H"
+( cd "$V6H" && node "$HERE/team-bootstrap.mjs" --help ) >"$TMP/v6h.txt" 2>&1; V6RC=$?
+[ "$V6RC" = 0 ] && grep -q '^team-bootstrap' "$TMP/v6h.txt" && [ ! -e "$V6H/docs" ] \
+  && ok "Sprint 8 V6: team-bootstrap --help prints its usage, exits 0 and writes nothing (EN-10)" \
+  || bad "Sprint 8 V6: team-bootstrap --help prints its usage, exits 0 and writes nothing (EN-10)" "rc=$V6RC $(ls -R "$V6H" | head -5)"
+assert_exit 0 "Sprint 8 V6: foundation-conformance --help exits 0 without running the suite (EN-10)" \
+  node "$HERE/foundation-conformance.mjs" --help
+assert_has "$TMP/out" "Usage:" "Sprint 8 V6: ...and prints its usage header (EN-10)"
+assert_exit 2 "Sprint 8 V6: foundation-conformance rejects an argument that is not an invariant id (EN-10)" \
+  node "$HERE/foundation-conformance.mjs" bogus
+# CX-9: requirePromptRegistry is gone with its script. A policy that still sets it is not a crash.
+V6D="$TMP/s8v6-dispatch"; rm -rf "$V6D"; mkdir -p "$V6D/docs"
+printf 'context\n' > "$V6D/docs/context.md"
+node "$HERE/context-manifest.mjs" create --root "$V6D" --out "$V6D/context.json" --source project:docs/context.md >/dev/null
+printf '%s\n' '{"schema":"scheduler-plan/v1","max_parallel":1,"tasks":[{"id":"T","owner":"reviewer","status":"pending"}]}' > "$V6D/schedule.json"
+printf '%s\n' '{"schema":"capability-manifest/v1","root":".","roles":[{"role":"reviewer","operations":["write"],"allowed_paths":["docs"]}]}' > "$V6D/capabilities.json"
+cp "$HERE/../docs/team/risk-policy.json" "$V6D/risk.json"
+printf '{"requirePromptRegistry":true}\n' > "$V6D/.studio-policy.json"
+assert_exit 0 "Sprint 8 V6: a policy still naming requirePromptRegistry does not block dispatch (CX-9)" \
+  node "$HERE/dispatch-preflight.mjs" --root "$V6D" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+# QA-9: every catalogue row runs ONE section of this file, never the whole suite (a full catalogue
+# was ~450 x the full suite). A row naming no scope gets the section that holds its label.
+sh "$HERE/mutate.sh" --list >"$TMP/v6m.txt" 2>&1
+V6RUNS=$(grep -c '^      runs: ' "$TMP/v6m.txt"); V6WHOLE=$(grep -c '^      runs: THE WHOLE SUITE' "$TMP/v6m.txt")
+[ "$V6RUNS" -gt 400 ] && [ "$V6WHOLE" = 0 ] \
+  && ok "Sprint 8 V6: every mutate.sh catalogue row runs one test.sh section, never the whole suite (QA-9)" \
+  || bad "Sprint 8 V6: every mutate.sh catalogue row runs one test.sh section, never the whole suite (QA-9)" "rows=$V6RUNS whole-suite=$V6WHOLE"
+sed -n '/^M07 /,/runs:/p' "$TMP/v6m.txt" | grep -q 'runs: # --- `self_review`' \
+  && ok "Sprint 8 V6: ...and a row with no scope runs the section holding its own assertion (M07)" \
+  || bad "Sprint 8 V6: ...and a row with no scope runs the section holding its own assertion (M07)" "$(sed -n '/^M07 /,/runs:/p' "$TMP/v6m.txt")"
+# An empty field (MF47T's empty replacement) used to collapse under a tab IFS: the anchor was
+# replaced by the assertion label and the label became the scope.
+sed -n '/^MF47T /,/runs:/p' "$TMP/v6m.txt" | grep -qx '      + ' \
+  && sed -n '/^MF47T /,/runs:/p' "$TMP/v6m.txt" | grep -q "expects to fail: PR47 fixes: dispatch-preflight's corrected command" \
+  && ok "Sprint 8 V6: an empty replacement field stays empty and the fields after it do not shift (MF47T)" \
+  || bad "Sprint 8 V6: an empty replacement field stays empty and the fields after it do not shift (MF47T)" "$(sed -n '/^MF47T /,/runs:/p' "$TMP/v6m.txt")"
+# QA-9: `--only "W1 / G-F5"` was 79 passed / 14 failed, every failure an unset `$VDG` that an
+# earlier section builds. A lifted section now gets that section pulled in, and passes on behaviour.
+sh "$HERE/test.sh" --only "W1 / G-F5" >"$TMP/v6only.txt" 2>&1; V6RC=$?
+[ "$V6RC" = 0 ] && grep -q ' 0 failed' "$TMP/v6only.txt" && grep -q 'pulled in by --only' "$TMP/v6only.txt" \
+  && ok "Sprint 8 V6: test.sh --only on a section that reads an earlier fixture pulls that section in and passes (QA-9)" \
+  || bad "Sprint 8 V6: test.sh --only on a section that reads an earlier fixture pulls that section in and passes (QA-9)" "rc=$V6RC $(grep -m3 'FAIL\|unbound' "$TMP/v6only.txt")"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

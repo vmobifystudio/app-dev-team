@@ -57,13 +57,6 @@
       ],
       "reader": null
     },
-    "criteria/v1": {
-      "files": [
-        "scripts/criterion-check.mjs",
-        "scripts/foundation-conformance.mjs"
-      ],
-      "reader": null
-    },
     "dispatch-preflight/v1": {
       "files": [
         "scripts/dispatch-preflight.mjs"
@@ -87,12 +80,6 @@
       ],
       "reader": null
     },
-    "impact-map/v1": {
-      "files": [
-        "scripts/impact-map.mjs"
-      ],
-      "reader": null
-    },
     "incident-ledger/v1": {
       "files": [
         "scripts/incident-ledger.mjs"
@@ -108,24 +95,6 @@
     "journey/v1": {
       "files": [
         "scripts/journey-gate.mjs"
-      ],
-      "reader": null
-    },
-    "manager-harness/v1": {
-      "files": [
-        "scripts/manager-harness.mjs"
-      ],
-      "reader": null
-    },
-    "manager-scenario/v1": {
-      "files": [
-        "scripts/manager-harness.mjs"
-      ],
-      "reader": null
-    },
-    "manager-state/v1": {
-      "files": [
-        "scripts/manager-harness.mjs"
       ],
       "reader": null
     },
@@ -157,12 +126,6 @@
       "files": [
         "scripts/project-profile.mjs",
         "scripts/team-bootstrap.mjs"
-      ],
-      "reader": null
-    },
-    "prompt-registry/v1": {
-      "files": [
-        "scripts/prompt-registry.mjs"
       ],
       "reader": null
     },

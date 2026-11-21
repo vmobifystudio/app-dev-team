@@ -113,8 +113,6 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      until context, scheduling, capabilities, and risk routing all clear. It gates the claim, not
      every spawn: a reviewer, a gate role or a retry on an already-claimed ticket gets no new
      preflight (it would refuse a ticket in `review` or `qa`).
-   - Where named-agent persistence is available, run the warm/cold manager scenario and retain its
-     digest; otherwise use the portable respawn model backed by the same files.
    - **The budget ceiling stops this loop and says why** (`/app-build` step 0). An unattended run
      has no other economic brake: `round-journal.mjs check` runs at the top of every round, exit 1
      ends the run with the ceiling named and every unfinished ticket listed. Do not raise a ceiling

@@ -11,8 +11,6 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 - ceo — vision, success metrics, scope
 - cpo — PRD, user stories, backlog
 - cto — architecture, stack, engineering principles (starts from the House KB defaults)
-- chief-of-staff — the single founder interface: decision briefs, unresolved commitments, founder
-  inbox (flagship, and only when it removes more decisions than it creates)
 
 **Product**
 - product-manager — day-to-day product execution below the CPO: ticket clarification, backlog
@@ -46,7 +44,7 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 - ux-architect — information architecture, navigation, flows, the screen-and-state inventory
 - product-designer — screen composition, hierarchy, interaction, visual quality, tokens, components
 - aso-specialist — store listing, keywords, screenshots, store-readiness gate
-- data-analyst — analytics schema, instrumentation check, post-launch KPI report
+- data-analyst — analytics schema, instrumentation check, KPI report
 
 **Platform & Release**
 - devops-engineer — git strategy, CI, signing, flavors, secrets hygiene

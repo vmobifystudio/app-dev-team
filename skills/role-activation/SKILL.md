@@ -67,7 +67,6 @@ not a new agent file. Re-run this table whenever a new role is proposed, and exp
 | `ceo` | `authority` | final scope/vision authority no other role holds |
 | `cpo` | `authority` | product-decision authority distinct from engineering |
 | `cto` | `authority` | technical-strategy authority distinct from product |
-| `chief-of-staff` | `context` | one founder-facing decision-brief context, deliberately not the CEO's own strategic framing — its own description says it "is only worth running if it removes more decisions than it creates" |
 | `product-manager` | `capability` | day-to-day ticket-clarification capability below CPO's strategic layer, so CPO is not the bottleneck for every clarification |
 | `product-researcher` | `context` | evidence-gathering that must not inherit the CPO's framing, or it would confirm its own hypothesis rather than test it |
 | `tech-lead` | `authority` | technical-design authority distinct from CTO's strategic layer |
@@ -105,7 +104,6 @@ not a new agent file. Re-run this table whenever a new role is proposed, and exp
 | `ceo` | on | on | on | on | on | — | on | utility: absorbs the `cpo` charter (founder pass) |
 | `cpo` | on | on | on | on | on | — | on | utility: off, merged into `ceo` |
 | `cto` | on | on | on | on | on | — | on | utility: off, merged into `tech-lead` |
-| `chief-of-staff` | ? | ? | ? | ? | ? | — | ? | `?` flagship **and** the founder is fielding more than one project or more than five open decisions — otherwise `ceo` is already the founder interface and this role adds load instead of removing it |
 | `product-manager` | on | on | on | on | on | — | — | utility: off, merged into `cpo`/`ceo` · `—` a library's consumers are engineers; `tech-lead` fields their questions |
 | `product-researcher` | ? | ? | ? | ? | ? | — | — | `?` new-product or repositioning work, i.e. `docs/01-intake.md` names a market or user assumption nobody has tested · `—` a library's market question is API design |
 | `tech-lead` | on | on | on | on | on | — | on | utility: absorbs the `cto` charter (one technical pass) |
@@ -178,7 +176,7 @@ Flagship uses the matrix as-is. Utility applies exactly these eight changes and 
 7. `privacy-reviewer` → `off(merged-into: security-reviewer — privacy MODE)`. One role, two
    checklists: `security-reviewer` runs its own list and then `agents/privacy-reviewer.md`'s,
    and reports both verdict lines. **Utility means one reviewer, never one checklist.**
-8. `chief-of-staff`, `test-automation-engineer`, `reliability-engineer`, `red-team-agent` →
+8. `test-automation-engineer`, `reliability-engineer`, `red-team-agent` →
    `off(flagship-only)`. Their triggers are flagship-gated in the matrix already; this states it in
    the roster so the reason is on the record rather than inferred from a blank.
 

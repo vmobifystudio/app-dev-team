@@ -4,7 +4,7 @@
 
 **Describe your app idea in one line. Get a shipped iOS & Android app.**
 
-AI App Studio is a *team* of 30 AI specialists — a CEO, product manager, designers, iOS/Android
+AI App Studio is a *team* of 29 AI specialists — a CEO, product manager, designers, iOS/Android
 engineers, a code reviewer, QA, and a release manager — that works like a real software studio.
 It takes your idea from **scope → design → code → review → store**, building in parallel, reviewing
 and fixing its own work, and stopping for you at only the two moments that matter:
@@ -320,7 +320,7 @@ See [`control-room/README.md`](control-room/README.md) for live-development mode
 
 | | 🤖 One AI agent improvising | 🏗️ **AI App Studio** |
 |---|---|---|
-| **Structure** | One context doing everything; forgets the plan | 30 focused roles with clear handoffs and ownership |
+| **Structure** | One context doing everything; forgets the plan | 29 focused roles with clear handoffs and ownership |
 | **Code review** | None — it ships whatever it wrote | A real review gate; nothing merges until it passes |
 | **Quality bar** | Generic AI defaults | Your house conventions + ~25 iOS specialist auditors |
 | **Parallelism** | Sequential, slow | Engineers build features in parallel |
@@ -344,7 +344,7 @@ This repo is its own Claude Code **marketplace**, so installing is two commands.
 > 💡 **AI App Studio** is the friendly name for the **`app-dev-team`** plugin — that's the ID you
 > install and the command prefix (`/app-*`) you'll use.
 
-The plugin is enabled automatically — its 30 agents, 27 commands, and 32 skills are now available.
+The plugin is enabled automatically — its 29 agents, 22 commands, and 30 skills are now available.
 Run `/plugin` anytime to browse, enable/disable, or remove it. To update later, re-run
 `/plugin marketplace add vmobifystudio/app-dev-team` and reinstall.
 
@@ -403,7 +403,7 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 
 ---
 
-## The roster (30 agents)
+## The roster (29 agents)
 
 | Layer | Agent | Owns |
 |---|---|---|
@@ -422,7 +422,7 @@ concurrency rewrites, billing logic) get a written plan and only proceed with yo
 | **Design & Growth** | `ux-architect` | Information architecture, navigation, flows, screen-and-state inventory |
 | | `product-designer` | Screen composition, hierarchy, interaction, tokens, components |
 | | `aso-specialist` | Store listing, keywords, screenshots, readiness gate |
-| | `data-analyst` | Analytics schema, instrumentation check, post-launch KPIs |
+| | `data-analyst` | Analytics schema, instrumentation check, KPIs |
 | **Platform & Release** | `devops-engineer` | Git strategy, CI, signing, flavors, secrets hygiene |
 | | `security-reviewer` | Pre-ship MASVS pass, severity-classified findings |
 | | `release-manager` | Versioning, signing, submission-ready build, release notes — never uploads |
@@ -431,8 +431,8 @@ Every build agent invokes the `house-conventions` skill before working, plus `ag
 (its own git worktree) and `team-protocol` (how it talks to the rest of the team). Roles are just
 Markdown files — add, remove, or retune them.
 
-The 19 above are the roles you'll spawn on a typical build; `agents/` holds 30 in total — the rest
-(`chief-of-staff`, `web-developer`, `test-automation-engineer`, `red-team-agent`,
+The 19 above are the roles you'll spawn on a typical build; `agents/` holds 29 in total — the rest
+(`web-developer`, `test-automation-engineer`, `red-team-agent`,
 `product-manager`, `product-researcher`, `product-validator`, `release-auditor`,
 `privacy-reviewer`, `incident-commander`, `reliability-engineer`) activate conditionally, per
 `docs/02-team-roster.md`'s own recorded triggers. The control room's **Team** screen shows every
@@ -451,7 +451,6 @@ avatar in the control room, or open the **Team** tab, to see it live.
 | Targaryen | 🐉 | `ceo` | **Daenerys Targaryen** | Sets the vision, makes the final call |
 | Lannister | 🦁 | `cpo` | **Tyrion Lannister** | The sharpest strategist in the room |
 | Stark | 🐺 | `cto` | **Ned Stark** | Principled architecture, no shortcuts |
-| Targaryen | 🐉 | `chief-of-staff` | **Jorah Mormont** | Utterly loyal right hand |
 | Stark | 🐺 | `tech-lead` | **Jon Snow** | Leads from the front, unblocks the pod |
 | Stark | 🐺 | `tech-manager` | **Sansa Stark** | Grew into the sharp administrator who runs the board |
 | Targaryen | 🐉 | `android-developer` | **Grey Worm** | Unsullied precision — executes exactly to spec |
@@ -494,17 +493,12 @@ avatar in the control room, or open the **Team** tab, to see it live.
 | `/app-review <branch>` | Code review on a single branch. |
 | `/app-preflight [path] [--ticket APP-NNN]` | Verify repository context, dependencies, versions, policy evidence, and source-of-truth documents before work. |
 | `/app-context` | Create or verify the explicit context manifest used by an execution attempt. |
-| `/app-run-status` | Check durable run leases, checkpoints, and orphaned attempts. |
 | `/app-recover` | Recover interrupted work through an explicit terminal ledger record. |
 | `/app-memory` | Govern durable memory proposals, provenance, promotion, rejection, and contradictions. |
-| `/app-eval` | Run deterministic role, policy, and workflow evaluation fixtures. |
 | `/app-schedule` | Compute dependency-ready work with bounded parallelism and backpressure. |
 | `/app-capabilities` | Enforce role operation and path capabilities from an allowlist. |
-| `/app-impact` | Propagate changed-file review to declared downstream consumers. |
 | `/app-risk` | Route work by blast radius, model tier, approvals, and required evidence. |
 | `/app-incident` | Record operational incidents and release-health response. |
-| `/app-manager-failover` | Inspect manager leases and decide HOLD, FAILOVER, or BLOCK. |
-| `/app-manager-harness` | Compare warm and cold manager state contracts against the same scenario. |
 | `/app-ship [version]` | Parallel security + ASO + analytics readiness → release-manager → independent release audit → a signed, submission-ready build. Nothing is uploaded — the store upload is yours. |
 | `/app-status` | Vision, sprint goal, board doctor verdict, board summary, blockers, latest standup. |
 | `/app-dashboard` | The zero-dependency diagnostic dashboard (`scripts/studio-dashboard.mjs`, `:4173`) — one file, Node stdlib, works when the UI build is broken; `--export` writes a static snapshot. |
@@ -512,6 +506,8 @@ avatar in the control room, or open the **Team** tab, to see it live.
 | `/app-portfolio` | **(Many apps)** Ranks every registered project by **attention needed** — where should the next hour go? An unreadable project is reported as unreadable, never omitted. |
 | `/app-learn <app paths>` | Mines a shipped app's conventions into the **living** House KB; flags conflicts for your decision. Its failure pass harvests findings into the failure corpus and flags any class that **recurred after its rule shipped**. |
 | `/app-team` | Lists the roster. |
+
+Script-level diagnostics have no slash command: `node scripts/<name>.mjs --help` prints a script's usage header (every script on the shared `lib/args.mjs` parser).
 
 ## The House Knowledge Base (`knowledge/`)
 
@@ -566,7 +562,7 @@ docs/
   00-founder-intent/           your own words — the team cannot edit them
   00-vision · 01-intake · 02-team-roster · 03-decision-rights · 04-intent-validation
   10-prd · 11-backlog · 12-flows · 13-design-tokens · 14-components · 15-aso
-  16-research · 17-founder-inbox · 18-pdr/ · 19-ddr/
+  16-research · 18-pdr/ · 19-ddr/
   20-architecture · 21-engineering-principles · 22-impl-spec-{ios,android,web,backend}
   23-git-strategy · 24-adr/ · 25-assumptions/
   30-sprint-plan · 31-board-events.jsonl (source) → 31-board.md · 32-board-view.md (generated)

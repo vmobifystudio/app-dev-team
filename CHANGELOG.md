@@ -5,6 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Removed — Sprint 8 V6 (2026-11-21 studio audit: dead weight)
+
+- **Five commands** no flow invoked: `/app-impact`, `/app-manager-failover`, `/app-manager-harness`,
+  `/app-run-status` (duplicate of `/app-recover`), `/app-eval` (`eval-lab.mjs` stays; CI runs it).
+  27 → 22 commands. Script diagnostics: `node scripts/<name>.mjs --help`.
+- **Five scripts** with no caller: `impact-map.mjs` (+ `docs/team/impact-map.json`),
+  `manager-failover.mjs` (always answered FAILOVER), `manager-harness.mjs` (+ `eval/manager-scenario.json`
+  and its eval case — it graded its own simulation), `prompt-registry.mjs` (+ `docs/team/prompt-registry.json`,
+  the `requirePromptRegistry` policy flag, team-doctor §2e — git already versions prompts),
+  `criterion-check.mjs` (+ foundation invariant I-09; nothing wrote `criteria.json`). 75 → 70 scripts.
+- **Skills** `growth-analysis`, `support-mining` (no post-launch path runs them). 32 → 30 skills.
+- **Agent** `chief-of-staff` (+ its matrix rows, `/app-status` step 5b and `docs/17-founder-inbox.md`):
+  it had no realistic trigger and the CEO / Gate 1 already are the founder interface. 30 → 29 roles.
+
+### Changed — Sprint 8 V6 (test tooling)
+
+- `lib/args.mjs` handles `--help` (prints the script's header, exit 0); `team-bootstrap --help` no
+  longer writes manifests, and `foundation-conformance.mjs` rejects unknown arguments.
+- `mutate.sh` runs only the `test.sh` section that holds a mutant's assertion, never the whole suite
+  per mutant (a row with no scope gets the section holding its label; `--list` prints it). Its
+  catalogue separator no longer collapses an empty field (MF47T replaced its anchor with its label).
+- `test.sh --only` gets the fixtures a section reads: earlier helpers and constants are replayed,
+  and an earlier section that builds a variable or `$TMP` file the section reads is pulled in whole.
+
 ### Changed — Sprint 2 (2026-11-18 expert review, Phase 2)
 
 - **Remaining doc-number collisions (sprint 3):** `24-repository-controls.md` → `26-repository-controls.md`,

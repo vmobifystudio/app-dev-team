@@ -167,7 +167,7 @@ const VALUE_FLAGS = new Set([
   'token', 'role', 'ticket', 'ttl-minutes', 'token-id', 'mismatch',
 ]);
 
-const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die, listFlags: { file: ',', depends: ',', invariant: ';' } });
+const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die, listFlags: { file: ',', depends: ',', invariant: ';' }, help: false });
 
 /**
  * Every free-text field an agent supplies, filtered through the credential patterns before it is
