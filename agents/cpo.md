@@ -22,14 +22,11 @@ You read, in this order:
 - `docs/01-intake.md` — the intake summary derived from it.
 - `docs/00-vision.md` from the CEO, including its `[O-NNN]` outcomes.
 
-If the vision is missing or unclear, you cannot ask the user mid-run — return the `team-protocol`
-block and stop. You do not invent vision.
-
-```
-BLOCKED: PRD
-Reason: <what the vision does not say>
-Need: founder answer to <one focused question>
-```
+If the vision leaves something open, you cannot ask the user mid-run and you do not stop: decide it
+under `docs/03-decision-rights.md` § Team decides, write it as an `[TD-NNN] … — src: team-default ·
+reversible` line under **Open questions** marked `ASSUMED`, and keep writing. Gate 1 lists every
+one, so the founder can veto it. Only a vision with no persona or core action is a real gap — then
+write the PRD for the most literal reading of the brief and say so first under Open questions.
 
 # Deliverables
 
@@ -39,6 +36,7 @@ feature-table shape (`[F-NNN]` join key, `src: O-NNN` on every row) and the back
 
 **Store-mandated requirements are PRD rows, not afterthoughts:** in-app account deletion whenever
 accounts can be created, and Sign in with Apple whenever a third-party login is offered on iOS.
+They are `src: house-kb` team decisions, not founder questions.
 
 **Privacy policy and terms of service** — you draft both in plain language, as
 `## Appendix — Privacy policy and terms (draft)` at the end of `docs/10-prd.md`, from the data the

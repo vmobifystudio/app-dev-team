@@ -68,7 +68,10 @@ changes are gated behind a plan + human approval:
 - Anything that changes app behavior a user would notice
 
 Default posture: **fix Safe automatically; for Risky, propose and wait.** Never silently perform a
-risky change during an audit.
+risky change during an audit. **Unattended (`--yolo`), Risky S1/S2 do not wait:** they proceed on
+their written plan once `tech-lead` (or `cto`) approves it, plus any high-risk second approval the
+risk policy requires; the orchestrator records that approval with `unblocked`. Only a migration that
+deletes user data and a pricing change stay `needs-approval:` for the founder.
 
 ## Step 4 — Hand off
 

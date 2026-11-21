@@ -40,13 +40,13 @@
     },
     {
       "id": "ceo",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "owner": "ceo",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-21",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.3",
-      "content_hash": "ce82969804045ce3a13162f695ba6112d6ee60a1efab30388af123d4050b03c4"
+      "rollback_version": "1.0.4",
+      "content_hash": "7af4f8666a7b1a445855d85134d8efb71b2dc173bb21227b26f80b9be7a04324"
     },
     {
       "id": "chief-of-staff",
@@ -70,13 +70,13 @@
     },
     {
       "id": "cpo",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "owner": "cpo",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-21",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.4",
-      "content_hash": "f82e0b1948864345e48b3988e6276af0e1816673c21ce99866754c3b9f39d926"
+      "rollback_version": "1.0.5",
+      "content_hash": "04ca1c88de9ae03bc0305d75d64ef0018cb1d88a7c6f01e86f99de46ffaa3c1a"
     },
     {
       "id": "cto",
@@ -170,13 +170,13 @@
     },
     {
       "id": "product-validator",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "owner": "product-validator",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-21",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.1",
-      "content_hash": "45699bc52737b307cf890f0bd5bc83e29bf04ccccfdc9d99c1fb18bdaa2b73a8"
+      "rollback_version": "1.0.2",
+      "content_hash": "f7c3c8411cd07b57880215838f1f39fbaaf40908552de5b542bd4f41ca80b014"
     },
     {
       "id": "qa-engineer",
@@ -210,13 +210,13 @@
     },
     {
       "id": "release-manager",
-      "version": "1.0.12",
+      "version": "1.0.13",
       "owner": "release-manager",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-20",
+      "validated_on": "2026-11-21",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.11",
-      "content_hash": "a751d10e292cf3929d712eaf592631fe827d9a06861cdd0d70fed90314cb1c23"
+      "rollback_version": "1.0.12",
+      "content_hash": "6996d0ab7819a2028e193cebb35946f266da0341bc3a61f353501e3b8d0841d0"
     },
     {
       "id": "reliability-engineer",

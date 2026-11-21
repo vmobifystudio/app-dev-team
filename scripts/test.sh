@@ -5910,13 +5910,12 @@ done
 assert_finding "$TMP/trace.json" conflict_resolved "a resolved conflict names the rule that resolved it" "outranks"
 assert_finding "$TMP/trace.json" conflict_unresolvable "an equal-rank conflict is REFUSED, not guessed" "Refusing"
 
-# Each of the eight conditional founder gates must be DETECTED, not merely described. `trace-gates`
+# Each of the four conditional founder gates must be DETECTED, not merely described. `trace-gates`
 # plants one line per trigger; a trigger that stops firing is a decision an agent starts making
 # alone, and nothing else in the system would notice.
 node "$TR" --project-root "$FIX/trace-gates" --only gates --json > "$TMP/gates.json" 2>/dev/null
 assert_exit 1 "an unapproved trigger stops the loop" node "$TR" --project-root "$FIX/trace-gates" --only gates
-for t in pricing sensitive-data destructive-migration account-deletion legal-disclosure \
-         visual-direction paid-infrastructure waiver; do
+for t in pricing destructive-migration paid-infrastructure waiver; do
   node -e '
 const [, json, id] = process.argv;
 process.exit(require(json).findings.some((f) => f.detail.includes(`TRIGGER ${id} `)) ? 0 : 1);
@@ -5956,7 +5955,7 @@ const lines = out.findings.map((f) => {
 });
 fs.appendFileSync(`${root}/docs/00-founder-intent/decisions.md`, "\n" + lines.join("\n") + "\n");
 ' "$TR" "$TMP/gates-ok" 2>/dev/null
-assert_exit 0 "...and decisions QUOTING each detected value clear all eight" node "$TR" --project-root "$TMP/gates-ok" --only gates
+assert_exit 0 "...and decisions QUOTING each detected value clear all four" node "$TR" --project-root "$TMP/gates-ok" --only gates
 
 # The finding codex raised on PR #10, as an assertion: an approval of one value must not authorize a
 # different one. Change the approved price and the gate must come back, even though a `pricing`
@@ -13575,6 +13574,57 @@ printf '{"requireTicketFiles": true, "requireActorTokens": true}\n' > "$P47DP/.s
 grep -qF "$HERE/board.mjs\" move APP-001 corrected --by tech-manager" "$TMP/p47dp.txt" && grep -q -- '--token "$(node' "$TMP/p47dp.txt" \
   && ok "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" \
   || bad "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" "$(grep -m3 'corrected\|token\|dispatch' "$TMP/p47dp.txt")"
+
+# --- Sprint 8 V1: founder gates are money-or-irreversible, value-matched, and never re-ask the founder ---
+echo "Sprint 8 V1: founder gates are money-or-irreversible, value-matched, and never re-ask the founder"
+V1TR="$HERE/trace.mjs"
+# AU-1 / PR-1(c): a normal PRD — the store-mandated account deletion, the privacy-policy appendix CPO
+# is told to write, sensitive data and a visual-direction claim — fires no founder gate. These four
+# triggers used to stop every greenfield /app-run at round 1.
+V1G="$TMP/s8v1-gates"; rm -rf "$V1G"; mkdir -p "$V1G/docs/00-founder-intent"
+printf '# Brief\n\nA habit tracker. Free with a $2.99/month premium. Users sign in.\n' > "$V1G/docs/00-founder-intent/brief.md"
+printf '# PRD\n\n- Pro tier is $2.99/month.\n- Settings links the Privacy Policy and Terms of Service.\n- Settings offers account deletion.\n- Onboarding asks for precise location.\n' > "$V1G/docs/10-prd.md"
+printf 'claim: visual-direction = calm pastel\n' > "$V1G/docs/13-design-tokens.md"
+assert_exit 0 "Sprint 8 V1: a price in the founder's own words, account deletion, privacy policy, sensitive data and visual direction fire no gate (AU-1, PR-1)" \
+  node "$V1TR" --project-root "$V1G" --only gates
+printf '# PRD\n\n- Pro tier is $4.99/month.\n' > "$V1G/docs/10-prd.md"
+assert_exit 1 "Sprint 8 V1: ...but a price the founder never wrote still fires (PR-1b)" \
+  node "$V1TR" --project-root "$V1G" --only gates
+assert_has "$TMP/out" "Block only the tickets it touches" "Sprint 8 V1: ...and blocks only its tickets, not the loop"
+# PR-2: an approval is matched case-insensitively — a re-cased document is not a new decision.
+printf '2026-11-21 FOUNDER DECISION: Pricing — $4.99/MONTH — approved at Gate 1\n' > "$V1G/docs/00-founder-intent/decisions.md"
+assert_exit 0 "Sprint 8 V1: a decision matches its subject case-insensitively (PR-2)" \
+  node "$V1TR" --project-root "$V1G" --only gates
+# AU-7: release-manager appends `— vX.Y.Z` to a WAIVED: line once the version heading exists; the
+# founder's one approval must still cover it, so nobody restates it into decisions.md.
+V1W="$TMP/s8v1-waiver"; rm -rf "$V1W"; mkdir -p "$V1W/docs/00-founder-intent"
+printf 'brief\n' > "$V1W/docs/00-founder-intent/brief.md"
+printf '2026-11-21 FOUNDER DECISION: waiver — docs/51-bugs.md — founder — no QA pass this time — Approved by founder\n' > "$V1W/docs/00-founder-intent/decisions.md"
+printf '## v1.0.0\n\nWAIVED: docs/51-bugs.md — founder — no QA pass this time — v1.0.0\n' > "$V1W/docs/60-releases.md"
+assert_exit 0 "Sprint 8 V1: the version field release-manager appends does not re-open an approved waiver (AU-7)" \
+  node "$V1TR" --project-root "$V1W" --only gates
+printf '## v1.0.0\n\nWAIVED: docs/50-test-plan.md — founder — skipped — v1.0.0\n' > "$V1W/docs/60-releases.md"
+assert_exit 1 "Sprint 8 V1: ...while a different waiver still fires" node "$V1TR" --project-root "$V1W" --only gates
+# FL-10: with no docs/52-analytics.md the founder never asked for telemetry; shipped code owes no event.
+V1A="$TMP/s8v1-analytics"; rm -rf "$V1A"; cp -R "$FIX/trace-broken" "$V1A"
+node "$V1TR" --project-root "$V1A" --only trace --json > "$TMP/s8v1a.json" 2>/dev/null
+assert_finding "$TMP/s8v1a.json" code_no_analytics "Sprint 8 V1: a project with an analytics plan still owes events"
+rm -f "$V1A/docs/52-analytics.md"
+node "$V1TR" --project-root "$V1A" --only trace --json > "$TMP/s8v1a.json" 2>/dev/null
+node -e 'process.exit(require(process.argv[1]).findings.some((f) => f.code === "code_no_analytics") ? 1 : 0)' "$TMP/s8v1a.json" \
+  && ok "Sprint 8 V1: ...and one without docs/52-analytics.md owes none (FL-10)" \
+  || bad "Sprint 8 V1: ...and one without docs/52-analytics.md owes none (FL-10)"
+# PR-10: intake writes its Q&A to a new file; founder-intent accepts it (appending to brief.md is TAMPERED).
+V1I="$TMP/s8v1-intake"; rm -rf "$V1I"; mkdir -p "$V1I/docs/00-founder-intent"
+printf 'A habit tracker.\n' > "$V1I/docs/00-founder-intent/brief.md"
+node "$HERE/founder-intent.mjs" --project-root "$V1I" --write >/dev/null 2>&1
+printf 'Q: who is it for? A: students\n' > "$V1I/docs/00-founder-intent/intake-qa-2026-11-21.md"
+node "$HERE/founder-intent.mjs" --project-root "$V1I" --write >/dev/null 2>&1
+assert_exit 0 "Sprint 8 V1: intake Q&A in its own dated file keeps the founder record clean (PR-10)" \
+  node "$HERE/founder-intent.mjs" --project-root "$V1I"
+grep -qF 'intake-qa-<date>.md' "$HERE/../skills/requirements-intake/SKILL.md" && grep -qF 'Under `--yolo` (or `/loop`) ask nothing.' "$HERE/../skills/requirements-intake/SKILL.md" \
+  && ok "Sprint 8 V1: ...and the intake skill says so, and asks nothing under --yolo (PR-9)" \
+  || bad "Sprint 8 V1: ...and the intake skill says so, and asks nothing under --yolo (PR-9)"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

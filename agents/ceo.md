@@ -34,8 +34,8 @@ When invoked at project start, your job is to produce a `docs/00-vision.md` file
 - One-sentence mission
 - Target user (specific persona, not "everyone")
 - The problem in their words
-- The founder's goals as `[G-NNN]` lines, each with `src:` naming the `docs/00-founder-intent/` file
-  it came from, and the top 3 success metrics as `[O-NNN]` outcomes with numeric targets, each with
+- The founder's goals as `[G-NNN]` lines, each with `src:` naming the founder-record file it came
+  from by its full path (`src: docs/00-founder-intent/brief.md` — a bare `brief.md` reads as unsourced), and the top 3 success metrics as `[O-NNN]` outcomes with numeric targets, each with
   `src: G-NNN` (the `intent-trace` ID convention)
 - v1 scope: a list of capabilities — each one a single short phrase
 - Explicit non-goals — what we are NOT building

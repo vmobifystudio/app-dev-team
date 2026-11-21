@@ -381,7 +381,8 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    learnings is a real result, not a reason to skip the step.
 
    Then run `/app-learn` on this project so the inbox is folded into `knowledge/`. Its conflict
-   rules still apply: additions auto-apply, conflicts wait for the user.
+   rules still apply: additions auto-apply; a conflict is recorded `pending` for later review and
+   the run does not wait on it.
 
 ## Safety
 
@@ -392,4 +393,4 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 - Never ship across an open S1/S2 bug or a critical security finding.
 - **Never ship a build nobody launched.** `RUNTIME GATE: FAIL` has no waiver; `CANNOT EVALUATE`
   needs a recorded one naming who decided and why.
-- Never bump major version without explicit user instruction.
+- Version by semver from the diff (breaking → major), stated in the release notes; never ask.

@@ -11,24 +11,33 @@ Build `docs/10-prd.md` and `docs/11-backlog.md` from `docs/00-vision.md` and `do
 
 1. **Product summary** — 2-3 sentences.
 2. **Personas** — 1-3, each with: name, goal, frustration, context-of-use.
-3. **User journeys** — 3-7 prose paragraphs, not bullets. Each paragraph: entry → steps → exit → success state.
+3. **User journeys** — 3-7 prose paragraphs, not bullets, each under a `### [J-NN] <name>` heading. Each paragraph: entry → steps → exit → success state.
 4. **Feature table** —
 
-   | ID | Name | Description | Priority | Acceptance criteria |
-   |----|------|-------------|----------|---------------------|
+   | ID | Name | Description | Priority | Trace |
+   |----|------|-------------|----------|-------|
+   | [F-001] | ... | ... | P0 | src: O-001 · rev: YYYY-MM-DD |
 
-   Use F-001, F-002, ... Priority is P0/P1/P2 (P0 = MVP must-have). Each row cites the founder
-   outcome it serves as `src: O-NNN` (the `intent-trace` convention); a feature that serves no
-   `[O-NNN]` is an invented requirement. **The `[F-NNN]` ID is mandatory and is the join key of the
-   whole pipeline** — a feature row without one is unreachable from every downstream role.
+   Then, under the table, each feature's acceptance criteria as their own lines — one per
+   criterion, the ID first so `trace.mjs` sees it declared:
+
+   `- [AC-001] Given <state>, When <action>, Then <observable result> — src: F-001`
+
+   Priority is P0/P1/P2 (P0 = MVP must-have). Each row cites the founder outcome it serves as
+   `src: O-NNN` (the `intent-trace` convention) — or `src: team-default|house-kb` for a `[TD-NNN]`
+   team decision (`docs/03-decision-rights.md`); a feature that serves neither is an invented
+   requirement. **The bracketed `[F-NNN]` ID is mandatory and is the join key of the whole
+   pipeline** — a feature row without one is unreachable from every downstream role. `rev:` is the
+   date the row last changed; amend it whenever the row does.
 
 5. **User stories** — for each P0 feature, 1–5 stories:
    *As a [persona], I want to [action] so that [outcome]*
-   plus Given/When/Then acceptance.
+   citing the `[AC-NNN]` lines it is accepted by (never a second paraphrase of them).
 
 6. **Out of scope** — explicit list. Repeat the CEO's non-goals, then add product-level cuts.
 
-7. **Open questions** — what needs CEO or user input.
+7. **Open questions** — each one already decided as an `ASSUMED` `[TD-NNN]` default (listed at
+   Gate 1); only money, irreversible actions or scope beyond the brief are left for the founder.
 
 ## Backlog format
 

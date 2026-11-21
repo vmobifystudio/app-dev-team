@@ -596,6 +596,11 @@ MF47Q@@scripts/lib/evidence.mjs@@&& /^integration\/wave-/.test(String(rec.branch
 MF47R@@scripts/spawn-prompt.mjs@@row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict@@row.status === 'qa') return composeQaVerdict@@PR47 fixes: a QA- ticket at qa is composed as a verification@@PR47 fixes
 MF47S@@scripts/merge-reconcile.mjs@@corrected --by tech-manager --detail "<what went wrong>"@@corrected --detail "<what went wrong>"@@PR47 fixes: merge-reconcile prints the full corrected command, with --by@@PR47 fixes
 MF47T@@scripts/dispatch-preflight.mjs@@${inlineTokenFlag(resolve(String(flags.root)), 'tech-manager', flags.ticket)}@@@@PR47 fixes: dispatch-preflight's corrected command is absolute@@PR47 fixes
+S8V1A@@scripts/trace.mjs@@if (id !== 'waiver' && founderWords.includes(s)) return true;@@if (false) return true;@@Sprint 8 V1: a price in the founder's own words@@Sprint 8 V1
+S8V1B@@scripts/trace.mjs@@re.test(l) && l.toLowerCase().includes(s)@@re.test(l) && l.includes(subj)@@Sprint 8 V1: a decision matches its subject case-insensitively@@Sprint 8 V1
+S8V1C@@scripts/trace.mjs@@.replace(/\s*—\s*v\d+\.\d+\.\d+\s*$/, '')@@@@Sprint 8 V1: the version field release-manager appends does not re-open an approved waiver@@Sprint 8 V1
+S8V1D@@scripts/trace.mjs@@const wantsAnalytics = docs.some((d) => d.rel === 'docs/52-analytics.md');@@const wantsAnalytics = true;@@Sprint 8 V1: ...and one without docs/52-analytics.md owes none@@Sprint 8 V1
+S8V1E@@scripts/trace.mjs@@  { id: 'destructive-migration', where:@@  { id: 'account-deletion', where: /^docs\//, pattern: /\baccount deletion\b/i, why: 'x' }, { id: 'destructive-migration', where:@@Sprint 8 V1: a price in the founder's own words@@Sprint 8 V1
 CATALOGUE
 }
 

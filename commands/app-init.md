@@ -25,7 +25,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    nothing to be checked against is what makes this team's loop closed. The directory is append-only:
    never edit a recorded file, add a dated line to `decisions.md` instead.
 
-1. **Run the `requirements-intake` skill** to get a clean `docs/01-intake.md`. If the user's prompt is already detailed, ask only the questions still unanswered.
+1. **Run the `requirements-intake` skill** to get a clean `docs/01-intake.md`. It asks only what it cannot infer, and under `--yolo` nothing.
 
 1a. **Activate the roster.** Invoke the `role-activation` skill: fix the **tier** (`--utility` /
    `--flagship`, else derived from the intake) and the **product type** (from the intake's
@@ -236,7 +236,8 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 7. **GATE 1 — scope-lock (human).** Print a one-screen brief — vision, P0 feature list, architecture
    headline, rough effort, top risk — and ask *"Approve scope and proceed to planning?"* Wait for the
    answer and record it in `docs/00-vision.md` under a `## Scope lock` heading, with the date and
-   anything the user cut or added.
+   anything the user cut or added, plus the `FOUNDER DECISION` lines `/app-run` step 2 writes for
+   each approved gate finding.
 
    This is the same Gate 1 `/app-run` runs, and it is the **only** place the manual flow
    (`/app-init` → `/app-plan` → `/app-build`) asks a human to approve scope before the pod starts
