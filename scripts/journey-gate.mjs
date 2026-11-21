@@ -269,13 +269,9 @@ if (basename(driver) === 'web.sh' && !env.STUDIO_WEB_URL) {
   const dir = rc && rc.platform === 'web' && rc.commit === head && hasIndex(rc.artifact) ? rc.artifact
     : scripts.start ? null : ['dist', 'build', 'out'].find(hasIndex);
   const port = await new Promise((ok) => { const s = createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => ok(p)); }); });
-  const STATIC = 'const h=require("http"),f=require("fs"),p=require("path");const d=p.resolve(process.argv[1]);' +
-    'h.createServer((q,r)=>{let x=p.resolve(d,"."+decodeURIComponent(new URL(q.url,"http://h").pathname));' +
-    'if(x!==d&&!x.startsWith(d+p.sep))return r.writeHead(403).end();if(f.existsSync(x)&&f.statSync(x).isDirectory())x=p.join(x,"index.html");' +
-    'f.existsSync(x)?r.end(f.readFileSync(x)):r.writeHead(404).end()}).listen(+process.argv[2],"127.0.0.1")';
   if (dir || scripts.start) {
     served = dir ? `static ${dir}` : 'npm run start';
-    server = dir ? spawn(process.execPath, ['-e', STATIC, resolve(root, dir), String(port)], { detached: true, stdio: 'ignore' })
+    server = dir ? spawn(process.execPath, [fileURLToPath(new URL('./lib/static-server.cjs', import.meta.url)), resolve(root, dir), String(port)], { detached: true, stdio: 'ignore' })
       : spawn('npm', ['run', 'start'], { cwd: root, detached: true, stdio: 'ignore', env: { ...env, PORT: String(port), HOST: '127.0.0.1' } });
     server.unref(); // the gate's own exit ends the run; the handler below takes the server with it
     process.on('exit', () => { try { process.kill(-server.pid, 'SIGTERM'); } catch { /* gone */ } });

@@ -13933,22 +13933,19 @@ sleep 2
 ( cd "$S86" && node "$HERE/orchestrator.mjs" round ) >"$TMP/s86.txt" 2>&1
 grep -q 'RESPAWN ios-developer APP-7' "$TMP/s86.txt" && ok "Sprint 8 V2: SM-6 orchestrator round prints RESPAWN <owner> <ID> for an expired in_progress lease" \
   || bad "Sprint 8 V2: SM-6 orchestrator round prints RESPAWN <owner> <ID> for an expired in_progress lease" "$(grep -m3 'RESPAWN\|lease' "$TMP/s86.txt")"
-# FL-3: a plan HOLD committed before every landed ticket's qa_passed is superseded, a later one is not
+# FL-3 (Codex PR #49): a plan HOLD blocks even when every landed ticket has its qa_passed.
 S8F="$TMP/s8v2-hold"; rm -rf "$S8F"; mkdir -p "$S8F/docs"
 ( cd "$S8F" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
-  && printf '# Test plan\nQA VERDICT: HOLD — journeys declared, verdict follows landing\n' > docs/50-test-plan.md \
+  && printf '# Test plan\nQA VERDICT: HOLD — offline sync loses edits on the device matrix\n' > docs/50-test-plan.md \
   && git add docs && GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' git commit -qm plan ) >/dev/null 2>&1
 printf '%s\n' '{"ts":"2026-01-01T00:00:00Z","ticket":"APP-1","event":"created","by":"tech-manager","detail":{"owner":"ios-developer"}}' \
   '{"ts":"2026-01-02T00:00:00Z","ticket":"APP-1","event":"merged","by":"tech-manager"}' \
   '{"ts":"2026-01-03T00:00:00Z","ticket":"APP-1","event":"qa_passed","by":"qa-engineer"}' > "$S8F/docs/31-board-events.jsonl"
 ( cd "$S8F" && node "$HERE/board.mjs" render ) >/dev/null 2>&1
 ( cd "$S8F" && sh "$HERE/ship-gate.sh" ) >"$TMP/s8f1.txt" 2>&1
-( cd "$S8F" && printf 'QA VERDICT: HOLD — new crash\n' >> docs/50-test-plan.md && git add docs && git commit -qm hold ) >/dev/null 2>&1
-( cd "$S8F" && sh "$HERE/ship-gate.sh" ) >"$TMP/s8f2.txt" 2>&1
-grep -q 'supersede' "$TMP/s8f1.txt" && ! grep -q 'read docs/50-test-plan.md.s exit criteria' "$TMP/s8f1.txt" \
-  && grep -q 'exit criteria before overriding' "$TMP/s8f2.txt" \
-  && ok "Sprint 8 V2: FL-3 ship-gate reads a pre-landing HOLD as superseded by qa_passed, and still blocks a newer HOLD" \
-  || bad "Sprint 8 V2: FL-3 ship-gate reads a pre-landing HOLD as superseded by qa_passed, and still blocks a newer HOLD" "$(grep -m2 'HOLD\|supersede' "$TMP/s8f1.txt" "$TMP/s8f2.txt")"
+grep -q 'exit criteria before overriding' "$TMP/s8f1.txt" \
+  && ok "Sprint 8 V2: FL-3 a QA HOLD blocks the ship gate even after every landed ticket's qa_passed" \
+  || bad "Sprint 8 V2: FL-3 a QA HOLD blocks the ship gate even after every landed ticket's qa_passed" "$(grep -m2 'HOLD' "$TMP/s8f1.txt")"
 # SM-9 / SM-10: the DoD copy is gone, and the handoff is one line per ticket
 ! grep -q 'fast` per ticket, `full` at merge' "$HERE/../skills/sprint-planner/SKILL.md" \
   && ! grep -q 'ios-developer ← APP-001, APP-004' "$HERE/../skills/sprint-planner/SKILL.md" \
@@ -14049,6 +14046,25 @@ node -e 'let s="";for(let i=1;i<=12;i++){const d=`2026-01-${String(i).padStart(2
 [ "$L8JR" = 0 ] \
   && ok "Sprint 8 lead: an unjournaled project with 12 claim days is not over the round ceiling (PR49C-5)" \
   || bad "Sprint 8 lead: an unjournaled project with 12 claim days is not over the round ceiling (PR49C-5)" "rc=$L8JR $(head -2 "$TMP/s8lj.txt")"
+# Codex PR #49 P1: the gate's static server sends a JavaScript MIME type and stays inside its dir.
+L8M="$TMP/s8lead-static"; rm -rf "$L8M"; mkdir -p "$L8M/dist/assets"; printf '<script type="module" src="/assets/a.js"></script>\n' > "$L8M/dist/index.html"
+printf 'export {}\n' > "$L8M/dist/assets/a.js"; printf 'secret\n' > "$L8M/outside.txt"
+L8MP=$(node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})')
+node "$HERE/lib/static-server.cjs" "$L8M/dist" "$L8MP" & L8MPID=$!
+L8MR=$(node -e 'const u=process.argv[1];(async()=>{for(let i=0;i<40;i++){try{const a=await fetch(u+"/assets/a.js");const b=await fetch(u+"/");const c=await fetch(u+"/%2e%2e/outside.txt");console.log(a.headers.get("content-type")+"|"+b.headers.get("content-type")+"|"+c.status);return}catch{await new Promise(r=>setTimeout(r,100))}}console.log("down")})()' "http://127.0.0.1:$L8MP")
+kill "$L8MPID" 2>/dev/null; wait "$L8MPID" 2>/dev/null
+case "$L8MR" in text/javascript\|text/html*\|403|text/javascript\|text/html*\|404) ok "Sprint 8 lead: journey-gate's static server sends text/javascript for module scripts and refuses ../ (Codex PR #49)" ;;
+  *) bad "Sprint 8 lead: journey-gate's static server sends text/javascript for module scripts and refuses ../ (Codex PR #49)" "$L8MR" ;; esac
+# Codex PR #49 P2: the BUG-NNN-fix ticket qa_failed opens inherits the failed ticket's invariants.
+L8I="$TMP/s8lead-inv"; rm -rf "$L8I"; mkdir -p "$L8I/docs"
+( cd "$L8I" && git init -q -b main . && git config user.email t@t && git config user.name t && echo x > a && git add a && git commit -qm base ) >/dev/null 2>&1
+printf '| BUG-001 | S2 | x |\n' > "$L8I/docs/51-bugs.md"
+printf '%s\n' '{"ts":"2026-01-01T00:00:00Z","ticket":"APP-001","event":"created","by":"tech-manager","detail":{"owner":"ios-developer","invariants":["INV-PAY-1"]}}' \
+  '{"ts":"2026-01-02T00:00:00Z","ticket":"APP-001","event":"merged","by":"tech-manager"}' > "$L8I/docs/31-board-events.jsonl"
+( cd "$L8I" && node "$HERE/board.mjs" move APP-001 qa_failed --by qa-engineer --detail "BUG-001" ) >"$TMP/s8li.txt" 2>&1
+( cd "$L8I" && node "$HERE/board.mjs" show BUG-001-fix --json 2>/dev/null ) | grep -q 'INV-PAY-1' \
+  && ok "Sprint 8 lead: a qa_failed fix ticket inherits the failed ticket's invariants (Codex PR #49)" \
+  || bad "Sprint 8 lead: a qa_failed fix ticket inherits the failed ticket's invariants (Codex PR #49)" "$(tail -3 "$TMP/s8li.txt")"
 # FL-16: `trace --only gates` says what it checked, not "no break in the chain".
 L8T="$TMP/s8lead-trace"; rm -rf "$L8T"; mkdir -p "$L8T/docs/00-founder-intent"
 printf '# Brief\nA to-do list.\n' > "$L8T/docs/00-founder-intent/brief.md"

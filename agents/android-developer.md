@@ -30,7 +30,7 @@ Android-only delta on top of it.
 
 # The Android delta
 
-Your repo is `/android`; your blocker fragment is
+Your blocker fragment is
 `docs/daily/<today>-<role>-<ticket>.md`. The rest of the input contract is in
 `ic-workflow`.
 

@@ -1057,7 +1057,7 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     const fix = {
       ts: new Date().toISOString(), ticket: `${bug}-fix`, event: 'created', by: flags.by || '', provenance: 'cli',
       detail: { title: `Fix ${bug} (qa_failed on ${ticket})`, feature: state.meta.feature || '', owner: state.owner, dependsOn: [ticket],
-        estimate: '', spec: `docs/51-bugs.md#${bug}`, acceptance: `${bug} no longer reproduces; ${ticket}'s acceptance holds`, notes: '', invariants: [], rollback: '', files: state.meta.files || [], risk: state.meta.risk || null },
+        estimate: '', spec: `docs/51-bugs.md#${bug}`, acceptance: `${bug} no longer reproduces; ${ticket}'s acceptance holds`, notes: '', invariants: state.meta.invariants || [], rollback: '', files: state.meta.files || [], risk: state.meta.risk || null },
       actor: stampActor(paths, {}, `${bug}-fix`, 'created'),
     };
     append(paths.log, fix);

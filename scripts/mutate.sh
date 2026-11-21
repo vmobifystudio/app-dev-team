@@ -637,7 +637,6 @@ M8V2I@@scripts/round-journal.mjs@@const rounds = tagged.filter((r) => r.sprintOf
 M8V2J@@scripts/board.mjs@@if (!TICKET_ID.test(normalizeId(id)))@@if (false)@@Sprint 8 V2: EN-11 add refuses a path-shaped id@@Sprint 8 V2
 M8V2L@@scripts/board.mjs@@  return die(1, `refused ${ticket} qa_failed — ${bug} is not a row@@  return bug; die(1, `refused ${ticket} qa_failed — ${bug} is not a row@@Sprint 8 V2: QA-4 qa_failed naming a BUG-NNN that is not a docs/51-bugs.md row is refused@@Sprint 8 V2
 M8V2M@@scripts/board.mjs@@if (bug && !next.tickets.has(key(`${bug}-fix`))) {@@if (false) {@@Sprint 8 V2: QA-4 ...and it cuts BUG-001-fix@@Sprint 8 V2
-M8V2N@@scripts/ship-gate.sh@@PASSED*) QA_PASSED_AT=${QA_EVENTS#PASSED } ;;@@PASSED*) QA_PASSED_AT= ;;@@Sprint 8 V2: FL-3 ship-gate reads a pre-landing HOLD as superseded@@Sprint 8 V2
 M8V2O@@scripts/orchestrator.mjs@@.filter(([, id]) => tickets.get(key(id))?.status === 'in_progress');@@.filter(() => false);@@Sprint 8 V2: SM-6 orchestrator round prints RESPAWN@@Sprint 8 V2
 M8V2P@@scripts/round-journal.mjs@@Math.max(DEFAULTS.agentSpawns, 2 * tickets)@@DEFAULTS.agentSpawns@@Sprint 8 V2: SM-3 the per-agent default scales with the board@@Sprint 8 V2
 M8V2Q@@scripts/round-journal.mjs@@  if (!all.length) {@@  if (false) {@@Sprint 8 V2: LN-5 an unjournaled loop is counted from the board log@@Sprint 8 V2
@@ -661,6 +660,8 @@ MS8L06@@scripts/lib/events.mjs@@if (!/\bcap \(\d+\) reached/.test(blockWhy)) {@@
 MS8L07@@scripts/lib/events.mjs@@MAX_TICKET_RETRIES + 2 * state.extraCycles) {@@MAX_TICKET_RETRIES) {@@Sprint 8 lead: reopened cannot lift a needs-approval block; after a retry cap it buys real retries (PR49C-1, PR49C-3)@@Sprint 8 lead
 MS8L08@@scripts/trace.mjs@@if (id === 'pricing' && /\d/.test(s) && founderWords.includes(s)) return true;@@if (founderWords.includes(s)) return true;@@Sprint 8 lead: 'never a destructive migration' in the brief does not pre-approve one (PR49C-2)@@Sprint 8 lead
 MS8L09@@scripts/spawn-prompt.mjs@@return evs.filter((e) => ['rework', 'rejected', 'reopened'].includes(e.event)).pop() || evs.filter((e) => e.event === 'blocked').pop();@@return evs.filter((e) => ['rework', 'rejected', 'reopened', 'blocked'].includes(e.event)).pop();@@Sprint 8 lead: a re-spawn after rejected → blocked → unblocked still says why it was rejected (PR49C-4)@@Sprint 8 lead
+MS8L10@@scripts/lib/static-server.cjs@@r.writeHead(200, { 'content-type': T[p.extname(x).toLowerCase()] || 'application/octet-stream' })@@r.writeHead(200, {})@@Sprint 8 lead: journey-gate's static server sends text/javascript for module scripts and refuses ../ (Codex PR #49)@@Sprint 8 lead
+MS8L11@@scripts/board.mjs@@invariants: state.meta.invariants || [],@@invariants: [],@@Sprint 8 lead: a qa_failed fix ticket inherits the failed ticket's invariants (Codex PR #49)@@Sprint 8 lead
 CATALOGUE
 }
 
