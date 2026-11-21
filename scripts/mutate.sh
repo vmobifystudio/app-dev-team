@@ -968,13 +968,15 @@ while IFS="$TAB" read -r id file old new expect scope <&3; do
     echo "        Make it unique. Mutating an arbitrary one of several sites proves nothing."
     rm -f "$dst.mut"; RC=2; exit 2
   fi
-  mv "$dst.mut" "$dst"
+  # Write in place, never `mv`: a fresh file takes the umask mode, so a mutated executable (a
+  # driver, a hook) stayed 644 after its restore and broke every later mode check (CI, PR #49).
+  cat "$dst.mut" > "$dst" && rm -f "$dst.mut"
 
   fails=$(run_suite "$WORK/run-$id.log" "$USE_SCOPE")
   grep '^  FAIL  ' "$WORK/run-$id.log" | sed 's/^  FAIL  //' > "$WORK/labels-$id.txt"
 
   # Unconditional restore, whatever the verdict was.
-  cp "$src" "$dst"
+  cat "$src" > "$dst"
 
   if [ "$fails" = "?" ]; then
     echo "        CANNOT RUN: the suite printed no 'N passed, M failed' line under $id."
