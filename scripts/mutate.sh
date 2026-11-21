@@ -596,6 +596,12 @@ MF47Q@@scripts/lib/evidence.mjs@@&& /^integration\/wave-/.test(String(rec.branch
 MF47R@@scripts/spawn-prompt.mjs@@row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict@@row.status === 'qa') return composeQaVerdict@@PR47 fixes: a QA- ticket at qa is composed as a verification@@PR47 fixes
 MF47S@@scripts/merge-reconcile.mjs@@corrected --by tech-manager --detail "<what went wrong>"@@corrected --detail "<what went wrong>"@@PR47 fixes: merge-reconcile prints the full corrected command, with --by@@PR47 fixes
 MF47T@@scripts/dispatch-preflight.mjs@@${inlineTokenFlag(resolve(String(flags.root)), 'tech-manager', flags.ticket)}@@@@PR47 fixes: dispatch-preflight's corrected command is absolute@@PR47 fixes
+MS8V8-1@@scripts/project-profile.mjs@@if (inRepo && !/^!! /m.test(@@if (false && !/^!! /m.test(@@Sprint 8 V8: FL-4 project-profile BLOCKS a build output dir that is not gitignored@@Sprint 8 V8
+MS8V8-2@@scripts/project-profile.mjs@@return { blocked: 'npm run build wrote nothing@@return { dir: 'dist', blocked: 'npm run build wrote nothing@@Sprint 8 V8: FL-4 project-profile BLOCKS a web build that writes no output dir@@Sprint 8 V8
+MS8V8-3@@scripts/privacy-disclosure-scan.mjs@@r.role === 'aso-specialist' && r.state === 'off'@@r.role === 'aso-specialist' && r.state === 'never'@@Sprint 8 V8: FL-9 privacy scan is N/A when aso-specialist is off@@Sprint 8 V8
+MS8V8-4@@scripts/team-bootstrap.mjs@@...(role === 'web-developer' ? ['index.html'@@...(role === 'web-developer-x' ? ['index.html'@@Sprint 8 V8: FL-7 web-developer may write a root index.html@@Sprint 8 V8
+MS8V8-5@@scripts/team-bootstrap.mjs@@'docs/21-engineering-principles.md', ...specs];@@'docs/21-engineering-principles.md'];@@Sprint 8 V8: FL-8 the context manifest hashes the impl spec and not the vision@@Sprint 8 V8
+MS8V8-6@@scripts/team-bootstrap.mjs@@if (process.argv.slice(2).includes('--help')) {@@if (false) {@@Sprint 8 V8: EN-10 team-bootstrap --help prints usage@@Sprint 8 V8
 CATALOGUE
 }
 

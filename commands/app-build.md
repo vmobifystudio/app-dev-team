@@ -205,7 +205,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      ```bash
      BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") \
        || { echo "$BASE"; echo "STOP: integration branch unresolved"; exit 2; }
-     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" --static <branch> "$BASE"
+     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" --static
      ```
 
      **If `integration-branch.sh` exits 2, STOP the round** and surface its message (`$BASE` holds
@@ -363,7 +363,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    round):
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer-1
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --slot ios-developer-1
    node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
    ```
 

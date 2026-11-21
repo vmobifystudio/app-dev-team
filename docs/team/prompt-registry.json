@@ -100,13 +100,13 @@
     },
     {
       "id": "devops-engineer",
-      "version": "1.0.12",
+      "version": "1.0.13",
       "owner": "devops-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-20",
+      "validated_on": "2026-11-21",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.11",
-      "content_hash": "03a9c2b6adee44ffa8994a451c4b582ddc3a1f942910da84aa453c8a9af6ceeb"
+      "rollback_version": "1.0.12",
+      "content_hash": "e36a12475451b7c8c8d25e8a858607169ea8bec966a293d0816169807422c7bb"
     },
     {
       "id": "ios-developer",
@@ -290,13 +290,13 @@
     },
     {
       "id": "web-developer",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "owner": "web-developer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-21",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.2",
-      "content_hash": "d1612afaba8a83cdf1220d53f9dc80b6149927cdeceaed16e5a4a660ea15aec2"
+      "rollback_version": "1.0.3",
+      "content_hash": "a7ef1c6d42a75131f52b4a5a2e583c09c0e83d4a07e0407534d0f5ceec099175"
     },
     {
       "id": "incident-commander",

@@ -11414,7 +11414,7 @@ grep -E '^  CANNOT EVALUATE  toolchain .*\[project-profile: ' "$TMP/k2round.txt"
 # C3W-11 — a web profile with no package.json says exactly that, not "declared tools absent".
 printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{}}\n' > "$K2Q/docs/team/project-profile.json"
 node "$HERE/project-profile.mjs" check --root "$K2Q" >"$TMP/k2pp.txt" 2>&1
-[ $? = 2 ] && grep -q 'no package.json at' "$TMP/k2pp.txt" && grep -q 'web build script missing' "$TMP/k2pp.txt" && ! grep -q 'declared tool(s) are absent' "$TMP/k2pp.txt" \
+[ $? = 2 ] && grep -q 'no package.json at' "$TMP/k2pp.txt" && grep -q 'web build unproven' "$TMP/k2pp.txt" && ! grep -q 'declared tool(s) are absent' "$TMP/k2pp.txt" \
   && ok "K2: project-profile names the missing package.json / build script precisely (C3W-11)" \
   || bad "K2: project-profile names the missing package.json / build script precisely (C3W-11)" "$(cat "$TMP/k2pp.txt")"
 rm -rf "$K2Q"
@@ -11768,7 +11768,7 @@ process.exit(narrow.some((i) => /never in the reviewed range/.test(i)) && !whole
   || bad "P1: merged refuses an approval bound to tip~1..tip — the approved range must start at or before merge-base(integration, tip) (C4G-G5)"
 
 # ·· C4G-G7: a JS test command must install its deps in verify-done's fresh worktree
-P1P="$TMP/p1-prof"; rm -rf "$P1P"; mkdir -p "$P1P/docs/team"; printf '{"scripts":{"build":"true","test":"true"}}\n' > "$P1P/package.json"
+P1P="$TMP/p1-prof"; rm -rf "$P1P"; mkdir -p "$P1P/docs/team"; printf '{"scripts":{"build":"mkdir -p dist && echo x > dist/index.html","test":"true"}}\n' > "$P1P/package.json"
 printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"npm test"}}\n' > "$P1P/docs/team/project-profile.json"
 assert_exit 1 "P1: project-profile check BLOCKS a bare 'npm test' — the fresh worktree has no node_modules (C4G-G7)" \
   node "$HERE/project-profile.mjs" check --root "$P1P"
@@ -13575,6 +13575,47 @@ printf '{"requireTicketFiles": true, "requireActorTokens": true}\n' > "$P47DP/.s
 grep -qF "$HERE/board.mjs\" move APP-001 corrected --by tech-manager" "$TMP/p47dp.txt" && grep -q -- '--token "$(node' "$TMP/p47dp.txt" \
   && ok "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" \
   || bad "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" "$(grep -m3 'corrected\|token\|dispatch' "$TMP/p47dp.txt")"
+
+# --- Sprint 8 V8: web project path (scaffold, build output, privacy N/A, capabilities, context) ---
+echo "Sprint 8 V8: web project path"
+V8="$TMP/s8v8"; rm -rf "$V8"; mkdir -p "$V8/docs/team"
+( cd "$V8" && git init -q -b main . )
+printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"npm ci && npm test"}}\n' > "$V8/docs/team/project-profile.json"
+echo '<p>hi</p>' > "$V8/index.html"
+# FL-4: a build that writes no output dir is caught at the profile check, not at release-candidate.
+printf '{"scripts":{"build":"node -e 0","test":"true"}}\n' > "$V8/package.json"
+assert_exit 1 "Sprint 8 V8: FL-4 project-profile BLOCKS a web build that writes no output dir" node "$HERE/project-profile.mjs" check --root "$V8"
+assert_has "$TMP/out" "release-candidate has no build output to bind" "Sprint 8 V8: FL-4 ...naming release-candidate's refusal"
+printf '{"scripts":{"build":"mkdir -p dist && cp index.html dist/","test":"true"}}\n' > "$V8/package.json"
+assert_exit 1 "Sprint 8 V8: FL-4 project-profile BLOCKS a build output dir that is not gitignored" node "$HERE/project-profile.mjs" check --root "$V8"
+echo 'dist/' > "$V8/.gitignore"
+assert_exit 0 "Sprint 8 V8: FL-4 ...and clears a gitignored dist/ the build wrote" node "$HERE/project-profile.mjs" check --root "$V8"
+# FL-9: no store listing on a roster with aso-specialist off is N/A, not CANNOT EVALUATE.
+printf '# Roster\n\n| Role | State | Reason |\n|---|---|---|\n| aso-specialist | off | web-app has no store listing |\n' > "$V8/docs/02-team-roster.md"
+assert_exit 0 "Sprint 8 V8: FL-9 privacy scan is N/A when aso-specialist is off and docs/15-aso.md is absent" node "$HERE/privacy-disclosure-scan.mjs" "$V8"
+assert_has "$TMP/out" "N/A: store disclosure" "Sprint 8 V8: FL-9 ...saying N/A: store disclosure"
+printf '# Roster\n\n| Role | State | Reason |\n|---|---|---|\n| aso-specialist | active | mobile |\n' > "$V8/docs/02-team-roster.md"
+assert_exit 2 "Sprint 8 V8: FL-9 ...but stays CANNOT EVALUATE when aso-specialist is active" node "$HERE/privacy-disclosure-scan.mjs" "$V8"
+# EN-10: --help prints usage and writes nothing.
+V8H="$TMP/s8v8-help"; rm -rf "$V8H"; mkdir -p "$V8H"
+( cd "$V8H" && node "$HERE/team-bootstrap.mjs" --help ) >"$TMP/s8v8h.txt" 2>&1; V8RC=$?
+[ "$V8RC" = 0 ] && grep -q 'Usage:' "$TMP/s8v8h.txt" && [ ! -e "$V8H/docs" ] \
+  && ok "Sprint 8 V8: EN-10 team-bootstrap --help prints usage, exits 0 and writes no manifest" \
+  || bad "Sprint 8 V8: EN-10 team-bootstrap --help prints usage, exits 0 and writes no manifest" "rc=$V8RC $(ls "$V8H")"
+# FL-7 / FL-8: web-developer may write the ordinary web layout; context tracks the impl spec, not vision.
+for f in 00-vision.md 10-prd.md 22-impl-spec-web.md; do echo "# $f" > "$V8/docs/$f"; done
+node "$HERE/team-bootstrap.mjs" --root "$V8" --force >/dev/null 2>&1
+assert_exit 0 "Sprint 8 V8: FL-7 web-developer may write a root index.html" node "$HERE/capability-check.mjs" --manifest "$V8/docs/team/capabilities.json" --role web-developer --operation write --path "$V8/index.html"
+assert_exit 0 "Sprint 8 V8: FL-7 ...and scripts/build.mjs" node "$HERE/capability-check.mjs" --manifest "$V8/docs/team/capabilities.json" --role web-developer --operation write --path "$V8/scripts/build.mjs"
+assert_exit 1 "Sprint 8 V8: FL-7 ...while ios-developer still may not write index.html" node "$HERE/capability-check.mjs" --manifest "$V8/docs/team/capabilities.json" --role ios-developer --operation write --path "$V8/index.html"
+grep -q '22-impl-spec-web.md' "$V8/docs/team/context-manifest.json" && ! grep -q '00-vision.md' "$V8/docs/team/context-manifest.json" \
+  && ok "Sprint 8 V8: FL-8 the context manifest hashes the impl spec and not the vision" \
+  || bad "Sprint 8 V8: FL-8 the context manifest hashes the impl spec and not the vision" "$(grep -o 'docs/[^"]*' "$V8/docs/team/context-manifest.json" | sort -u | tr '\n' ' ')"
+# FL-1 / FL-2: devops-engineer owns the web scaffold at /app-init; no ticket is assigned it.
+! grep -q 'first `web-developer` scaffold ticket' "$HERE/../commands/app-init.md" && grep -q 'playwright' "$HERE/../agents/devops-engineer.md" \
+  && ok "Sprint 8 V8: FL-1/FL-2 devops-engineer scaffolds package.json + Playwright at /app-init" \
+  || bad "Sprint 8 V8: FL-1/FL-2 devops-engineer scaffolds package.json + Playwright at /app-init"
+rm -rf "$V8" "$V8H"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

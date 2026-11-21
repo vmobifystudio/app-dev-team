@@ -32,7 +32,7 @@
  *   1  a declared tool is present at the WRONG version — this project will not build correctly here
  *   2  cannot evaluate — no profile, or a declared tool is absent so nothing could be compared
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
@@ -96,6 +96,7 @@ function cmdCheck() {
   let blocked = 0;
   let unevaluable = 0;
   let missingBuild = '';
+  let webBlocked = '';
   process.stdout.write(`PROJECT PROFILE — ${p.platform || 'platform unstated'}\n\n`);
 
   for (const t of tools) {
@@ -132,8 +133,13 @@ function cmdCheck() {
     let why = '';
     try { scripts = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).scripts || {}; }
     catch (e) { why = e.code === 'ENOENT' ? `no package.json at ${ROOT}` : `package.json does not parse (${e.message})`; }
-    if (scripts?.build) process.stdout.write(`  PASS             package.json build script (${scripts.build})\n`);
-    else {
+    if (scripts?.build) {
+      process.stdout.write(`  PASS             package.json build script (${scripts.build})\n`);
+      const out = webBuildOutput();
+      if (out.dir) process.stdout.write(`  PASS             npm run build wrote ${out.dir}/ (gitignored) — the dir release-candidate binds\n`);
+      else if (out.blocked) { webBlocked = out.blocked; process.stdout.write(`  BLOCKED          ${out.blocked}\n`); }
+      else { missingBuild = out.why; process.stdout.write(`  CANNOT EVALUATE  ${out.why}\n`); }
+    } else {
       // C3W-11: say WHICH of the two it is, and that it is not a tool — the RESULT line used to
       // count it as "declared tool(s) are absent", which sent the reader hunting a missing binary.
       missingBuild = why || 'package.json has no "build" script';
@@ -161,19 +167,56 @@ function cmdCheck() {
   }
   blocked += coldDeps.length;
 
-  if (blocked) {
-    process.stdout.write(`\nRESULT: BLOCKED — ${blocked - coldDeps.length ? `${blocked - coldDeps.length} tool(s) are the wrong version` : ''}${blocked - coldDeps.length && coldDeps.length ? '; ' : ''}${coldDeps.length ? `test.${coldDeps.join('/test.')} cannot install its dependencies in verify-done's fresh worktree` : ''}. This project will not build correctly here.\n`);
+  if (blocked || webBlocked) {
+    process.stdout.write(`\nRESULT: BLOCKED — ${[
+      blocked - coldDeps.length ? `${blocked - coldDeps.length} tool(s) are the wrong version` : '',
+      coldDeps.length ? `test.${coldDeps.join('/test.')} cannot install its dependencies in verify-done's fresh worktree` : '',
+      webBlocked,
+    ].filter(Boolean).join('; ')}. This project will not build correctly here.\n`);
     process.exit(1);
   }
   if (unevaluable || missingBuild) {
     process.stdout.write(`\nRESULT: CANNOT EVALUATE — ${[
       unevaluable ? `${unevaluable} declared tool(s) are absent, so the toolchain is UNPROVEN here` : '',
-      missingBuild ? `web build script missing: ${missingBuild}` : '',
+      missingBuild ? `web build unproven: ${missingBuild}` : '',
     ].filter(Boolean).join('; ')}.\n` +
-      `  This is NOT a pass. ${unevaluable ? 'Install the absent tools, or run on a machine that has them. ' : ''}${missingBuild ? 'Add package.json "scripts.build".' : ''}\n`);
+      `  This is NOT a pass. ${unevaluable ? 'Install the absent tools, or run on a machine that has them. ' : ''}${missingBuild ? 'Fix the web build named above.' : ''}\n`);
     process.exit(2);
   }
   process.stdout.write('\nRESULT: CLEAR — every declared tool is present at its declared version.\n');
+}
+
+/**
+ * FL-4: run the build once and find the output dir release-candidate will bind. It refuses a dir git
+ * tracks (that is source), so a no-build static site used to pass every gate and fail only at the
+ * last step of /app-ship. One build at /app-plan moves that failure to where it is cheap. Gitignored,
+ * not merely untracked: an untracked output dir dirties the tree on every build and stales the gates.
+ * ponytail: dist/build/out/.next only (web-conventions.md §Build output); add a profile key if a stack
+ * writes elsewhere.
+ */
+function webBuildOutput() {
+  let status = 0;
+  let output = '';
+  try { execFileSync('npm', ['run', 'build'], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 600000 }); }
+  catch (e) { status = e.status ?? null; output = `${e.stdout || ''}${e.stderr || ''}${e.message || ''}`; }
+  if (status !== 0) {
+    const c = classify({ status, output });
+    const tail = output.split('\n').map((l) => l.trim()).filter((l) => l && !/^(Command failed|npm (ERR!|error))/.test(l)).pop() || '';
+    return c.kind === 'environment'
+      ? { why: `npm run build could not run (${c.reason}) — install dependencies (npm ci) and re-run` }
+      : { blocked: `npm run build failed (exit ${status}): ${tail}` };
+  }
+  const git = (args) => { try { return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return null; } };
+  const inRepo = git(['rev-parse', '--is-inside-work-tree']) !== null;
+  for (const d of ['dist', 'build', 'out', '.next']) {
+    const dir = resolve(ROOT, d);
+    if (!existsSync(dir) || !readdirSync(dir).length) continue;
+    if (inRepo && !/^!! /m.test(git(['status', '--porcelain', '--ignored', '--', d]) || '')) {
+      return { blocked: `${d}/ is not gitignored — release-candidate refuses tracked output and untracked output dirties the tree; add ${d}/ to .gitignore` };
+    }
+    return { dir: d };
+  }
+  return { blocked: 'npm run build wrote nothing to dist/, build/, out/ or .next/ — release-candidate has no build output to bind (a no-build static site needs a build that copies it to dist/)' };
 }
 
 function cmdShow() {

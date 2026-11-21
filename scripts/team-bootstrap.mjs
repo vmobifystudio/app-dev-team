@@ -54,7 +54,7 @@
  *         1 refused — files exist and --force was not given
  *         2 cannot evaluate — the root does not exist
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -63,6 +63,12 @@ import { parseArgs } from './lib/args.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const die = (code, message) => { process.stderr.write(`team-bootstrap: ${message}\n`); process.exit(code); };
+// EN-10: `--help` used to run the real action and write four manifests into the cwd.
+if (process.argv.slice(2).includes('--help')) {
+  const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  process.stdout.write(`${src.slice(src.indexOf(' * Usage:'), src.indexOf('*/')).replace(/^ \* ?/gm, '').trim()}\n`);
+  process.exit(0);
+}
 const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root']), die });
 
 const ROOT = resolve(String(flags.root || '.'));
@@ -107,7 +113,9 @@ const MANIFESTS = {
       operations: ['read', 'write'],
       // ROOT BUILD MANIFESTS TOO (W9): a web developer adding a dependency writes package.json and
       // its lockfile; an Android one writes build.gradle. Source-only refused the first real ticket.
-      allowed_paths: ['src', 'app', 'lib', 'test', 'tests', 'ios', 'android', 'web', 'docs/daily', ...BUILD_MANIFESTS],
+      allowed_paths: ['src', 'app', 'lib', 'test', 'tests', 'ios', 'android', 'web', 'docs/daily', ...BUILD_MANIFESTS,
+        // FL-7: the ordinary web layout — a root index.html, public/ assets, build scripts, ignores.
+        ...(role === 'web-developer' ? ['index.html', 'public', 'scripts', '.gitignore'] : [])],
     })).concat(
       ['ux-architect', 'product-designer', 'product-manager', 'product-researcher',
        'qa-engineer', 'data-analyst', 'aso-specialist', 'verification-engineer'].map((role) => ({
@@ -230,8 +238,11 @@ if (existsSync(ctx) && !flags.force && !flags['context-only']) {
   // is correct: a manifest that guessed its own sources would certify a freshness claim about files
   // nobody named. So they are discovered from what the project has, and their absence is reported
   // as "this project has not been planned yet" rather than papered over.
-  const candidates = ['docs/00-vision.md', 'docs/10-prd.md', 'docs/11-backlog.md', 'docs/20-architecture.md', 'docs/12-flows.md',
-    'docs/21-engineering-principles.md'];
+  // FL-8: the impl specs are what mid-sprint Q&A edits and ICs build from; vision and backlog change
+  // at scope lock and release time without changing what an IC needs, so they only caused churn.
+  const specs = existsSync(join(ROOT, 'docs')) ? readdirSync(join(ROOT, 'docs')).filter((f) => /^22-impl-spec-.*\.md$/.test(f)).sort().map((f) => `docs/${f}`) : [];
+  const candidates = ['docs/10-prd.md', 'docs/20-architecture.md', 'docs/12-flows.md',
+    'docs/21-engineering-principles.md', ...specs];
   // NOT docs/31-board.md: it is a generated view that board.mjs rewrites on EVERY move, so hashing
   // it made preflight STALE the moment the first ticket was claimed — one spawn per round, ever.
   // The board's own integrity is board-doctor's and `board.mjs verify`'s job.
