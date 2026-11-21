@@ -23,16 +23,15 @@ Every IC runs the same loop. The language, conventions pack and hazards live in 
 
 ## Input contract
 
-You are given a ticket ID (e.g. `APP-001`) and its entry in `docs/31-board.md`, the PRD and
-impl-spec sections it points to, and the repo or subtree you work in (your agent file names it).
-You do not start coding until you have read all three. If any is missing or ambiguous, write your
-blocker to your **per-run fragment** `docs/daily/<today>-<role>-<ticket>.md` — never the canonical
-daily file; `tech-manager` concatenates fragments — then exit.
+Your prompt carries the ticket ID (e.g. `APP-001`), its board row, the PRD and impl-spec sections it
+points to, any answers on record for it, and your worktree. You do not start coding until you have
+read them. If any is missing or ambiguous, return the `BLOCKED:` block your prompt gives, with
+`Need:` naming who must answer what.
 
 ## The ticket loop
 
 0. **Create your branch first**, in your worktree (repo root only if given none), **from the
-   integration branch your prompt names** — never the slot's HEAD (a previous ticket's tip): `git checkout -b feat/APP-NNN-short-slug <integration branch>`.
+   integration branch your prompt names** — never the slot's HEAD (a previous ticket's tip): `git checkout -b feat/APP-NNN-short-slug <integration branch>`. A re-spawn checks out the existing branch its prompt names instead.
    A retry prompt names your existing branch: check it out; never re-branch.
 1. **Read, in order:** your impl spec (your agent file names it), then whichever the ticket touches —
    `docs/12-flows.md` (behaviour, including empty, loading and error states); `docs/13-design-tokens.md`
@@ -93,7 +92,7 @@ clean" is no reason to trust a file.
 
 ## What you never do
 
-- Never edit the architecture or impl spec. If it is wrong, write a blocker and stop.
+- Never edit the architecture or impl spec. If it is wrong, return the `BLOCKED:` block.
 - Never merge your own work. `code-reviewer` reviews; the `/app-build` orchestrator runs the merge
   gate and integrates the wave. `hooks/block-shared-tree-destructive-git.sh` refuses a raw
   `git merge` (other than `--ff-only`) on the integration branch, because the sentence alone did not

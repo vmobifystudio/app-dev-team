@@ -13,7 +13,12 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
 2. **Sprint goal** — one sentence at the top of `docs/30-sprint-plan.md`.
 
-3. **Capacity** — default 3 developer agents (iOS, Android, optional Backend), 1 code-reviewer, 1 qa-engineer, 1 ux-architect, 1 product-designer. Tune to project scope.
+3. **Capacity and scope** — default 3 developer agents (iOS, Android, optional Backend), 1 code-reviewer, 1 qa-engineer, 1 ux-architect, 1 product-designer. Tune to project scope.
+   **What joins this sprint:** P0 rows first, then approved P1s, then bugs queued "to sprint N+1".
+   Size it from the last sprint: `board.mjs show --json` metrics `ticketsPerRound` × the rounds
+   budget (`round-journal.mjs check`); the first sprint takes P0 only. Write `Sprint N` at the top of
+   `docs/30-sprint-plan.md` — `/app-build` journals its rounds with `--sprint N`, which scopes the budget.
+   A row that will not be done is `descoped --by tech-manager --detail "<why>"`, never left `blocked`.
 
 4. **Assign for parallelism** — group tickets so each developer has independent work to start with. Stack dependent work behind it.
 
@@ -55,10 +60,10 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    anchor (`prd#F-001 + arch§3`) so devs don't grep, `--acceptance` is the Given/When/Then,
    `--notes` is free text only.
 
-   **`--estimate` also drives how much process the ticket carries** — see `process-tiering`. An
-   XS/S ticket doesn't need the same ceremony an L/XL one does; if the track isn't the default
-   (M/"standard"), say so explicitly in `--notes` (e.g. `"track: floor"`) so `tech-lead` and
-   `code-reviewer` don't have to re-derive it.
+   **`--estimate` also drives how much process the ticket carries.** State the track in `--notes`
+   (`track: floor|light|full`); auth/payments/PII/security surfaces are `full` at any size; what
+   each track runs at review is `agents/code-reviewer.md`'s table. `--acceptance` copies the
+   ticket's `[AC-NNN]` IDs and text verbatim from `docs/10-prd.md`.
 
 6. **The event log — `docs/31-board-events.jsonl`, one JSON object per line, append-only.**
 
@@ -78,7 +83,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
    **Events:** `created · claimed · assigned · done_reported · verified · verified_static ·
    rejected · review_requested · started · approved · changes · merged · qa_passed · qa_failed ·
-   blocked · unblocked · reopened · closed`
+   blocked · unblocked · reopened · descoped · closed`
 
    `verified_static` is the lane for work that is inspectable but not runnable (verify-done exit 2).
    It unlocks review on a ticket whose toolchain is broken, refuses `closed`, and holds the release
@@ -105,7 +110,7 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
 
    Mutations during the sprint. Under `requireActorTokens` every gate event below (`verified`,
    `verified_static`, `rejected`, `approved`, `changes`, `merged`, `qa_passed`, `qa_failed`,
-   `closed`, `reopened`) also carries `--token <T>` — an agent's from its composed prompt, the
+   `closed`, `reopened`, `rework`, plus `corrected`/`descoped`) also carries `--token <T>` — an agent's from its composed prompt, the
    orchestrator's minted inline (`/app-build` §Tokens), the founder's never minted by an agent:
 
    ```bash
@@ -116,7 +121,9 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    board.mjs move APP-001 changes --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md
    board.mjs move APP-001 approved --by code-reviewer --verdict docs/53-reviews/APP-NNN-cycle-N.md
    board.mjs move APP-001 merged --by tech-manager      # the orchestrator's inline merge gate
-   board.mjs move APP-001 reopened --by founder         # only the founder, only past the review cap
+   board.mjs move APP-001 reopened --by tech-lead       # once, past the review or QA-failure cap
+   board.mjs move APP-001 descoped --by tech-manager --detail "cut at scope-lock"   # terminal
+   board.mjs move APP-001 corrected --by tech-manager --acceptance "…" --file a,b --depends APP-000   # re-plan
    board.mjs show [APP-001] [--json]      # derived state + self-metrics
    board.mjs render                       # regenerate docs/31-board.md
    board.mjs migrate [board.md] --out docs/31-board-events.jsonl
@@ -135,27 +142,9 @@ Convert `docs/11-backlog.md` + `docs/22-impl-spec-*.md` into `docs/30-sprint-pla
    and `provenance: "inferred"`. An inferred log is honest; a fabricated one is the same class of
    lie as a false `DONE`. `board-doctor` stays as the backstop for hand edits and legacy boards.
 
-7. **Definition of done** — list it at the top of the board so everyone uses the same one.
-   **Every gate named here must be runnable by someone reading the board**, with the command
-   written out. A DoD that cites a tool the project cannot invoke is a gate nobody can audit:
-
-   ```
-   - Tests green — verified by:
-       sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> <integration-branch> fast
-     (`fast` per ticket, `full` at merge — the commands declared in docs/team/project-profile.json),
-     NOT by the developer's own report, and never a hand-typed test command: the board refuses a
-     record whose command is not the one it froze from the profile, so verify-done reports it
-     CANNOT EVALUATE.
-   ```
-
-   An independent verifier once graded this `NOT-GATED` because the script was nowhere in the
-   project tree — it had in fact run, invoked by the orchestrator from the plugin install, but
-   nothing on the board said where it lived, so from inside the project the gate was unverifiable.
-   **A gate whose location is unstated is indistinguishable from a gate that does not exist.**
-   - Code merged
-   - Code-reviewer approved, by a role that is not the owner, with an `approved` ledger line
-   - QA exercised the acceptance criteria
-   - Daily report mentions the close
+7. **Definition of done** — `/app-build`'s verification table (static per ticket, the full suite per
+   wave) and the board's own refusals ARE the definition; the board is generated, so it is not copied
+   here.
 
 8. **Definition of Ready — a ticket must be answerable before it is assigned.**
 
@@ -235,9 +224,10 @@ merge will pick one arbitrarily.
 
 ```
 SPRINT 1 KICKED OFF
-Parallel launch:
-- ios-developer ← APP-001, APP-004
-- android-developer ← APP-002, APP-005
+Parallel launch (one line per ticket — one agent per ticket, never a batched prompt):
+- ios-developer ← APP-001
+- ios-developer ← APP-004
+- android-developer ← APP-002
 - backend-developer ← APP-003 (or skip if out of scope)
 - ux-architect ← finalize flows and the screen-and-state inventory for sprint 1 features
 - product-designer ← compose the screens in that inventory

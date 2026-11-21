@@ -659,9 +659,37 @@ function pluginLib(body, hereAbs) {
  * stops the confused and the literal, and makes the hostile leave a visible trail in its own
  * transcript.
  */
+// AU-9: store upload, production deploy and spending are the founder's checklist rows. Read per
+// command segment, quotes masked first, so a sentence that merely MENTIONS one — a commit message,
+// a grep — is not refused; a `sh -c "<cmd>"` / `bash -c` body is read as a command (PR49C-6).
+// ponytail: a fixed list of release CLIs plus "any fastlane lane but test/build/lint"; add a CLI
+// when one ships. A program the agent wrote to a file earlier is past this bound (see below).
+const RELEASE_CMD = new RegExp('^(' + [
+  'fastlane\\s+(?!(test|tests|build|lint|scan|gym|match|snapshot|screenshots)\\b)[\\w:-]+',
+  'xcrun\\s+altool\\b.*--upload', 'xcrun\\s+notarytool\\s+submit',
+  '(eas|eas-cli)\\s+submit\\b', '(eas|eas-cli)\\s+build\\b.*--auto-submit',
+  'vercel\\b.*--prod', 'netlify(-cli)?\\s+deploy\\b.*(--prod|\\s-p\\b)',
+  '(firebase|firebase-tools)\\s+deploy\\b', 'gcloud\\s+projects\\s+create',
+  '\\S*gradlew\\s+(\\S+\\s+)*publish\\w*',
+].join('|') + ')');
+const PREFIX = /^(?:\w+=(?:'[^']*'|"[^"]*"|\S*)\s+|(?:env|time|nohup|command|nice|exec|npx|bunx|pnpx|yarn\s+dlx|bundle\s+exec|sudo(?:\s+-\S+)*)\s+)+/;
+function runsRelease(cmd) {
+  const text = String(cmd || '');
+  const bodies = [];
+  // `sh -c "…"` / `bash -lc '…'`: the quoted body is a command, not data.
+  for (const m of text.matchAll(/\b(?:ba|z|da)?sh\s+-\w*c\s+("([^"]*)"|'([^']*)')/g)) bodies.push(m[2] ?? m[3] ?? '');
+  const masked = text.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
+  return [masked, ...bodies].some((t) => t.split(/\n|;|&&|\|\||\||&|\$\(|`|\(|\)/)
+    .map((seg) => seg.trim().replace(PREFIX, ''))
+    .some((seg) => RELEASE_CMD.test(seg)));
+}
+
 function guardGateWrites() {
   if (!payload.agent_id) allow();
   const input = payload.tool_input || {};
+  if (payload.tool_name === 'Bash' && runsRelease(input.command)) {
+    block('guard-gate-writes: store upload, production deploy and spending are the founder\'s checklist rows (docs/60-releases.md) — a subagent never runs them.');
+  }
   const cwd = realish(resolve(payload.cwd || process.cwd()));
   // G7-12: the studio a target belongs to comes from the TARGET, not only from the cwd — `rm -rf
   // /abs/proj/docs/team/evidence` from /tmp names a studio root too. Each absolute path's nearest

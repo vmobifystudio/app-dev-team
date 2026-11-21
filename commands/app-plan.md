@@ -94,7 +94,8 @@ Focus (optional): $ARGUMENTS
    A tool that is genuinely not installed here is reported, not guessed around — that is a blocker
    for the user, stated before the sprint starts rather than discovered when the first build breaks.
 
-2. **Spawn the `tech-manager` agent** with the `sprint-planner` skill. It produces
+2. **Spawn the `tech-manager` agent** with the `sprint-planner` skill, passing it the output of
+   `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" history` to size the sprint. It produces
    `docs/30-sprint-plan.md`, and creates every ticket through the CLI — one call per ticket, never a
    hand-written table row:
 

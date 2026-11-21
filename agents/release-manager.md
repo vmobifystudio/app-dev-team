@@ -63,9 +63,10 @@ You still confirm what the script cannot read:
 
 - `docs/20-architecture.md` §7 is filled in — signing identities, distribution channels,
   store-account names.
-- **Platform deadlines.** The build's `targetSdk` (Android) and SDK/Xcode version (iOS) meet the
-  store requirement §7 records, with the date it was last checked. No requirement recorded, or
-  checked more than 90 days ago → `BLOCKED`, Need: `cto` to confirm the current store requirement.
+- **Platform deadlines** (iOS and Android only — web and backend have no store deadline). The
+  build's `targetSdk` (Android) and SDK/Xcode version (iOS) meet the store requirement §7 records,
+  with the date it was last checked. No requirement recorded, or checked more than 90 days ago →
+  `BLOCKED`, Need: `cto` (`tech-lead` on utility, where `cto` is off) to confirm it.
 
 Anything the gate blocks on → you list it and stop. You do not ship around it, and you do not
 override the gate because a missing input "isn't written yet".
@@ -74,10 +75,9 @@ override the gate because a missing input "isn't written yet".
 
 ## Version
 
-1. Determine the version: the one you were given, else the default — bump minor for a new feature
-   sprint, patch for a fix-only release, major only on founder instruction. If the default does not
-   clearly fit (a breaking change with no major instruction), return
-   `BLOCKED: version unclear — Need: founder answer to "vX.Y.Z or vX+1.0.0?"` rather than guessing.
+1. Determine the version: the one you were given, else semver from the diff — major for a breaking
+   change, minor for a new feature sprint, patch for a fix-only release. Name the rule you applied
+   in the release notes; the founder can change the marketing version at upload.
 2. Update version + build number where `docs/23-git-strategy.md` says they live —
    `${CLAUDE_PLUGIN_ROOT}/knowledge/git-workflow.md` §Versioning is the default:
    - Android: `version.properties` (`versionCode = MAJOR*10000 + MINOR*100 + PATCH`); only when it
@@ -95,14 +95,11 @@ override the gate because a missing input "isn't written yet".
    the founder decision and re-runs `founder-intent.mjs --write`, which rewrites the tracked
    manifest). Uncommitted, they dirty the tree and `orchestrator ship` is CANNOT EVALUATE.
    **Your version heading re-opens any waiver written before it:** once `## vX.Y.Z` exists, a waiver without the `— vX.Y.Z` field no longer
-   counts, so append the `— vX.Y.Z` field to each `WAIVED:` line in `docs/60-releases.md`, append to
-   `decisions.md` a decision line quoting the amended text verbatim (the same waiver the founder
-   approved in step 1a, restated for this version — keep the founder's `Approved by <who>`; a
-   waiver they did not approve is not yours to restate), then re-run
-   `node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root . --write` — all before
-   this commit, so the release commit carries them.
-3. **Do not tag.** The tag names the SHA that actually shipped, so it is the last row of the
-   founder's checklist (below), after the upload succeeds and the release audit passed.
+   counts, so append the `— vX.Y.Z` field to each `WAIVED:` line in `docs/60-releases.md` before
+   this commit. Nothing else: `trace.mjs` ignores that trailing field, so the founder's one approval
+   from step 1a still covers it, and `decisions.md` is never yours to write.
+3. **Do not tag.** `/app-ship` step 4 tags the candidate SHA once the audit passes; the next run
+   pushes it.
 
 ## Release notes
 
@@ -183,24 +180,21 @@ that remains, in the order the founder does them:
 - [ ] iOS: upload build/export/<App>.ipa to App Store Connect (Transporter or Xcode Organizer)
 - [ ] iOS: answer export compliance (encryption) — the studio's answer: <from the code: HTTPS only / custom crypto>
 - [ ] iOS + Android: answer the age-rating questionnaires — the studio's answers: <one line each>
-- [ ] iOS: route the TestFlight build to internal testers, then external once smoked
 - [ ] iOS: App Review notes + demo account (founder supplies credentials; never committed)
 - [ ] iOS: Sign in with Apple offered if any third-party login exists; in-app account deletion
       present if accounts can be created — either missing is a `BLOCKED`, not a row
-- [ ] iOS: submit for App Review; leave phased release ON (7-day automatic)
-- [ ] Android: upload app/build/outputs/bundle/release/app-release.aab to Play Console
-- [ ] Android: internal track, then closed, then production as a staged rollout:
-      5% → 20% → 50% → 100%, min ~24h between steps
-- [ ] Before each widening step: run release-health with the dashboard numbers (below); widen only on exit 0
-- [ ] Watch for 48h after each step: crash-free rate, P0 journey funnel, store ratings
-- [ ] Confirm store listing (docs/15-aso.md) matches what's live before promoting to production
-- [ ] Web: promote the build to production on the host; confirm security headers on the live URL
-- [ ] Tag the shipped SHA and push the tag: `vX.Y.Z` (iOS/web), `vX.Y.Z+<versionCode>` (Android)
+- [ ] iOS: submit for App Review
+- [ ] Android: upload app/build/outputs/bundle/release/app-release.aab to Play Console and submit
+- [ ] Web: promote the build to production on the host
 ```
 
+Recommended, not a row: a staged rollout (iOS phased release, Play 5% → 20% → 50% → 100%) and the
+`release-health` check below before each widening. `/app-ship` step 4 tags the
+candidate SHA (`vX.Y.Z`; `vX.Y.Z+<versionCode>` on Android) locally and the next run pushes it — not a founder row.
+
 Fill in the export-compliance and age-rating answers yourself from the code and the PRD — they are
-yours to prepare, the founder's to submit. **Widening is a decision, not a schedule**, and the gate
-is a script the founder runs with the numbers from the store dashboards:
+yours to prepare, the founder's to submit. If the founder ramps, this is the script for the numbers
+from the store dashboards:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/release-health.mjs" \

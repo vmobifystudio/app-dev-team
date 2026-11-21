@@ -1,0 +1,14 @@
+{
+  "name": "journey-wrong-value-web",
+  "defect": "drivers/web.sh against a built page (dist/, served by journey-gate itself — FL-2) whose saved_date output shows 2026-11-21 after the journey entered 1999-01-02.",
+  "expected_detector": "scripts/journey-gate.mjs",
+  "expected_signal": "is \\\"2026-11-21\\\", expected \\\"1999-01-02\\\"",
+  "severity": "S2",
+  "why": "QA-8: every other fixture here is caught by a detector written for it, and none needed a running app, so the journey drivers were never measured. This one plants a defect only a driven app shows; the device is a stub on PATH, the driver and gate are real.",
+  "detector": {
+    "run": ["sh", "{root}/eval/journey-run.sh", "web", "{project}"],
+    "expect_exit": 1
+  },
+  "last_verified_at": "2026-11-21",
+  "status": "detector-exists-and-is-scored"
+}

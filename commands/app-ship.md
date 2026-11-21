@@ -218,7 +218,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    # steps; this is the call.
    #
    #   android  ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh   drives adb + uiautomator; needs a device or emulator
-   #   ios      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/ios.sh       launches and screenshots; step execution needs XCUITest
+   #   ios      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/ios.sh       drives a booted simulator through AXe (brew install cameroncooke/axe/axe)
    #   web      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/web.sh       the project's Playwright against the served build (STUDIO_WEB_URL)
    #
    # With no device (web: no Playwright, Chromium or URL) a driver returns CANNOT EVALUATE naming the missing thing, which
@@ -227,10 +227,10 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh, drivers/web.sh
    ```
 
-   **A `web-app`**: install the project's Playwright and Chromium, build the candidate, start it
-   (`npm run start`, or a static server on the build dir), and pass its URL as `STUDIO_WEB_URL` —
-   the exact commands are `build-loop-branches.md` §Step 5 — journey-gate drivers
-   (`${CLAUDE_PLUGIN_ROOT}/skills/parallel-orchestrator/references/`).
+   **A `web-app`**: install the project's Playwright and Chromium and build the candidate; the gate
+   serves it itself (FL-2) — the release candidate bound at this HEAD, else `npm run start`, else
+   `dist/`/`build/`/`out/` — unless `STUDIO_WEB_URL` names a running one. iOS/Android read the app id
+   from step 1b's `runtime-result.json`, so run the runtime gate first.
 
    Six dry runs measured the gates catching every process defect and **zero** product defects. An
    app that launches and sits there satisfies `runtime-gate.sh` exit `0` completely. This is the
@@ -253,7 +253,8 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
        the release summary and step 4's confirmation. `readiness` then reports the gate `WAIVED`
        (not blocking) and `orchestrator ship` relays the `WAIVED:` line — a malformed or
        wrong-version waiver leaves it `CANNOT_EVALUATE`.
-       A waiver is the exception: android, ios and web drivers all ship.
+       A waiver is the exception: android, ios (with AXe) and web drivers all execute every step —
+       except iOS `back`, which is refused by name (no universal Back: declare the control's id).
 
    **Product types the script cannot see are N/A, not waived — and not unchecked.** `runtime-gate.sh`
    detects iOS, Android and `web-app` (a `web-app` is gated like the others — never N/A, never a
@@ -276,7 +277,11 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
 2. **Spawn the `active` roles among `security-reviewer`, `verification-engineer`, `privacy-reviewer`,
    `reliability-engineer`, `red-team-agent`, `aso-specialist`,
-   and `data-analyst` in parallel** in a single message. Read `docs/02-team-roster.md` first — for
+   and `data-analyst` in parallel** in a single message. Read `docs/02-team-roster.md` first. **Every
+   row still `conditional` is decided now:** evaluate its trigger against `docs/10-prd.md` and
+   `docs/20-architecture.md` and amend the row to `active` or `off(<trigger not met: why>)` with this
+   round — the roster was written before either existed, and an unflipped trigger silently drops a
+   reliability or red-team review. Then, for
    an `off` role, print its gate as `N/A: <gate> — <role> is off(<reason>) per
    docs/02-team-roster.md` (see step 1a: an N/A is not a waiver) and record the same line in
    `docs/60-releases.md`. `security-reviewer` and `verification-engineer` are never off at any tier
@@ -324,18 +329,21 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
    ```bash
    sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
-     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or ios.sh / web.sh, as in 1b
    node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
      --artifact <the .ipa/.aab path, or the web build dir, release-manager named> --platform ios|android|web --variant release \
      --by release-manager
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
+     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or ios.sh / web.sh, as in 1b
    node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" ship
    ```
 
    This `orchestrator ship` must exit `0` before step 3a. Exit `1`/`2` here is handled exactly as in
    step 1, except that nothing is "expected" any more: the artifact exists and every gate has run.
 
-3a. **Spawn `release-auditor`** — *you* spawn it, **never `release-manager`**, and only after step 3
+3a. **On utility, `release-auditor` is `off`** (merged into `verification-engineer`'s ship pass,
+   `role-activation` delta 6): print `N/A: release audit — release-auditor is off(merged-into:
+   verification-engineer) per docs/02-team-roster.md` and go to step 4 — step 3b's exit `0` is the
+   candidate binding. **On flagship, spawn `release-auditor`** — *you* spawn it, **never `release-manager`**, and only after step 3
    has assembled the candidate, composed with `spawn-prompt.mjs compose --role release-auditor`. It
    reads the artifacts, not the summaries: `docs/60-releases.md`, `docs/50-test-plan.md`, the evidence
    bundles in `docs/54-evidence/`, the recorded gate verdicts (`docs/team/runtime-result.json`,
@@ -349,12 +357,14 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      other than artifacts it can read itself;
    - an artifact whose only witness is `release-manager` is a *claim*, and the auditor marks it
      `unverified`;
-   - **a test claim with no discoverable evidence bundle stays `unverified`** (`team-protocol`
-     §Evidence bundle), and a release whose critical journeys are `unverified` is a `FAIL`;
+   - a P0 journey's evidence is step 3b's `docs/team/journey-result.json`, bound to this HEAD by
+     `evidence-check.mjs` and to the artifact by `release-candidate.mjs verify`; any other test
+     claim with no discoverable evidence is `unverified` (the gates' own records live in
+     `docs/team/evidence/`), and a release whose critical journeys are `unverified` is a `FAIL`;
    - `release-manager` may correct a fact and the audit re-runs; it may never grade the verdict.
 
-   `RELEASE AUDIT: FAIL` → stop, print the audit's checklist verbatim, and do not ask the upload
-   question. Only a **human** may waive, and the waiver is recorded in `docs/60-releases.md` in the
+   `RELEASE AUDIT: FAIL` → stop, print the audit's checklist verbatim, and do not print the
+   submission checklist. Only a **human** may waive, and the waiver is recorded in `docs/60-releases.md` in the
    `WAIVED: <artifact> — <who> — <reason>` form with a real name.
 
 4. **If SHIP CANDIDATE and `RELEASE AUDIT` is not `FAIL`**: print release-manager's output, the audit
@@ -362,11 +372,14 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    done at this point — nobody here uploads or submits anything.** Tell the user plainly: the signed
    build is ready at the paths release-manager named; the checklist above is the founder's own
    action list for App Store Connect / Play Console. There is no confirmation question to ask,
-   because there is no upload command for the studio to run.
+   because there is no upload command for the studio to run. Tag the candidate SHA locally now
+   (`git tag vX.Y.Z`; `vX.Y.Z+<versionCode>` on Android); the next `/app-run` or `/app-ship` entry
+   pushes the tag — never a question to the founder.
 
 5. **If BLOCKED**: print the blocker list and the proposed unblock. Suggest the right command (`/app-build` for missing tickets, `/app-status` for context).
 
-6. **Harvest the learnings** (after a confirmed release, not after a blocked one). Every agent is
+6. **Harvest the learnings** — on every outcome: shipped, BLOCKED, or a run stopped by `/app-run`
+   (budget, kill switch, or ship refused on an unwaived gate). Blocked runs are where most of the failures are. Every agent is
    told by `house-conventions` to write a `LEARNING:` line into its daily fragment when it discovers
    a reusable convention. Until this step existed, nothing ever read them and the "living knowledge
    base" never actually lived. Collect them into the inbox:
@@ -380,8 +393,17 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    checked against what actually shipped. If the harvest is empty, say so; an empty sprint of
    learnings is a real result, not a reason to skip the step.
 
-   Then run `/app-learn` on this project so the inbox is folded into `knowledge/`. Its conflict
-   rules still apply: additions auto-apply, conflicts wait for the user.
+   Record the run — one line, derived from the board and the review verdicts, in a studio-level file
+   that survives a plugin reinstall (`$APP_TEAM_HOME`, default `~/.app-dev-team/`). It prints the
+   comparison with the previous run and every FC recurrence:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" summary --stop <shipped|blocked|budget|stopped|gate>
+   ```
+
+   Then run `/app-learn` on this project: it writes `docs/kb-patch.diff`, a reviewed patch for
+   the plugin repository — nothing is applied to the installed plugin. A conflict
+   is listed in the summary for the plugin maintainer; the run does not wait on it.
 
 ## Safety
 
@@ -392,4 +414,4 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 - Never ship across an open S1/S2 bug or a critical security finding.
 - **Never ship a build nobody launched.** `RUNTIME GATE: FAIL` has no waiver; `CANNOT EVALUATE`
   needs a recorded one naming who decided and why.
-- Never bump major version without explicit user instruction.
+- Version by semver from the diff (breaking → major), stated in the release notes; never ask.

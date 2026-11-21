@@ -3,7 +3,7 @@
 # above all, still makes the tree dirty. One git pathspec per line, relative to the project root;
 # read by lib/readiness.mjs, runtime-gate.sh and ship-gate.sh. Never add a glob or a source path.
 # G2-18: NOT the whole of docs/team. Project CONTROL files there (risk-policy.json,
-# project-profile.json, journeys/, capabilities.json, prompt-registry.json, ...) are real changes.
+# project-profile.json, journeys/, capabilities.json, ...) are real changes.
 docs/31-board-events.jsonl
 docs/31-board.md
 # C5W-4: the loop's own renderings and the register it writes every round (step 1 / step 6).
@@ -20,7 +20,6 @@ docs/team/audit-anchor.json
 docs/team/evidence
 docs/team/incidents.jsonl
 docs/team/journey-result.json
-docs/team/memory.jsonl
 docs/team/message-log.md
 docs/team/messages.jsonl
 docs/team/messages.md

@@ -1,6 +1,6 @@
 ---
 name: database-migration
-description: On an app-dev-team project, use before changing any persisted schema — the first column, field, index or model change, not the deploy. Used by backend-developer, web-developer and reliability-engineer.
+description: On an app-dev-team project, use before changing any persisted schema — the first column, field, index or model change, not the deploy. Covers server databases and on-device stores (Room, SwiftData, Core Data, GRDB, IndexedDB). Used by backend-developer, web-developer, ios-developer, android-developer, code-reviewer and reliability-engineer.
 ---
 
 # Database migration

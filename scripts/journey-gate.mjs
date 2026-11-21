@@ -45,13 +45,15 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
 import { treeDirty } from './lib/readiness.mjs';
 import { writeEvidenceLog } from './lib/evidence.mjs';
+import { DOSSIER_PATH, readDossier } from './lib/dossier.mjs';
+import { createServer } from 'node:net';
 
 const DRIVERS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), 'drivers');
 // S7-13: the contract lives in the PLUGIN, not the project — print the path that exists.
@@ -68,7 +70,7 @@ const journeyDir = resolve(root, typeof flags.journeys === 'string' ? flags.jour
 
 /** Every step shape this gate understands. A step it cannot execute is refused at load, not at run. */
 const ACTIONS = new Set(['launch', 'tap', 'enter', 'back', 'wait_for']);
-const ASSERTS = new Set(['screen', 'text_visible', 'text_absent', 'value_equals', 'min_touch_target', 'announces']);
+const ASSERTS = new Set(['screen', 'text_visible', 'text_absent', 'value_equals', 'min_touch_target', 'announces', 'is_checked']);
 
 /**
  * A journey is only worth trusting if its assertions could have failed. `assert: screen` after
@@ -98,6 +100,7 @@ function validate(journey, file) {
         problems.push(`${at}: ${step.assert} needs a value`);
       }
       if (step.assert === 'min_touch_target' && !(Number(step.dp) > 0)) problems.push(`${at}: min_touch_target needs a positive dp`);
+      if (step.assert === 'is_checked' && (!step.id || typeof step.value !== 'boolean')) problems.push(`${at}: is_checked needs an id and a value of true or false`);
     } else problems.push(`${at}: neither an action nor an assert`);
   }
 
@@ -241,6 +244,46 @@ if (!driver || !existsSync(driver)) {
   process.exit(2);
 }
 
+// QA-3: the drivers need the app id. runtime-gate.sh already derived it (its `APP-ID:` lines), so read
+// it from the recorded runtime result instead of an env var no command sets. An explicit env wins.
+const env = { ...process.env };
+try {
+  const rr = JSON.parse(readFileSync(resolve(root, 'docs/team/runtime-result.json'), 'utf8'));
+  for (const [, p, id] of readFileSync(resolve(root, String(rr.log)), 'utf8').matchAll(/^APP-ID: (android|ios) (\S+)$/gm)) {
+    const k = p === 'android' ? 'STUDIO_ANDROID_PACKAGE' : 'STUDIO_IOS_BUNDLE';
+    if (!env[k]) env[k] = id;
+  }
+} catch { /* no runtime result: the driver names the missing id */ }
+
+// FL-2 / FL-5: web.sh drives a RUNNING app, so the gate serves it — the bound release artifact when one
+// is recorded for this HEAD (that is what ships), else `npm run start`, else the build dir — unless
+// STUDIO_WEB_URL already names one. Nothing serves → the driver's own CANNOT EVALUATE names the fix.
+let served = null;
+let server = null;
+if (basename(driver) === 'web.sh' && !env.STUDIO_WEB_URL) {
+  let head = '';
+  try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* not a repo */ }
+  const rc = (readDossier(resolve(root, DOSSIER_PATH)).records || []).at(-1);
+  const hasIndex = (d) => d && existsSync(join(resolve(root, d), 'index.html'));
+  const scripts = (() => { try { return JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts || {}; } catch { return {}; } })();
+  const dir = rc && rc.platform === 'web' && rc.commit === head && hasIndex(rc.artifact) ? rc.artifact
+    : scripts.start ? null : ['dist', 'build', 'out'].find(hasIndex);
+  const port = await new Promise((ok) => { const s = createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => ok(p)); }); });
+  if (dir || scripts.start) {
+    served = dir ? `static ${dir}` : 'npm run start';
+    server = dir ? spawn(process.execPath, [fileURLToPath(new URL('./lib/static-server.cjs', import.meta.url)), resolve(root, dir), String(port)], { detached: true, stdio: 'ignore' })
+      : spawn('npm', ['run', 'start'], { cwd: root, detached: true, stdio: 'ignore', env: { ...env, PORT: String(port), HOST: '127.0.0.1' } });
+    server.unref(); // the gate's own exit ends the run; the handler below takes the server with it
+    process.on('exit', () => { try { process.kill(-server.pid, 'SIGTERM'); } catch { /* gone */ } });
+    const url = `http://127.0.0.1:${port}/`;
+    for (const end = Date.now() + 60000; Date.now() < end;) {
+      try { if ((await fetch(url, { signal: AbortSignal.timeout(2000) })).ok) { env.STUDIO_WEB_URL = url; break; } } catch { /* not up yet */ }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!env.STUDIO_WEB_URL) served = `${served} — never answered on ${url} within 60s`;
+  }
+}
+
 const results = [];
 const RAW = [];
 for (const j of selected) {
@@ -248,7 +291,7 @@ for (const j of selected) {
   let raw;
   try {
     // cwd = root, so relative evidence paths land (and are re-checked) in the project; one evidence-bundle dir (S2-25).
-    raw = execFileSync('sh', [driver, '--root', root, '--journey', j._path, '--evidence-dir', 'docs/54-evidence/journeys'], { cwd: root, encoding: 'utf8', timeout: 300000 });
+    raw = execFileSync('sh', [driver, '--root', root, '--journey', j._path, '--evidence-dir', 'docs/54-evidence/journeys'], { cwd: root, env, encoding: 'utf8', timeout: 300000 });
     RAW.push(`--- driver output: ${j.id}\n${raw}`);
   } catch (e) {
     RAW.push(`--- driver output: ${j.id} (exit ${e.status})\n${e.stdout || ''}${e.stderr || ''}`);
@@ -356,6 +399,7 @@ function writeResultFile() {
       declarations: selected.map((j) => ({ id: j.id, file: j._file, sha256: createHash('sha256').update(readFileSync(j._path)).digest('hex') })),
     },
     evaluated_at: new Date().toISOString(),
+    ...(served ? { served } : {}),
     result: results.some((r) => r.state === 'FAIL') ? 'FAIL'
       : results.some((r) => r.state === 'UNKNOWN') ? 'CANNOT_EVALUATE' : 'PASS',
     journeys: results.map((r) => ({ id: r.j.id, state: r.state, detail: r.detail || '', evidence: r.digests || [] })),
@@ -370,7 +414,7 @@ function writeResultFile() {
 // re-derives the verdict from it, so a hand-written journey-result.json cannot pass.
 let LOG = '';
 const say = (t) => { LOG += t; process.stdout.write(t); };
-say('JOURNEY GATE\n');
+say(`JOURNEY GATE${served ? ` (served: ${served})` : ''}\n`);
 for (const r of results) {
   const label = r.state === 'PASS' ? 'PASS   ' : r.state === 'FAIL' ? 'FAIL   ' : 'UNKNOWN';
   say(`  ${label}  ${r.j.id}  ${r.detail}\n`);

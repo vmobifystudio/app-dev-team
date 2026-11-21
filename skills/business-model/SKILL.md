@@ -37,8 +37,8 @@ Revenue per install       price × conversion × expected periods
 Break-even installs       fixed cost ÷ revenue per install
 ```
 
-**Every `ASSUMED` is a hypothesis with a falsifying test**, handed to `data-analyst` to instrument
-(`growth-analysis`). An assumption that is never instrumented is a number that will be quoted for
+**Every `ASSUMED` is a hypothesis with a falsifying test**, handed to `data-analyst` to instrument.
+An assumption that is never instrumented is a number that will be quoted for
 years as if it were measured — the most expensive artifact this skill can produce.
 
 ## The trial and the paywall

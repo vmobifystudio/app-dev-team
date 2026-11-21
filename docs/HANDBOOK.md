@@ -2,8 +2,8 @@
 
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
-**Version:** 3.1.0 (`main`) · **Date:** 2026-11-17
-**Scale:** 30 roles · 32 skills · 27 commands · 75 top-level scripts (+24 shared libs) · 9 knowledge packs · 1485 assertions
+**Version:** 3.2.0 (`main`) · **Date:** 2026-11-22
+**Scale:** 29 roles · 26 skills · 21 commands · 68 top-level scripts (+24 shared libs) · 9 knowledge packs · 2656 assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
 drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
@@ -70,10 +70,10 @@ The system now has four cooperating planes:
    manager failover prevents a dead manager from being silently duplicated.
 3. **Evidence and governance.** Context manifests record exactly which layered sources were used;
    approval checks bind approvals to commit/diff/context/evidence; capability checks constrain role
-   operations and paths; impact maps identify downstream consumers; risk routing selects model tier,
+   operations and paths; risk routing selects model tier,
    approvers, and evidence requirements.
 4. **Release and learning.** Ship gates, runtime gates, dependency/version/policy scanners, audit
-   anchors, governed memory, prompt registry, evaluation fixtures, and incident records provide
+   anchors, reviewed KB patches (`/app-learn`), evaluation fixtures, and incident records provide
    release evidence and preserve failures for later review.
 
 ### The normal lifecycle
@@ -104,17 +104,12 @@ truth and the command documentation must be corrected.
 | Layered context | `context-manifest.mjs` | Hidden context, stale sources, precedence ambiguity |
 | Approval evidence | `approval-check.mjs` | Approval of a different commit, diff, context, or evidence set |
 | Audit integrity | Board chain plus `audit-anchor.mjs` | Unnoticed release-time event-log changes |
-| Memory governance | `memory-curator.mjs` (`propose`/`review`/`retrieve`) | Unreviewed, unscoped, unprovenanced agent memory — `retrieve` excludes unpromoted, expired, and superseded/contradicted records, not just a write-only ledger |
-| Prompt governance | `prompt-registry.mjs` (`sync`/check) | Unversioned prompts, missing owners, no rollback metadata — `sync` populates one entry per `agents/*.md` from a real content hash; `team-doctor.mjs` blocks on a missing or stale entry |
 | Evaluation | `eval-lab.mjs`, `eval/manifest.json` | Claims that a role/workflow works without an executable case |
 | Scheduling | `scheduler.mjs` | Dependency violations, starvation, uncontrolled parallelism |
 | Capabilities | `capability-check.mjs`, `docs/team/capabilities.json` | Role access beyond declared operations or paths |
-| Impact | `impact-map.mjs`, `docs/team/impact-map.json` | Changed files whose downstream consumers were never reviewed |
 | Risk routing | `risk-router.mjs`, `docs/team/risk-policy.json` | Low-assurance routing for money, security, migration, or release work |
 | Incidents | `incident-ledger.mjs`, `docs/team/incidents.jsonl` | Operational failures disappearing into ordinary ticket history |
-| Failover | `manager-failover.mjs` | Two managers acting concurrently or a dead manager blocking recovery |
 | Dispatch composition | `dispatch-preflight.mjs` | One claim gate composing context, scheduler, capability, and risk checks |
-| Warm/cold contract | `manager-harness.mjs`, `eval/manager-scenario.json` | Persistent and respawned managers produce identical state |
 | Ticket contract | `board.mjs add --invariant/--rollback/--file`, `risk-router.mjs` | A high/critical-risk ticket (derived from `--file`, never hand-typed) reaching review with no recorded invariant |
 | Release health | `release-health.mjs` | Widening a staged rollout on a judgment call instead of a measured crash-free rate and open-P0 count |
 | Actor tokens | `lib/actor.mjs`, `board.mjs actor mint`, `docs/team/actor-tokens.jsonl` | Under `requireActorTokens`, a gate event (`verified`, `approved`, `merged`, `qa_passed`, `closed`) recorded by a role that only typed `--by` — `spawn-prompt.mjs compose` mints the spawned agent's per-ticket token into its prompt; the orchestrator mints only for its own `--by tech-manager` events |
@@ -128,10 +123,10 @@ truth and the command documentation must be corrected.
 |---|---|---|
 | Intake and planning | `/app-init`, `/app-onboard`, `/app-audit`, `/app-plan` | Establish intent, inspect an existing app, create specifications, and build the board |
 | Execution | `/app-run`, `/app-build`, `/app-review` | Drive waves of isolated implementation, verification, review, and merge |
-| Evidence controls | `/app-preflight`, `/app-context`, `/app-run-status`, `/app-recover`, `/app-manager-failover`, `/app-manager-harness` | Establish context, inspect durable state, recover safely, and verify manager modes |
-| Coordination controls | `/app-schedule`, `/app-capabilities`, `/app-impact`, `/app-risk` | Decide what may run, who may do it, what it affects, and what assurance it needs |
-| Quality and release | `/app-ship`, `/app-eval`, `/app-incident` | Gate release, execute evaluations, and record operational failures |
-| Visibility and learning | `/app-status`, `/app-dashboard`, `/app-control-room`, `/app-portfolio`, `/app-memory`, `/app-learn`, `/app-team` | Observe work, curate memory, learn from shipped work, and inspect the roster |
+| Evidence controls | `/app-preflight`, `/app-context`, `/app-recover` | Establish context, inspect durable state, and recover safely |
+| Coordination controls | `/app-schedule`, `/app-capabilities`, `/app-risk` | Decide what may run, who may do it, and what assurance it needs |
+| Quality and release | `/app-ship`, `/app-incident` | Gate release and record operational failures |
+| Visibility and learning | `/app-status`, `/app-dashboard`, `/app-control-room`, `/app-portfolio`, `/app-learn`, `/app-team` | Observe work, learn from shipped work, and inspect the roster |
 
 ### Artifact map
 
@@ -140,11 +135,8 @@ truth and the command documentation must be corrected.
 | `docs/31-board-events.jsonl` | Append-only ticket event source; `docs/31-board.md` is a generated view |
 | `docs/team/runs.jsonl` | Durable execution attempts, checkpoints, leases, and terminal outcomes |
 | `docs/team/context-manifest.json` | Layered context snapshot and freshness boundary |
-| `docs/team/memory.jsonl` | Proposed and reviewed memory records |
-| `docs/team/prompt-registry.json` | Versioned prompt/policy metadata |
 | `docs/team/schedule.json` | Scheduler input plan |
 | `docs/team/capabilities.json` | Role operation/path allowlist |
-| `docs/team/impact-map.json` | Changed-surface consumer rules |
 | `docs/team/risk-policy.json` | Blast-radius routing rules |
 | `docs/team/incidents.jsonl` | Operational incident lifecycle |
 | `docs/team/audit-anchor.json` | Release-time board-log anchor when enabled |
@@ -164,7 +156,6 @@ The following switches are supported by `ship-gate.sh`:
   "requireDurableRuns": true,
   "requireApprovalBinding": true,
   "requireAuditAnchor": true,
-  "requirePromptRegistry": true,
   "requireEvaluation": true
 }
 ```
@@ -327,15 +318,14 @@ silent error is most expensive.
 | `product-designer` | sonnet | Screen composition, hierarchy, interaction, tokens, components |
 | `product-manager` | sonnet | Ticket clarification, backlog grooming, in-sprint scope calls |
 | `product-researcher` | sonnet | Independent evidence gathering, labelled fact/user/competitor/hypothesis/inference |
-| `chief-of-staff` | sonnet | Decision briefs, unresolved commitments, founder inbox |
 | `web-developer` | sonnet | TypeScript/browser implementation — makes `web-app` staffed |
-| `test-automation-engineer` | sonnet | Test infrastructure, device and state matrix, evidence bundles, flake detection |
+| `test-automation-engineer` | sonnet | Test infrastructure, device and state matrix, the gates' evidence records, flake detection |
 | `privacy-reviewer` | opus | Data inventory, consent, retention, regional compliance (flagship) |
 | `reliability-engineer` | sonnet | Offline, retries, idempotency, sync conflict, restoration, recovery |
 | `red-team-agent` | opus | Attacks the product and the studio own assumptions |
-| `release-auditor` | opus | Independent review of the evidence bundle and gate record; can block the release |
+| `release-auditor` | opus | Independent review of the gates' evidence records and the gate record; can block the release |
 | `aso-specialist` | sonnet | Store listing, keywords, screenshots, readiness |
-| `data-analyst` | sonnet | Analytics schema, instrumentation check, post-launch KPIs |
+| `data-analyst` | sonnet | Analytics schema, instrumentation check, KPIs |
 
 ### Platform and release
 
@@ -569,17 +559,11 @@ say, not the other way around — fix the role file first if the two ever disagr
 | `/app-ship` | Readiness gates → release manager → release audit → submission-ready build; the founder uploads |
 | `/app-preflight` | Verify branch, ticket, dependency, policy, version, and source-of-truth context before work |
 | `/app-context` | Create or verify a deterministic context snapshot before review or irreversible work |
-| `/app-run-status` | Audit durable run leases, checkpoints, and orphaned attempts |
 | `/app-recover` | Recover an interrupted run without silently creating a competing attempt |
-| `/app-memory` | Propose and review governed memory with provenance and contradiction history |
-| `/app-eval` | Execute deterministic role, policy, and workflow evaluation fixtures |
 | `/app-schedule` | Compute dependency-ready work with fairness and bounded parallelism |
 | `/app-capabilities` | Check role operation and path permissions against an allowlist |
-| `/app-impact` | Require changed surfaces to declare downstream consumers |
 | `/app-risk` | Route work by blast radius, model tier, approvals, and evidence |
 | `/app-incident` | Record operational incidents, mitigation, resolution, and evidence |
-| `/app-manager-failover` | Decide whether a manager lease permits continuation or requires failover |
-| `/app-manager-harness` | Compare warm and cold manager state contracts against the same scenario |
 | `/app-status` | Board, blockers, metrics, open questions, budget position |
 | `/app-dashboard` | The zero-dependency diagnostic dashboard (§9) |
 | `/app-control-room` | The control room — five screens over the same read layer (§9) |
@@ -744,17 +728,12 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `context-manifest.mjs` | Source hashes, git revision, omissions, and context freshness |
 | `approval-check.mjs` | Binds approvals to commit, diff, context, and evidence — on by default for new projects (`--bind`), opt-in for onboarded ones |
 | `audit-anchor.mjs` | Digest and tip anchor for the board event log — composed into `dispatch-preflight.mjs`, not release-time-only |
-| `dispatch-preflight.mjs` | The gate before every ticket claim (reviewers and retries on a claimed ticket skip it): composes context, scheduler, capability, risk, and (when enabled) audit-anchor/prompt-registry/eval-lab |
-| `memory-curator.mjs` | Append-only proposals, explicit reviewer decisions, and `retrieve` — the read path: live means promoted, unexpired, not superseded |
-| `prompt-registry.mjs` | Semantic versions, owners, evaluation suites, rollback metadata — `sync` populates real entries; `team-doctor.mjs` blocks on a missing or stale one |
 | `eval-lab.mjs` | Deterministic executable evaluation cases, plus static contract-clause checks over the agent files carrying this studio's hardest-won rules |
 | `scheduler.mjs` | Ready queue, dependency, fairness, and backpressure decisions |
 | `capability-check.mjs` | Role operation/path allowlist enforcement |
-| `impact-map.mjs` | Changed-surface consumer propagation |
 | `risk-router.mjs` | Blast-radius routing and required approval/evidence decisions — also drives `board.mjs add --file`'s ticket-contract risk field |
 | `incident-ledger.mjs` | Append-only operational incident records; a `sev1`/`sev2` activates `incident-commander` |
 | `release-health.mjs` | Three-state gate (crash-free floor, open-P0 ceiling) between staged-rollout ramp steps |
-| `manager-failover.mjs` | Prevent duplicate managers and make failover decisions from durable leases |
 | `metadata-check.mjs` | Marketplace/README/CHANGELOG advertise the version and role count that actually ship |
 | `journey-gate.mjs` | Proves a DECLARED P0 user journey completes — not that a process is alive |
 | `test.sh` | The assertion suite over committed fixtures; it prints its own total |
@@ -868,15 +847,13 @@ with the same access, and nothing here claims to be.
   sync` populates one entry per `agents/*.md` file from a real content hash instead of leaving
   `docs/team/prompt-registry.json` empty (`"entries": []`), and `team-doctor.mjs` now blocks on a
   role missing from a populated registry or whose file changed since its last sync.
-- **Evaluation is deliberately partial, and says so.** `eval/manifest.json` gained five static
-  contract-clause cases (`eval-lab.mjs`, 2026-08-01) that assert the agent files carrying the
-  studio's hardest-won rules — self-review refusal, the no-hand-edited-board instruction,
-  product-validator's independence, release-auditor's separation of duties, mandatory escalation
-  after one unresolved round — still say so, catching a future edit that silently drops one. This
-  is content-checking, not behavior: it proves the RULE IS WRITTEN, not that an agent obeys it under
-  load. A real role/pair/workflow/long-horizon behavioral eval (spawning an agent against a scenario
-  and grading its decision) needs a mechanism `test.sh` cannot provide — the `Agent` tool is not
-  shell-callable — and was deliberately not invented here. That remains open.
+- **Evaluation is deliberately partial, and says so.** The five static contract-clause cases
+  `eval/manifest.json` gained on 2026-08-01 (grep for a sentence in an agent file) were deleted in
+  Sprint 8 (QA-8): `test.sh` already pins that wording, and a grep proves the RULE IS WRITTEN, not
+  that an agent obeys it. `studio-eval.mjs` now plants one product defect per journey driver
+  (`eval/journey-wrong-value-*`) so the drivers themselves are measured. A real role/pair/workflow
+  behavioral eval (spawning an agent against a scenario and grading its decision) needs a mechanism
+  `test.sh` cannot provide — the `Agent` tool is not shell-callable — and remains open.
 - **Product truth:** the team can validate traceability and implementation evidence; it cannot
   determine market desirability or replace founder/user judgment.
 - **Staged-rollout health and incident command closed, 2026-08-01.** `release-manager.md`'s
@@ -1123,7 +1100,7 @@ with the same access, and nothing here claims to be.
   into an enumerated `status` field and the prose became free text nobody parses. **Prose is not
   checkable; a field is.** And the dirty-tree fix's own end-to-end test caught two further bugs that
   reading the diff had missed: a false "not a git repository" message emitted alongside the real one,
-  and a test using `$BD` ~340 lines above the line that assigns it. §4b's rule, applied to its author.
+  and a test using `$BD` ~340 lines above the line that assigns it. §4b's rule, applied to its author. *(Removed in Sprint 8: memory-curator, prompt-registry and review-pattern-scan were deleted; learnings now flow `LEARNING:` → `/app-learn` → `docs/kb-patch.diff`, and review blockers are inlined into later IC prompts.)*
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the
@@ -1189,7 +1166,7 @@ scanning or push protection at all while still reporting "every server-side cont
 
 The previously open message-ID race and follow-up-obligation gap are closed: writes use a lock,
 non-question obligations require delivery evidence, and the suite covers both behaviors. The
-evaluation lab now detects 12/12 scored planted defects; stale approval is the one intentionally
+evaluation lab now detects 15/15 scored planted defects (three are journey-driver fixtures, Sprint 8); stale approval is the one intentionally
 unmeasured detector class.
 
 **Never exercised:** `/app-ship` end to end — hypothesis **H1** of dry run 5, still unrun. Several
@@ -1316,7 +1293,7 @@ Every open item is specified with a reproduction: dry run 4 in
   `connectedAndroidTest` completion line (`Finished N tests on <device>`), so a genuinely green emulator run
   still scored `CANNOT EVALUATE`. Both fixes proven with a live `test.sh` fixture and a `mutate.sh` mutation
   that reverts each fix and expects red (`M80`/`M81`; `M77`/`M78`'s anchors widened after the new regex
-  alternative drifted them). Full suite: 1451 passed, 0 failed. Mutation run: 4/4 caught.
+  alternative drifted them). Full suite: 1451 passed, 0 failed. Mutation run: 4/4 caught. *(Removed in Sprint 8: memory-curator, prompt-registry and review-pattern-scan were deleted; learnings now flow `LEARNING:` → `/app-learn` → `docs/kb-patch.diff`, and review blockers are inlined into later IC prompts.)*
 
 ---
 

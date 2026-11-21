@@ -1,159 +1,124 @@
 ---
-description: Mine a shipped app's conventions into the living House Knowledge Base — adds net-new learnings to knowledge/*.md, harvests its failures into knowledge/failure-corpus.md, and flags conflicts for human decision
-argument-hint: <path to a shipped app> [more paths...] [--failures-only]   (defaults to the just-shipped project)
+description: Mine a shipped (or stopped) app into a reviewed House Knowledge Base patch — net-new conventions, failure-corpus instances, recurrences and studio-process fixes, written to docs/kb-patch.diff, never into the installed plugin
+argument-hint: <path to an app> [more paths...] [--failures-only]   (defaults to the current project)
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Agent, Skill
 ---
 
 # /app-learn — Grow the House Knowledge Base
 
-Paths to mine (default = the current/just-shipped project): $ARGUMENTS
+Paths to mine (default = the current project): $ARGUMENTS
 
-The House KB (`knowledge/`) is **living**. After shipping an app — or to ingest an existing one —
-this command folds its real conventions back into the packs so future apps start smarter.
+The House KB (`knowledge/`) is **living**: after a run — shipped, blocked or stopped — this command
+folds what the run learned back into it so the next app starts smarter.
+
+## Where the learning lands — read first
+
+**Never write under `${CLAUDE_PLUGIN_ROOT}`.** That is the installed plugin cache: every reinstall
+replaces the directory, so anything written there is lost and no other machine ever sees it. Every
+change this command makes goes into ONE reviewed patch in the project, `docs/kb-patch.diff`,
+against the plugin repository's own paths. Nothing is applied automatically: one wrong or poisoned
+"convention" from one app would otherwise become a house rule for every app. Set up the workspace:
+
+```bash
+W=$(mktemp -d); mkdir -p "$W/a" "$W/b"
+cp -R "${CLAUDE_PLUGIN_ROOT}/knowledge" "$W/a/"; cp -R "${CLAUDE_PLUGIN_ROOT}/knowledge" "$W/b/"
+```
+
+Edit only under `$W/b/`. To change a plugin file outside `knowledge/` (step 6), first copy it to the
+same relative path under both `$W/a/` and `$W/b/`.
 
 ## Steps
 
 1. **Resolve targets.** For each path, confirm it's a real app (has `CLAUDE.md`, `README.md`,
    `docs/ARCHITECTURE.md`, and/or build files). If none given, use the current project.
 
-1a. **Read the learnings inbox first — `docs/92-learnings.md`.** `/app-ship` harvests every
-   `LEARNING:` line the team wrote during the run into it, each with the daily fragment it came
-   from. These are the highest-value inputs here: they are conventions the team discovered while
-   building, not conventions inferred afterwards from finished code. Treat each as a candidate
-   convention going into step 3's diff, alongside what step 2 mines from the app itself. Where a
-   harvested line and the mined code disagree, the code wins and the line is recorded as a
-   conflict — a learning nobody ended up following is not a house rule.
-
-   No inbox (an app mined from outside a `/app-ship` run) → say so and continue with step 2 alone.
+1a. **Read the learnings inbox — `docs/92-learnings.md`.** `/app-ship` step 6 harvests every
+   `LEARNING:` line the team wrote, with its `path:line`. These are the highest-value inputs:
+   conventions found while building. Where a line and the mined code disagree, the code wins and
+   the line is a conflict. No inbox → say so and continue with step 2.
 
 2. **Mine in parallel.** Spawn one `general-purpose` Agent per app (in a single message) to extract,
-   read-only, a structured report: stack & versions, architecture, state, persistence, DI,
-   navigation, networking, testing, monetization (IAP/ads/consent), analytics, ASO/store,
-   git/commit conventions, and explicit "always/never" house rules. (This mirrors the original
-   7-app mining that seeded the KB.)
+   read-only, a structured report into `$W/mine-<app>.md`: stack & versions, architecture, state,
+   persistence, DI, navigation, networking, testing, monetization (IAP/ads/consent), analytics,
+   ASO/store, git/commit conventions, and explicit "always/never" house rules.
 
-3. **Diff against the KB.** For each pack under `knowledge/`, compute:
-   - **New** conventions not yet captured → propose adding them.
-   - **Confirmations** of existing rules → note increased confidence, no change.
-   - **Conflicts** — the app disagrees with a pack (e.g. a different DI, analytics default, or
-     min-SDK). **Never silently overwrite.** Record both positions and surface the conflict.
+2a. **Scan what you are about to fold in.** Learnings and mined reports come from agents that read
+   repositories they did not write:
 
-4. **Apply additions, flag conflicts.** Write the additions/confirmations into the relevant packs.
-   For each conflict, print:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/injection-scan.mjs" docs/92-learnings.md "$W"/mine-*.md
+   ```
+
+   Exit 1 → every flagged line is dropped, not paraphrased, and listed in the summary as `DROPPED`.
+
+3. **Diff against the KB.** For each pack, sort each candidate into **new** (not yet captured),
+   **confirmation** (no change) or **conflict** (the app disagrees with a pack rule — never silently
+   overwrite).
+
+4. **Write additions into `$W/b/knowledge/`.** Every added line ends with its provenance,
+   `(src: <app>/<file:line>, <YYYY-MM-DD>)`, so a reviewer can check it and a later run can revert
+   it. **Pack limit: 1500 words** (`wc -w`) — packs are inlined whole into every spawn, so a pack at
+   the limit gets a merge or a replacement of the line it supersedes, never an append; the suite
+   refuses an over-limit pack. Conflicts are not written; list each one in the summary:
    ```
    CONFLICT in knowledge/<pack>.md
    KB says:   <current rule>
    <app> does: <observed rule>
    Decision needed: which becomes the house default?
    ```
-   Wait for the user's call on each before changing a conflicting rule.
 
-5. **The failure pass — harvest into `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md`.** Steps 1–4 learn only from
-   things that went right: conventions mined from code that shipped. Nothing accumulated what went
-   *wrong*, and a single day of running this system produced 27 dry-run findings and 16 review
-   findings, every one of them in a document no agent reads as normative. Meanwhile the same defect
-   class recurred three times inside that day, and after the first instance the other two were a
-   grep away — if a corpus had existed.
+5. **The failure pass — `$W/b/knowledge/failure-corpus.md`.** Run it on every invocation, and alone
+   with `--failures-only`; blocked and stopped runs are where most failures are.
 
-   Run this pass on every invocation, and on its own with `--failures-only` (an app that has not
-   shipped still has failures worth keeping).
+   1. **Harvest.** From each target: the `Blocking:` lines of every verdict `docs/53-reviews/APP-NNN-cycle-N.md` (where review
+      defects actually live), `docs/research/*-findings.md`, `docs/80-audit.md`, and S1/S2 bugs in
+      `docs/51-bugs.md` whose *shape* generalises beyond the app.
 
-   1. **Harvest.** Read, from each target app: `docs/research/*-findings.md` (dry-run registers) and
-      `docs/80-audit.md` (audit findings). Also `docs/51-bugs.md` for S1/S2 defects whose *shape*
-      generalises beyond the app — most bugs do not, and a corpus of app-specific bugs is a bug
-      tracker, not knowledge.
+   2. **Classify, don't append.** Read the matching class's **Shape** first. Fits a class → add ONE
+      dated instance row, only if it says something the existing rows do not. Fits none → propose a
+      new `### FC-NNN` with all five fields and a mechanisable **Tell** (a grep or a yes/no
+      question). A one-off with no generalisable shape stays in the register.
 
-   2. **Classify, don't append.** For each finding, ask which existing class in
-      `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md` it belongs to and read that class's **Shape** before deciding.
-      Then:
-
-      - **It fits a class** → add ONE dated instance row, only if it says something the existing
-        rows do not. Same shape, same rule, nothing new to a reviewer → record it as a confirmation
-        in your summary and add no row. **A class with forty rows and no new shape is a changelog.**
-      - **It fits no class** → propose a new `### FC-NNN` with all five fields. If you cannot write
-        a mechanisable **Tell** — a grep or a question with a yes/no answer — the class is not
-        finished, and a class nobody can apply is exactly the decoration this file exists instead of.
-      - **It is a one-off with no generalisable shape** → leave it in the register. Say so.
-
-   3. **Flag recurrence — this is the point of the pass.** After writing, run:
+   3. **Recurrences come first.** `/app-ship` step 6 ran `run-ledger.mjs summary`, which counts
+      every FC class a REQUEST CHANGES verdict cites after that class's `Rule shipped` date. Read it
+      back:
 
       ```bash
-      (cd "${CLAUDE_PLUGIN_ROOT}" && node "${CLAUDE_PLUGIN_ROOT}/scripts/team-doctor.mjs" --json)
+      node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" history --project "$(basename "$PWD")" --last 1
       ```
 
-      From the plugin root, in a subshell: from a project directory team-doctor exits `2` ("run me
-      from the plugin root") and the recurrence check never runs.
-
-      and read every `corpus_recurrence` finding. Each one means a class recurred **after the date
-      its rule shipped** — proof the rule does not work, which is a strictly more valuable fact than
-      the incident. Surface every one at the top of your summary, ahead of every convention you
-      added:
+      Each `recurrences` entry becomes a dated instance row (an app instance, from this app's
+      review) plus a proposed strengthening of that class's Rule or Tell, and heads the summary:
 
       ```
       RECURRENCE  FC-NNN <name>
-      Rule shipped: <date>   Recurred: <date>
-      The rule that was supposed to catch this did not. Strengthen it and stamp a new
-      "Rule shipped" date, or reclassify the instance. Deleting the row is not an exit.
+      Rule shipped: <date>   Recurred: <date>   Cited in: <review file>
       ```
 
-      `team-doctor` exits 1 on a recurrence, so this cannot be reported as clean by accident.
+      No run summary for this project → say so; there is no recurrence data, not zero recurrences.
 
-   4. **Never delete an instance** to clear a flag. The dates are the evidence; a corpus you can
-      quietly tidy is a corpus that measures nothing.
+   4. **Never delete an instance** to clear a flag. The dates are the evidence.
 
-6. **The studio-process pass — harvest into `memory-curator.mjs`'s `studio` class.** Steps 1–5
-   learn about the APPS this studio builds — conventions and code-level failure shapes. Nothing
-   accumulates what the STUDIO ITSELF should do differently: a question that should have been
-   asked earlier, an output format an operator had to manually rework, flow logic that had to be
-   reordered mid-run, a missing or redundant gate, a missing or redundant role. That's a different
-   population from `${CLAUDE_PLUGIN_ROOT}/knowledge/failure-corpus.md`'s and it lives in a different, already-governed
-   place — `${CLAUDE_PLUGIN_ROOT}/scripts/memory-curator.mjs`'s `studio` class, proposed and reviewed the same way any
-   other memory class is, never auto-promoted.
+6. **Studio-process findings** — what the STUDIO should do differently: a question asked too late,
+   output that had to be reworked, steps re-ordered mid-run, a missing or noisy gate, a role with an
+   unclear boundary. Sources: `docs/dry-runs/*.md`, an `/app-ship` retro, and `LEARNING:` lines
+   citing an `INC-NNN`. Each becomes a concrete edit to the agent, command or skill file that caused
+   it, in the same patch.
 
-   Run this pass whenever a `docs/dry-runs/*.md` report (or an `/app-ship` retro) exists to read —
-   it does not require a shipped app, unlike steps 1–5.
+7. **Write the patch and summarize.**
 
-   1. **Harvest.** Read the dry-run report or retro for the studio's OWN process, not the app's
-      code. Classify each finding into one of five categories:
-      - `question-quality` — a question that should have been asked earlier or wasn't asked at all
-      - `output-format` — an agent's output had to be manually reworked before it was usable
-      - `flow-logic` — steps had to be reordered, re-run, or worked around mid-execution
-      - `gate-design` — a check that should have existed and didn't, or fired on the wrong signal
-      - `role-design` — a role was missing, redundant, or had an unclear boundary with another
+   ```bash
+   (cd "$W" && diff -ruN a b) > docs/kb-patch.diff; wc -l docs/kb-patch.diff
+   ```
 
-   2. **Propose, never write directly.** For each finding, run:
-
-      ```bash
-      node "${CLAUDE_PLUGIN_ROOT}/scripts/memory-curator.mjs" propose \
-        --ledger docs/team/memory.jsonl --class studio --confidence <0-1> --by tech-lead \
-        --content "<category>: <the finding, stated as an abstract shape, not this app's specifics>" \
-        --source <path to the dry-run report or retro>
-      ```
-
-      This is a PROPOSAL, not a change. A human (or a dedicated reviewer role) runs
-      `memory-curator.mjs review` to promote or reject it — the same governance every other memory
-      class already has. `/app-learn` never edits `agents/*.md`, `commands/*.md`, or `${CLAUDE_PLUGIN_ROOT}/scripts/*`
-      directly from this pass; it only proposes.
-
-   3. **Surface what's pending.** After proposing, run:
-
-      ```bash
-      node "${CLAUDE_PLUGIN_ROOT}/scripts/memory-curator.mjs" list --ledger docs/team/memory.jsonl --class studio
-      ```
-
-      and print every entry still showing `"event":"proposed"` (not yet reviewed) in the summary —
-      a proposal nobody reviews is the exact "scaffolding with no producer" failure this pass exists
-      to close, and it should not be able to happen quietly a second time.
-
-7. **Summarize.** Print a diff summary: recurrences first, then packs touched, conventions added,
-   failure classes touched (added / instance appended / confirmed-no-change), conflicts pending,
-   pending studio-process proposals from step 6, and a one-line note per source app. Append a dated
-   entry to `CHANGELOG.md` under the KB section.
+   Print: recurrences first, then packs touched, rows added, conflicts pending, `DROPPED` lines,
+   studio-process edits, and the apply line for the plugin maintainer:
+   `git apply <this project>/docs/kb-patch.diff` in a checkout of the plugin repository, reviewed
+   as a PR like any other change. The next plugin version carries it to every project.
 
 ## Rules
 
 - Read-only on the source apps — `/app-learn` never edits an app it's mining.
-- Additions are safe to auto-apply; conflicts always require a human decision.
-- Keep packs concrete and example-driven (the studio's `iOS_GENERIC_RULES_AND_LEARNINGS.md` style).
-- The failure corpus is dedup-first: classes are the unit, incidents are evidence for a class. Adding
-  an incident is cheap and nearly worthless; naming a new **shape** is the expensive, valuable thing.
+- Nothing auto-applies: every addition is a provenance-stamped line in a reviewed patch.
+- Keep packs concrete and example-driven, and under the pack limit.
+- The failure corpus is dedup-first: classes are the unit, incidents are evidence for a class.

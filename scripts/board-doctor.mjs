@@ -327,7 +327,7 @@ function diagnose(board, ledger, capabilities, messages = []) {
     // A valid role the build loop cannot spawn is a ticket nobody will ever pick up. It is not
     // blocked and not ready, so — exactly like a stranded dependency — the loop drains around it
     // and reports the sprint complete. /app-audit files these routinely.
-    if (row.status !== 'done' && !BUILD_SPAWNABLE_OWNERS.has(row.owner.toLowerCase())) {
+    if (row.status !== 'done' && row.status !== 'descoped' && !BUILD_SPAWNABLE_OWNERS.has(row.owner.toLowerCase())) {
       push(
         'owner_not_spawnable',
         `Owner "${row.owner}" is a real role but /app-build never spawns it to work a ticket, so this ticket will never be picked up and never reported.`,
@@ -371,11 +371,22 @@ function diagnose(board, ledger, capabilities, messages = []) {
     // /app-build loop terminates and prints a successful sprint summary without mentioning it.
     if (!dependencyBroken && row.status === 'todo') {
       const blocker = findBlockingAncestor(row.id, rowsById);
-      if (blocker) {
+      // SM-7: behind a BLOCKED dependency the wait is already reported (the cascade, the standup) and
+      // the loop must keep draining independent work — a warning. Behind a DESCOPED one the ticket
+      // needs re-planning, so it stays an anomaly (SM-2).
+      if (blocker && blocker.root === 'blocked') {
+        warnings.push({
+          code: 'stranded',
+          ticketId: row.id,
+          line: row._line,
+          detail: `Waiting on ${blocker.via}, which is ${blocker.reason}. Claimable once it is unblocked.`,
+          action: 'tech-manager: when the blocking question is answered, append unblocked (app-build step 1b).',
+        });
+      } else if (blocker) {
         push(
           'stranded',
           `Waiting on ${blocker.via}, which is ${blocker.reason}. The sprint loop cannot see this ticket and will report the sprint complete without it.`,
-          'tech-manager: unblock the dependency, re-scope this ticket, or mark it blocked so it is reported.'
+          'tech-manager: re-plan it — `corrected --depends` without the descoped ticket, or `descoped` too.'
         );
       }
     }

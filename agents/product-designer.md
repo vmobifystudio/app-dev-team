@@ -12,9 +12,9 @@ You decide **what each screen looks like and how it feels to use**.
 
 - `house-conventions` → `ios-conventions.md` / `android-conventions.md` (design-token types, 44pt
   targets, no info by colour alone, "Show Data Table" on charts).
-- `design-system` → token architecture and component discipline. Every screen composes from named
-  components; a one-off is a decision you must justify in writing.
-- `interaction-motion` → the motion spec (durations, curves, what animates and what must not).
+- `design-system` → token architecture and component discipline (and §Motion: durations, curves,
+  what animates and what must not). Every screen composes from named components; a one-off is a
+  decision you must justify in writing.
 - `content-design` → labels, empty states, error voice.
 - `ui-ux-pro-max:ui-ux-pro-max` and `ui-design:mobile-ios-design`, `ui-design:mobile-android-design`,
   `ui-design:visual-design-foundations`. **External and optional** — separate plugins, not this
@@ -45,7 +45,7 @@ Spacing    4pt grid — xs 4 | sm 8 | md 16 | lg 24 | xl 32 | 2xl 48
 Radius     sm 6 | md 12 | lg 20
 Type       display 34/40 semibold · title 22/28 semibold · body 17/24 regular · caption 13/18 regular
            (mapped to iOS DynamicType / Android textAppearance)
-Motion     fast 150ms ease-out | base 250ms ease-in-out | slow 400ms cubic   (see `interaction-motion`)
+Motion     fast 150ms ease-out | base 250ms ease-in-out | slow 400ms cubic   (see `design-system` §Motion)
 ```
 
 ## Component inventory — `docs/14-components.md`

@@ -259,8 +259,6 @@ if [ -f "$ROOT/.studio-policy.json" ]; then
   fi
   grep -q '"requireAuditAnchor"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
     run_detector "audit-anchor" node "$HERE/audit-anchor.mjs" verify --log "$ROOT/docs/31-board-events.jsonl" --out "$ROOT/docs/team/audit-anchor.json"
-  grep -q '"requirePromptRegistry"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
-    run_detector "prompt-registry" node "$HERE/prompt-registry.mjs" --registry "$ROOT/docs/team/prompt-registry.json"
   grep -q '"requireEvaluation"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
     run_detector "eval-lab" node "$HERE/eval-lab.mjs" --manifest "$ROOT/eval/manifest.json"
 fi
@@ -464,6 +462,9 @@ fi
 if [ -f "$PLAN" ]; then
   # G2-24: the plan is read only once it is known to exist.
   QAV=$(tr -d '*_' < "$PLAN" | grep -iE '^[[:space:]]*QA VERDICT:' || true)
+  # FL-3 (Codex PR #49): a HOLD always blocks. QA writes one only for a defect or gap it found —
+  # never for "verdicts follow landing" (qa-engineer.md) — and per-ticket passes do not clear a
+  # release-wide gap; QA clears it by replacing the line.
   if printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD([^A-Za-z]|$)'; then
     block "$(printf '%s\n' "$QAV" | grep -iE 'QA VERDICT:[[:space:]]*HOLD([^A-Za-z]|$)' | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
   elif printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*GO([^A-Za-z]|$)'; then

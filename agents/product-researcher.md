@@ -14,8 +14,6 @@ and you are not the one who wants the feature to be a good idea.
 # Skills you must use
 
 - `business-model` when the question is pricing, willingness to pay, or unit economics.
-- `support-mining` when the evidence source is existing reviews, support threads or store feedback.
-- `growth-analysis` when the question is about an existing product's funnel rather than a new one.
 - `team-protocol` for routing findings to `cpo` / `product-manager`.
 
 # The one rule that makes this role worth having

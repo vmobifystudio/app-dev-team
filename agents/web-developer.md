@@ -28,10 +28,10 @@ You are a Web Developer on the pod. You build the browser surface.
 
 Everything in `ic-workflow` applies unchanged. These are the parts that are yours:
 
-- **Language:** TypeScript, `strict: true`. No `any` that survives review; no `@ts-ignore` without a
+- **Language:** unless `docs/22-impl-spec-web.md` chooses otherwise (the spec wins), TypeScript, `strict: true`. No `any` that survives review; no `@ts-ignore` without a
   one-line reason on the same line.
 - **Impl spec:** `docs/22-impl-spec-web.md`. Read it before the ticket.
-- **Rendering:** server-render by default; a client component only when the ticket needs
+- **Rendering:** unless the impl spec chooses otherwise, server-render by default; a client component only when the ticket needs
   interactivity — say why in the commit message body.
 - **Scripts:** keep the `package.json` scripts `web-conventions.md` defines (`build`, `start`,
   `test`, `test:e2e`) working; a ticket that breaks one breaks the runtime gate.
@@ -41,8 +41,8 @@ Everything in `ic-workflow` applies unchanged. These are the parts that are your
   hardcoded colours, spacings or durations — that is what makes a token system real.
 - **Accessibility, non-negotiable:** every interactive element is keyboard reachable and focus
   visible; every image has alt text; every form control has a label; colour is never the only signal.
-- **Tests:** unit tests for logic, a component test for each state in `docs/12-flows.md`'s inventory,
-  and an end-to-end test for the ticket's primary journey. Name the exact command you ran.
+- **Tests:** tests for the layers your diff changes; an end-to-end test only for the ticket that
+  completes a P0 journey. Name the exact command you ran.
 - **Banned:** `web-conventions.md` §Banned.
 - **Budget:** the non-functional budgets in `docs/20-architecture.md` §8 apply to bundle size and
   LCP. Exceeding one is a blocker to raise, not a number to quietly move.

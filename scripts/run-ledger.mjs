@@ -7,11 +7,14 @@
  * lease is still alive. A process may die between any two records; recovery must inspect the
  * ledger, never silently create a second attempt.
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
-import { dirname, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from './lib/args.mjs';
 import { withFileLock } from './lib/atomic.mjs';
+import { deriveMetrics, parseEventLog } from './lib/events.mjs';
 
 const die = (code, message) => { process.stderr.write(`run-ledger: ${message}\n`); process.exit(code); };
 
@@ -31,7 +34,7 @@ const die = (code, message) => { process.stderr.write(`run-ledger: ${message}\n`
 // by hand; the shared primitive reaps a dead holder once the lock has aged past any real section.
 const VALUE_FLAGS = new Set([
   'ledger', 'run', 'ticket', 'role', 'attempt', 'phase', 'lease-seconds', 'detail', 'context',
-  'worktree', 'by', 'effect', 'pending', 'now',
+  'worktree', 'by', 'effect', 'pending', 'now', 'stop', 'root', 'last',
 ]);
 const { flags, positional } = parseArgs(process.argv.slice(2), { valueFlags: VALUE_FLAGS, die });
 const command = positional[0];
@@ -105,7 +108,83 @@ function activeForTicket(records, ticket, now) {
   return null;
 }
 
-if (!command) die(2, 'usage: start|checkpoint|heartbeat|complete|interrupt');
+if (!command) die(2, 'usage: start|checkpoint|heartbeat|complete|interrupt|summary|history');
+
+/**
+ * LN-4 / LN-6: `summary --stop <cause>` appends ONE line per finished or stopped run, derived from
+ * the project's own board log and review verdicts, to a studio-level file OUTSIDE the plugin cache
+ * (a reinstall replaces the cache; this survives it and spans projects). `history` reads it back so
+ * a run can be compared with the last ones. A recurrence is an FC class a REQUEST CHANGES verdict
+ * cites after that class's `Rule shipped` date: counted from what reviewers already write, never
+ * from rows someone has to remember to add.
+ * ponytail: the verdict's date is its file mtime — a fresh clone dates every verdict "today", which
+ * over-reports recurrences (fails loud, never clean). Read the board's `changes` ts if that bites.
+ */
+const SUMMARY = join(process.env.APP_TEAM_HOME || join(homedir(), '.app-dev-team'), 'runs-summary.jsonl');
+const STOPS = new Set(['shipped', 'blocked', 'budget', 'stopped', 'gate']);
+const readSummary = () => (existsSync(SUMMARY) ? readFileSync(SUMMARY, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+const pct = (v) => (v === null || v === undefined ? 'n/a' : `${Math.round(v * 100)}%`);
+const trend = (a, b) => `first-pass ${pct(a.first_pass_rate)}→${pct(b.first_pass_rate)} · cycles/ticket ${a.cycles_per_ticket}→${b.cycles_per_ticket} · rounds ${a.rounds}→${b.rounds} · FC cited ${a.fc_cited_total}→${b.fc_cited_total}`;
+
+if (command === 'summary') {
+  const stop = String(flags.stop || '');
+  if (!STOPS.has(stop)) die(2, `--stop must be one of ${[...STOPS].join('|')}`);
+  const root = resolve(String(flags.root || '.'));
+  const log = join(root, 'docs/31-board-events.jsonl');
+  if (!existsSync(log)) die(2, `no board log at ${log} — nothing to summarise`);
+  const metrics = deriveMetrics(parseEventLog(readFileSync(log, 'utf8')).events);
+  const tickets = Object.values(metrics.tickets);
+  const reviewed = tickets.filter((t) => t.reviewed);
+  const journal = join(root, 'docs/33-rounds.jsonl');
+  const rounds = Math.max(Object.keys(metrics.ticketsPerRound).length,
+    existsSync(journal) ? readFileSync(journal, 'utf8').split('\n').filter((l) => l.trim()).length : 0);
+  const shipped = {};
+  const corpus = fileURLToPath(new URL('../knowledge/failure-corpus.md', import.meta.url));
+  let cls = null;
+  for (const line of readFileSync(corpus, 'utf8').split('\n')) {
+    cls = line.match(/^###\s+(FC-\d+)/)?.[1] || cls;
+    const d = line.match(/^\*\*Rule shipped:\*\*\s*(\d{4}-\d{2}-\d{2})/);
+    if (cls && d) shipped[cls] = d[1];
+  }
+  const fcCited = {};
+  const recurrences = [];
+  const reviews = join(root, 'docs/53-reviews');
+  for (const f of existsSync(reviews) ? readdirSync(reviews).filter((n) => n.endsWith('.md')).sort() : []) {
+    const text = readFileSync(join(reviews, f), 'utf8');
+    if (!/^REVIEW VERDICT:\s*REQUEST CHANGES\s*$/m.test(text)) continue;
+    const date = statSync(join(reviews, f)).mtime.toISOString().slice(0, 10);
+    for (const id of new Set(text.match(/\bFC-\d+\b/g) || [])) {
+      fcCited[id] = (fcCited[id] || 0) + 1;
+      if (shipped[id] && date > shipped[id]) recurrences.push({ id, file: `docs/53-reviews/${f}`, date, rule_shipped: shipped[id] });
+    }
+  }
+  const line = {
+    schema: 'runs-summary/v1', ts: String(flags.now || new Date().toISOString()), project: basename(root), stop,
+    tickets: tickets.length, done: tickets.filter((t) => t.status === 'done').length, descoped: tickets.filter((t) => t.status === 'descoped').length,
+    first_pass_rate: metrics.reviewPassRate, rework_rate: metrics.reworkRate,
+    cycles_per_ticket: reviewed.length ? +(reviewed.reduce((n, t) => n + t.cycles, 0) / reviewed.length).toFixed(2) : 0,
+    qa_failures: metrics.gateFires.qa_failed, rounds,
+    fc_cited: fcCited, fc_cited_total: Object.values(fcCited).reduce((a, b) => a + b, 0), recurrences,
+  };
+  const previous = readSummary().filter((r) => r.project === line.project).at(-1); // PR49P-5: this project's last run
+  mkdirSync(dirname(SUMMARY), { recursive: true });
+  appendFileSync(SUMMARY, `${JSON.stringify(line)}\n`, 'utf8');
+  process.stdout.write(`${JSON.stringify(line)}\n`);
+  if (previous) process.stdout.write(`VS LAST RUN (${previous.project}, ${previous.stop}): ${trend(previous, line)}\n`);
+  for (const r of recurrences) {
+    process.stdout.write(`RECURRENCE ${r.id} — cited in ${r.file} on ${r.date}, after its rule shipped ${r.rule_shipped}\n`);
+  }
+  process.exit(0);
+}
+if (command === 'history') {
+  const last = Math.max(1, Number(flags.last) || 5);
+  // PR49P-5: --project narrows to one app; the file spans every project on this machine.
+  const runs = readSummary().filter((r) => typeof flags.project !== 'string' || r.project === flags.project).slice(-last);
+  if (!runs.length) { process.stdout.write(`HISTORY: no runs recorded yet in ${SUMMARY}\n`); process.exit(0); }
+  for (const r of runs) process.stdout.write(`${JSON.stringify(r)}\n`);
+  if (runs.length > 1) process.stdout.write(`TREND (${runs.length} runs): ${trend(runs[0], runs.at(-1))}\n`);
+  process.exit(0);
+}
 withFileLock(ledger, () => {
 const records = readRecords();
 if (command === 'start') {

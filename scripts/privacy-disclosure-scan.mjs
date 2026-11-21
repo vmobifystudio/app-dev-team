@@ -2,11 +2,20 @@
 /** Reconcile the strongest store privacy claim with obvious outbound identity fields. */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { readRoster } from './lib/project.mjs';
 
 const root = process.argv[2];
 if (!root || !existsSync(root)) { process.stderr.write('privacy-disclosure-scan: project root is missing\n'); process.exit(2); }
 const declaration = join(root, 'docs/15-aso.md');
-if (!existsSync(declaration)) { process.stderr.write('privacy-disclosure-scan: docs/15-aso.md is missing\n'); process.exit(2); }
+if (!existsSync(declaration)) {
+  // FL-9: aso-specialist off (web, backend, library) means no store listing exists, so there is no
+  // store claim to reconcile — N/A, not CANNOT EVALUATE, or `PRIVACY:` can never pass there.
+  if (readRoster(root).roles.some((r) => r.role === 'aso-specialist' && r.state === 'off')) {
+    process.stdout.write('PRIVACY DISCLOSURE SCAN: N/A: store disclosure — aso-specialist off (docs/02-team-roster.md), no store listing to reconcile\n');
+    process.exit(0);
+  }
+  process.stderr.write('privacy-disclosure-scan: docs/15-aso.md is missing\n'); process.exit(2);
+}
 const aso = readFileSync(declaration, 'utf8');
 if (!/Data Not Collected/i.test(aso)) {
   process.stdout.write('PRIVACY DISCLOSURE SCAN: no blanket Data Not Collected claim found\n');

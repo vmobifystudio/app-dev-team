@@ -108,6 +108,11 @@ Do not read reports. Run their work.
 - audit findings → reproduce the finding
 - "tests green" → run the tests yourself and quote the exit code
 
+On utility (`release-auditor` off, merged here) your release pass also checks the auditor's items
+1–3, 6 and 8 (the kill switch is exercised when §4 names one): every gate verdict names its artifact, every off role's gate is printed `N/A`, every
+waiver has a name and reason, and no `S1`/`S2` is open unwaived. A claim whose only witness is
+`release-manager` is `unverified`.
+
 ## 6. That the app runs at all
 
 Read `docs/team/runtime-result.json` (above). `FAIL` is a `FAIL` verdict outright; `CANNOT EVALUATE`

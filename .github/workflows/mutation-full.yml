@@ -32,6 +32,9 @@ on:
       - 'hooks/**'
       - 'eval/**'
       - '.github/workflows/mutation-full.yml'
+  # PR49T-4: see the run step — a PR samples, the weekly run is the whole scoped catalogue.
+  schedule:
+    - cron: '17 3 * * 0'
   workflow_dispatch:
 
 permissions:
@@ -89,4 +92,12 @@ jobs:
         # of minutes — and it is a CLAIM, not a proof: it asserts no other section would have caught
         # the mutation either. This job is the one place that does not take that claim on trust, and
         # it is the only place that can still report "CAUGHT, but not by its own assertion".
-        run: sh scripts/mutate.sh --full-suite
+        # PR49T-4: a PR runs 60 rows spread across the catalogue, each against its own section;
+        # the weekly run is the whole catalogue scoped (~3h); --full-suite (whole suite per row, far
+        # past GitHub's 6h job limit at 525 rows) is manual only, for a sharded or local run.
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request) sh scripts/mutate.sh --sample 60 ;;
+            schedule) sh scripts/mutate.sh ;;
+            *) sh scripts/mutate.sh --full-suite ;;
+          esac

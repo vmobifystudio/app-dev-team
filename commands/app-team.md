@@ -11,8 +11,6 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 - ceo — vision, success metrics, scope
 - cpo — PRD, user stories, backlog
 - cto — architecture, stack, engineering principles (starts from the House KB defaults)
-- chief-of-staff — the single founder interface: decision briefs, unresolved commitments, founder
-  inbox (flagship, and only when it removes more decisions than it creates)
 
 **Product**
 - product-manager — day-to-day product execution below the CPO: ticket clarification, backlog
@@ -37,7 +35,7 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 - monetization-engineer — StoreKit/Play Billing IAP, paywall gateway, AdMob + consent
 - code-reviewer — gate on every PR-equivalent; runs Axiom auditors on iOS branches
 - qa-engineer — test plans, bug filing, ship sign-off
-- test-automation-engineer — test infrastructure, the device and state matrix, evidence bundles,
+- test-automation-engineer — test infrastructure, the device and state matrix, the gates' evidence records,
   flake detection (flagship, conditional)
 - verification-engineer — executes what everyone else asserts: sweeps constants against outside
   reference data, grades every guard rule, and must watch a rule fail before trusting it
@@ -46,7 +44,7 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 - ux-architect — information architecture, navigation, flows, the screen-and-state inventory
 - product-designer — screen composition, hierarchy, interaction, visual quality, tokens, components
 - aso-specialist — store listing, keywords, screenshots, store-readiness gate
-- data-analyst — analytics schema, instrumentation check, post-launch KPI report
+- data-analyst — analytics schema, instrumentation check, KPI report
 
 **Platform & Release**
 - devops-engineer — git strategy, CI, signing, flavors, secrets hygiene
@@ -57,7 +55,7 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
   (flagship, conditional)
 - red-team-agent — attacks the product *and* the studio's own assumptions (flagship, conditional)
 - release-manager — version, signing, submission checklist, release notes (the founder uploads)
-- release-auditor — independently reviews the evidence bundle and the gate record, and can block the
+- release-auditor — independently reviews the gates' evidence records and the gate record, and can block the
   release. `release-manager` cannot satisfy it — separation of duties
 - incident-commander — owns coordination, containment, and resolution for an open sev1/sev2 incident
   (conditional, activates only while one is open)

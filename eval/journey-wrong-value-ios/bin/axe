@@ -1,0 +1,3 @@
+#!/bin/sh
+# A stub simulator: the driver's logic is real, the accessibility tree is this fixture's ui.json.
+case "$1" in --version) echo 1.6.0 ;; describe-ui) cat "$FIXTURE/ui.json" ;; esac

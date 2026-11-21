@@ -13,7 +13,7 @@
  * counted, and those are the ceilings that stop the loop.
  *
  * Usage:
- *   round-journal.mjs append --round N [--tickets A,B] [--verdicts approved=2,changes=1]
+ *   round-journal.mjs append --round N [--sprint S] [--tickets A,B] [--verdicts approved=2,changes=1]
  *                            [--agents ios-developer=2,qa-engineer=1]
  *                            [--retries N] [--refusals N] [--spawns N] [--wall-clock-sec N]
  *                            [--spend-usd N] [--verified-static N] [--note "..."]
@@ -26,6 +26,15 @@
  * the number, this is what gives it teeth: `check` blocks once the reading has stayed above zero
  * and non-decreasing for `--max-static-stall-rounds` (default 3) consecutive reported rounds, the
  * signal that waves have stopped landing rather than merely being mid-flight.
+ *
+ * SPRINT-SCOPED (Sprint 8 SM-3). `check` sums only the CURRENT sprint — the latest `--sprint` journaled;
+ * a round without one inherits the sprint before it. Lifetime totals used up a normal sprint's
+ * budget and never reset, so sprint 2 started blocked. The per-ticket retry cap (lib/events.mjs) is
+ * the brake on one looping ticket; these ceilings bound a sprint.
+ * ponytail: --sprint is the orchestrator's word; bumping it resets the ceilings. Tie it to the plan if that is abused.
+ *
+ * NO JOURNAL (LN-5): with nothing journaled, the counters are derived from docs/31-board-events.jsonl
+ * (spawn-shaped and retry-shaped events, claim days as rounds), so a loop that never appends is not 0/12.
  *
  * Ceilings: flag > env (APP_TEAM_MAX_ROUNDS, _SPAWNS, _RETRIES, _SPEND_USD, _AGENT_SPAWNS) > default.
  *
@@ -44,6 +53,7 @@ import { dirname, resolve } from 'node:path';
 
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { readStop, STOP_FILE } from './lib/stop.mjs';
+import { parseEventLog } from './lib/events.mjs';
 
 const DEFAULT_JOURNAL = 'docs/33-rounds.jsonl';
 const DEFAULTS = { rounds: 12, spawns: 60, retries: 30, spendUsd: null, agentSpawns: 20, staticStallRounds: 3 };
@@ -61,7 +71,7 @@ const die = (code, message) => {
  * one parser now, in lib/args.mjs.
  */
 const VALUE_FLAGS = new Set([
-  'round', 'tickets', 'verdicts', 'retries', 'refusals', 'spawns', 'agents',
+  'round', 'sprint', 'tickets', 'verdicts', 'retries', 'refusals', 'spawns', 'agents',
   'wall-clock-sec', 'spend-usd', 'note', 'journal', 'verified-static',
   'max-rounds', 'max-spawns', 'max-retries', 'max-spend-usd', 'max-agent-spawns',
   'max-static-stall-rounds',
@@ -157,9 +167,11 @@ const count = (label, v) => {
   return n;
 };
 
-const ceilings = (flags) => ({
+// SM-3: the spawn defaults scale with the board — about 4 spawns a ticket, 2 per role — so a
+// 20-ticket sprint is not stopped by a default sized for 5. Flags and env still win.
+const ceilings = (flags, tickets = 0) => ({
   rounds: num(flags['max-rounds'], num(process.env.APP_TEAM_MAX_ROUNDS, DEFAULTS.rounds)),
-  spawns: num(flags['max-spawns'], num(process.env.APP_TEAM_MAX_SPAWNS, DEFAULTS.spawns)),
+  spawns: num(flags['max-spawns'], num(process.env.APP_TEAM_MAX_SPAWNS, Math.max(DEFAULTS.spawns, 4 * tickets))),
   retries: num(flags['max-retries'], num(process.env.APP_TEAM_MAX_RETRIES, DEFAULTS.retries)),
   spendUsd:
     flags['max-spend-usd'] !== undefined
@@ -167,7 +179,7 @@ const ceilings = (flags) => ({
       : process.env.APP_TEAM_MAX_SPEND_USD
         ? num(process.env.APP_TEAM_MAX_SPEND_USD, null)
         : DEFAULTS.spendUsd,
-  agentSpawns: num(flags['max-agent-spawns'], num(process.env.APP_TEAM_MAX_AGENT_SPAWNS, DEFAULTS.agentSpawns)),
+  agentSpawns: num(flags['max-agent-spawns'], num(process.env.APP_TEAM_MAX_AGENT_SPAWNS, Math.max(DEFAULTS.agentSpawns, 2 * tickets))),
   staticStallRounds: num(
     flags['max-static-stall-rounds'],
     num(process.env.APP_TEAM_MAX_STATIC_STALL_ROUNDS, DEFAULTS.staticStallRounds),
@@ -205,6 +217,7 @@ const cmdAppend = (flags, path) => {
   const entry = {
     ts: new Date().toISOString(),
     round,
+    ...(flags.sprint !== undefined ? { sprint: count('--sprint', flags.sprint) } : {}),
     tickets: list(flags.tickets),
     verdicts: parsePairs(flags.verdicts),
     retries: count('--retries', flags.retries ?? 0),
@@ -271,9 +284,26 @@ const cmdCheck = (flags, path) => {
     );
     process.exit(1);
   }
-  const rounds = readJournal(path);
+  const all = readJournal(path);
+  let sprint = null;
+  const tagged = all.map((r) => { if (r.sprint !== undefined) sprint = r.sprint; return { ...r, sprintOf: sprint }; });
+  const rounds = tagged.filter((r) => r.sprintOf === sprint);
   const t = totals(rounds);
-  const caps = ceilings(flags);
+  const log = resolve(process.cwd(), 'docs/31-board-events.jsonl');
+  const { events } = existsSync(log) ? parseEventLog(readFileSync(log, 'utf8')) : { events: [] };
+  const live = new Set(events.filter((e) => e.event === 'created').map((e) => e.ticket));
+  for (const e of events) if (e.event === 'descoped') live.delete(e.ticket);
+  if (!all.length) {
+    const n = (names) => events.filter((e) => names.includes(e.event)).length;
+    t.spawns = Math.max(t.spawns, n(['claimed', 'approved', 'changes', 'qa_passed', 'qa_failed', 'rework']));
+    // PR49C-5: rounds are NOT derived — distinct claim days over a project's life are not this
+    // sprint's loop, and an upgraded project was refused on its first round. Retries are compared
+    // against a ceiling scaled to the board (below), like spawns already were.
+    t.retries = Math.max(t.retries, n(['changes', 'rework', 'qa_failed']));
+    t.derived = true;
+  }
+  const caps = ceilings(flags, live.size);
+  if (t.derived && flags['max-retries'] === undefined && !process.env.APP_TEAM_MAX_RETRIES) caps.retries = Math.max(caps.retries, 2 * live.size);
   const agents = perAgent(rounds);
   const breached = [];
   if (t.rounds >= caps.rounds) breached.push(`rounds ${t.rounds} / ${caps.rounds}`);
@@ -292,12 +322,13 @@ const cmdCheck = (flags, path) => {
     );
   }
 
+  const scope = sprint === null ? '' : ` (sprint ${sprint})`;
   const spendLine = t.spendReported
     ? `spend $${t.spendUsd.toFixed(2)}`
     : 'spend not measurable in this harness';
 
   if (breached.length) {
-    process.stdout.write(`BUDGET: CEILING REACHED — ${breached.join(' · ')}\n`);
+    process.stdout.write(`BUDGET: CEILING REACHED${scope} — ${breached.join(' · ')}\n`);
     process.stdout.write(`  rounds ${t.rounds}/${caps.rounds} · spawns ${t.spawns}/${caps.spawns} · retries ${t.retries}/${caps.retries} · ${spendLine}\n`);
     process.stdout.write('  STOP THE LOOP. Report the ceiling and what is unfinished; do not spawn another round.\n');
     process.stdout.write('  Raise it deliberately with --max-rounds/--max-spawns/--max-retries (or APP_TEAM_MAX_*) if the work justifies it.\n');
@@ -305,7 +336,7 @@ const cmdCheck = (flags, path) => {
   }
 
   process.stdout.write(
-    `BUDGET: rounds ${t.rounds}/${caps.rounds} · spawns ${t.spawns}/${caps.spawns} · retries ${t.retries}/${caps.retries} · ${spendLine}\n` +
+    `BUDGET${scope}: rounds ${t.rounds}/${caps.rounds} · spawns ${t.spawns}/${caps.spawns} · retries ${t.retries}/${caps.retries} · ${spendLine}\n` +
       `  per agent (max ${caps.agentSpawns} each): ${Object.entries(agents).map(([r, n]) => `${r} ${n}`).join(' · ') || 'nothing journaled — pass --agents role=N'}\n`,
   );
   process.exit(0);

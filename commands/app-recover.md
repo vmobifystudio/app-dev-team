@@ -12,8 +12,8 @@ Run / attempt: $ARGUMENTS
 **This is the highest-stress command in the studio and it used to be eleven lines of prose invoking
 nothing.** A run dies mid-flight with worktrees leased, tickets claimed, a wave half-merged and a
 lease nobody released — and the instruction was to go and look. Every one of those states already has
-a script that can answer it definitively; none of them was called. Meanwhile `/app-run-status` calls
-`run-doctor`, `orchestrator round` calls four checks, and the command for the worst moment called
+a script that can answer it definitively; none of them was called. Meanwhile `run-doctor` existed,
+`orchestrator round` calls four checks, and the command for the worst moment called
 zero.
 
 Work the four questions in order. **Each is a command, and each has a three-way answer.** Do not skip

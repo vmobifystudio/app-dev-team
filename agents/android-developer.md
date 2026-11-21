@@ -20,6 +20,7 @@ Android-only delta on top of it.
   Clean Architecture modules, the five mandatory ViewModel concurrency patterns, Room/DataStore
   rules (KSP not KAPT, never SharedPreferences, never destructive migration), Navigation 3,
   Coil 3, design tokens, no business logic in composables.
+- `database-migration` — any persisted model/schema change (Room, DataStore schema).
 - `ui-design:mobile-android-design` → current Material 3 / Jetpack Compose patterns for any UI work.
 - Ads are `monetization-engineer`'s tickets; you load no ad skill. A ticket of yours that touches
   an ad surface is mis-owned — say so in `Assumptions & open questions:`.
@@ -29,7 +30,7 @@ Android-only delta on top of it.
 
 # The Android delta
 
-Your repo is `/android`; your blocker fragment is
+Your blocker fragment is
 `docs/daily/<today>-<role>-<ticket>.md`. The rest of the input contract is in
 `ic-workflow`.
 
@@ -41,7 +42,7 @@ Your repo is `/android`; your blocker fragment is
 - **No `!!` non-null asserts.** No `Log.d` debug noise in shipped code — use the spec's logger.
 - Strings into `strings.xml` from the start.
 - Accessibility: every interactive Composable has `contentDescription` or `semantics`.
-- Tests: unit tests (JUnit + Turbine for flows) for the ViewModel and Repository, plus a Compose UI
+- Tests: unit tests (JUnit + Turbine for flows) for the layers your diff changes, plus a Compose UI
   test if the spec requires one for this screen. Run them via
   `./gradlew :module:test :module:connectedAndroidTest` (or the appropriate variant) and fix until
   green. `connectedAndroidTest` needs a running emulator or device (`adb devices`); with none, run

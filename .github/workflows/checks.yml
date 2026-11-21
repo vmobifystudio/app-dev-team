@@ -45,7 +45,8 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # PR49T-3: the suite step took 8m07s on Sprint 8 (6m23s before); 20 leaves room to grow.
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4

@@ -33,7 +33,7 @@ Each item is `PASS` or `FAIL: <what and where>`. There is no partial credit and 
    overlap. Test at the maximum, not at 120%.
 8. **Keyboard and switch access** reach every action, focus is always visible, and focus is never
    trapped. On web this includes a skip link and a visible `:focus-visible` style.
-9. **Reduce-motion is honoured** and still gives the user feedback (`interaction-motion`).
+9. **Reduce-motion is honoured** and still gives the user feedback (`design-system` §Motion).
 10. **Media has an alternative** — alt text, caption, or transcript.
 
 ## Verdict

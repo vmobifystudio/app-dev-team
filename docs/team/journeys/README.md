@@ -62,18 +62,22 @@ enters today's date. That exact defect survived three separate reviews of the sa
 
 Actions: `launch` · `tap {id}` · `enter {id, value}` · `back` · `wait_for {id}`
 Asserts: `screen {id}` · `text_visible {value}` · `text_absent {value}` · `value_equals {id, value}` ·
-`min_touch_target {id, dp}` · `announces {id, value}`
+`min_touch_target {id, dp}` · `announces {id, value}` · `is_checked {id, value: true|false}`
 
 `announces` is the accessibility round trip — the stale-TalkBack defect. `min_touch_target` is the
-measurement one — a spec saying 56dp is a claim about the **built UI**, not the source.
+measurement one — a spec saying 56dp is a claim about the **built UI**, not the source. `is_checked`
+reads a checkbox/switch's state (`checked`, `aria-checked`, iOS `AXValue`), which `value_equals`
+cannot: a checkbox's value is `"on"` whatever its state.
 
 ## Drivers
 
-Executing steps needs a platform driver: `scripts/drivers/android.sh`, `scripts/drivers/ios.sh`
-(partial — step execution needs XCUITest) and `scripts/drivers/web.sh` (the project's Playwright;
-app URL via `--url` or `STUDIO_WEB_URL`). Web setup, once: `npm i -D playwright && npx playwright
-install chromium`; then build and start the app (`npm run start`, or any static server on the build
-dir) and export its URL as `STUDIO_WEB_URL` before running the gate. With no `--driver`, every declared journey is CANNOT
+Executing steps needs a platform driver: `scripts/drivers/android.sh` (adb + uiautomator),
+`scripts/drivers/ios.sh` (a booted simulator through AXe — `brew install cameroncooke/axe/axe`;
+`back` is refused, tap the control by id) and `scripts/drivers/web.sh` (the project's Playwright).
+The gate passes the app id runtime-gate recorded (`docs/team/runtime-result.json`) to android/ios,
+and for web serves the app itself — the release candidate bound at HEAD, else `npm run start`, else
+`dist/`/`build/`/`out/` — unless `STUDIO_WEB_URL` names one. Web setup, once: `npm i -D playwright &&
+npx playwright install chromium`. With no `--driver`, every declared journey is CANNOT
 EVALUATE and is listed by name — the honest state.
 
 A driver is any executable:
@@ -109,8 +113,6 @@ Rules the gate enforces on any driver:
   that is how a developer gets sent to fix a defect that does not exist (DR4-001).
 - **A report that is not `journey-result/v1` is UNKNOWN.** Unparseable output is not a verdict.
 
-Suggested first drivers: Android `adb shell uiautomator dump` + `input tap/text` (semantic ids from
-`resource-id` / `content-desc`); iOS `xcrun simctl` + an XCUITest runner.
 
 ## Where it runs
 

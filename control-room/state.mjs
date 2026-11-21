@@ -62,7 +62,7 @@ import { ACTIONS, actionForms } from '../scripts/lib/actions.mjs';
 const STATUS_ORDER = ['todo', 'in_progress', 'review', 'qa', 'done', 'blocked'];
 // SHIPPED was `new Set(['qa','done'])`. It needs the ROW now, not the status word — see
 // lib/board.mjs hasShipped (N1): a merge-gated ticket awaiting the wave has not shipped.
-const FOUNDER_ROLES = new Set(['ceo', 'cpo', 'cto', 'founder', 'studio-director', 'chief-of-staff']);
+const FOUNDER_ROLES = new Set(['ceo', 'cpo', 'cto', 'founder', 'studio-director']);
 const REVIEW_EVENTS = new Set(['started', 'approved', 'changes']);
 const VERIFY_EVENTS = new Set(['verified', 'verified_static', 'qa_passed', 'qa_failed']);
 
