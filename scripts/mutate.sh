@@ -665,6 +665,10 @@ MS8L11@@scripts/board.mjs@@invariants: state.meta.invariants || [],@@invariants:
 MS8L12@@scripts/drivers/android.sh@@tr '>' '\n' < "$DUMP" | grep "resource-id=\"[^\"]*/$1\"" | head -1 | grep . && return 0@@tr '>' '\n' < "$DUMP" | grep "resource-id=\"[^\"]*/$1\"" | head -1 && return 0@@Sprint 8 V3: android finds an element by content-desc when no resource-id matches (PR49T-1)@@Sprint 8 V3
 MS8L14@@scripts/spawn-prompt.mjs@@found.ambiguous.length || sentBack(ROOT, row.id)?.event === 'rework'))@@found.ambiguous.length))@@Sprint 8 lead: a reworked ticket with no branch is refused, not re-cut from base (PR49T-5)@@Sprint 8 lead
 MS8L15@@scripts/orchestrator.mjs@@    if (t.status === 'qa' && t.qaFailures > 0 && !t.qaPassed@@    if (false && t.status === 'qa' && t.qaFailures > 0 && !t.qaPassed@@Sprint 8 lead: a qa ticket waiting on its BUG-fix is not STALLED (PR49T-4b)@@Sprint 8 lead
+ME2E1@@hooks/contract-hooks.mjs@@const dynamicMjs = /\.m?js$/.test(texts[0]) && nameWild(cmdWords[0]);@@const dynamicMjs = cmdWords.some((w) => /\.m?js$/.test(w.v.text) && nameWild(w));@@E2E run 1: grep over a *.js glob is not 'a plugin script built at runtime' (E2E-1)@@E2E run 1
+ME2E2@@hooks/contract-hooks.mjs@@  if (j === g.length) return !file || p.slice(i).every((s) => s === ANY);@@  if (j === g.length) return true;@@E2E run 1: a sweep's tail cannot sit under a file guard, but can under a dir guard (E2E-2)@@E2E run 1
+ME2E3@@hooks/contract-hooks.mjs@@const unknownCwd = heres().some((h) => h.some((s) => WILD.test(s))) ? @@const unknownCwd = false ? @@E2E run 1: an unknown cd still refuses the token file and a guarded dir, and says the cd is why (E2E-2)@@E2E run 1
+ME2E4@@scripts/spawn-prompt.mjs@@const platPack = /\bweb\b/i.test(plat) ? 'web-conventions'@@const platPack = false ? 'web-conventions'@@E2E run 1: a web project's spawn budget counts web-conventions (EN-13)@@E2E run 1
 CATALOGUE
 }
 

@@ -368,10 +368,13 @@ function segsHit(p, g, i = 0, j = 0) {
   return segMatch(p[i], g[j]) && segsHit(p, g, i + 1, j + 1);
 }
 /** …or, for a command that sweeps a whole tree (`rm -r`, `git checkout .`, `tar -x -C`), an ANCESTOR of it (C4G-H2). */
-function segsRel(p, g, i = 0, j = 0) {
-  if (j === g.length || i === p.length) return true;
-  if (p[i] === ANY) { for (let k = j; k <= g.length; k++) if (segsRel(p, g, i + 1, k)) return true; return false; }
-  return segMatch(p[i], g[j]) && segsRel(p, g, i + 1, j + 1);
+// E2E-2: nothing lies UNDER a file guard (`actor-tokens.jsonl`, the log, a control file) — `cd "$T" && git
+// checkout -- src` cannot sweep the token registry, so past a file only an exhausted pattern still hits.
+function segsRel(p, g, i = 0, j = 0, file = /\./.test(g[g.length - 1] || '')) {
+  if (i === p.length) return true;
+  if (j === g.length) return !file || p.slice(i).every((s) => s === ANY);
+  if (p[i] === ANY) { for (let k = j; k <= g.length; k++) if (segsRel(p, g, i + 1, k, file)) return true; return false; }
+  return segMatch(p[i], g[j]) && segsRel(p, g, i + 1, j + 1, file);
 }
 const toSegs = (abs) => abs.split('/').filter(Boolean);
 /** C4G-M2: a literal path is compared as written AND with its symlinks resolved (`/var` is `/private/var`). */
@@ -781,7 +784,9 @@ function guardGateWrites() {
         if (into && heres().some((h) => G.teamDir.slice(1).some((t) => isDir(w.v.pat, h, t)))) refuse('copy or move a file into docs/team/ of another studio project');
         for (const [key, what] of WRITE_WHAT) {
           if (hitsH(w.v.pat, G[key], tree)) {
-            refuse(tree ? `${what.replace(/^write /, 'remove, move or overwrite ')} — not even by sweeping the directory that holds it` : what);
+            // E2E-2: a cwd built at runtime (`cd "$T"`) could be anywhere — say so, or the agent cannot tell why.
+            const unknownCwd = heres().some((h) => h.some((s) => WILD.test(s))) ? ' (this command `cd`s to a directory built at runtime, so it could be any directory — spell the path literally)' : '';
+            refuse((tree ? `${what.replace(/^write /, 'remove, move or overwrite ')} — not even by sweeping the directory that holds it` : what) + unknownCwd);
           }
         }
       }
@@ -931,7 +936,8 @@ function guardGateWrites() {
       }
       if (!['echo', 'printf'].includes(name) && texts.some((t, i) => t === 'actor' && /^(mint|revoke)$/.test(texts[i + 1] || ''))) refuse('mint, revoke or list actor tokens (any `board.mjs actor` subcommand)');
       // C3G-2: a script whose FILE NAME is built at runtime (`scripts/$B.mjs`, `b?ard.mjs`), or an interpreter's script that is one.
-      const dynamicMjs = cmdWords.some((w) => /\.m?js$/.test(w.v.text) && nameWild(w));
+      // E2E-1: only the COMMAND word — `grep fetch dist/assets/*.js` reads a glob of files, it runs none of them.
+      const dynamicMjs = /\.m?js$/.test(texts[0]) && nameWild(cmdWords[0]);
       const interp = INTERPRETERS.test(name) ? rest.find((w) => !w.v.text.startsWith('-')) : null;
       const dynamicScript = interp && /^(node|deno|bun|tsx|ts-node)$/.test(name) && (pure(interp) || nameWild(interp));
       if (dynamicMjs || dynamicScript) {

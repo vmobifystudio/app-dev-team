@@ -14117,6 +14117,36 @@ node "$HERE/trace.mjs" --project-root "$L8T" --only gates >"$TMP/s8lt.txt" 2>&1;
   && ok "Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)" \
   || bad "Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)" "rc=$L8RC $(head -c 300 "$TMP/s8lt.txt")"
 
+# --- E2E run 1: false refusals a real run hit ---
+E1="$TMP/e2e1"; rm -rf "$E1"; mkdir -p "$E1/docs/team"
+( cd "$E1" && git init -q -b main . && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m i ) >/dev/null 2>&1
+printf '{"ticket":"APP-001","event":"created","by":"tech-manager"}\n' > "$E1/docs/31-board-events.jsonl"
+e1g() { node -e 'process.stdout.write(JSON.stringify({agent_id:"e1",tool_name:"Bash",cwd:process.argv[1],tool_input:{command:process.argv[2]}}))' "$E1" "$1" \
+  | node "$HERE/../hooks/contract-hooks.mjs" guard-gate-writes >/dev/null 2>"$TMP/e1g.err"; echo $?; }
+[ "$(e1g 'grep -c fetch dist/assets/*.js')" = 0 ] && [ "$(e1g './scripts/$B.mjs actor mint')" = 2 ] \
+  && ok "E2E run 1: grep over a *.js glob is not 'a plugin script built at runtime' (E2E-1)" \
+  || bad "E2E run 1: grep over a *.js glob is not 'a plugin script built at runtime' (E2E-1)" "$(cat "$TMP/e1g.err")"
+# E2E-2: nothing lies under a file guard; a dir guard and the file itself still refuse.
+E1A=$(e1g 'cd "$T" && mv src old'); E1B=$(e1g 'cd "$T" && rm -f actor-tokens.jsonl'); E1C=$(e1g 'cd "$T" && rm -rf evidence/x')
+[ "$E1B" = 2 ] && [ "$E1C" = 2 ] && grep -q 'built at runtime' "$TMP/e1g.err" \
+  && ok "E2E run 1: an unknown cd still refuses the token file and a guarded dir, and says the cd is why (E2E-2)" \
+  || bad "E2E run 1: an unknown cd still refuses the token file and a guarded dir, and says the cd is why (E2E-2)" "A=$E1A B=$E1B C=$E1C $(cat "$TMP/e1g.err")"
+E1D=$(node --input-type=module -e '
+const src = (await import("fs")).readFileSync(process.argv[1], "utf8");
+const m = src.match(/function segsRel[\s\S]*?\n}\n/)[0];
+const ANY = "\u0002"; const segMatch = (a, b) => a === b;
+const segsRel = new Function("ANY", "segMatch", m + "; return segsRel;")(ANY, segMatch);
+const g = ["p", "docs", "team", "actor-tokens.jsonl"];
+process.stdout.write([segsRel([ANY, "src"], g), segsRel([ANY], g), segsRel(["p", "docs"], g), segsRel([ANY, "x"], ["p", "docs", "team", "evidence"])].join(","));' "$HERE/../hooks/contract-hooks.mjs" 2>&1)
+[ "$E1D" = "false,true,true,true" ] && ok "E2E run 1: a sweep's tail cannot sit under a file guard, but can under a dir guard (E2E-2)" \
+  || bad "E2E run 1: a sweep's tail cannot sit under a file guard, but can under a dir guard (E2E-2)" "$E1D"
+# EN-13: the budget estimate counts the project's platform pack, not ios-conventions on a web project.
+mkdir -p "$E1/.agent-wt/s"; printf '{"platform":"web"}\n' > "$E1/docs/team/project-profile.json"
+( cd "$E1" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role code-reviewer --slot .agent-wt/s ) >/dev/null 2>"$TMP/e1b.err"
+grep -q 'KB packs [0-9]* (web-conventions)' "$TMP/e1b.err" \
+  && ok "E2E run 1: a web project's spawn budget counts web-conventions (EN-13)" \
+  || bad "E2E run 1: a web project's spawn budget counts web-conventions (EN-13)" "$(grep -m1 'KB packs\|spawn-prompt' "$TMP/e1b.err")"
+
 # --- Sprint 8 V4: context and agent communication ---
 echo "Sprint 8 V4: context and agent communication"
 V4="$TMP/s8v4"; rm -rf "$V4"; mkdir -p "$V4/docs/53-reviews" "$V4/.agent-wt/android-developer"

@@ -119,7 +119,7 @@ const SKILL_DEPS = { 'ic-workflow': ['agent-isolation', 'context-preflight'] };
 /**
  * C7-6: the House KB packs (`knowledge/`) each role file says to load via house-conventions — part of
  * what the agent really reads before its first edit. `platform` is the project's platform pack; it
- * counts as ios-conventions, the largest (ponytail: a stand-in, read docs/02-team-roster.md if it matters).
+ * is read from docs/team/project-profile.json (EN-13); with no profile it counts as ios-conventions, the largest.
  */
 const KB_PACKS = {
   'ios-developer': ['ios-conventions', 'stack-defaults'], 'android-developer': ['android-conventions', 'stack-defaults'],
@@ -249,7 +249,11 @@ function reportBudget(role, ticket, text, skillKey) {
   const add = (s) => { if (skills.has(s)) return; skills.add(s); (SKILL_DEPS[s] || []).forEach(add); };
   (MANDATORY_SKILLS[skillKey] || MANDATORY_SKILLS[role] || []).forEach(add);
   const skillWords = [...skills].reduce((n, s) => n + fileWords(resolve(HERE, '..', 'skills', s, 'SKILL.md')), 0);
-  const packs = skills.has('house-conventions') ? (KB_PACKS[role] || []).map((p) => (p === 'platform' ? 'ios-conventions' : p)) : [];
+  // EN-13: `platform` is the project profile's platform pack (web/android/ios); ios-conventions only when it names none.
+  let plat = '';
+  try { plat = String(JSON.parse(readFileSync(resolve(typeof flags.root === 'string' ? flags.root : '.', 'docs/team/project-profile.json'), 'utf8')).platform || ''); } catch { /* no profile */ }
+  const platPack = /\bweb\b/i.test(plat) ? 'web-conventions' : /\bandroid\b/i.test(plat) && !/\bios\b/i.test(plat) ? 'android-conventions' : 'ios-conventions';
+  const packs = skills.has('house-conventions') ? (KB_PACKS[role] || []).map((p) => (p === 'platform' ? platPack : p)) : [];
   const packWords = packs.reduce((n, p) => n + fileWords(resolve(HERE, '..', 'knowledge', `${p}.md`)), 0);
   const total = words(text) + roleWords + skillWords + packWords;
   const budget = REVIEW_ROLES.has(role) || role === 'release-auditor' || skillKey === 'design-qa' ? BUDGET.reviewer
