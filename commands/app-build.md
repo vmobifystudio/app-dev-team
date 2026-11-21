@@ -143,12 +143,11 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    per question or per ticket — and prove the batch answered something:
 
    ```bash
-   BEFORE=$(node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --count)
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --count     # also records it
    # ... spawn tech-lead ONCE with the whole batch ...
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --was "$BEFORE"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --was last
    ```
 
-   (`$BEFORE` does not survive between Bash calls: note the count it printed and pass it literally.)
    Exit `1` → **the batch answered nothing** (prose, not ledger rows): re-spawn `tech-lead` requiring
    one `answer` row per question it can settle and ONE `escalation` for the rest, and do not proceed
    to step 2. Contract: `skills/team-protocol/references/mid-sprint-qa.md`. An `answer` settling a
@@ -244,9 +243,6 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      raised must have its record on `docs/team/messages.jsonl`. A missing record is a report defect:
      file it yourself and say so in the standup. `ASSUMED, NOT RAISED` just needs
      routing (step 1a).
-   - **Check the daily fragment exists** at `docs/daily/<today>-<role>-<ticket>.md` on the branch —
-     that exact spelling (`team-protocol`'s canonical paths). Missing → ask that agent for it before
-     moving the row; never write it on their behalf.
    - Route it to review — status, reviewer and ledger row in one write; the reviewer is read out of
      the `--detail` arrow:
 
@@ -519,7 +515,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 - **Never spawn a writing agent without its own worktree** (or, failing that, serialized), and never
   without `spawn-gate.sh` having said so.
 - **No repo-wide `git reset` / `stash` / `checkout -- .` / `clean` / `add -A` / `add .`** by any
-  agent sharing a tree — the one copy of the list; `compose` puts it in every prompt. Need a clean
+  agent sharing a tree — the one copy of the list; the git hook enforces it. Need a clean
   tree? Copy to a temp dir (`agent-isolation` Rule 2).
 - **Never spawn while the board doctor reports an anomaly.**
 - **Never move a row to `review` on an unverified `DONE`.**
@@ -532,8 +528,9 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 - **Spawn budget:** at most 6 developer retries per ticket across the sprint (review cycles plus
   rejected-DONE retries). Past that the ticket is `blocked` and goes to the user — a spec problem,
   not an effort problem.
-- A developer returning `BLOCKED: APP-NNN` → surface the blocker verbatim, append
-  `board.mjs move APP-NNN blocked --by <owner-role> --detail "<the blocker>"`, stop that ticket, and
-  do not invent an answer. Read the readiness cascade the CLI prints — those dependents are now
-  unclaimable.
+- A developer returning `BLOCKED: APP-NNN` → append `board.mjs move APP-NNN blocked --by
+  <owner-role> --detail "<the blocker>"`; never invent an answer. `Need:` names `tech-lead`,
+  `ux-architect` or `product-manager` → spawn that role once with the question: it commits the spec
+  edit and sends an `answer` row naming it; then `unblocked` and re-compose (the prompt carries the
+  answer and the existing branch). Anyone else → surface it verbatim and stop that ticket.
 - **Never hand-edit `docs/31-board.md`.** It is generated.

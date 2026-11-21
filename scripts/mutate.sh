@@ -187,7 +187,7 @@ M58@@scripts/ci-status.mjs@@const headline = ARMED || code === 0 ? state : `ADVI
 M59@@scripts/worktree-slot.mjs@@  if (mine) {@@  if (mine && !flags.force) {@@--force no longer buys a second lease past the guard its own header calls the one that matters@@B4/B5/B6
 M60@@scripts/lib/board.mjs@@  return !(row.staticOnly === true || row.verifiedStatic === true);@@  return true;@@...and a merge-gated one awaiting the wave has NOT (board-row spelling)@@N1/N9: one predicate
 M61@@scripts/messages.mjs@@if (m.kind === 'decision' && pending.length) pending.shift();@@if (m.kind === 'decision') { const j = pending.findIndex((x) => x.kind === 'escalation'); if (j >= 0) pending.splice(j, 1); }@@a decision that answered a QUESTION does not also close an escalation@@N5: one decision
-M62@@scripts/messages.mjs@@if (options.count) { process.stdout.write(`${open.length}\n`); return 0; }@@if (false) { process.stdout.write(`${open.length}\n`); return 0; }@@...and that line is a bare number the runbook can use without a regex@@N8: --count
+M62@@scripts/messages.mjs@@      if (options.count) {@@      if (false) {@@...and that line is a bare number the runbook can use without a regex@@N8: --count
 M63@@scripts/wave-integrate.mjs@@  if (outstanding.length > 1) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }@@  if (false) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }@@a ticket with two unintegrated branches is REPORTED, not picked between@@N2: ambiguity
 M64@@scripts/wave-integrate.mjs@@branches.filter((b) => matchesTicket(b, t.id, ALL_IDS))@@branches.filter((b) => b.includes(t.id))@@...and APP-1 does not match the branch of APP-12@@N2: ambiguity
 M65@@scripts/worktree-reap.mjs@@  if (/^integration-wave-/.test(name)) {@@  if (false) {@@...and --apply never reaps it, because a kept wave tree is CLEAN and the dirty check would not save it@@N3: the kept
@@ -576,13 +576,12 @@ MP47A@@scripts/lib/events.mjs@@...(isQaDocs(state) ? [] : ['rework'])@@...(isQaD
 MP47B@@hooks/block-shared-tree-destructive-git.sh@@      STAT=$( { git -C "$GDIR" status --porcelain -uno -- ':/' 2>/dev/null@@      STAT=$( { true@@PR47: a tracked operational file with uncommitted changes still blocks git reset --hard@@PR47 review
 MP47C@@scripts/runtime-gate.sh@@[ -f "$TOPL/docs/31-board-events.jsonl" ]@@true@@PR47: the runtime gate's integration-tip check skips a repo that is not a studio project@@PR47 review
 MP47D@@scripts/runtime-gate.sh@@[ "$(cd "$ROOT" && pwd -P)" = "$(cd "$TOPL" && pwd -P)" ]@@true@@PR47: the runtime gate's integration-tip check skips a fixture directory inside another repo@@PR47 review
-MP47E@@scripts/spawn-prompt.mjs@@return ticketEvents(root, id).filter((e) => !METADATA_EVENTS.has(e.event)).pop();@@return ticketEvents(root, id).pop();@@PR47 round 2: a corrected event after rework still composes the rework (existing branch, wave reason)@@PR47 fixes
 MP47F@@scripts/spawn-prompt.mjs@@} else if (qa && base && tryGit(ROOT, ['rev-parse', '--verify', '-q', `refs/heads/${branchName}`])) {@@} else if (false) {@@PR47 round 3: QA's first spawn cuts qa/QA-1; the re-spawn once it exists is a verdict pass on the landed tree@@PR47 fixes
 MF47A@@scripts/integration-branch.sh@@-e 's/^[[:space:]>*|#-]*([0-9]+\.[[:space:]]*)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@-e 's/^[[:space:]>*|-]*(@)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@PR47 fixes: heading, numbered, hyphen@@PR47 fixes
 MF47B@@hooks/block-shared-tree-destructive-git.sh@@printf 'main master develop %s'@@printf 'main %s'@@PR47 fixes: an unresolvable declaration still protects develop from a raw merge@@PR47 fixes
 MF47C@@hooks/block-shared-tree-destructive-git.sh@@case $REF in i) SWEEP=1; EXCL="" ;; u) EXCL="" ;; esac@@SWEEP=1; EXCL=""@@PR47 fixes: git clean -fd runs when the only operational file is the gitignored board log@@PR47 fixes
 MF47D@@hooks/block-shared-tree-destructive-git.sh@@m = (sc == "clean") ? "u" : ""@@m = ""@@PR47 fixes: git clean -fd is refused when an untracked operational file exists@@PR47 fixes
-MF47E@@scripts/spawn-prompt.mjs@@} else if (lastWorkEvent(ROOT, row.id)?.event === 'rework') {@@} else if (false) {@@PR47 fixes: after rework, compose checks out the existing branch and carries the wave's reason@@PR47 fixes
+MF47E@@scripts/spawn-prompt.mjs@@    const rework = back?.event === 'rework';@@    const rework = false;@@PR47 fixes: after rework, compose checks out the existing branch and carries the wave's reason@@PR47 fixes
 MF47F@@hooks/contract-hooks.mjs@@.filter((w) => w.includes('/') && !/^[~/]/.test(w)@@.filter((w) => false && !/^[~/]/.test(w)@@PR47 fixes: rm -rf ../proj/docs/team/evidence from a non-studio cwd is refused@@PR47 fixes
 MF47G@@scripts/messages.mjs@@if (String(options.channel || '').replace(/^#/, '') === 'artifacts') die(@@if (false) die(@@PR47 fixes: send refuses --channel artifacts@@PR47 fixes
 MF47H@@scripts/messages.mjs@@      registration: true,@@      registration: false,@@PR47 fixes: messages.mjs artifact stamps registration:true@@PR47 fixes
@@ -646,6 +645,15 @@ M8V2R@@scripts/board.mjs@@if (typeof flags.title !== 'string' || !flags.title.tr
 M8V2S@@scripts/lib/events.mjs@@        if (Array.isArray(fields.dependsOn)) state.dependsOn = state.meta.dependsOn = fields.dependsOn.map(String);@@        ;@@Sprint 8 V2: FL-12 corrected --depends/--acceptance/--file re-plans a ticket@@Sprint 8 V2
 MS8L01@@scripts/worktree-slot.mjs@@':(exclude).agent-wt', ...opExcludes]@@':(exclude).agent-wt']@@Sprint 8 lead: a tracked standup is not a lease warning; a real uncommitted file still is (FL-13)@@Sprint 8 lead
 MS8L02@@scripts/trace.mjs@@: ONLY === 'gates' ? 'TRACED — no gate fired.'@@: false ? ''@@Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)@@Sprint 8 lead
+MS8V4-01@@scripts/team-message.sh@@ROOT=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)@@ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)@@Sprint 8 V4: a question sent from a slot lands in the main checkout's ledger (CX-1)@@Sprint 8 V4
+MS8V4-02@@scripts/messages.mjs@@    base = r.root;@@    base = process.cwd();@@Sprint 8 V4: a question sent from a slot lands in the main checkout's ledger (CX-1)@@Sprint 8 V4
+MS8V4-03@@scripts/spawn-prompt.mjs@@(found = ticketBranch(ROOT, row.id, allIds)).branch || found.ambiguous.length@@false@@Sprint 8 V4: a rejected ticket's re-spawn checks out its existing branch with the rejection inlined (CX-3)@@Sprint 8 V4
+MS8V4-04@@scripts/spawn-prompt.mjs@@.filter((m) => CLOSING_KINDS.has(m.kind) && String@@.filter((m) => false && String@@Sprint 8 V4: tech-lead's answer on the ticket is inlined in the IC and the reviewer prompt (CX-2)@@Sprint 8 V4
+MS8V4-05@@scripts/spawn-prompt.mjs@@return e.event === 'changes' && e.detail?.verdict_path@@return false && e.detail?.verdict_path@@Sprint 8 V4: this sprint's REQUEST CHANGES blockers are inlined in the next IC prompt (LN-2)@@Sprint 8 V4
+MS8V4-06@@scripts/spawn-prompt.mjs@@const rows = table.slice(head.length).filter(hit);@@const rows = table.slice(head.length);@@Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)@@Sprint 8 V4
+MS8V4-07@@scripts/spawn-prompt.mjs@@if (ITEM_RE.test(l)) { keepItem = hit(l);@@if (ITEM_RE.test(l)) { keepItem = true;@@Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)@@Sprint 8 V4
+MS8V4-08@@scripts/messages.mjs@@if (options.was === 'last') {@@if (false) {@@Sprint 8 V4: open --was last reads the recorded count: unfallen exits 1, answered exits 0 (CX-5)@@Sprint 8 V4
+MS8V4-09@@scripts/spawn-prompt.mjs@@  'release-auditor': ['house-conventions', 'board-doctor'],@@  'release-auditor': ['house-conventions', 'board-doctor', 'team-protocol'],@@Sprint 8 V4: release-auditor's budget does not count the conditional team-protocol (CX-11)@@Sprint 8 V4
 CATALOGUE
 }
 

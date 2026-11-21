@@ -33,7 +33,10 @@ once per question, never once per ticket. One spawn, one context, every open que
 **What `tech-lead` must emit.** One ledger row per open question, and nothing that is not a row:
 
 - It can answer → an `answer` row on that ticket, addressed to the asker. This is what closes the
-  count.
+  count. The spec edit the row names (`--artifact`) is **committed** in the main checkout (it is on
+  the integration branch) — a slot branches from commits, so an uncommitted answer never reaches
+  the code. The orchestrator then runs `team-bootstrap.mjs --root . --context-only` so the context
+  manifest re-hashes the spec. The next compose inlines the `answer` row for the IC and its reviewer.
 - It cannot answer → **one** `escalation` row to `tech-manager` covering every question it could not
   settle on that ticket, naming for each what decision is needed and who owns it (`cpo` for product
   scope, `cto` for architecture, the user for anything irreversible). An `escalation` deliberately

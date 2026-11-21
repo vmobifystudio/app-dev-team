@@ -67,8 +67,8 @@ Send a live `question` only when you can keep working on another part of the tic
 
 ## Ask before you block
 
-`BLOCKED` discards a warm context and costs a re-spawn. (1) Re-read the impl spec and flow doc.
-(2) Send one `question` and keep working elsewhere on the ticket. (3) Only then:
+`BLOCKED` costs a re-spawn. (1) Re-read the impl spec and flow doc. (2) Send one `question` and
+keep working elsewhere. (3) Only then (`Need: tech-lead` is answered this round, then you re-spawn):
 
 ```
 BLOCKED: APP-NNN

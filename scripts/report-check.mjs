@@ -123,29 +123,16 @@ if (!missing.length && fragmentTruth?.ok !== false) {
 if (fragmentTruth?.ok === false) {
   process.stdout.write(
     `REPORT CHECK: FALSE CLAIM — ${role}'s "Daily fragment: ${fragmentTruth.path}" is not on branch "${fragmentTruth.branch}".\n\n` +
-    '  The path exists somewhere — on disk, in the worktree, possibly well-written — and was never\n' +
-    '  `git add`ed and committed. This is the same claim/verification gap H4 found in the code diff\n' +
-    '  (a DONE reported over uncommitted work), surviving in the one field presence-checking cannot\n' +
-    '  catch. ic-workflow step 8 says to commit the fragment WITH the change; it was not.\n\n' +
-    '  Re-spawn the agent to stage and commit the fragment on this branch. Do NOT commit it\n' +
-    '  yourself from the orchestrator — a fragment you commit on the agent\'s behalf is a claim\n' +
-    '  nobody made, recorded as though someone did.\n'
+    '  Re-spawn the agent to commit it on that branch. Do NOT commit it yourself.\n'
   );
   process.exit(1);
 }
 
+// CX-5: both refusals are kept to their facts and one instruction — this text lands in the
+// orchestrator's context on every failure, and the rationale lives in ic-workflow and app-build.
 process.stdout.write(
   `REPORT CHECK: INCOMPLETE — ${role} returned ${required.length - missing.length} of ${required.length} contract field(s)\n\n` +
   missing.map((m) => `  MISSING  ${m}`).join('\n') + '\n\n' +
-  '  Each missing field is a gate that will now silently do nothing for this ticket:\n' +
-  '    Worktree:                     isolation was never confirmed\n' +
-  '    Branch:                       verify-done has no branch to check the work on\n' +
-  '    Mutation confirmed:           nothing states the change was actually written and committed\n' +
-  '    Daily fragment:               the standup has no input from this run\n' +
-  '    Assumptions & open questions: guesses stay unrouted and the next wave inherits them\n' +
-  '    Second-path check:            the FC-001 sweep for other writers of this value never happened\n' +
-  '    Shared surfaces touched:      a file collision with a parallel agent goes unnoticed\n' +
-  '\n  Re-spawn the agent asking for the missing fields specifically. Do NOT fill them in yourself —\n' +
-  '  a field the orchestrator invents is a claim nobody made, recorded as though someone did.\n'
+  '  Re-spawn the agent for exactly these fields. Do NOT fill them in yourself.\n'
 );
 process.exit(1);

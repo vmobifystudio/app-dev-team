@@ -33,6 +33,13 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 
 ## Steps
 
+0. **Resume first — every entry, including each `/loop` iteration and after a compaction.** Nothing
+   you remember is state; the files are. A studio run in progress is never re-detected as brownfield:
+   - `docs/31-board-events.jsonl` exists → step 4 (`/app-build` from its step 0).
+   - `docs/00-vision.md` has `## Scope lock` but no board → step 3.
+   - `docs/00-founder-intent/` exists but no scope lock → step 1a (Gate 1 is still pending).
+   - None of these → step 1.
+
 1. **Detect greenfield vs brownfield.** Using the `brownfield-onboarding` skill's detection, check
    whether the target directory already contains an app.
 

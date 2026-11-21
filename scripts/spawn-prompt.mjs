@@ -66,6 +66,7 @@ import { contractFor, contractBlock, BLOCKED_BLOCK, GATE_HEADERS } from './lib/c
 import { matchesTicket } from './lib/integration.mjs';
 import { verifyQaEvidence } from './lib/evidence.mjs';
 import { ROLE_GATES } from './lib/capabilities.mjs';
+import { parseMessageLog, CLOSING_KINDS } from './lib/messages.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BOARD = resolve(HERE, 'board.mjs');
@@ -135,8 +136,8 @@ const MANDATORY_SKILLS = {
   'verification-engineer': ['agent-isolation', 'house-conventions', 'defect-hunting', 'mutation-testing'],
   'code-reviewer': ['defect-hunting', 'house-conventions', 'context-preflight'],
   'tech-lead': ['house-conventions', 'process-tiering'],
-  'security-reviewer': ['house-conventions', 'team-protocol'],
-  'release-auditor': ['house-conventions', 'board-doctor', 'team-protocol'],
+  'security-reviewer': ['house-conventions'],
+  'release-auditor': ['house-conventions', 'board-doctor'],
   'design-qa': ['accessibility-gate', 'house-conventions'],
 };
 const MODEL_LADDER = ['haiku', 'sonnet', 'opus'];
@@ -183,6 +184,41 @@ function cutLines(lines, left) {
   return [...kept, '[…truncated]'].join('\n');
 }
 
+/**
+ * CX-8: a matched section keeps its heading, prose and code fences whole, but only the table rows,
+ * list items and `[AC-…]`-style lines that name a token — a shared criteria list or feature table put
+ * every sibling ticket's acceptance into every prompt. A section whose heading names a token is kept
+ * whole. A kept table keeps its header; an indented line follows its item.
+ */
+const TABLE_RE = /^\s*\|/;
+const ITEM_RE = /^ ?(?:[-*+]|\d+[.)])\s|^\s*(?:\*\*)?\[?[A-Z]{1,6}-\d+/;
+function narrow(lines, res) {
+  const hit = (l) => res.some((r) => r.test(l));
+  if (hit(lines[0])) return lines;  // a section whose heading names the ticket is the ticket's own
+  const out = [];
+  let inFence = false;
+  let keepItem = true;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (FENCE_RE.test(l)) inFence = !inFence;
+    if (i === 0 || inFence || FENCE_RE.test(l)) { out.push(l); continue; }
+    if (TABLE_RE.test(l)) {
+      const table = [];
+      while (i < lines.length && TABLE_RE.test(lines[i])) table.push(lines[i++]);
+      i--;
+      const head = /^\s*\|?[\s:|-]*-{3,}/.test(table[1] || '') ? table.slice(0, 2) : [];
+      const rows = table.slice(head.length).filter(hit);
+      if (rows.length) out.push(...head, ...rows);
+      continue;
+    }
+    if (ITEM_RE.test(l)) { keepItem = hit(l); if (keepItem) out.push(l); continue; }
+    if (/^\s{2,}\S/.test(l)) { if (keepItem) out.push(l); continue; }
+    keepItem = true;
+    out.push(l);
+  }
+  return out;
+}
+
 function specExcerpt(root, files, tokens) {
   const res = tokens.filter(Boolean).map((t) => new RegExp(`(^|[^A-Za-z0-9-])${escapeRe(String(t))}($|[^A-Za-z0-9])`, 'i'));
   const out = [];
@@ -196,7 +232,7 @@ function specExcerpt(root, files, tokens) {
     out.push('', hits.length ? `From \`${file}\` (full file: \`${file}\`):` : `\`${file}\`: no section names this ticket — read it if the ticket needs it.`);
     for (const h of hits) {
       if (left <= 0) { out.push('', '[…excerpt budget spent — read the full file for the rest]'); break; }
-      const body = h.join('\n').trim();
+      const body = narrow(h, res).join('\n').trim();
       const n = words(body);
       out.push('', n > left ? cutLines(body.split('\n'), left) : body);
       left -= n;
@@ -252,13 +288,6 @@ function boardRows(root) {
 }
 
 /** The log's events for one ticket, oldest first. Unparseable lines are skipped (board.mjs verify owns integrity). */
-/** The last event that moved the ticket's work — `corrected`/`assigned`/`blocked`/`unblocked` only
- * edit or pause it, so a `rework` followed by a title correction is still a rework (Codex PR #47). */
-const METADATA_EVENTS = new Set(['corrected', 'assigned', 'blocked', 'unblocked']);
-function lastWorkEvent(root, id) {
-  return ticketEvents(root, id).filter((e) => !METADATA_EVENTS.has(e.event)).pop();
-}
-
 function ticketEvents(root, id) {
   let text = '';
   try { text = readFileSync(join(root, 'docs', '31-board-events.jsonl'), 'utf8'); } catch { return []; }
@@ -305,6 +334,43 @@ function latestDone(root, id) {
     .filter((f) => re.test(f) && readFileSync(join(dir, f), 'utf8').trimStart().startsWith('DONE:')).sort().pop();
   return file ? { file, text: readFileSync(join(dir, file), 'utf8').trim() } : null;
 }
+
+const detailText = (d) => String(typeof d === 'object' && d ? (d.note ?? JSON.stringify(d)) : (d ?? '')).trim();
+
+/** CX-2: the ticket's settled `answer`/`decision` rows from the team channel, newest 10 — the asker and its reviewer both read them. */
+function answerLines(root, id) {
+  let text = '';
+  try { text = readFileSync(join(root, 'docs', 'team', 'messages.jsonl'), 'utf8'); } catch { return []; }
+  const rows = parseMessageLog(text).messages
+    .filter((m) => CLOSING_KINDS.has(m.kind) && String(m.ticket).toUpperCase() === id.toUpperCase()).slice(-10);
+  return rows.length ? ['', `**Answers on record for ${id}** (team channel, verbatim — they settle the spec where it was ambiguous; the code must follow them):`,
+    ...rows.map((m) => `- ${m.id} ${m.from} ${m.kind}: ${m.summary}${m.body ? ` — ${m.body}` : ''}${m.artifact ? ` [${m.artifact}]` : ''}`)] : [];
+}
+
+/**
+ * LN-2: the `Blocking:` lines of the REQUEST CHANGES verdicts on OTHER tickets (each `changes` event
+ * names its verdict file), newest first, capped at 10 lines. ponytail: "this sprint" is "this board's
+ * log", newest first — a cross-sprint log just fills the cap with the most recent.
+ */
+function caughtLines(root, id) {
+  let text = '';
+  try { text = readFileSync(join(root, 'docs', '31-board-events.jsonl'), 'utf8'); } catch { return []; }
+  const paths = [...new Set(text.split('\n').flatMap((l) => { try { const e = JSON.parse(l); return e.event === 'changes' && e.detail?.verdict_path && String(e.ticket).toUpperCase() !== id.toUpperCase() ? [e.detail.verdict_path] : []; } catch { return []; } }).reverse())];
+  const out = [];
+  for (const p of paths) {
+    let v = '';
+    try { v = readFileSync(resolve(root, p), 'utf8'); } catch { continue; }
+    const m = v.match(/^Blocking:[ \t]*(.*)\n((?:[ \t]*(?:[-*]|\d+[.)])[ \t].*\n?)*)/m);
+    if (!m) continue;
+    for (const l of [m[1], ...m[2].split('\n')].map((s) => s.trim().replace(/^(?:[-*]|\d+[.)])\s+/, '')).filter((s) => s && !/^<?none>?$/i.test(s))) {
+      if (out.length < 10) out.push(`- ${l}  (${p})`);
+    }
+  }
+  return out.length ? ['', '**Already caught in review this sprint — do not repeat** (other tickets\' `Blocking:` lines):', ...out] : [];
+}
+
+/** CX-3: the latest event that sent this ticket back to its owner — `rework`, `rejected` or `blocked`. */
+const sentBack = (root, id) => ticketEvents(root, id).filter((e) => ['rework', 'rejected', 'blocked'].includes(e.event)).pop();
 
 function resolveRoot() {
   if (typeof flags.root === 'string') return resolve(flags.root);
@@ -386,6 +452,7 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
   // --retry: the branch already exists and carries the last cycle; re-branching from the base
   // would throw that work away or fork it (C2-11). The model goes one tier up per review cycle.
   let start;
+  let found;
   if (flags.retry) {
     const vf = String(flags.retry);
     const abs = resolve(ROOT, vf);
@@ -402,18 +469,23 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
       `Fix exactly the \`Blocking:\` lines of \`${vf}\` (verbatim below), then return the full contract again.`,
       '', ...fence(readFileSync(abs, 'utf8').trim()),
     ];
-  } else if (lastWorkEvent(ROOT, row.id)?.event === 'rework') {
+  } else if (!qa && ((found = ticketBranch(ROOT, row.id, allIds)).branch || found.ambiguous.length || sentBack(ROOT, row.id)?.event === 'rework')) {
     // PR47-5: `rework` (the wave could not land it: FAIL / CONFLICT) sends a MERGED ticket back. Its
     // branch exists and carries the reviewed work; a fresh `checkout -b` forked a second branch and
-    // `verified` then refused the ambiguity. The task is the rework event's own detail.
-    const why = String(lastWorkEvent(ROOT, row.id).detail || '').trim();
+    // `verified` then refused the ambiguity. CX-3: the same holds for EVERY re-spawn onto an existing
+    // branch — verify-done REJECTED, report-check INCOMPLETE, blocked then unblocked — and the task is
+    // the detail of the event that sent it back.
+    const back = sentBack(ROOT, row.id);
+    const rework = back?.event === 'rework';
+    const why = back ? detailText(back.detail) : '';
     const { branch, ambiguous } = ticketBranch(ROOT, row.id, allIds);
-    if (!branch) die(2, ambiguous.length ? `rework: several branches are ${row.id}'s (${ambiguous.join(', ')}) — delete the stray one first` : `rework: no branch is named for ${row.id}, but the board sent it back with rework`);
+    if (!branch) die(2, ambiguous.length ? `${row.id}: several branches are ${row.id}'s (${ambiguous.join(', ')}) — delete the stray one first` : `rework: no branch is named for ${row.id}, but the board sent it back with rework`);
     start = [
-      `**This is a REWORK: the wave could not land this ticket.** Your branch \`${branch}\` already exists — \`git -C "${slot}" checkout ${branch}\`.`,
+      rework ? `**This is a REWORK: the wave could not land this ticket.** Your branch \`${branch}\` already exists — \`git -C "${slot}" checkout ${branch}\`.`
+        : `**This is a RE-SPAWN: your branch \`${branch}\` already exists** — \`git -C "${slot}" checkout ${branch}\`.`,
       'Do NOT create a new branch: commit the fix on that branch, then return the full contract again.',
-      ...(/CONFLICT/i.test(why) && base ? [`It CONFLICTED with \`${base}\`: rebase first and resolve — \`git -C "${slot}" rebase ${base}\`.`] : []),
-      'Why it came back (the `rework` event, verbatim):', '', ...fence(why || '(no detail recorded)'),
+      ...(rework && /CONFLICT/i.test(why) && base ? [`It CONFLICTED with \`${base}\`: rebase first and resolve — \`git -C "${slot}" rebase ${base}\`.`] : []),
+      ...(back ? [`Why it came back (the \`${back.event}\` event, verbatim):`, '', ...fence(why || '(no detail recorded)')] : []),
     ];
   } else if (qa && base && tryGit(ROOT, ['rev-parse', '--verify', '-q', `refs/heads/${branchName}`])) {
     // Codex PR #47 R3: first P0 declarations land BEFORE verdicts (build-loop-branches §Step 5), so QA
@@ -462,11 +534,13 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
       '`docs/13-design-tokens.md`, `docs/14-components.md`, `docs/52-analytics.md`, `docs/40-api.md`',
       'the ticket actually touches.',
       ...excerpt,
+      ...answerLines(ROOT, row.id),
+      ...caughtLines(ROOT, row.id),
     ]),
     '',
     // R7-6: an artifact ticket IS a document (docs/12-flows.md for ux-architect, …) — "do not edit the specs" forbade the work.
-    artifact ? 'Edit only the document(s) your ticket\'s Spec names; no other spec. If you are blocked, flag the blocker and stop — do not guess.'
-      : 'Do not edit the specs. If you are blocked, flag the blocker and stop — do not guess.',
+    artifact ? 'Edit only the document(s) your ticket\'s Spec names; no other spec. If you are blocked, return the BLOCKED block below — do not guess.'
+      : 'Do not edit the specs. If you are blocked, return the BLOCKED block below — do not guess.',
     ...(qa ? [] : tokenLines(ROOT, role, row.id)),
     '',
     '**Expected output contract.** Return exactly this block, with every field filled in — a',
@@ -609,6 +683,7 @@ function composeReview({ ROOT, row, allIds, base, role }) {
       ? `**The developer's DONE report** (\`docs/team/reports/${report.file}\`, verbatim — re-verify every claim, trust none):`
       : `**No persisted DONE report for ${row.id}.** Review against the board row and the branch, and say so under \`## Not checked\`.`,
     ...(report ? ['', ...fence(report.text)] : []),
+    ...answerLines(ROOT, row.id),
     ...(tok ? ['', `Token: ${tok.token}`, `Pass \`--token ${tok.token}\` on every gate event you write for ${row.id}. It proves your role for this ticket only; never write it to a file or hand it on.`] : []),
     '',
     `Write the verdict to \`${verdictFile}\` in the main checkout (an operational path — do not commit it), then record it:`,

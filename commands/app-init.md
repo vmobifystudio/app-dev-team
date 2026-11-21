@@ -98,7 +98,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
             docs/53-reviews/ docs/54-evidence/runtime/ docs/54-evidence/journeys/ \
             docs/33-rounds.jsonl docs/team/evidence/ \
             docs/team/worktree-slots.json docs/team/ship-gate-verdict.json \
-            docs/32-board-view.md docs/team/messages.md \
+            docs/32-board-view.md docs/team/messages.md docs/team/messages.jsonl \
             docs/90-register.jsonl docs/90-register.md docs/team/release-candidates.jsonl; do
      grep -qxF "$p" .gitignore || printf '%s\n' "$p" >> .gitignore
    done
@@ -183,7 +183,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    never a blanket add:
 
    ```bash
-   sh -c 'for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent/ docs/team/messages.jsonl \
+   sh -c 'for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent/ \
             docs/*.md .github fastlane \
             package.json package-lock.json pnpm-lock.yaml yarn.lock .nvmrc */package.json \
             Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
