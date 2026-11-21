@@ -3,7 +3,7 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [3.2.0] — 2026-11-22 (Sprint 8: nine-lens studio audit, PR #49)
 
 ### Removed — Sprint 8 V6 (2026-11-21 studio audit: dead weight)
 

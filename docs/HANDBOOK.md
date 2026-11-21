@@ -2,7 +2,7 @@
 
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
-**Version:** 3.1.0 (`main`) · **Date:** 2026-11-17
+**Version:** 3.2.0 (`main`) · **Date:** 2026-11-22
 **Scale:** 29 roles · 26 skills · 21 commands · 68 top-level scripts (+24 shared libs) · 9 knowledge packs · 2656 assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot

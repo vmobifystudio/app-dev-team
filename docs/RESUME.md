@@ -3,8 +3,20 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-11-20 · **Branch:** `main` at `c6cf277` (Sprint 7 merged as #47)
-**Suite:** 2590 passed, 0 failed · **Mutation anchors:** 443, all unique · **Eval lab:** 7/7 · **Invariants:** 12/12 · **Version:** 3.1.0
+**Last updated:** 2026-11-22 · **Branch:** `fix/sprint-8` → PR #49 (Sprint 8)
+**Suite:** 2656 passed, 0 failed · **Invariants:** 12/12 · **Version:** 3.2.0 · 29 roles · 26 skills · 21 commands
+
+## 2026-11-21/22 — nine-lens studio audit and Sprint 8 (`fix/sprint-8`, PR #49)
+
+Nine auditors (scrum, flow simulation, product, engineering, QA, context, skills/roles, learning,
+autonomy) — `docs/reviews/2026-11-21-studio-audit/`, 115 findings. The theme: an unattended
+`/app-run` stopped at round 1 for founder gates the team itself tripped, and much machinery cost
+tokens without changing outcomes. Sprint 8 (eight tracks, `docs/reviews/sprint8-brief.md`; register
+§ 2026-11-21 and § PR #49 review round 1): founder gates only for money/credentials/irreversible;
+everything reversible decided by its named role and recorded; tech-lead settles review deadlocks;
+`descoped`; per-sprint budgets; Android/iOS journey drivers fixed; learning writes a reviewed patch
+and measures every run in `~/.app-dev-team/`; 1 role, 6 skills, 6 commands, 8 scripts deleted.
+Next: reinstall the plugin from main and do a real agent-spawned run.
 
 ## 2026-11-19/20 — fresh audit on main and Sprint 7 (`fix/sprint-7`)
 
