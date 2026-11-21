@@ -109,9 +109,8 @@ if (!scheduleResult.ready.some((id) => String(id).toUpperCase() === ticket.toUpp
   );
 }
 
-// `audit-anchor`, `prompt-registry`, and `eval-lab` were previously reachable only through
-// `ship-gate.sh` at release time — a project's audit tip could drift, its prompt registry could go
-// stale, or its eval baseline could rot for an entire sprint before anything noticed, because
+// `audit-anchor` and `eval-lab` were previously reachable only through
+// `ship-gate.sh` at release time — a project's audit tip could drift, or its eval baseline could rot for an entire sprint before anything noticed, because
 // nothing ran these checks before that. Every spawn now composes them too, still gated by the same
 // `.studio-policy.json` flags `ship-gate.sh` reads, so a project that has not opted in pays nothing
 // extra — drift is caught at the next spawn, not at the release that happens to follow it.
@@ -158,9 +157,6 @@ if (policy.requireTicketFiles === true) {
 const revamp = {};
 if (policy.requireAuditAnchor) {
   revamp.auditAnchor = run('audit-anchor.mjs', ['verify', '--log', resolve(root, 'docs/31-board-events.jsonl'), '--out', resolve(root, 'docs/team/audit-anchor.json')]);
-}
-if (policy.requirePromptRegistry) {
-  revamp.promptRegistry = run('prompt-registry.mjs', ['--registry', resolve(root, 'docs/team/prompt-registry.json')]);
 }
 if (policy.requireEvaluation) {
   revamp.evalLab = run('eval-lab.mjs', ['--manifest', resolve(root, 'eval/manifest.json')]);

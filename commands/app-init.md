@@ -131,7 +131,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      No command created this file. Observed live: an agent reported raising a question on the
      channel when the channel had never existed, and nothing contradicted it.
 
-   - **`.studio-policy.json`, if it does not already exist** — turns two of the five Revamp P0 trust
+   - **`.studio-policy.json`, if it does not already exist** — turns two of the four Revamp P0 trust
      controls on by default for every new project. They are opt-in at the `ship-gate` layer precisely
      so an *existing*, onboarded repo is not retroactively blocked by controls it never adopted — a
      fresh project has no such excuse, and shipping with these silently absent is the gap, not a
@@ -151,28 +151,25 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 
      Edit `owner` to the actual accountable role once one is decided; `ship-gate.sh`'s `policy-check`
      only requires the field to be non-empty, not who it names. `requireActorTokens` (not one of the
-     five) is also on: `spawn-prompt.mjs compose` mints each spawned agent's token, so it needs
+     four) is also on: `spawn-prompt.mjs compose` mints each spawned agent's token, so it needs
      nothing before the first spawn.
 
      **Only these two default on.** Codex found (PR #15) that turning on all five here breaks the
-     very first spawn: `requireAuditAnchor`, `requirePromptRegistry`, and `requireEvaluation` are all
+     very first spawn: `requireAuditAnchor` and `requireEvaluation` are both
      composed into `dispatch-preflight.mjs`, which runs before *every* ticket claim — and
      each needs an artifact this step cannot produce yet. Reproduced directly against a fresh
      project directory: `audit-anchor.mjs verify` needs `docs/31-board-events.jsonl`, which does not
-     exist until the first ticket is added (later, at planning); `prompt-registry.mjs sync` needs an
-     `agents/` directory, which a shipped app project does not have — that concept describes *this
-     plugin's* prompt registry, not a customer project's; `eval-lab.mjs` needs `eval/manifest.json`
-     naming planted-defect golden fixtures, which a fresh project has none of. Enabling any of the
-     three at init time turns "cannot evaluate yet" into "every spawn is blocked forever," which is
+     exist until the first ticket is added (later, at planning); `eval-lab.mjs` needs `eval/manifest.json`
+     naming planted-defect golden fixtures, which a fresh project has none of. Enabling either of the
+     two at init time turns "cannot evaluate yet" into "every spawn is blocked forever," which is
      worse than the opt-in gap they were meant to close. `requireDurableRuns` and
      `requireApprovalBinding` have no such ordering problem — `run-ledger.mjs` and
      `approval-check.mjs` degrade to CANNOT EVALUATE on an empty/absent log rather than erroring at
      spawn time — so they default on safely. Neither is checked at spawn: `ship-gate.sh` checks both
      at release, and the merge gate (`/app-build` step 4, run inline by the orchestrator) checks the
-     ticket's own approval, which is why `code-reviewer` approves with `--bind` on such a project. Turn the other three on explicitly, per project, once their
+     ticket's own approval, which is why `code-reviewer` approves with `--bind` on such a project. Turn the other two on explicitly, per project, once their
      prerequisite exists: `requireAuditAnchor` after the board has its first ticket and someone runs
-     `audit-anchor.mjs create`; `requireEvaluation` once the project has its own `eval/manifest.json`;
-     `requirePromptRegistry` is a studio-repo concept and does not apply to a shipped project at all.
+     `audit-anchor.mjs create`; `requireEvaluation` once the project has its own `eval/manifest.json`.
 
 5a. **Commit the planning docs and everything `devops-engineer` wrote**, staging by explicit path —
    never a blanket add:

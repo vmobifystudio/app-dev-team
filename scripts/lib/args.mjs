@@ -13,7 +13,20 @@
  *
  * This is a shared *validator*, not a layer: the four callers delete their own copy of the loop, so
  * the file count goes up by one and the parser count goes down by three.
+ *
+ * `--help` (in a flag position) prints the calling script's header comment and exits 0 (EN-10): no
+ * script supported it, and `team-bootstrap.mjs --help` ran its real action and wrote four manifests
+ * into the cwd. A caller with its own usage text passes `help: false` and handles it itself.
  */
+import { readFileSync } from 'node:fs';
+
+/** The entry script's leading comment block (shebang skipped), comment markers stripped. */
+export function usageHeader(file = process.argv[1]) {
+  const src = readFileSync(file, 'utf8').replace(/^#!.*\n/, '');
+  const block = src.match(/^\s*\/\*\*?([\s\S]*?)\*\//) || src.match(/^((?:[ \t]*\/\/.*\n)+)/);
+  if (!block) return `${file}: no usage header`;
+  return block[1].split('\n').map((line) => line.replace(/^\s*(?:\*|\/\/) ?/, '')).join('\n').trim();
+}
 
 /**
  * @param {string[]} argv          arguments after the script name
@@ -25,9 +38,10 @@
  * @param {Record<string,string>} [spec.listFlags] C4W-7: list-valued flags and their separator. A
  *                                        repeated one ACCUMULATES (`--file a --file b` is `a,b`) —
  *                                        last-wins silently dropped every file but the last.
+ * @param {boolean} [spec.help]           false: leave `--help` to the caller (it is then an ordinary flag).
  * @returns {{flags: Record<string, string|true>, positional: string[]}}
  */
-export function parseArgs(argv, { valueFlags, knownFlags = null, die, listFlags = {} }) {
+export function parseArgs(argv, { valueFlags, knownFlags = null, die, listFlags = {}, help = true }) {
   const flags = {};
   const set = (name, value) => {
     const prev = flags[name];
@@ -42,6 +56,10 @@ export function parseArgs(argv, { valueFlags, knownFlags = null, die, listFlags 
       continue;
     }
     const [name, inline] = arg.slice(2).split(/=(.*)/s);
+    if (help && name === 'help' && inline === undefined) {
+      process.stdout.write(`${usageHeader()}\n`);
+      process.exit(0);
+    }
     if (knownFlags && !knownFlags.has(name)) die(1, `unknown flag --${name}`);
     if (inline !== undefined) {
       set(name, inline);

@@ -15,7 +15,7 @@ one place.
 | Decision | Proposes | Challenges | Decides | Executes | Records evidence |
 |---|---|---|---|---|---|
 | Product opportunity | `cpo`, `product-researcher` | `product-validator`, `data-analyst` | founder (or delegated `cpo` on utility tier) | `product-manager` | `product-researcher` → `docs/16-research.md` |
-| Scope lock | `cpo` (PRD) / `ceo` (utility founder pass) | `cto`, `product-validator`, `ux-architect` | **founder — human gate** | `product-manager` (backlog) | `chief-of-staff` / Gate 1 brief |
+| Scope lock | `cpo` (PRD) / `ceo` (utility founder pass) | `cto`, `product-validator`, `ux-architect` | **founder — human gate** | `product-manager` (backlog) | Gate 1 brief |
 | Architecture | `tech-lead`, `cto` | `security-reviewer`, `reliability-engineer`, platform ICs | `cto` (or `tech-lead` on utility tier) | delivery pod | `tech-lead` → `docs/20-architecture.md` |
 | UX and design | `ux-architect`, `product-designer` | `product-validator`, design-qa gate | `cpo` / design authority | `product-designer` | `product-designer` → `docs/13-14-*.md` |
 | Ticket readiness | `product-manager`, `tech-lead` | `qa-engineer`, delivery owner | `tech-manager` | assigned IC | `tech-manager` → `board.mjs` event log |

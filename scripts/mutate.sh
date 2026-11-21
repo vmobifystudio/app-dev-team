@@ -36,7 +36,7 @@
 # named assertion is decorative even though the score looks fine.
 #
 # Usage:
-#   sh scripts/mutate.sh                 every mutation (~1 min per mutation — the whole suite runs)
+#   sh scripts/mutate.sh                 every mutation, each against ONLY its test.sh section
 #   sh scripts/mutate.sh --list          print the catalogue and exit
 #   sh scripts/mutate.sh --only M04      one mutation (or a list: --only M38,M39,M40)
 #   sh scripts/mutate.sh --sample 4      4 mutations, spread evenly across the catalogue (CI)
@@ -92,7 +92,10 @@ set -u
 
 ME=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$ME/.." && pwd)
-TAB=$(printf '\t')
+# The field separator is US (\037), not a tab: IFS treats a tab as whitespace, so an EMPTY field
+# (MF47T's empty replacement) collapsed and every later field shifted one left: the mutation
+# replaced its anchor with the assertion label, and the label became the scope.
+TAB=$(printf '\037')
 ONLY=""
 SAMPLE=""
 LIST=0
@@ -127,10 +130,10 @@ catalogue() {
 M01@@scripts/spawn-gate.sh@@exit 1@@exit 0@@REFUSES two writing agents when neither has a worktree
 M02@@scripts/ship-gate.sh@@[ "${OPEN:-0}" -gt 0 ] && block@@[ "${OPEN:-0}" -lt 0 ] && block@@counts open S1/S2 bugs correctly
 M03@@scripts/ship-gate.sh@@grep -nE '(\|\|[[:space:]]*(true|:)([[:space:]]|$))|continue-on-error:[[:space:]]*true'@@grep -nE 'zzzz-this-pattern-matches-nothing'@@a generated workflow that masks an exit code blocks the release
-M04@@scripts/board-doctor.mjs@@(reviewChecksBlock ? anomalies : warnings).push(item)@@warnings.push(item)@@emits done_without_review
+M04@@scripts/board-doctor.mjs@@(reviewChecksBlock ? anomalies : warnings).push(item)@@warnings.push(item)@@emits done_without_review@@DR4-001: a MISSING TOOLCHAIN is not a FAILING TEST
 M05@@scripts/board-doctor.mjs@@effectiveCycles > cap && ACTIVE_STATUS.has(row.status)@@effectiveCycles >= cap && ACTIVE_STATUS.has(row.status)@@Cycles = 2 in review is the budget spent, not a breach
 M06@@scripts/lib/board.mjs@@/[A-Za-z]+-\d+(?:-[A-Za-z]+)?/g@@/[A-Za-z]+-\d+/g@@suffixed ticket ids parse whole (BUG-NNN-fix)
-M07@@scripts/lib/events.mjs@@if (by && workers.has(by)) {@@if (false) {@@a role approving work it did is refused
+M07@@scripts/lib/events.mjs@@if (by && workers.has(by)) {@@if (false) {@@the ticket's owner approving their own ticket is refused
 M08@@scripts/lib/events.mjs@@if (!external.length) {@@if (false) {@@a merge with no approval at all is refused
 M09@@scripts/lib/events.mjs@@if (!state.verified) {@@if (false) {@@review_requested on a DONE with no verify-done result is refused
 M10@@scripts/integration-branch.sh@@integration branch is not recoverable by a later fix. Create the branch, or fix the doc."@@integration branch is not recoverable by a later fix."; echo "$FALLBACK"; exit 0@@a declared branch that does not exist is exit 2, never a fallback
@@ -156,11 +159,11 @@ M29@@scripts/lib/messages.mjs@@m.expires && m.expires < today@@m.expires && m.ex
 M30@@scripts/lib/messages.mjs@@if (record.v !== SCHEMA_VERSION) {@@if (false) {@@a schema-v2 record makes board-doctor CANNOT EVALUATE, never a pass
 M31@@scripts/messages.mjs@@writeFileSync(md, renderMessages(messages));@@if (!existsSync(md)) writeFileSync(md, renderMessages(messages));@@a hand edit to the generated view is overwritten by the next render
 M32@@scripts/accessibility-scan.mjs@@&& !/accessibilityLabel/.test(block)@@&& false@@comment-only and unlabelled SwiftUI controls remain detectable
-M33@@scripts/privacy-disclosure-scan.mjs@@if (!findings.length)@@if (true)@@a blanket privacy claim with outbound identity data blocks release
-M34@@scripts/subscription-restore-scan.mjs@@&& !/Transaction\.currentEntitlements/.test(match[1])@@&& false@@a sync-only restore path blocks release
+M33@@scripts/privacy-disclosure-scan.mjs@@if (!findings.length)@@if (true)@@the lab passes against this tree@@S.7 repository controls
+M34@@scripts/subscription-restore-scan.mjs@@&& !/Transaction\.currentEntitlements/.test(match[1])@@&& false@@the lab passes against this tree@@S.7 repository controls
 M35@@scripts/financial-constant-scan.mjs@@if (!findings.length)@@if (true)@@a bankers rounding implementation under a half-up rule blocks release
-M36@@scripts/requirements-conflict-scan.mjs@@if (prdQuota && archQuota && prdQuota !== archQuota)@@if (false)@@a quota conflict blocks release
-M37@@scripts/analytics-coverage-scan.mjs@@if (!missing.length)@@if (true)@@a missing P0 analytics event blocks release
+M36@@scripts/requirements-conflict-scan.mjs@@if (prdQuota && archQuota && prdQuota !== archQuota)@@if (false)@@the lab passes against this tree@@S.7 repository controls
+M37@@scripts/analytics-coverage-scan.mjs@@if (!missing.length)@@if (true)@@the lab passes against this tree@@S.7 repository controls
 M38@@scripts/lib/register.mjs@@if (NEEDS_REASON.has(status)@@if (false && NEEDS_REASON.has(status)@@DEFERRED with no --reason is REFUSED (a deferral without one is an omission)@@register: the two trackers
 M39@@scripts/lib/register.mjs@@if (status === 'FIXED' && !ticket) {@@if (false) {@@FIXED with no --ticket is REFUSED (nothing would be checkable against the board)@@register: the two trackers
 M40@@scripts/worktree-reap.mjs@@dirty: state.live ? false : dirty(w.path)@@dirty: false@@a DIRTY orphan is reported, not reclaimed@@worktree-reap: the leak
@@ -521,7 +524,6 @@ U412@@scripts/spawn-prompt.mjs@@[...new Set(['docs/10-prd.md', PLATFORM_SPEC[rol
 U413@@scripts/spawn-prompt.mjs@@die(2, `slot ${slot} does not exist.@@process.stderr.write(`slot ${slot} does not exist.@@Sprint 7 U4: compose refuses a slot that does not exist (C7-12)@@Sprint 7 U4
 U414@@scripts/spawn-prompt.mjs@@readPolicy(ROOT);  // C7-12@@void ROOT;  // C7-12@@Sprint 7 U4: compose refuses an unparseable .studio-policy.json, as the board does (C7-12)@@Sprint 7 U4
 U415@@scripts/lib/contract.mjs@@'ASO BLOCKED', 'ASO:'],@@'ASO BLOCKED'],@@Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)@@Sprint 7 U4
-U416@@scripts/prompt-registry.mjs@@...TEMPLATES.map((rel)@@...[].map((rel)@@Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)@@Sprint 7 U4
 U417@@scripts/spawn-prompt.mjs@@'You write no board event: the orchestrator records a FAIL as `changes`.',@@...tokenLines(ROOT, role, row.id),@@Sprint 7 U4: ...mints no token for a spawn that writes no board event, and clears verify (R7-13)@@Sprint 7 U4
 
 M7U5-01@@scripts/test.sh@@if [ "$_after" != "$PLUGIN_STATUS_BEFORE" ]; then@@if false; then@@C7-1: a run that writes a tracked plugin file fails loudly on exit@@Sprint 7 U5
@@ -586,7 +588,6 @@ MF47G@@scripts/messages.mjs@@if (String(options.channel || '').replace(/^#/, '')
 MF47H@@scripts/messages.mjs@@      registration: true,@@      registration: false,@@PR47 fixes: messages.mjs artifact stamps registration:true@@PR47 fixes
 MF47I@@scripts/lib/atomic.mjs@@const ownerFile = (lockPath) => (statSync(lockPath).isDirectory() ? join(lockPath, 'owner') : lockPath);@@const ownerFile = (lockPath) => lockPath;@@PR47 fixes: main's directory lock with a dead owner is reaped, not waited out@@PR47 fixes
 MF47J@@scripts/lib/atomic.mjs@@if ((Number.isInteger(pid) && pid > 0) || age < ORPHAN_AGE_MS) return '';@@return '';@@PR47 fixes: an aged lock naming no holder says how to clear it@@PR47 fixes
-MF47K@@scripts/team-doctor.mjs@@for (const entry of registry.entries.filter((e) => String(e.id).startsWith('template/') && e.content_hash)) {@@for (const entry of []) {@@PR47 fixes: a spawn template edited without a registry sync is a team-doctor finding@@PR47 fixes
 MF47L@@scripts/board-doctor.mjs@@process.exit(anchor.kind === 'absent' ? 2 : 1);@@process.exit(2);@@PR47 fixes: board-doctor exits 1 on a log with lines deleted under its anchor@@PR47 fixes
 MF47M@@scripts/ship-gate.sh@@then CHAIN_RC=3; else CHAIN_RC=4; fi@@then CHAIN_RC=3; else CHAIN_RC=3; fi@@PR47 fixes: ship-gate blocks a deleted-lines anchor mismatch@@PR47 fixes
 MF47N@@scripts/wave-integrate.mjs@@if (r.base.startsWith('origin/')) {@@if (false) {@@PR47 fixes: in a fresh clone the wave names origin/develop@@PR47 fixes
@@ -596,10 +597,12 @@ MF47Q@@scripts/lib/evidence.mjs@@&& /^integration\/wave-/.test(String(rec.branch
 MF47R@@scripts/spawn-prompt.mjs@@row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict@@row.status === 'qa') return composeQaVerdict@@PR47 fixes: a QA- ticket at qa is composed as a verification@@PR47 fixes
 MF47S@@scripts/merge-reconcile.mjs@@corrected --by tech-manager --detail "<what went wrong>"@@corrected --detail "<what went wrong>"@@PR47 fixes: merge-reconcile prints the full corrected command, with --by@@PR47 fixes
 MF47T@@scripts/dispatch-preflight.mjs@@${inlineTokenFlag(resolve(String(flags.root)), 'tech-manager', flags.ticket)}@@@@PR47 fixes: dispatch-preflight's corrected command is absolute@@PR47 fixes
+V601@@scripts/lib/args.mjs@@if (help && name === 'help' && inline === undefined) {@@if (false) {@@Sprint 8 V6: team-bootstrap --help prints its usage, exits 0 and writes nothing (EN-10)@@Sprint 8 V6
+V602@@scripts/foundation-conformance.mjs@@if (badId) {@@if (false) {@@Sprint 8 V6: foundation-conformance rejects an argument that is not an invariant id (EN-10)@@Sprint 8 V6
 CATALOGUE
 }
 
-catalogue_tsv() { catalogue | awk '{ gsub(/@@/, "\t"); print }'; }
+catalogue_tsv() { catalogue | awk '{ gsub(/@@/, "\037"); print }'; }
 
 # Assertions that exist but CANNOT be mutation-tested on this host, with the reason. Printed with
 # the score. Counted in neither numerator nor denominator — and said out loud, because a score that
@@ -617,17 +620,38 @@ test.sh — the unescaped-backtick self-check@@The only mutation that would prov
 EXCLUDED
 }
 
+# A ROW WITH NO SCOPE GETS ONE DERIVED, NOT THE WHOLE SUITE (QA-9). 49 rows named no section, so
+# each ran all ~1400 assertions; a full catalogue cost ~450 x full suite, about 7.5 hours, and so
+# nobody ran it. The section that holds the row's own assertion label is exactly the scope a human
+# would have typed. Derived only when ONE section holds the label; none or several stays unscoped
+# (full suite). `--full-suite` still ignores every scope.
+#
+# A label in the preamble (before the first banner) runs in EVERY subset, so any section is its
+# scope: the first one is used. A label is also looked up with test.sh's \` escaping.
+derive_scope() {
+  MUT_LABEL="$1" awk '
+    BEGIN { l = ENVIRON["MUT_LABEL"]; e = l; gsub(/`/, "\\`", e); pre = 1 }
+    /^# --- / { b = $0; pre = 0; if (first == "") first = $0 }
+    /^echo "─────/ { b = "" }
+    (index($0, l) || index($0, e)) { if (pre) inpre = 1; else if (b != "" && !(b in seen)) { seen[b] = 1; n++; hit = b } }
+    END { if (n == 1) print hit; else if (n == 0 && inpre) print first }
+  ' "$REPO/scripts/test.sh"
+}
+
 if [ "$LIST" = "1" ]; then
   echo "MUTATION CATALOGUE"
   echo
   catalogue_tsv | while IFS="$TAB" read -r id file old new expect scope; do
+    [ -n "$id" ] || continue
     printf '%-5s %s\n' "$id" "$file"
     printf '      - %s\n' "$old"
     printf '      + %s\n' "$new"
-    printf '      expects to fail: %s\n\n' "$expect"
+    printf '      expects to fail: %s\n' "$expect"
+    [ -n "$scope" ] || scope=$(derive_scope "$expect")
+    printf '      runs: %s\n\n' "${scope:-THE WHOLE SUITE (no section holds the label)}"
   done
   echo "NOT MUTATABLE HERE"
-  excluded | awk '{ gsub(/@@/, "\t"); print }' | while IFS="$TAB" read -r what why; do
+  excluded | awk '{ gsub(/@@/, "\037"); print }' | while IFS="$TAB" read -r what why; do
     printf '  · %s\n      %s\n' "$what" "$why"
   done
   exit 0
@@ -645,7 +669,7 @@ if [ -n "$ONLY" ]; then
     [ -n "$_id" ] || continue
     catalogue | grep -q "^$_id@@" || { echo "mutate: no mutation with id '$_id'. Try --list." >&2; exit 3; }
   done || exit 2
-  ONLY_RE=$(echo "$ONLY" | tr ',' '|' | sed 's/^/^(/; s/$/)\t/')
+  ONLY_RE=$(echo "$ONLY" | tr ',' '|' | sed "s/^/^(/; s/\$/)$TAB/")
 fi
 
 # ---------------------------------------------------------------------------------------------
@@ -775,6 +799,13 @@ else
   cp "$WORK/cat.txt" "$WORK/sel.txt"
 fi
 SELECTED=$(grep -c . "$WORK/sel.txt")
+
+if [ "$FULL_SUITE" != "1" ]; then
+  while IFS="$TAB" read -r id file old new expect scope; do
+    [ -n "$scope" ] || scope=$(derive_scope "$expect")
+    printf "%s$TAB%s$TAB%s$TAB%s$TAB%s$TAB%s\n" "$id" "$file" "$old" "$new" "$expect" "$scope"
+  done < "$WORK/sel.txt" > "$WORK/sel.scoped" && mv "$WORK/sel.scoped" "$WORK/sel.txt"
+fi
 
 # THE FULL BASELINE IS SKIPPED WHEN EVERY SELECTED MUTATION IS SCOPED, and that is the whole speed
 # win. `--only M30` used to cost two full suites — one baseline, one mutated — for a verdict about a
@@ -907,9 +938,9 @@ echo "────────────────────────�
 echo "MUTATION SCORE: $CAUGHT/$SELECTED caught"
 [ "$SELECTED" != "$TOTAL" ] && echo "  ($SELECTED of $TOTAL catalogued mutations — a sample, not the whole of it)"
 echo
-echo "Denominator: $SELECTED mutations over $(cut -f2 "$WORK/sel.txt" | sort -u | grep -c .) file(s)."
+echo "Denominator: $SELECTED mutations over $(cut -d "$TAB" -f2 "$WORK/sel.txt" | sort -u | grep -c .) file(s)."
 echo "It EXCLUDES the following, which cannot be mutation-tested on this host:"
-excluded | awk '{ gsub(/@@/, "\t"); print }' | while IFS="$TAB" read -r what why; do
+excluded | awk '{ gsub(/@@/, "\037"); print }' | while IFS="$TAB" read -r what why; do
   printf '  · %s\n      %s\n' "$what" "$why"
 done
 echo "  Those assertions are UNPROVEN here. The score does not claim otherwise."

@@ -20,7 +20,6 @@ Product type: mobile-app  (source: docs/01-intake.md §Product type)
 | ceo | active | vision, success metrics, scope |
 | cpo | active | flagship keeps both exec product roles |
 | cto | active | flagship keeps both exec technical roles |
-| chief-of-staff | conditional | trigger: the founder is fielding more than one project, or more than five open decisions |
 | product-manager | active | flagship keeps the standing product owner |
 | product-researcher | conditional | trigger: docs/01-intake.md names a market or user assumption nobody has tested |
 | tech-lead | active | impl specs; on call for the pod all sprint |
