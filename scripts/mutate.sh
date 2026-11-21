@@ -200,7 +200,6 @@ M71@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$HEAD" ] && pick_decla
 M72@@scripts/wave-integrate.mjs@@if (push.ok) {@@if (false) {@@--push runs merge-reconcile.mjs again right after the wave lands@@B1: --push must land
 M73@@scripts/orchestrator.mjs@@const staticOnly = [...tickets.values()].filter((t) => t.verifiedStatic === true).map((t) => t.id);@@const staticOnly = [];@@a ticket still carrying verified_static is counted, every round@@OPS-013: the verified_static
 M74@@scripts/messages.mjs@@if (candidate.kind === 'answer' && candidate.ticket !== TICKETLESS) {@@if (false) {@@an answer on an already-shipped ticket says it filed a register item
-M75@@scripts/review-pattern-scan.mjs@@.filter(([, tickets]) => tickets.size >= 2)@@.filter(([, tickets]) => tickets.size >= 99)@@two tickets blocking on the same file are correlated@@OPS-014: cross-ticket
 M76@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$REFBLOCK" ]; then@@if false; then@@a push refspec ending :main is blocked, even from a different branch entirely
 M77@@scripts/lib/test-evidence.mjs@@/^#\s*(?:tests|pass)\s+([0-9]+)/gim,@@/zzzz-never-matches-([0-9]+)/gim,@@a wave whose suite is Node's own `node --test` TAP summary is recognized as GREEN
 M78@@scripts/lib/test-evidence.mjs@@/^#\s*(?:tests|pass)\s+([0-9]+)/gim,@@/zzzz-never-matches-([0-9]+)/gim,@@Node's own `node --test` TAP summary (count after the noun) verifies too
@@ -535,9 +534,6 @@ M7U5-06@@scripts/run-ledger.mjs@@withFileLock(ledger, () => {@@((fn) => { if (ex
 M7U5-07@@scripts/messages.mjs@@return withFileLock(ledgerPaths(options).jsonl, () => cmdSend(options), { die: lockDie });@@if (existsSync(ledgerPaths(options).jsonl + '.lock')) die('locked'); return cmdSend(options);@@C7-10: messages.mjs takes the same shared lock and reaps the same dead holder@@Sprint 7 U5
 M7U5-08@@scripts/lib/messages.mjs@@const roles = new Set([from, ...(isRegistration(candidate) ? [] : to)]);@@const roles = new Set([from, ...to]);@@R7-2: messages.mjs artifact ADR --by cto --ticket APP-060 is not chain_too_deep@@Sprint 7 U5
 M7U5-09@@scripts/lib/messages.mjs@@m.kind === 'decision' && !isRegistration(m)@@m.kind === 'decision'@@R7-11: an artifact registration does not close the ticket thread to a later question@@Sprint 7 U5
-M7U5-10@@scripts/review-pattern-scan.mjs@@if (/^REVIEW VERDICT:\s*REQUEST CHANGES\s*$/m.test(text)) {@@if (false) {@@R7-3: two current-format verdicts blocking on one file are correlated@@Sprint 7 U5
-M7U5-11@@scripts/memory-curator.mjs@@if (candidate.by === by) die(1,@@if (false) die(1,@@S7-11: memory review by the proposer is refused@@Sprint 7 U5
-M7U5-12@@scripts/memory-curator.mjs@@by: required('by') });@@by: flags.by || null });@@S7-11: ...and propose without --by is refused@@Sprint 7 U5
 M7U5-13@@scripts/lib/operational-paths.txt@@.studio-cache@@.studio-cache-x@@S7-1: a .studio-cache/ build cache does not make the tree dirty@@Sprint 7 U5
 M7U5-14@@scripts/run-doctor.mjs@@for (const a of active) console.log(@@for (const a of []) console.log(@@S7-4: run-doctor --root reads that project and lists the live attempt's run and attempt ids@@Sprint 7 U5
 M7U5-15@@scripts/run-doctor.mjs@@resolve(String(flags.root || '.'), String(flags.ledger@@resolve(String(flags.ledger@@S7-4: run-doctor --root reads that project and lists the live attempt's run and attempt ids@@Sprint 7 U5
@@ -556,6 +552,10 @@ MS7U1I@@scripts/wave-integrate.mjs@@const GREEN_REF = `refs/studio/wave-green/${
 MS7U1J@@scripts/board-doctor.mjs@@if (!anchor.ok) {@@if (false) {@@Sprint 7 U1: board-doctor is CANNOT EVALUATE on a log whose anchor is gone, naming adopt (W7-5)@@Sprint 7 U1
 MS7U1K@@scripts/ship-gate.sh@@(absent)'; then CHAIN_RC=3;@@(absent)'; then CHAIN_RC=1;@@Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)@@Sprint 7 U1
 MS7U1L@@scripts/runtime-gate.sh@@if [ -n "$IB_SHA" ] && [ "$IB_SHA" != "$HEAD_SHA" ]@@if false@@Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)@@Sprint 7 U1
+MS8V5-1@@scripts/run-ledger.mjs@@if (shipped[id] && date > shipped[id]) recurrences.push@@if (false) recurrences.push@@Sprint 8 V5: a REQUEST CHANGES verdict citing an FC class after its Rule shipped date is counted as a recurrence (LN-4)@@Sprint 8 V5
+MS8V5-2@@scripts/run-ledger.mjs@@CHANGES\s*$/m.test(text)) continue;@@CHANGES\s*$/m.test(text)) {}@@Sprint 8 V5: ...and an APPROVE verdict's FC mention is not a citation@@Sprint 8 V5
+MS8V5-3@@scripts/run-ledger.mjs@@join(process.env.APP_TEAM_HOME || join(homedir(), '.app-dev-team'), 'runs-summary.jsonl')@@fileURLToPath(new URL('../runs-summary.jsonl', import.meta.url))@@Sprint 8 V5: a BLOCKED run appends one line with its first-pass rate to APP_TEAM_HOME, not the plugin (LN-6, LN-1)@@Sprint 8 V5
+MS8V5-4@@scripts/run-ledger.mjs@@if (!STOPS.has(stop)) die(2,@@if (false) die(2,@@Sprint 8 V5: summary refuses an unnamed stop cause@@Sprint 8 V5
 
 MV01@@hooks/contract-hooks.mjs@@if (n && !n.startsWith('#')) WRAPPERS.set(n, { ops: Number(ops) || 0, vals: new Set(vals) });@@void n;@@U3: guard exit 2 — wrappers.txt row 'timeout' wraps rm@@Sprint 7 U3
 MV02@@hooks/block-shared-tree-destructive-git.sh@@nf = split(line, F, /[ \t]+/); WRAP[F[1]] = 1;@@nf = split(line, F, /[ \t]+/);@@U3: git hook exit 2 — wrappers.txt row 'setsid' wraps git@@Sprint 7 U3

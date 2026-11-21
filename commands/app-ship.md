@@ -375,7 +375,8 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
 5. **If BLOCKED**: print the blocker list and the proposed unblock. Suggest the right command (`/app-build` for missing tickets, `/app-status` for context).
 
-6. **Harvest the learnings** (after a confirmed release, not after a blocked one). Every agent is
+6. **Harvest the learnings** — on every outcome: shipped, BLOCKED, or a run stopped by `/app-run`
+   (budget, kill switch, founder gate). Blocked runs are where most of the failures are. Every agent is
    told by `house-conventions` to write a `LEARNING:` line into its daily fragment when it discovers
    a reusable convention. Until this step existed, nothing ever read them and the "living knowledge
    base" never actually lived. Collect them into the inbox:
@@ -389,9 +390,17 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    checked against what actually shipped. If the harvest is empty, say so; an empty sprint of
    learnings is a real result, not a reason to skip the step.
 
-   Then run `/app-learn` on this project so the inbox is folded into `knowledge/`. Its conflict
-   rules still apply: additions auto-apply; a conflict is recorded `pending` for later review and
-   the run does not wait on it.
+   Record the run — one line, derived from the board and the review verdicts, in a studio-level file
+   that survives a plugin reinstall (`$APP_TEAM_HOME`, default `~/.app-dev-team/`). It prints the
+   comparison with the previous run and every FC recurrence:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" summary --stop <shipped|blocked|budget|stopped|gate>
+   ```
+
+   Then run `/app-learn` on this project: it writes `docs/kb-patch.diff`, a reviewed patch for
+   the plugin repository — nothing is applied to the installed plugin. A conflict
+   is recorded `pending` for later review and the run does not wait on it.
 
 ## Safety
 

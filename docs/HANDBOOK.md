@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 3.1.0 (`main`) · **Date:** 2026-11-17
-**Scale:** 29 roles · 30 skills · 22 commands · 70 top-level scripts (+24 shared libs) · 9 knowledge packs · 2578 assertions
+**Scale:** 29 roles · 28 skills · 21 commands · 68 top-level scripts (+24 shared libs) · 9 knowledge packs · ASSERTS assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
 drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
@@ -104,7 +104,6 @@ truth and the command documentation must be corrected.
 | Layered context | `context-manifest.mjs` | Hidden context, stale sources, precedence ambiguity |
 | Approval evidence | `approval-check.mjs` | Approval of a different commit, diff, context, or evidence set |
 | Audit integrity | Board chain plus `audit-anchor.mjs` | Unnoticed release-time event-log changes |
-| Memory governance | `memory-curator.mjs` (`propose`/`review`/`retrieve`) | Unreviewed, unscoped, unprovenanced agent memory — `retrieve` excludes unpromoted, expired, and superseded/contradicted records, not just a write-only ledger |
 | Evaluation | `eval-lab.mjs`, `eval/manifest.json` | Claims that a role/workflow works without an executable case |
 | Scheduling | `scheduler.mjs` | Dependency violations, starvation, uncontrolled parallelism |
 | Capabilities | `capability-check.mjs`, `docs/team/capabilities.json` | Role access beyond declared operations or paths |
@@ -127,7 +126,7 @@ truth and the command documentation must be corrected.
 | Evidence controls | `/app-preflight`, `/app-context`, `/app-recover` | Establish context, inspect durable state, and recover safely |
 | Coordination controls | `/app-schedule`, `/app-capabilities`, `/app-risk` | Decide what may run, who may do it, and what assurance it needs |
 | Quality and release | `/app-ship`, `/app-incident` | Gate release and record operational failures |
-| Visibility and learning | `/app-status`, `/app-dashboard`, `/app-control-room`, `/app-portfolio`, `/app-memory`, `/app-learn`, `/app-team` | Observe work, curate memory, learn from shipped work, and inspect the roster |
+| Visibility and learning | `/app-status`, `/app-dashboard`, `/app-control-room`, `/app-portfolio`, `/app-learn`, `/app-team` | Observe work, learn from shipped work, and inspect the roster |
 
 ### Artifact map
 
@@ -136,7 +135,6 @@ truth and the command documentation must be corrected.
 | `docs/31-board-events.jsonl` | Append-only ticket event source; `docs/31-board.md` is a generated view |
 | `docs/team/runs.jsonl` | Durable execution attempts, checkpoints, leases, and terminal outcomes |
 | `docs/team/context-manifest.json` | Layered context snapshot and freshness boundary |
-| `docs/team/memory.jsonl` | Proposed and reviewed memory records |
 | `docs/team/schedule.json` | Scheduler input plan |
 | `docs/team/capabilities.json` | Role operation/path allowlist |
 | `docs/team/risk-policy.json` | Blast-radius routing rules |
@@ -731,8 +729,6 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `context-manifest.mjs` | Source hashes, git revision, omissions, and context freshness |
 | `approval-check.mjs` | Binds approvals to commit, diff, context, and evidence — on by default for new projects (`--bind`), opt-in for onboarded ones |
 | `audit-anchor.mjs` | Digest and tip anchor for the board event log — composed into `dispatch-preflight.mjs`, not release-time-only |
-| `dispatch-preflight.mjs` | The gate before every ticket claim (reviewers and retries on a claimed ticket skip it): composes context, scheduler, capability, risk, and (when enabled) audit-anchor/eval-lab |
-| `memory-curator.mjs` | Append-only proposals, explicit reviewer decisions, and `retrieve` — the read path: live means promoted, unexpired, not superseded |
 | `eval-lab.mjs` | Deterministic executable evaluation cases, plus static contract-clause checks over the agent files carrying this studio's hardest-won rules |
 | `scheduler.mjs` | Ready queue, dependency, fairness, and backpressure decisions |
 | `capability-check.mjs` | Role operation/path allowlist enforcement |

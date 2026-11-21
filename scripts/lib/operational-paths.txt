@@ -20,7 +20,6 @@ docs/team/audit-anchor.json
 docs/team/evidence
 docs/team/incidents.jsonl
 docs/team/journey-result.json
-docs/team/memory.jsonl
 docs/team/message-log.md
 docs/team/messages.jsonl
 docs/team/messages.md
