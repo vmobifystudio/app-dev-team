@@ -603,7 +603,7 @@ MV702@@commands/app-ship.md@@row still `conditional` is decided now@@row still `
 MV703@@commands/app-init.md@@has `product-researcher` `active`, spawn it now@@has `product-researcher` `active`, spawn it after scope-lock@@Sprint 8 V7: /app-init spawns product-researcher between ceo and cpo (SK-1)@@Sprint 8 V7
 MV704@@agents/release-auditor.md@@evidence-check.mjs" --head@@evidence-check.mjs" --skip@@Sprint 8 V7: release-auditor binds journeys via evidence-check, kill switch only when named (FL-6)@@Sprint 8 V7
 MV705@@agents/code-reviewer.md@@- `database-migration` — any persisted model or schema change@@- schema changes need no procedure@@Sprint 8 V7: XS review is the floor track, IC tests follow the diff, one backend branch form, migrations routed (EN-4, EN-6, EN-12, SK-7)@@Sprint 8 V7
-S8V1A@@scripts/trace.mjs@@if (id !== 'waiver' && founderWords.includes(s)) return true;@@if (false) return true;@@Sprint 8 V1: a price in the founder's own words@@Sprint 8 V1
+S8V1A@@scripts/trace.mjs@@if (id === 'pricing' && /\d/.test(s) && founderWords.includes(s)) return true;@@if (false) return true;@@Sprint 8 V1: a price in the founder's own words@@Sprint 8 V1
 S8V1B@@scripts/trace.mjs@@re.test(l) && l.toLowerCase().includes(s)@@re.test(l) && l.includes(subj)@@Sprint 8 V1: a decision matches its subject case-insensitively@@Sprint 8 V1
 S8V1C@@scripts/trace.mjs@@.replace(/\s*—\s*v\d+\.\d+\.\d+\s*$/, '')@@@@Sprint 8 V1: the version field release-manager appends does not re-open an approved waiver@@Sprint 8 V1
 S8V1D@@scripts/trace.mjs@@const wantsAnalytics = docs.some((d) => d.rel === 'docs/52-analytics.md');@@const wantsAnalytics = true;@@Sprint 8 V1: ...and one without docs/52-analytics.md owes none@@Sprint 8 V1
@@ -626,7 +626,7 @@ MS8V8-4@@scripts/team-bootstrap.mjs@@...(role === 'web-developer' ? ['index.html
 MS8V8-5@@scripts/team-bootstrap.mjs@@'docs/21-engineering-principles.md', ...specs];@@'docs/21-engineering-principles.md'];@@Sprint 8 V8: FL-8 the context manifest hashes the impl spec and not the vision@@Sprint 8 V8
 MS8V8-6@@scripts/team-bootstrap.mjs@@if (process.argv.slice(2).includes('--help')) {@@if (false) {@@Sprint 8 V8: EN-10 team-bootstrap --help prints usage@@Sprint 8 V8
 M8V2A@@scripts/lib/events.mjs@@        state.qaPassed = false;@@        ;@@Sprint 8 V2: SM-4 qa_failed after qa_passed revokes the pass@@Sprint 8 V2
-M8V2B@@scripts/lib/events.mjs@@if (state.retries + 1 > MAX_TICKET_RETRIES) {@@if (false) {@@Sprint 8 V2: SM-5 the 7th rework is refused and forces blocked@@Sprint 8 V2
+M8V2B@@scripts/lib/events.mjs@@if (state.retries + 1 > MAX_TICKET_RETRIES + 2 * state.extraCycles) {@@if (false) {@@Sprint 8 V2: SM-5 the 7th rework is refused and forces blocked@@Sprint 8 V2
 M8V2C@@scripts/lib/events.mjs@@if (state.qaFailures + 1 > MAX_QA_FAILURES + state.extraCycles) {@@if (false) {@@Sprint 8 V2: AU-11 the 3rd qa_failed forces blocked@@Sprint 8 V2
 M8V2D@@scripts/lib/capabilities.mjs@@reopened: ['tech-lead', 'cto'],@@reopened: ['founder'],@@Sprint 8 V2: AU-3 reopened --by tech-lead is accepted@@Sprint 8 V2
 M8V2E@@scripts/lib/events.mjs@@if (state.extraCycles >= 1) {@@if (false) {@@Sprint 8 V2: AU-3 ...once per ticket@@Sprint 8 V2

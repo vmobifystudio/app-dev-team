@@ -51,8 +51,8 @@ already enforce `agent-isolation`'s orchestrator half; read
    about how much of the machine the studio may use, not a workaround.
 
 2a-i. **Every agent's prompt carries the destructive-command ban** — `git reset`, `git stash`,
-   `git checkout -- .`, `git clean`, `git add -A` / `.` / `commit -a` (`agent-isolation` Rules 2 and 5 —
-   the destructive-git hook enforces it; the role files carry it).
+   `git checkout -- .`, `git clean`, `git add -A` / `.` / `commit -a` (`agent-isolation` Rules 2, 5;
+   the hook enforces it).
 
 2b. **Check for file overlap, not just feature independence.** List the files each ticket is likely
    to touch (impl spec, the ticket's `--file` set). Any pair sharing a file is **serialized**.
