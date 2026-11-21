@@ -368,7 +368,7 @@ MK20@@scripts/lib/evidence.mjs@@if (rel !== posix.normalize(rel) || rel.startsWi
 MK21@@scripts/lib/actor.mjs@@if (e.code !== 'EAGAIN' || waited >= maxWaitMs) throw e;@@throw e;@@K1: the founder confirmation retries EAGAIN instead of failing (C3G-10)@@Sprint 4 track K1
 MK22@@scripts/lib/events.mjs@@state.staticUnrun = 'the executable test suite';@@state.staticUnrun = String(detail?.note || detail || '').trim() || 'the executable test suite';@@K1: the STATIC ONLY banner never echoes free-text --detail (C3W-13)@@Sprint 4 track K1
 MP01@@scripts/lib/evidence.mjs@@if (lf.startsWith('docs/team/')) return qa && QA_JOURNEY.test(f);@@if (false) return false;@@P1: a QA- --docs-only record whose branch changes docs/team/risk-policy.json is refused (C4G-G1)@@Sprint 5 track P1
-MP02@@scripts/lib/evidence.mjs@@if (MANIFEST.test(f) || /\.mdx$/i.test(f)) return false;@@if (false) return false;@@P1: a QA- --docs-only record whose branch changes CMakeLists.txt is refused (C4G-G1)@@Sprint 5 track P1
+MP02@@scripts/lib/evidence.mjs@@if (MANIFEST.test(f) || /\.mdx$/i.test(f)) return false;@@if (false) return false;@@P1: the document classifier: QA journeys only on QA-, control files / manifests / .mdx never, served docs/ prose only (C4G-G1)@@Sprint 5 track P1
 MP03@@scripts/lib/evidence.mjs@@return !qa && PROSE_ANYWHERE.test(f);@@return PROSE_ANYWHERE.test(f);@@P1: a QA- --docs-only record whose branch changes README.md is refused (C4G-G1)@@Sprint 5 track P1
 MP04@@scripts/board.mjs@@base: name === 'closed' ? recordedMergeBase(events, ticket) : ''@@base: ''@@P1: a QA- ticket fast-forwarded into main BEFORE closed still closes (C4G-G2)@@Sprint 5 track P1
 MP05@@scripts/board.mjs@@const qaBase = isQaDocs(tickets.get(key(ticket))) ? docsOnlyDiff(g, subj.sha, { qa: true }).base : '';@@const qaBase = '';@@P1: merged records the merge-base its docs-only proof was taken against (C4G-G2)@@Sprint 5 track P1
@@ -863,6 +863,12 @@ elif [ -n "$SAMPLE" ]; then
   ' "$WORK/cat.txt" > "$WORK/sel.txt"
 else
   cp "$WORK/cat.txt" "$WORK/sel.txt"
+fi
+# A row whose assertion only exists on macOS (case-folding volumes) cannot go red elsewhere: it is
+# excluded off Darwin and said so, never scored as a survivor (CI is ubuntu — PR #49).
+if [ "$(uname)" != Darwin ]; then
+  awk -F "$TAB" '$5 ~ /macOS/' "$WORK/sel.txt" | cut -f1 | sed 's/^/  excluded off macOS: /'
+  awk -F "$TAB" '$5 !~ /macOS/' "$WORK/sel.txt" > "$WORK/sel.nomac" && mv "$WORK/sel.nomac" "$WORK/sel.txt"
 fi
 SELECTED=$(grep -c . "$WORK/sel.txt")
 

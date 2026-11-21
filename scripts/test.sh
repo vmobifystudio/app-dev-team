@@ -11636,7 +11636,7 @@ node --input-type=module -e "
 import { docFile } from '$HERE/lib/evidence.mjs';
 const qa = docFile(false, { qa: true }), app = docFile(false);
 const ok = qa('docs/team/journeys/j.json') && !app('docs/team/journeys/j.json') && app('README.md') && !qa('README.md')
-  && !app('docs/team/risk-policy.json') && !app('CMakeLists.txt') && !app('x/page.mdx') && app('docs/12-flows.md')
+  && !app('docs/team/risk-policy.json') && !app('CMakeLists.txt') && !app('docs/requirements.txt') && !app('x/page.mdx') && app('docs/12-flows.md')
   && !app('docs/31-board-events.jsonl') && !docFile(true)('docs/robots.json') && docFile(true)('docs/guide.md');
 process.exit(ok ? 0 : 1);" \
   && ok "P1: the document classifier: QA journeys only on QA-, control files / manifests / .mdx never, served docs/ prose only (C4G-G1)" \
