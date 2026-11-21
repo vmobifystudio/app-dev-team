@@ -75,14 +75,16 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      `cto` would have run. Write only the impl specs for platforms the product type actually has:
      a `backend-service` gets `22-impl-spec-backend.md` and no iOS or Android spec; a `web-app` gets
      `22-impl-spec-web.md` (what `web-developer` reads — it names the `build`, `start` and `test`
-     scripts; `devops-engineer`, or the first `web-developer` scaffold ticket, writes them into
-     `package.json`), plus `22-impl-spec-backend.md` only if a
+     scripts; `devops-engineer` writes them into `package.json` here), plus `22-impl-spec-backend.md` only if a
      backend is in scope.
    - `devops-engineer` reads architecture, writes `docs/23-git-strategy.md`, a platform
      `.gitignore`, and the CI workflow — seeded from the House KB `git-workflow.md`.
      The `.gitignore` **must include `.agent-wt/`** — that is where per-agent git worktrees live
      (`agent-isolation`), and an un-ignored worktree dir shows up as untracked noise in every
      agent's `git status`.
+     On a `web-app` it also commits `package.json` (the spec's `build`/`start`/`test` scripts and
+     the `playwright` devDependency the journey gate drives), its lockfile, and the build output dir
+     in `.gitignore` — round 1 cannot dispatch without them (`project-profile.mjs check` builds once).
 
 5. **Bootstrap the project.** First make it a git repository — every later step leases git
    worktrees, and a worktree sees only what is committed:

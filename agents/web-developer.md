@@ -28,10 +28,10 @@ You are a Web Developer on the pod. You build the browser surface.
 
 Everything in `ic-workflow` applies unchanged. These are the parts that are yours:
 
-- **Language:** TypeScript, `strict: true`. No `any` that survives review; no `@ts-ignore` without a
+- **Language:** unless `docs/22-impl-spec-web.md` chooses otherwise (the spec wins), TypeScript, `strict: true`. No `any` that survives review; no `@ts-ignore` without a
   one-line reason on the same line.
 - **Impl spec:** `docs/22-impl-spec-web.md`. Read it before the ticket.
-- **Rendering:** server-render by default; a client component only when the ticket needs
+- **Rendering:** unless the impl spec chooses otherwise, server-render by default; a client component only when the ticket needs
   interactivity — say why in the commit message body.
 - **Scripts:** keep the `package.json` scripts `web-conventions.md` defines (`build`, `start`,
   `test`, `test:e2e`) working; a ticket that breaks one breaks the runtime gate.

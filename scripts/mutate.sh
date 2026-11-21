@@ -620,6 +620,12 @@ MS8V3-08@@scripts/journey-gate.mjs@@rc && rc.platform === 'web' && rc.commit ===
 MS8V3-09@@scripts/journey-gate.mjs@@  if (dir || scripts.start) {@@  if (false) {@@Sprint 8 V3: with no candidate, journey-gate starts the app itself@@Sprint 8 V3
 MS8V3-10@@scripts/drivers/web.sh@@[id=${q}]@@#${String(id)}@@Sprint 8 V3: journey-gate serves the release candidate bound at HEAD, not npm start on source (FL-5, QA-11)@@Sprint 8 V3
 MS8V3-11@@scripts/runtime-gate.sh@@  if [ -n "$RCDIR" ]; then@@  if false; then@@Sprint 8 V3: runtime-gate smokes the release candidate bound at HEAD@@Sprint 8 V3
+MS8V8-1@@scripts/project-profile.mjs@@if (inRepo && !/^!! /m.test(@@if (false && !/^!! /m.test(@@Sprint 8 V8: FL-4 project-profile BLOCKS a build output dir that is not gitignored@@Sprint 8 V8
+MS8V8-2@@scripts/project-profile.mjs@@return { blocked: 'npm run build wrote nothing@@return { dir: 'dist', blocked: 'npm run build wrote nothing@@Sprint 8 V8: FL-4 project-profile BLOCKS a web build that writes no output dir@@Sprint 8 V8
+MS8V8-3@@scripts/privacy-disclosure-scan.mjs@@r.role === 'aso-specialist' && r.state === 'off'@@r.role === 'aso-specialist' && r.state === 'never'@@Sprint 8 V8: FL-9 privacy scan is N/A when aso-specialist is off@@Sprint 8 V8
+MS8V8-4@@scripts/team-bootstrap.mjs@@...(role === 'web-developer' ? ['index.html'@@...(role === 'web-developer-x' ? ['index.html'@@Sprint 8 V8: FL-7 web-developer may write a root index.html@@Sprint 8 V8
+MS8V8-5@@scripts/team-bootstrap.mjs@@'docs/21-engineering-principles.md', ...specs];@@'docs/21-engineering-principles.md'];@@Sprint 8 V8: FL-8 the context manifest hashes the impl spec and not the vision@@Sprint 8 V8
+MS8V8-6@@scripts/team-bootstrap.mjs@@if (process.argv.slice(2).includes('--help')) {@@if (false) {@@Sprint 8 V8: EN-10 team-bootstrap --help prints usage@@Sprint 8 V8
 CATALOGUE
 }
 
