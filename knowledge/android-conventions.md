@@ -6,6 +6,9 @@ Compose) for current UI API details.
 
 ## Architecture (flagship)
 
+This is the **target** layout. A new app starts as `app` + the engine module and splits on the
+triggers in `stack-defaults.md` §v1 structure; a UseCase or Repository exists only over real IO.
+
 Modular Clean Architecture + MVVM with unidirectional state:
 `UI (Compose) → ViewModel → UseCase/Domain interfaces → Repository (Data) → Room/Network/DataStore`
 
@@ -93,9 +96,11 @@ baseline, `abortOnError = true`; detekt + ktlint.
 - Signing from env or a gitignored `keystore.properties`; fall through to unsigned so CI compiles.
 - **Never** commit `google-services.json`, keystores, or API keys.
 
-## Utility-tier deltas
+## Utility-tier deltas — existing utility apps (brownfield reference only)
 
-Activity-based or MVVM+Koin, ViewBinding (no Compose), AGP 8.11.x, minSdk 23. Shared `ads/`
+New utility apps follow `stack-defaults.md` §Android (utility tier): Compose, DataStore, Koin, one
+module. What follows describes the older utility apps, for editing them — never for a new app:
+Activity-based or MVVM+Koin, ViewBinding, AGP 8.11.x, minSdk 23. Shared `ads/`
 module (`AdUnits.kt`, `AppOpenAdManager`, `InterstitialPool`, native loaders, `AdsSuppression`),
 `BaseActivity` + `DialogUtils` + `Extension` + `TinyDB`, coroutine `Executer` for background work,
 in-app locale switcher. Always bump `versionCode`/`versionName` before a release build.

@@ -276,7 +276,11 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
 2. **Spawn the `active` roles among `security-reviewer`, `verification-engineer`, `privacy-reviewer`,
    `reliability-engineer`, `red-team-agent`, `aso-specialist`,
-   and `data-analyst` in parallel** in a single message. Read `docs/02-team-roster.md` first — for
+   and `data-analyst` in parallel** in a single message. Read `docs/02-team-roster.md` first. **Every
+   row still `conditional` is decided now:** evaluate its trigger against `docs/10-prd.md` and
+   `docs/20-architecture.md` and amend the row to `active` or `off(<trigger not met: why>)` with this
+   round — the roster was written before either existed, and an unflipped trigger silently drops a
+   reliability or red-team review. Then, for
    an `off` role, print its gate as `N/A: <gate> — <role> is off(<reason>) per
    docs/02-team-roster.md` (see step 1a: an N/A is not a waiver) and record the same line in
    `docs/60-releases.md`. `security-reviewer` and `verification-engineer` are never off at any tier
@@ -335,7 +339,10 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    This `orchestrator ship` must exit `0` before step 3a. Exit `1`/`2` here is handled exactly as in
    step 1, except that nothing is "expected" any more: the artifact exists and every gate has run.
 
-3a. **Spawn `release-auditor`** — *you* spawn it, **never `release-manager`**, and only after step 3
+3a. **On utility, `release-auditor` is `off`** (merged into `verification-engineer`'s ship pass,
+   `role-activation` delta 6): print `N/A: release audit — release-auditor is off(merged-into:
+   verification-engineer) per docs/02-team-roster.md` and go to step 4 — step 3b's exit `0` is the
+   candidate binding. **On flagship, spawn `release-auditor`** — *you* spawn it, **never `release-manager`**, and only after step 3
    has assembled the candidate, composed with `spawn-prompt.mjs compose --role release-auditor`. It
    reads the artifacts, not the summaries: `docs/60-releases.md`, `docs/50-test-plan.md`, the evidence
    bundles in `docs/54-evidence/`, the recorded gate verdicts (`docs/team/runtime-result.json`,
@@ -349,8 +356,10 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      other than artifacts it can read itself;
    - an artifact whose only witness is `release-manager` is a *claim*, and the auditor marks it
      `unverified`;
-   - **a test claim with no discoverable evidence bundle stays `unverified`** (`team-protocol`
-     §Evidence bundle), and a release whose critical journeys are `unverified` is a `FAIL`;
+   - a P0 journey's evidence is step 3b's `docs/team/journey-result.json`, bound to this HEAD by
+     `evidence-check.mjs` and to the artifact by `release-candidate.mjs verify`; any other test
+     claim with no discoverable evidence is `unverified`, and a release whose critical journeys are
+     `unverified` is a `FAIL`;
    - `release-manager` may correct a fact and the audit re-runs; it may never grade the verdict.
 
    `RELEASE AUDIT: FAIL` → stop, print the audit's checklist verbatim, and do not ask the upload

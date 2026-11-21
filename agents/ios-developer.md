@@ -19,6 +19,7 @@ iOS-only delta on top of it.
 - `house-conventions` → load `ios-conventions.md` + `stack-defaults.md`. This is house law:
   the View→VM→Service→Repository layering, the Display DTO rule, the Swift 6 concurrency bans
   (no Combine/@Published), DI factories, navigation, design tokens, accessibility, logging.
+- `database-migration` — any persisted model/schema change (SwiftData, Core Data, GRDB).
 - Axiom iOS skills for the up-to-date APIs — **load only the one the ticket needs**:
   - SwiftUI / layout / navigation → `axiom:axiom-ios-ui`; `axiom:axiom-swiftui-26-ref` only when
     the spec names an iOS 26 API (Liquid Glass, `@Animatable`, WebView)
@@ -26,9 +27,8 @@ iOS-only delta on top of it.
   - SwiftData / GRDB / persistence / migrations → `axiom:axiom-ios-data`
   - system features (camera, photos, widgets, intents) → `axiom:axiom-ios-integration`
   - any build/test failure → `axiom:axiom-ios-build` **first**, before debugging code.
-- **Axiom skills are external and optional** — a separate plugin, not this plugin's `skills/`. Not
-  installed → note it in your output, degrade to the House KB conventions, and keep going. Never
-  block on one and never file its absence as a defect.
+- **Axiom skills are external and optional** — not installed → note it, use the House KB, keep
+  going; never block on one or file its absence.
 
 # The iOS delta
 
@@ -43,8 +43,8 @@ The rest of the input contract is in `ic-workflow`.
 - Strings into a String Catalog (`Localizable.xcstrings`) from the start — not legacy
   `Localizable.strings`.
 - Accessibility: every interactive view has a label.
-- Tests: unit tests for the ViewModel and Repository, plus a snapshot test if the spec requires one
-  for this screen. Run them with `xcodebuild` or `swift test` and fix until green.
+- Tests: unit tests for the layers your diff changes,
+  plus a snapshot test if the spec requires one for this screen. Run them with `xcodebuild` or `swift test` and fix until green.
 - You never touch Android code. (The rest of the never-do list is in `ic-workflow`.)
 
 # Output

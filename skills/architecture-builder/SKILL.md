@@ -1,68 +1,70 @@
 ---
 name: architecture-builder
-description: On an app-dev-team project, use to produce docs/20-architecture.md and the engineering principles during /app-init. Used by cto.
+description: On an app-dev-team project, use to produce docs/20-architecture.md and docs/21-engineering-principles.md during /app-init. The single source of the architecture's section list. Used by cto, and by tech-lead on utility tier.
 ---
 
 # Architecture builder
 
-Produce `docs/20-architecture.md` and `docs/21-engineering-principles.md` from `docs/00-vision.md` + `docs/10-prd.md`.
+Produce `docs/20-architecture.md` and `docs/21-engineering-principles.md` from `docs/00-vision.md` +
+`docs/10-prd.md`. **This is the only copy of the section list** — `cto.md` and `tech-lead.md` point
+here. Other roles cite sections by number (§4, §7, §8), so keep the numbers.
 
 ## docs/20-architecture.md sections
 
-1. **Platform decision** — iOS / Android / both, with order if sequential.
-2. **iOS stack** —
-   - Swift version (latest stable)
-   - Minimum iOS target — resolve `${CLAUDE_PLUGIN_ROOT}/knowledge/stack-defaults.md`'s relative rule (flagship =
-     latest major minus one) to a **concrete number** here, and record how you resolved it
-   - UI: SwiftUI by default; UIKit only if PRD demands something SwiftUI struggles with
-   - State: `@Observable` + `@MainActor` on ViewModels only (Combine / `@Published` /
-     `ObservableObject` are forbidden — `${CLAUDE_PLUGIN_ROOT}/knowledge/ios-conventions.md`)
-   - Networking: URLSession + async/await, or a named lib
-   - Persistence: SwiftData (content apps) or GRDB+SQLite/FTS5 (camera/media) — pick by PRD complexity
-   - DI: lightweight — protocol + initializer injection
-   - Testing: **Swift Testing** (`@Test`/`@Suite`) for unit and domain tests, not XCTest. **UI
-     automation stays XCUITest** — it is XCTest-based, has no Swift Testing equivalent, and
-     `runtime-gate` runs it, so a blanket "never XCTest" would ban the suite the release gate
-     expects. Name the snapshot lib. State the coverage floor for the pure-Swift domain engine
-     package (`${CLAUDE_PLUGIN_ROOT}/knowledge/stack-defaults.md`)
-3. **Android stack** —
-   - Kotlin version
-   - minSdk / targetSdk (set based on PRD users)
-   - UI: Jetpack Compose
-   - Architecture: MVVM or MVI, picked once
-   - Networking: Retrofit + OkHttp + Kotlinx Serialization (or named alternative)
-   - Persistence: Room (or named alternative)
-   - DI: Hilt (flagship) or Koin (utility tier)
-   - Async: Coroutines + Flow
-   - Testing: JUnit, Turbine, **MockK**, **Paparazzi** (screenshot), Compose UI test
-4. **Shared concerns** — auth, analytics, crash reporting, feature flags, remote config, push.
-5. **Backend interface** — sketch the APIs the apps need. If backend is in scope, name the service shape.
-6. **Repository layout** —
+Write the stack sections the roster's **product type** actually has. The list is a floor for
+mobile, not a template to fill in with N/A.
 
-   ```
-   /
-   ├── ios/                # Xcode project / SwiftPM workspace
-   ├── android/            # Gradle multi-module
-   ├── backend/            # if in scope
-   ├── docs/               # all team docs
-   └── specs/              # ticket-level specs if any
-   ```
+1. **Platform decision** — iOS, Android, both, web, service. State the order if parallel isn't
+   possible. Justify in one paragraph.
+2. **Client stack** — one subsection per client platform, one line per item, then one "why"
+   paragraph tied to the PRD:
+   - **iOS** — Swift version (latest stable); minimum iOS target resolved to a **concrete number**
+     per `stack-defaults.md` §Resolving the iOS min target; UI: SwiftUI (UIKit only for
+     a gap the PRD forces); state: `@Observable` + `@MainActor` on ViewModels only (no Combine /
+     `@Published` / `ObservableObject`); networking: URLSession + async/await; persistence:
+     SwiftData (content) or GRDB+SQLite/FTS5 (camera/media); DI: protocol + initializer injection;
+     testing: **Swift Testing** for unit/domain, **XCUITest** for UI automation (`runtime-gate` runs
+     it), the snapshot lib, and the domain package's coverage floor.
+   - **Android** — Kotlin version; minSdk/targetSdk from the PRD's users; UI: Jetpack Compose;
+     MVVM or MVI, picked once; Retrofit + OkHttp + kotlinx.serialization; Room + DataStore; DI: Hilt
+     (flagship) or Koin (utility); Coroutines + Flow; JUnit, Turbine, MockK, Paparazzi.
+   - **Web** — framework and rendering model, hosting target, Node version, browser support
+     matrix, security-header and cookie posture (`web-conventions.md` is the default).
+3. **Service or library stack** — a `backend-service`: runtime, datastore, hosting; a `library`:
+   target platforms and the public API surface. `none` when the product has neither.
+4. **Shared concerns** — auth, analytics, crash reporting, feature flags, remote config, push —
+   and the **kill switch / forced update** decision: how a shipped build can be disabled or forced
+   to upgrade (remote-config flag, minimum-version check, or a written "none, because …").
+   **Push**, when in scope: provider (APNs / FCM / a vendor), where device tokens are stored and
+   expired, the permission prompt's moment (after the user sees the value, never at first launch),
+   and the notification categories; the APNs key and FCM project are founder setup rows.
+5. **Backend interface** — the APIs the apps need. Backend in scope → sketch the service shape;
+   not → list the external services integrated against.
+6. **Repository layout** — top-level folders (`/ios`, `/android`, `/web`, `/backend`, `/docs`)
+   and, inside each app, the v1 structure from `stack-defaults.md` §v1 structure: one
+   app module plus a pure domain package, folders per feature. Name the split triggers; do not
+   pre-build the target module layout.
+7. **CI / release** — branch model, build pipeline, signing, distribution channel, and the **store
+   platform requirements** this release must meet (Play's minimum `targetSdk`, App Store's minimum
+   Xcode/SDK), each with the date last checked. `release-manager` blocks on a stale one.
+8. **Non-functional budgets** — cold start, memory, payload size, accessibility floor (WCAG 2.1
+   AA); Core Web Vitals for web.
+9. **Risks** — top 3 technical risks, each with its mitigation.
 
-7. **CI / release** — branch model, build pipeline, signing, distribution channel (TestFlight, Play internal track).
-8. **Non-functional budgets** — cold start, memory, payload size, accessibility floor (WCAG 2.1 AA).
-9. **Risks** — top 3 with mitigations.
+Before handing off, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/requirements-conflict-scan.mjs" .` —
+exit `1` is a number in the architecture contradicting the PRD; resolve it with the PRD's owner.
 
 ## docs/21-engineering-principles.md
 
-A short rulebook. Examples to include or adapt:
-- Every PR ships with tests
+A short, opinionated rulebook the pod is held to. Examples to include or adapt:
+- Every PR ships tests for the layers its diff changes
 - No force-unwraps (iOS) / no `!!` (Android)
-- Every screen has accessibility labels and a snapshot test
-- No new third-party dep over 200KB without written exception
+- Every screen has accessibility labels; snapshot tests for the screens the impl spec names
+- No new third-party dep over 200KB without a written exception
 - Strings are localized from day one
 - Logs go through the named logger; no `print` / `Log.d` in shipped code
-- Public API for a module is documented in a `README.md` at the module root
 
 ## Quality bar
 
-Every decision in §2 and §3 has one paragraph of "why" tied to the PRD. If you can't write the "why", reconsider the choice.
+Every decision in §2 and §3 has one paragraph of "why" tied to the PRD. If you can't write the
+"why", reconsider the choice.

@@ -8,14 +8,14 @@ description: On an app-dev-team project, use when sizing a ticket at planning ti
 Scale process weight to task size. The input already exists: `cpo`'s backlog estimates every item
 **XS/S/M/L/XL** (`agents/cpo.md`) and `board.mjs add --estimate` carries it onto the ticket. This
 skill maps that field to how much process the ticket needs — no new field, no new ticket state.
-`code-reviewer` carries its own projection of this table; keep the two in step.
+What each track runs at review is `agents/code-reviewer.md`'s table — the single source; this skill does not restate it.
 
 ## The tiers
 
 | Estimate | Track | What changes |
 |---|---|---|
-| XS | **floor** | `tech-lead` may write the impl spec as a single paragraph naming the file and the change — no separate architecture note. `code-reviewer` still runs the full review, but §4b's on-device-measurement and round-trip-execution requirement applies **only if** the change touches a value a user supplies, sees, or is told (§4b's own trigger condition, unchanged) — most XS tickets don't. |
-| S | **light** | Impl spec covers acceptance criteria and the file(s) touched, no separate design-pattern section. Full review, full §4b when it applies. |
+| XS | **floor** | `tech-lead` may write the impl spec as a single paragraph naming the file and the change — no separate architecture note. `code-reviewer` runs its `floor` track (see the `agents/code-reviewer.md` table); §4b applies **only if** the change touches a value a user supplies, sees, or is told — most XS tickets don't. |
+| S | **light** | Impl spec covers acceptance criteria and the file(s) touched, no separate design-pattern section. `code-reviewer` runs its `light` track; §4b when it applies. |
 | M | **standard** | Today's default — full impl spec, full review. No change from current behavior. |
 | L / XL | **full** | Impl spec must name reusable patterns for the pod (`tech-lead`'s existing job, made explicit as required rather than optional at this size) and cross-reference the architecture doc section it extends. Review adds `defect-hunting` §1 (second write path) as a *named, mandatory* step in the verdict, not just available — the larger the change, the more likely it has a second write path nobody enumerated. |
 

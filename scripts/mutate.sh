@@ -599,6 +599,11 @@ MF47S@@scripts/merge-reconcile.mjs@@corrected --by tech-manager --detail "<what 
 MF47T@@scripts/dispatch-preflight.mjs@@${inlineTokenFlag(resolve(String(flags.root)), 'tech-manager', flags.ticket)}@@@@PR47 fixes: dispatch-preflight's corrected command is absolute@@PR47 fixes
 V601@@scripts/lib/args.mjs@@if (help && name === 'help' && inline === undefined) {@@if (false) {@@Sprint 8 V6: team-bootstrap --help prints its usage, exits 0 and writes nothing (EN-10)@@Sprint 8 V6
 V602@@scripts/foundation-conformance.mjs@@if (badId) {@@if (false) {@@Sprint 8 V6: foundation-conformance rejects an argument that is not an invariant id (EN-10)@@Sprint 8 V6
+MV701@@skills/role-activation/SKILL.md@@| flagship. utility: off, merged into `verification-engineer`'s ship pass (delta 6) |@@| never off on a staffed type, never tier-gated |@@Sprint 8 V7: utility roster drops release-auditor and the no-op data-analyst/product-validator deltas (SK-3, SK-4)@@Sprint 8 V7
+MV702@@commands/app-ship.md@@row still `conditional` is decided now@@row still `conditional` stays as written@@Sprint 8 V7: /app-ship re-evaluates conditional roles before the ship fan-out (SK-2)@@Sprint 8 V7
+MV703@@commands/app-init.md@@has `product-researcher` `active`, spawn it now@@has `product-researcher` `active`, spawn it after scope-lock@@Sprint 8 V7: /app-init spawns product-researcher between ceo and cpo (SK-1)@@Sprint 8 V7
+MV704@@agents/release-auditor.md@@evidence-check.mjs" --head@@evidence-check.mjs" --skip@@Sprint 8 V7: release-auditor binds journeys via evidence-check, kill switch only when named (FL-6)@@Sprint 8 V7
+MV705@@agents/code-reviewer.md@@- `database-migration` — any persisted model or schema change@@- schema changes need no procedure@@Sprint 8 V7: XS review is the floor track, IC tests follow the diff, one backend branch form, migrations routed (EN-4, EN-6, EN-12, SK-7)@@Sprint 8 V7
 CATALOGUE
 }
 

@@ -384,7 +384,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    **The wave lands the commit `merged` recorded** (W7-1); a later commit is unreviewed, so the wave
    holds that ticket out as `MOVED SINCE MERGED`. Route back: `board.mjs move APP-NNN rework --by tech-manager
    --detail "wave <N>: …" <TOKEN>` (printed) → `in_progress`; re-spawn the owner with the failure, or
-   the conflict to rebase (`git-pr-strategy` §6); steps 3–4 again. No ticket named → tech-lead.
+   the conflict to rebase (`git-workflow.md` conflicts); steps 3–4 again. No ticket named → tech-lead.
 
    **The push is a second call on the same, already-green wave branch** — no re-merge, no re-test:
 

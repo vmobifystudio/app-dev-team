@@ -46,6 +46,12 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    On `utility` tier the CEO runs the **founder pass** — vision plus the PRD and backlog `cpo` would
    have written — and `cpo` is not spawned at all (its roster row already says why).
 
+2a. **If the roster has `product-researcher` `active`, spawn it now** — after the vision, before the
+   PRD. Its trigger is flagship-gated and reads only the intake, so step 1a decides it `active` or
+   `off`, never `conditional`. It writes `docs/16-research.md` in its own
+   context, and `cpo` in step 3 reads it as an input. Run after scope-lock, research cannot change
+   the scope it was meant to test.
+
 3. **Spawn `cpo` and `cto` in parallel** in a single message — they both read `docs/00-vision.md` and produce their respective docs (PRD/backlog and architecture/principles).
    Skip either if the roster has it `off`: on `utility` both are, `cpo` merged into `ceo` above and
    `cto` into `tech-lead` below.

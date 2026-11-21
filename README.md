@@ -527,9 +527,8 @@ Every build agent reads the relevant pack first:
 | `failure-corpus.md` | **The defect classes this codebase actually produces** — the tell a reviewer greps for, the dated instances, and the rule that now catches each one |
 | `product-failure-corpus.md` | **The defect classes the apps produce** — each marked mechanised, partial or reviewer-only, so a known gap never looks covered |
 
-The operating skills also include `context-preflight`, `dependency-policy`, `policy-checker`, and
-`git-pr-strategy`. These are invoked before implementation, dependency/toolchain changes, sensitive
-reviews, and Git/PR lifecycle actions; they complement rather than duplicate `agent-isolation`,
+The operating skills also include `context-preflight` and `dependency-policy`, invoked before
+implementation and on dependency/toolchain changes; they complement rather than duplicate `agent-isolation`,
 `team-protocol`, `house-conventions`, `defect-hunting`, and `mutation-testing`.
 
 It's **living** — `/app-learn` folds new learnings from each shipped app back in, and flags
