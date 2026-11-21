@@ -483,14 +483,14 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board-render.mjs" docs/31-board.md --out docs/32-board-view.md
    ```
 
-   Surface what the channel still owes, and **escalate the founder's half to the founder**:
+   Surface what the channel still owes, and **settle every escalation this round**:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --escalations
    ```
 
-   Exit `1` → an escalation is open: **surface it to the user verbatim in this round's report**;
-   never carry it to the next round.
+   Exit `1` → spawn its decider (`docs/03-decision-rights.md`; `ceo` for cpo vs cto) to append the
+   closing `decision`; only money or irreversible items reach the user.
 
 6a. **Journal the round — one line, every round, before you loop** — to `docs/33-rounds.jsonl`,
    what happened to the loop (the event log records what happened to tickets).

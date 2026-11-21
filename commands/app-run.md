@@ -15,8 +15,9 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 
 ## Operating rules
 
-- The team **never invents intent.** When a requirement is genuinely ambiguous, write the blocker
-  to the standup and surface it verbatim — do not guess.
+- **The team decides what is reversible and writes it down** (`docs/03-decision-rights.md` § Team
+  decides): an ambiguity gets its decider's `[TD-NNN]` / `DECISION (auto): … — reason` line and the
+  work continues. Only money, irreversible actions and scope beyond the brief are the founder's.
 - All build agents invoke the `house-conventions` skill before working (House KB = `knowledge/`).
 - Honor the existing safety rails: 2-cycle review cap, no auto-merge across `REQUEST CHANGES`,
   one agent per ticket at a time, no destructive data actions.
@@ -79,13 +80,24 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      here, and `docs/02-team-roster.md` is rewritten before anything spawns.
    - *Brownfield:* print the audit scorecard and the remediation backlog grouped by severity and
      Safe/Risky, and ask *"Which gaps should we fix?"* Risky changes proceed only if approved here.
-   Wait for the answer. With `--yolo`, skip the gate (greenfield: auto-approve scope; brownfield:
-   fix all S1/S2 + Safe, defer Risky — the /app-audit --yolo mechanism: Risky stays
-   `blocked needs-approval:` and is listed as DEFERRED) and log the decision.
+   The brief also lists every `ASSUMED` intake answer and every `[TD-NNN]` team default, so one yes
+   covers them. Wait for the answer, then **record it**: the date and anything cut or added under
+   `docs/00-vision.md` `## Scope lock`, and one `<date> FOUNDER DECISION: <trigger> — <subject> —
+   approved at Gate 1` line in `docs/00-founder-intent/decisions.md` per gate finding the founder
+   approved (quote the subject the finding names), then
+   `node "${CLAUDE_PLUGIN_ROOT}/scripts/founder-intent.mjs" --project-root . --write`. If scope
+   changed, re-spawn `cpo` (`ceo` on utility) once to amend `docs/10-prd.md` and `docs/11-backlog.md`
+   before step 3 — `/app-plan` plans from the backlog, so a cut that stays there gets built.
+   With `--yolo`, skip the question (greenfield: auto-approve scope and record it as above, minus
+   the gate lines — a money gate is never auto-approved, it stays open per step 4; brownfield: fix
+   all S1/S2 + Safe; Risky S1/S2 proceed on their written plan with a `tech-lead` or `cto` approval,
+   released by the orchestrator's `unblocked`; only a migration that deletes user data and a pricing
+   change stay `blocked needs-approval:` and listed as DEFERRED) and log the decision.
 
 3. **Plan.** Run `/app-plan` (tech-manager builds the parallel board via `sprint-planner`), which
    runs **non-interactively here** — scope was approved at Gate 1 and this command has no third
-   gate. Ensure every P0 feature has a paired `APP-NNN-analytics` ticket, owned per the roster
+   gate. Only when `docs/52-analytics.md` exists (an analytics plan was asked for), ensure every
+   P0 feature has a paired `APP-NNN-analytics` ticket, owned per the roster
    (`data-analyst` where active; otherwise the feature's IC), and that it passes `dispatch-preflight`
    for that owner like any other ticket.
 
@@ -104,7 +116,7 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      (`/app-build` steps 3–5, where per-ticket `--static` verification and `verified_static` are
      explained). **A wave that does not go green is a normal outcome an autonomous run survives**,
      not an escalation: re-spawn only the owners the failure names.
-   - **Escalations are surfaced to the user in the round they are raised** (`/app-build` step 6).
+   - **Escalations are settled in the round they are raised** by their decider (`/app-build` step 6).
    - After each round, the standup at `docs/daily/<today>.md` is the concatenation `/app-build`
      step 6 runs (no `tech-manager` spawn); print a 3-line summary: counts per status, what merged,
      blockers.
@@ -131,19 +143,27 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      node "${CLAUDE_PLUGIN_ROOT}/scripts/trace.mjs" --project-root . --only gates
      ```
 
-     Exit 1 means a trigger fired — pricing · sensitive data · destructive migration · account
-     deletion · legal disclosure · visual direction · paid infrastructure · **any waiver of a failed
-     or unavailable gate** — and no founder decision covers it. Stop the loop and ask. The exit is
-     one appended line in `docs/00-founder-intent/decisions.md`; the exit is never an agent deciding
-     the trigger was fine, and `--yolo` does not clear one. Exit 2 is CANNOT EVALUATE — almost
-     always a missing `docs/00-founder-intent/` (`/app-init` step 0, `/app-onboard` step 5b). It is
-     not a pass: create the record before the next round rather than running rounds blind to the
-     gates it exists to fire.
+     Exit 1 means a trigger fired — pricing · destructive migration · paid infrastructure · **any
+     waiver of a failed or unavailable gate** — and no founder decision covers it. **It does not stop
+     the loop.** Record it as an open founder question (question · default · needed-by) in the
+     standup, move only the tickets whose files or feature it touches to `blocked` with
+     `--reason "needs-approval: founder-gate <trigger>"`, and keep building the rest. It clears with
+     one appended line in `docs/00-founder-intent/decisions.md` (then the orchestrator's `unblocked`);
+     never an agent deciding the trigger was fine, and `--yolo` does not clear one. Exit 2 is
+     CANNOT EVALUATE — almost always a missing `docs/00-founder-intent/` (`/app-init` step 0,
+     `/app-onboard` step 5b). It is not a pass: create the record before the next round rather
+     than running rounds blind to the gates it exists to fire.
+   - **A founder requirement change mid-build** ("add widgets", "make it free") is appended verbatim
+     and dated to `docs/00-founder-intent/decisions.md` (then `founder-intent.mjs --write`). That
+     round: `cpo` (`ceo` on utility) amends the affected `[F-NNN]` rows with `rev: <date>`,
+     `product-validator` re-runs once, `board.mjs move <ID> corrected --acceptance` updates tickets
+     in flight, and the gates above run.
    - **Escalate to the user only** for: a blocker the team can't resolve, the 2-cycle review cap
      being hit (the founder may answer with one more cycle by running `board.mjs move <ID> reopened --by founder`
      with their own founder token — never minted by the studio),
-     the budget ceiling, a fired founder gate, or a scope/architecture conflict. Surface
-     verbatim with a proposed answer.
+     or the budget ceiling. A scope/architecture conflict goes to `ceo`, not the user; a fired
+     founder gate is an open question, not a stop. Surface as question · proposed default ·
+     reversible? · needed-by — after needed-by, a reversible default stands.
 
 5. **Ship-readiness.** When the board is drained and there are zero open S1/S2 bugs, spawn in
    parallel **the `active` ones among** `aso-specialist` (store assets + readiness),

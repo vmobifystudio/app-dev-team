@@ -604,6 +604,11 @@ MV702@@commands/app-ship.md@@row still `conditional` is decided now@@row still `
 MV703@@commands/app-init.md@@has `product-researcher` `active`, spawn it now@@has `product-researcher` `active`, spawn it after scope-lock@@Sprint 8 V7: /app-init spawns product-researcher between ceo and cpo (SK-1)@@Sprint 8 V7
 MV704@@agents/release-auditor.md@@evidence-check.mjs" --head@@evidence-check.mjs" --skip@@Sprint 8 V7: release-auditor binds journeys via evidence-check, kill switch only when named (FL-6)@@Sprint 8 V7
 MV705@@agents/code-reviewer.md@@- `database-migration` — any persisted model or schema change@@- schema changes need no procedure@@Sprint 8 V7: XS review is the floor track, IC tests follow the diff, one backend branch form, migrations routed (EN-4, EN-6, EN-12, SK-7)@@Sprint 8 V7
+S8V1A@@scripts/trace.mjs@@if (id !== 'waiver' && founderWords.includes(s)) return true;@@if (false) return true;@@Sprint 8 V1: a price in the founder's own words@@Sprint 8 V1
+S8V1B@@scripts/trace.mjs@@re.test(l) && l.toLowerCase().includes(s)@@re.test(l) && l.includes(subj)@@Sprint 8 V1: a decision matches its subject case-insensitively@@Sprint 8 V1
+S8V1C@@scripts/trace.mjs@@.replace(/\s*—\s*v\d+\.\d+\.\d+\s*$/, '')@@@@Sprint 8 V1: the version field release-manager appends does not re-open an approved waiver@@Sprint 8 V1
+S8V1D@@scripts/trace.mjs@@const wantsAnalytics = docs.some((d) => d.rel === 'docs/52-analytics.md');@@const wantsAnalytics = true;@@Sprint 8 V1: ...and one without docs/52-analytics.md owes none@@Sprint 8 V1
+S8V1E@@scripts/trace.mjs@@  { id: 'destructive-migration', where:@@  { id: 'account-deletion', where: /^docs\//, pattern: /\baccount deletion\b/i, why: 'x' }, { id: 'destructive-migration', where:@@Sprint 8 V1: a price in the founder's own words@@Sprint 8 V1
 CATALOGUE
 }
 

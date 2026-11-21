@@ -12,7 +12,7 @@
  *   trace       the graph: does every node have a source, a verifier, and a downstream?
  *   conflicts   two documents asserting different values for the same claim, resolved BY RULE and
  *               reported — or refused when the rule cannot separate them
- *   gates       the eight conditional founder gates, each detected rather than described
+ *   gates       the four conditional founder gates (money or irreversible), each detected
  *
  * The board is read through scripts/lib/board.mjs. One parser: a second reading of the board is how
  * the last four fail-open gates in this repo got written.
@@ -208,7 +208,7 @@ if (ONLY === 'all' || ONLY === 'trace') {
     if (!goal.src || !/00-founder-intent\//.test(goal.src)) {
       add('goal_no_founder_source', `${goal.file}:${goal.line}`,
         `${goal.id} names no source in docs/00-founder-intent/ (src: ${goal.src || 'absent'}). Every document below it will be validated against this goal, and the goal is validated against nothing.`,
-        'Point src: at the file in the founder record that states it, or take the goal to the founder before anything derives from it.');
+        'Point src: at the founder-record file that states it, spelled in full (src: docs/00-founder-intent/brief.md), or delete the goal — a goal the founder never stated is not one.');
     }
   }
 
@@ -320,7 +320,11 @@ if (ONLY === 'all' || ONLY === 'trace') {
     // list and delivered by nothing; nobody finds out until the post-launch review has no numbers.
     // hasShipped, not a status test: a merge-gated ticket awaiting the wave has NOT shipped, and
     // saying it has is how a founder is told a feature landed that is still on its own branch (N1).
-    const shipped = new Set(tickets.filter((r) => hasShipped(r)).map(featureOf).filter(Boolean));
+    // Sprint 8 V1 (FL-10): only a project that has an analytics plan owes events. With no
+    // docs/52-analytics.md the founder never asked for telemetry, and demanding it is an invented
+    // requirement (and a privacy regression for an app that sends nothing anywhere).
+    const wantsAnalytics = docs.some((d) => d.rel === 'docs/52-analytics.md');
+    const shipped = new Set(wantsAnalytics ? tickets.filter((r) => hasShipped(r)).map(featureOf).filter(Boolean) : []);
     for (const f of shipped) {
       if (!nodes.has(f)) continue; // already reported as ticket_no_requirement
       const events = sourcedBy(f).filter((n) => n.kind === 'analytics');
@@ -402,7 +406,7 @@ if (ONLY === 'all' || ONLY === 'conflicts') {
     if (loser.rank === top.rank) {
       add('conflict_unresolvable', `${top.file}:${top.line}`,
         `"${key}" is asserted as "${top.value}" here and as "${loser.value}" at ${loser.file}:${loser.line}. Both sides are ${top.name}, so no precedence rule separates them. Refusing: a tool that picks one anyway has invented the answer.`,
-        'Take both sides to the founder and record the decision in docs/00-founder-intent/decisions.md, which outranks everything.');
+        'The decider docs/03-decision-rights.md names for this row picks one and records `DECISION (auto): <key> = <value> — <reason>` in the higher-ranked document; only a founder row (money, irreversible, scope beyond the brief) goes to the founder via docs/00-founder-intent/decisions.md.');
     } else {
       add('conflict_resolved', `${loser.file}:${loser.line}`,
         `"${key}" = "${loser.value}" here (${loser.name}) contradicts "${top.value}" at ${top.file}:${top.line} (${top.name}). RULE: ${top.name} outranks ${loser.name}, so "${top.value}" holds. The losing document is wrong and is still being read.`,
@@ -417,28 +421,20 @@ if (ONLY === 'all' || ONLY === 'conflicts') {
 //
 // Each trigger is DETECTED, not described: a pattern, over a named set of documents, cleared only by
 // an append-only founder decision. Detection is deliberately fail-closed — a trigger that fires
-// without an approval stops the loop and costs one line in decisions.md; a trigger that does not
-// fire costs a pricing change nobody approved.
+// without an approval blocks the tickets it touches (/app-run step 4) and costs one line in
+// decisions.md; a trigger that does not fire costs a pricing change nobody approved.
 
 const GATE_TRIGGERS = [
   { id: 'pricing', where: /^docs\/(41-monetization|10-prd)\.md$/,
     pattern: /(?:[$£€]\s?\d+(?:[.,]\d{2})?\s*(?:\/|per\s+|a\s+)\s*(?:month|year|mo|yr|week))|\bsubscription tier\b|\bprice\s*=/i,
     why: 'pricing or subscription change' },
-  { id: 'sensitive-data', where: /^docs\//,
-    pattern: /\b(health(?:kit)? data|biometrics?|precise location|contact list|payment card|government id|children under 13)\b/i,
-    why: 'new sensitive-data collection' },
+  // Sprint 8 V1 (AU-1/PR-1): sensitive-data, account-deletion, legal-disclosure and visual-direction
+  // were deleted. The CPO is told to write account deletion and a privacy-policy appendix into every
+  // PRD, so two of them fired on every greenfield app by construction; store rules and the privacy
+  // and security reviewers own all four. What is left is money or irreversible.
   { id: 'destructive-migration', where: /^docs\//,
     pattern: /\b(drop table|drop column|destructive ?migration|fallbackToDestructiveMigration|delete all user data|drop and recreate)\b/i,
     why: 'destructive migration' },
-  { id: 'account-deletion', where: /^docs\//,
-    pattern: /\b(account deletion|delete (?:the |their |your )?account|erase all (?:user )?data)\b/i,
-    why: 'account-deletion behaviour' },
-  { id: 'legal-disclosure', where: /^docs\//,
-    pattern: /\b(privacy policy|terms of service|EULA|export compliance)\b/i,
-    why: 'legal disclosure' },
-  { id: 'visual-direction', where: /^docs\/1[34]-/,
-    pattern: /\bclaim:\s*visual-direction\s*=/i,
-    why: 'major visual-direction change' },
   { id: 'paid-infrastructure', where: /^docs\/(20-architecture|23-git-strategy)\.md$/,
     pattern: /\b(blaze plan|paid tier|billing account|reserved instance|[$£€]\s?\d+\s*\/\s*month)\b/i,
     why: 'paid infrastructure commitment' },
@@ -482,7 +478,9 @@ if (ONLY === 'all' || ONLY === 'gates') {
     const m = trigger.pattern.exec(line);
     if (!m) return '';
     if (trigger.id === 'waiver') {
-      const after = line.slice(line.indexOf(m[0]) + m[0].length).trim();
+      // The trailing `— vX.Y.Z` field is release-manager's, not the founder's (AU-7): stripping it
+      // keeps the founder's one approval valid when the version heading lands after the waiver.
+      const after = line.slice(line.indexOf(m[0]) + m[0].length).trim().replace(/\s*—\s*v\d+\.\d+\.\d+\s*$/, '');
       return after.slice(0, 80);
     }
     return m[0].trim();
@@ -491,10 +489,19 @@ if (ONLY === 'all' || ONLY === 'gates') {
   // A decision covers a subject when SOME line naming this trigger also contains it. Line-scoped on
   // purpose: matching across the whole file would let an unrelated decision elsewhere in the record
   // satisfy this one by coincidence.
+  //
+  // Sprint 8 V1: case-insensitive (PR-2 — a reworded or re-cased document is not a new decision),
+  // and a value the founder wrote in their own brief is already decided (PR-1 — asking "$2.99/month?"
+  // back to the person who said "$2.99/month" is noise). A waiver is never pre-approved by the brief.
+  const founderWords = existsSync(intentDir)
+    ? docFiles(intentDir).filter((d) => !/\/decisions\.md$/.test(d.rel)).map((d) => d.text).join('\n').toLowerCase()
+    : '';
   const covers = (id, subj) => {
     if (decisions === null || !subj) return false;
-    const re = new RegExp(`FOUNDER DECISION:\\s*${id}\\b`);
-    return decisions.split(/\r?\n/).some((l) => re.test(l) && l.includes(subj));
+    const s = subj.toLowerCase();
+    if (id !== 'waiver' && founderWords.includes(s)) return true;
+    const re = new RegExp(`FOUNDER DECISION:\\s*${id}\\b`, 'i');
+    return decisions.split(/\r?\n/).some((l) => re.test(l) && l.toLowerCase().includes(s));
   };
 
   for (const trigger of GATE_TRIGGERS) {
@@ -513,7 +520,7 @@ if (ONLY === 'all' || ONLY === 'gates') {
           (namedButUncovered
             ? `The record HAS a "${trigger.id}" decision, but none of them names "${subj}" — an approval of some earlier value does not authorize this one.`
             : 'No founder decision covers it, and this is not a call an agent gets to make.'),
-        `Stop the loop, put it to the founder, and record: "<date> FOUNDER DECISION: ${trigger.id} — ${subj} — <what was decided>" in docs/00-founder-intent/decisions.md. The line must quote "${subj}", because that is what makes the approval about this change rather than about the topic.`);
+        `Block only the tickets it touches (needs-approval: founder-gate ${trigger.id}), keep building the rest, put it to the founder, and record: "<date> FOUNDER DECISION: ${trigger.id} — ${subj} — <what was decided>" in docs/00-founder-intent/decisions.md. The line must quote "${subj}", because that is what makes the approval about this change rather than about the topic.`);
       break; // one finding per trigger; the founder decides the trigger, not each line of it
     }
   }

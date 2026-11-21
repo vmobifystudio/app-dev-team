@@ -7,3 +7,6 @@ trigger is proven to fire, rather than proven to be described.
 - Settings offers account deletion, and the queue is purged with it.
 - The v2 schema upgrade will DROP TABLE entries and rebuild it from the export.
 - Ship with a privacy policy link in Settings.
+
+The location, account-deletion and privacy-policy lines (and 13-design-tokens.md's visual-direction
+claim) are deliberately kept: Sprint 8 V1 deleted those four triggers, and they must stay silent.

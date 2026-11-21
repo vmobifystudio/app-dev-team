@@ -72,7 +72,11 @@ complete-looking by construction and nothing in it says what is absent.
 **2. Invented requirement.** A requirement in the PRD tracing to nothing in the record. Not "bad" —
 it may be excellent — but it is a **scope decision that was never put to the founder**, and it is
 spending the budget. `trace.mjs` reports the goal-level form (`goal_no_founder_source`); you catch
-the ones smuggled in below goal level.
+the ones smuggled in below goal level. **Not this class:** a line marked `[TD-NNN] … src:
+team-default|house-kb` (`docs/03-decision-rights.md` § Team decides) — store/House-KB mandates,
+states, copy, settings. List those once, as their own non-material section, so the founder can veto
+any of them at Gate 1; they never make the verdict `DRIFTED`. A TD line that adds scope beyond the
+brief (a new feature, a price, an integration) is mislabelled and *is* a finding.
 
 **3. Silent scope change.** The record says one thing, the PRD says a compatible-sounding other
 thing, and nobody recorded the move. "Works offline on a train" becoming "syncs when reconnected" is
