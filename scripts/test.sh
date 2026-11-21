@@ -10885,8 +10885,8 @@ grep -q IC-REPORT "$TMP/te-rv.txt" && ! grep -q 'SUFFIX-REPORT\|DESIGNQA-REPORT'
 assert_has "$TMP/te-rv.err" "mandatory skills" "S3E: the budget line counts the mandatory-skill closure (C2-20)"
 
 # C2-5 / C2-11 — the IC prints its base and checkout line; a retry goes onto the existing branch.
-te_compose --ticket APP-001 --role ios-developer >"$TMP/te-ic.txt" 2>/dev/null
-grep -qF 'checkout -b feat/APP-001-<short-slug> main' "$TMP/te-ic.txt" \
+te_compose --ticket APP-002 --role android-developer --slot .agent-wt/ios-developer >"$TMP/te-ic.txt" 2>/dev/null
+grep -qF 'checkout -b feat/APP-002-<short-slug> main' "$TMP/te-ic.txt" \
   && ok "S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)" \
   || bad "S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)"
 printf 'REVIEW VERDICT: REQUEST CHANGES\nScope: a..b\nBlocking: RETRY-BLOCKING-LINE\n\n## Not checked\nNothing\n' > "$TE/docs/v.md"

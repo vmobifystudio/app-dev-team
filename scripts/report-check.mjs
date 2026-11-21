@@ -123,7 +123,7 @@ if (!missing.length && fragmentTruth?.ok !== false) {
 if (fragmentTruth?.ok === false) {
   process.stdout.write(
     `REPORT CHECK: FALSE CLAIM — ${role}'s "Daily fragment: ${fragmentTruth.path}" is not on branch "${fragmentTruth.branch}".\n\n` +
-    '  Re-spawn the agent to commit it on that branch; never commit it on its behalf.\n'
+    '  Re-spawn the agent to commit it on that branch. Do NOT commit it yourself.\n'
   );
   process.exit(1);
 }
@@ -133,6 +133,6 @@ if (fragmentTruth?.ok === false) {
 process.stdout.write(
   `REPORT CHECK: INCOMPLETE — ${role} returned ${required.length - missing.length} of ${required.length} contract field(s)\n\n` +
   missing.map((m) => `  MISSING  ${m}`).join('\n') + '\n\n' +
-  '  Re-spawn the agent for exactly these fields; never fill them in yourself.\n'
+  '  Re-spawn the agent for exactly these fields. Do NOT fill them in yourself.\n'
 );
 process.exit(1);

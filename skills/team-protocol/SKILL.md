@@ -67,10 +67,8 @@ Send a live `question` only when you can keep working on another part of the tic
 
 ## Ask before you block
 
-`BLOCKED` costs a re-spawn. (1) Re-read the impl spec and flow doc. (2) If you can work around it,
-send one `question` and keep working elsewhere on the ticket. (3) If you cannot, return this — when
-`Need:` names `tech-lead`, `ux-architect` or `product-manager`, the orchestrator gets the answer this
-round and re-spawns you on your branch with it inlined:
+`BLOCKED` costs a re-spawn. (1) Re-read the impl spec and flow doc. (2) Send one `question` and
+keep working elsewhere. (3) Only then (`Need: tech-lead` is answered this round, then you re-spawn):
 
 ```
 BLOCKED: APP-NNN

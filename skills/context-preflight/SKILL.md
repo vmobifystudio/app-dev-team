@@ -29,6 +29,5 @@ purpose is not to create more ceremony; it is to prevent an agent from acting on
 
 ## Output
 
-A NOTE in your daily fragment (a reviewer: its verdict's notes): the `PREFLIGHT:` line the script printed, documents read and
-assumptions. It is not a return value — you return the contract your prompt gives (a preflight that
-cannot clear is a `BLOCKED:` block).
+A note in your daily fragment (a reviewer: its verdict): the `PREFLIGHT:` line and documents read.
+Not a return value — return your prompt's contract (`BLOCKED:` if preflight cannot clear).

@@ -187,13 +187,14 @@ function cutLines(lines, left) {
 /**
  * CX-8: a matched section keeps its heading, prose and code fences whole, but only the table rows,
  * list items and `[AC-…]`-style lines that name a token — a shared criteria list or feature table put
- * every sibling ticket's acceptance into every prompt. A kept table keeps its header; an indented
- * line follows its item.
+ * every sibling ticket's acceptance into every prompt. A section whose heading names a token is kept
+ * whole. A kept table keeps its header; an indented line follows its item.
  */
 const TABLE_RE = /^\s*\|/;
 const ITEM_RE = /^ ?(?:[-*+]|\d+[.)])\s|^\s*(?:\*\*)?\[?[A-Z]{1,6}-\d+/;
 function narrow(lines, res) {
   const hit = (l) => res.some((r) => r.test(l));
+  if (hit(lines[0])) return lines;  // a section whose heading names the ticket is the ticket's own
   const out = [];
   let inFence = false;
   let keepItem = true;
@@ -287,13 +288,6 @@ function boardRows(root) {
 }
 
 /** The log's events for one ticket, oldest first. Unparseable lines are skipped (board.mjs verify owns integrity). */
-/** The last event that moved the ticket's work — `corrected`/`assigned`/`blocked`/`unblocked` only
- * edit or pause it, so a `rework` followed by a title correction is still a rework (Codex PR #47). */
-const METADATA_EVENTS = new Set(['corrected', 'assigned', 'blocked', 'unblocked']);
-function lastWorkEvent(root, id) {
-  return ticketEvents(root, id).filter((e) => !METADATA_EVENTS.has(e.event)).pop();
-}
-
 function ticketEvents(root, id) {
   let text = '';
   try { text = readFileSync(join(root, 'docs', '31-board-events.jsonl'), 'utf8'); } catch { return []; }
@@ -475,14 +469,14 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
       `Fix exactly the \`Blocking:\` lines of \`${vf}\` (verbatim below), then return the full contract again.`,
       '', ...fence(readFileSync(abs, 'utf8').trim()),
     ];
-  } else if (!qa && (lastWorkEvent(ROOT, row.id)?.event === 'rework' || (found = ticketBranch(ROOT, row.id, allIds)).branch || found.ambiguous.length)) {
+  } else if (!qa && ((found = ticketBranch(ROOT, row.id, allIds)).branch || found.ambiguous.length || sentBack(ROOT, row.id)?.event === 'rework')) {
     // PR47-5: `rework` (the wave could not land it: FAIL / CONFLICT) sends a MERGED ticket back. Its
     // branch exists and carries the reviewed work; a fresh `checkout -b` forked a second branch and
     // `verified` then refused the ambiguity. CX-3: the same holds for EVERY re-spawn onto an existing
     // branch — verify-done REJECTED, report-check INCOMPLETE, blocked then unblocked — and the task is
     // the detail of the event that sent it back.
-    const rework = lastWorkEvent(ROOT, row.id)?.event === 'rework';
     const back = sentBack(ROOT, row.id);
+    const rework = back?.event === 'rework';
     const why = back ? detailText(back.detail) : '';
     const { branch, ambiguous } = ticketBranch(ROOT, row.id, allIds);
     if (!branch) die(2, ambiguous.length ? `${row.id}: several branches are ${row.id}'s (${ambiguous.join(', ')}) — delete the stray one first` : `rework: no branch is named for ${row.id}, but the board sent it back with rework`);
@@ -545,8 +539,8 @@ function composeIc({ ROOT, row, rows, allIds, base, role }, contract) {
     ]),
     '',
     // R7-6: an artifact ticket IS a document (docs/12-flows.md for ux-architect, …) — "do not edit the specs" forbade the work.
-    artifact ? 'Edit only the document(s) your ticket\'s Spec names; no other spec. If you are blocked, return the BLOCKED block below (`Need:` names who answers what) — do not guess.'
-      : 'Do not edit the specs. If you are blocked, return the BLOCKED block below (`Need:` names who answers what) — do not guess.',
+    artifact ? 'Edit only the document(s) your ticket\'s Spec names; no other spec. If you are blocked, return the BLOCKED block below — do not guess.'
+      : 'Do not edit the specs. If you are blocked, return the BLOCKED block below — do not guess.',
     ...(qa ? [] : tokenLines(ROOT, role, row.id)),
     '',
     '**Expected output contract.** Return exactly this block, with every field filled in — a',
