@@ -141,11 +141,14 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      always a missing `docs/00-founder-intent/` (`/app-init` step 0, `/app-onboard` step 5b). It is
      not a pass: create the record before the next round rather than running rounds blind to the
      gates it exists to fire.
-   - **Escalate to the user only** for: a blocker the team can't resolve, the 2-cycle review cap
-     being hit (the founder may answer with one more cycle by running `board.mjs move <ID> reopened --by founder`
-     with their own founder token — never minted by the studio),
+   - **Escalate to the user only** for: a blocker the team can't resolve (a capped review goes to
+     `tech-lead`, not the user: one `reopened --by tech-lead`, then take over, re-scope or `descoped`),
      the budget ceiling, a fired founder gate, or a scope/architecture conflict. Surface
      verbatim with a proposed answer.
+
+   - **Sprint over, backlog not.** When the board drains while P0 or approved backlog rows remain
+     unplanned (including S3/S4 bugs queued "to sprint N+1"), go back to step 3 for sprint N+1 —
+     journal its rounds with `--sprint N+1`. Step 5 starts only when no planned work remains.
 
 5. **Ship-readiness.** When the board is drained and there are zero open S1/S2 bugs, spawn in
    parallel **the `active` ones among** `aso-specialist` (store assets + readiness),
@@ -157,7 +160,7 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
    produce-or-waive decision (`/app-ship` step 1a). **Never resolve one by skipping it here:**
    `--yolo` skips human gates, not correctness gates, and this is a correctness gate.
 
-   "Drained" means the doctor is clean **and** every non-`done` row is named with its reason.
+   "Drained" means the doctor is clean **and** every non-`done`, non-`descoped` row is named with its reason.
    A board with an open anomaly is not drained, however empty the `todo` column looks.
 
 6. **GATE 2 — ship (human).** Hand off to `/app-ship`, which summarizes readiness and hands the

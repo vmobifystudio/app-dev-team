@@ -71,7 +71,7 @@
  * only sha256(token) + role + ticket + expiry in `docs/team/actor-tokens.jsonl`. The token goes
  * into that one agent's spawn prompt and nowhere else. Under `requireActorTokens: true` in
  * .studio-policy.json every GATE event (capabilities.mjs GATE_EVENTS: verified, verified_static,
- * rejected, approved, changes, merged, qa_passed, qa_failed, closed, reopened) needs `--token`
+ * rejected, approved, changes, merged, qa_passed, qa_failed, closed, rework, reopened) needs `--token`
  * whose hash is in the registry, unexpired, unrevoked, minted for exactly this --by role and this
  * ticket. Reading the registry yields hashes, which mint nothing. Spelling a role yields nothing.
  *
@@ -110,14 +110,15 @@
  *     downgrade an agent can make by editing .studio-policy.json.
  *   - Tokens are never read from the environment: subagents inherit it.
  *
- * FOUNDER TOKENS (G2-14). `reopened` is the founder's override of the review-cycle cap, and
+ * FOUNDER TOKENS (G2-14). The founder's own gate is `unblocked` of a `needs-approval:` block (Sprint 8
+ * AU-3 moved `reopened` to tech-lead/cto), and
  * `actor mint --role founder` was a CLI any orchestrator or subagent could run. Now a founder token
  * is minted only by a human at a terminal: stdin must be a TTY and the human types the ticket id
  * back. The token is short-lived (default 30 min) and SINGLE-USE (board.mjs refuses a founder
  * token_id already on the log), so pasting it into a `! …` command leaves nothing reusable behind.
  * The founder runs, in their own terminal (Claude Code's Bash tool and `!` give the process no TTY):
  *     node "<plugin>/scripts/board.mjs" actor mint --role founder --ticket APP-NNN
- * then, in Claude Code:   ! node "<plugin>/scripts/board.mjs" move APP-NNN reopened --by founder --token <it>
+ * then, in Claude Code:   ! node "<plugin>/scripts/board.mjs" move APP-NNN unblocked --by founder --token <it>
  * BOUND: a hostile agent can fake a TTY (script(1), expect) and type the id itself. This stops a
  * confused or literal agent cold and makes the hostile one take a deliberate, transcript-visible step.
  *
@@ -367,7 +368,7 @@ function founderConfirms(ticket, { stdin = process.stdin, read = readSync, openT
     return { ok: false, reason: refusal || ('a founder token is minted only by the human founder at a terminal (stdin is not a TTY here, and an agent Bash call never has one).\n' +
       '  Founder: in your own terminal run\n' +
       `    ${cd}node "${BOARD_CLI}" actor mint --role founder --ticket ${ticket}\n` +
-      `  then in Claude Code:  ! ${cd}node "${BOARD_CLI}" move ${ticket} reopened --by founder --token <the token>`) };
+      `  then in Claude Code:  ! ${cd}node "${BOARD_CLI}" move ${ticket} unblocked --by founder --token <the token>`) };
   }
   process.stderr.write(prompt || `Founder override for ${ticket}. Type the ticket id to mint a single-use founder token: `);
   // C3G-10: read the CONTROLLING TERMINAL, opened fresh and blocking. fd 0 of a node process on a

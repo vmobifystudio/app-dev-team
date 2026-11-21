@@ -56,28 +56,24 @@ The script names which in its output; read it rather than assuming.
   EVALUATE` in the standup and name what never ran. An exit-2 handler that only knows "supply a test
   command and re-run" leaves review unreachable in exactly the case the static lane exists for.
 
-## Step 4 — the review-cycle cap and the founder's extra cycle
+## Step 4 — the review-cycle cap and tech-lead's extra cycle
 
 **Cap: 2 review cycles, enforced at write time.** The 3rd `changes` is **refused**; the CLI appends
-`blocked` in its place and prints the dependents that just stopped being claimable. Stop the loop for
-that ticket and surface it to the user with the full reviewer + developer history. Do not auto-retry.
-If the founder decides it is worth one more cycle, that answer is recorded as:
+`blocked` in its place and prints the dependents that just stopped being claimable. Do not auto-retry.
+A reviewer–developer deadlock is an engineering call (Sprint 8 AU-3), so spawn `tech-lead` with the
+full reviewer + developer history. It decides one of four, and records it:
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move APP-NNN reopened --by founder --detail "<the founder's reason>" \
-  --token "<a founder token>"
-```
+- **one more cycle** — once per ticket; the CLI refuses a second:
+  `board.mjs move APP-NNN reopened --by tech-lead --detail "<why>" --token <its token>` (back to
+  `in_progress`; re-spawn the owner from there);
+- **take it over** — `assigned` to tech-lead, then `reopened`;
+- **re-scope** — `corrected --acceptance/--spec/--file`, or split it: `add` the follow-up ticket;
+- **drop it** — `descoped --by tech-manager --detail "<decision>"`, with a follow-up ticket if any.
 
-It moves the ticket back to `in_progress` with exactly one more cycle; re-spawn the owner from there.
-Only the founder writes it. Print both steps for the human, with the plugin path **resolved** — run
-`printf '%s\n' "${CLAUDE_PLUGIN_ROOT}"` yourself and print the absolute path it gives, because the
-founder's own terminal has no `CLAUDE_PLUGIN_ROOT` set. The mint runs in the founder's own terminal,
-from the project root — never through Claude Code's `!`, which has no TTY, and the mint refuses
-without one (it needs the ticket id typed back; the token is single-use, 30 minutes):
-`node "/abs/path/to/plugin/scripts/board.mjs" actor mint --role founder --ticket APP-NNN`. The move
-needs no TTY, so it runs in that terminal or as a Claude Code `!` command:
-`node "/abs/path/to/plugin/scripts/board.mjs" move APP-NNN reopened --by founder --detail "<reason>" --token <it>`.
-**You never mint a `founder` token and never append it on your own judgement.**
+The same cap shape bounds two other loops: past **6 `rework` + `rejected`** on one ticket (the
+wave-fail / verify-reject loop) and past **2 `qa_failed`** (the QA–developer loop) the CLI forces
+`blocked`. A retry cap goes to tech-lead as above; a QA cap goes to `product-manager` (`cpo` for a P0),
+who decides fix (tech-lead's `reopened`), accept as an S3 known issue, or `descoped`.
 
 A `rejected` verify-done is not a cycle: the row stays `in_progress` and only `changes` counts.
 
@@ -178,12 +174,17 @@ the journey gate, then lease QA a slot and re-spawn it with `compose --ticket QA
 qa-engineer` — it composes a VERDICT PASS on the landed tree (no new branch) — to record each
 `qa_passed`/`qa_failed` against the landed declarations. Only then close.
 
-**`qa_failed` → the fix.** The rejected ticket stays in `qa`. Add
-`BUG-NNN-fix --owner <platform dev> --depends APP-NNN` (branch `feat/BUG-NNN-fix-<slug>`): a
+**`qa_failed` → the fix.** The rejected ticket stays in `qa`. `qa_failed --detail "BUG-NNN …"` is
+refused unless BUG-NNN is a row of `docs/51-bugs.md` (the tree or QA's branch), and it cuts
+`BUG-NNN-fix --owner <the ticket's owner> --depends APP-NNN` itself (branch `feat/BUG-NNN-fix-<slug>`): a
 dependency at `qa` counts as satisfied, so it is ready at once and takes the normal code path
 (verified → review → approved → merged). The next wave's `QA-` ticket lists both; QA records
 `qa_passed` on APP-NNN (legal from `qa` after a `qa_failed`) and on BUG-NNN-fix, and each is
 `closed`. Nothing else clears a `qa_failed`.
+
+**Which owner, when a wave gate FAILs** (runtime or journey, on a wave of several tickets): QA files
+the bug and records `qa_failed` on each wave ticket whose `--file` set touches the failing screen or
+journey; if none can be named, on every ticket of the wave. Each gets its own `BUG-NNN-fix`.
 
 A QA return with no `Branch:`, or a branch `verify-done` cannot find, is **REJECTED** — re-spawn QA to
 redo the pass on a branch. Files appearing in the working tree are not evidence that a QA pass

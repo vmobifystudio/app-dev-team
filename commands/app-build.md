@@ -53,7 +53,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move <ID> <event> --by <role> [--
 | 4 | merge gate clears (you run it inline) | `merged` |
 | 5 | QA verdict (QA writes it) | `qa_passed` / `qa_failed`, then `closed` (a `QA-` ticket: `merged` → `closed`) |
 | any | stopped, for any reason | `blocked`, later `unblocked` |
-| cap | founder grants one more review cycle | `reopened` (`--by founder`, run by the human) |
+| cap | tech-lead grants one more cycle, once | `reopened --by tech-lead` |
 
 **Tokens.** Under `requireActorTokens` every gate event — `verified`, `verified_static`, `rejected`,
 `approved`, `changes`, `merged`, `qa_passed`, `qa_failed`, `closed`, `reopened` — needs `--token`.
@@ -151,7 +151,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    (`$BEFORE` does not survive between Bash calls: note the count it printed and pass it literally.)
    Exit `1` → **the batch answered nothing** (prose, not ledger rows): re-spawn `tech-lead` requiring
    one `answer` row per question it can settle and ONE `escalation` for the rest, and do not proceed
-   to step 2. Contract: `skills/team-protocol/references/mid-sprint-qa.md`.
+   to step 2. Contract: `skills/team-protocol/references/mid-sprint-qa.md`. An `answer` settling a
+   `BLOCKED:` → `board.mjs move <ID> unblocked --by tech-manager`.
 
 2. **Spawn developers in parallel — run the `parallel-orchestrator` skill.** It is the one copy of
    the launch procedure: preflight and claim each ticket, lease one slot **per ticket**
@@ -352,9 +353,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      parameter and name the tier in the standup. A `rejected` verify-done retry does **not**
      escalate.
    - **Cap: 2 review cycles, enforced at write time** — the 3rd `changes` is refused and becomes
-     `blocked`. Stop that ticket and surface it to the user; only the founder's `reopened` grants
-     another cycle (`build-loop-branches.md` §Step 4). The dependents the CLI names are now stranded;
-     step 0 re-checks every round.
+     `blocked`. Spawn `tech-lead`: one `reopened` grants another cycle; then it takes over,
+     re-scopes or descopes (`build-loop-branches.md` §Step 4).
 
    **Utility tier** → `build-loop-branches.md` §Step 4 — utility tier.
 
@@ -406,7 +406,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
    - Exit `0` → the app builds and launches. Name the evidence path in the standup.
    - Exit `1` → **the wave does not advance.** File an `S1` in `docs/51-bugs.md` (step 1 makes it
-     `BUG-NNN-fix`); re-spawn the owner with the gate's output **verbatim**.
+     `BUG-NNN-fix`); re-spawn its owners (`build-loop-branches.md` §Step 5), output **verbatim**.
    - Exit `2` → **CANNOT EVALUATE, not a pass** (`RUNTIME GATE: CANNOT EVALUATE`). QA still runs;
      nothing records this build as launched; `/app-ship` re-runs the gate.
 
@@ -496,7 +496,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    what happened to the loop (the event log records what happened to tickets).
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" append --round <N> \
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" append --round <N> --sprint <S> \
      --tickets APP-001,APP-002 --verdicts approved=1,changes=1 \
      --agents ios-developer=2,code-reviewer=1 \
      --spawns <how many agents you launched> --retries <re-spawns> \
@@ -507,12 +507,12 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    Print step 0's `BUDGET:` line in the standup. The fields, and when to pass `--spend-usd`:
    `build-loop-branches.md` §Step 6a.
 
-7. **Loop** back to step 0 until the board has no ready `todo` rows and nothing in `review`/`qa`.
+7. **Loop** back to step 0 until nothing is ready, `in_progress` (respawn per step 0's `RESPAWN`), `review` or `qa`.
 
 8. **Exit check — never declare a sprint done on an incoherent board.** Re-run the doctor. Print the
    sprint summary accounting for **every** non-`done` row — blocked, stranded and waiting tickets
-   named with their reason; a ticket that exists is never absent from the summary. Suggest
-   `/app-plan` (next sprint), `/app-ship` (release v1), or `/app-status` (inspect).
+   named with their reason; a ticket that exists is never absent from the summary. Print
+   `Sprint goal: MET / NOT MET — <why>` and this sprint's `LEARNING:` lines.
 
 ## Safety
 

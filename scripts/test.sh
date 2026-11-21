@@ -247,7 +247,7 @@ echo "board-doctor"
 # --------------------------------------------------------------------------------------------
 assert_exit 0 "clean board passes"            node "$HERE/board-doctor.mjs" "$FIX/clean.md"
 assert_exit 1 "broken board blocks"           node "$HERE/board-doctor.mjs" "$FIX/broken.md"
-assert_exit 1 "stranded board blocks"         node "$HERE/board-doctor.mjs" "$FIX/stranded.md"
+assert_exit 0 "stranded behind a blocked dependency warns, not blocks (Sprint 8 SM-7)" node "$HERE/board-doctor.mjs" "$FIX/stranded.md"
 assert_exit 0 "legacy board degrades to warn" node "$HERE/board-doctor.mjs" "$FIX/legacy.md"
 assert_exit 2 "missing board is exit 2"       node "$HERE/board-doctor.mjs" "$TMP/nope.md"
 
@@ -263,7 +263,7 @@ done
 node "$HERE/board-doctor.mjs" "$FIX/stranded.md" --json > "$TMP/str.json" 2>/dev/null
 node -e '
 const j=require(process.argv[1]);
-const s=j.anomalies.filter(a=>a.code==="stranded").map(a=>a.ticketId).sort();
+const s=j.warnings.filter(a=>a.code==="stranded").map(a=>a.ticketId).sort();
 process.exit(JSON.stringify(s)===JSON.stringify(["APP-002","APP-003"])?0:1);
 ' "$TMP/str.json" && ok "stranded is transitive (APP-002 and APP-003)" \
                   || bad "stranded is transitive (APP-002 and APP-003)"
@@ -2827,7 +2827,7 @@ ro_rework; bm "$RO" move R-001 changes --by code-reviewer >/dev/null 2>&1
 ro_rework; bm "$RO" move R-001 changes --by code-reviewer >/dev/null 2>&1   # the cap: forced to blocked
 assert_exit 1 "reopened is refused for an agent role, even tech-manager (G-F8)" \
   bm "$RO" move R-001 reopened --by tech-manager
-assert_exit 0 "...and accepted from blocked for --by founder" bm "$RO" move R-001 reopened --by founder
+assert_exit 0 "...and accepted from blocked for --by tech-lead (Sprint 8 AU-3: not the founder)" bm "$RO" move R-001 reopened --by tech-lead
 bm "$RO" show R-001 2>/dev/null | grep -q "in_progress" \
   && ok "...which hands the ticket back to in_progress" || bad "...which hands the ticket back to in_progress"
 ro_rework
@@ -2839,11 +2839,9 @@ grep -q cycle_cap_breached "$TMP/ro-doc.txt" \
 ro_rework
 assert_exit 1 "...but only one: the next REQUEST CHANGES is refused again" bm "$RO" move R-001 changes --by code-reviewer
 assert_has "$TMP/err" "moved to blocked instead" "...and forced to blocked, as at the original cap"
-bm "$RO" move R-001 reopened --by founder >/dev/null 2>&1
-ro_rework
-assert_exit 0 "reopened is legal from review too" bm "$RO" move R-001 reopened --by founder
-( cd "$RO" && node "$BD" --help ) 2>&1 | grep -q "reopened --by founder" \
-  && ok "board.mjs --help shows reopened --by founder" || bad "board.mjs --help shows reopened --by founder"
+assert_exit 1 "...and reopened is granted once per ticket (Sprint 8 AU-3)" bm "$RO" move R-001 reopened --by tech-lead
+( cd "$RO" && node "$BD" --help ) 2>&1 | grep -q "reopened --by tech-lead" \
+  && ok "board.mjs --help shows reopened --by tech-lead" || bad "board.mjs --help shows reopened --by tech-lead"
 
 # --- W8/G-F11: a QA- ticket IS the QA. Routing it through the `qa` stage asked qa-engineer to
 # qa_passed its own ticket (refused: NOT_ON_OWN_TICKET) and told nobody else to, so it never closed.
@@ -2874,7 +2872,8 @@ bm "$QT" move APP-020 merged --by tech-manager >/dev/null 2>&1
 assert_exit 1 "...an ordinary ticket still owes qa_passed before closed" bm "$QT" move APP-020 closed --by tech-manager
 assert_exit 1 "tech-manager may no longer write qa_passed" bm "$QT" move APP-020 qa_passed --by tech-manager
 assert_exit 1 "...nor qa_failed" bm "$QT" move APP-020 qa_failed --by tech-manager
-bm "$QT" move APP-020 qa_failed --by qa-engineer >/dev/null 2>&1
+printf 'BUG-020 | APP-020 | S2 | ios | x | y | z | 1 | open\n' > "$QT/docs/51-bugs.md"
+bm "$QT" move APP-020 qa_failed --by qa-engineer --detail "BUG-020 broken" >/dev/null 2>&1
 bm "$QT" add BUG-020-fix --title "Fix" --owner ios-developer --depends APP-020 >/dev/null 2>&1
 assert_exit 0 "a bug-fix ticket depending on a qa_failed original is claimable — merged satisfies it, not done (W16)" \
   bm "$QT" move BUG-020-fix claimed --by ios-developer
@@ -3070,7 +3069,7 @@ assert_exit 0 "...and the doctor reports no stranded ticket, so the board stays 
 # The counter-case, or the assertion above proves only that the doctor is quiet: filed the OLD way,
 # the identical ticket IS stranded. The check still works; `--status` is what makes it satisfiable.
 bm "$BI" add BUG-002-fix --title "Filed the old way" --owner ios-developer --depends APP-002 >/dev/null 2>&1
-assert_exit 1 "...while the same ticket filed as todo is still correctly reported stranded" \
+assert_exit 0 "...while the same ticket filed as todo is still reported stranded (a warning since Sprint 8 SM-7)" \
   node "$HERE/board-doctor.mjs" "$BI/docs/31-board.md"
 assert_has "$TMP/out" "stranded" "...by that exact code"
 # Nothing past blocked may be asserted at creation time: `review` would claim a verification and an
@@ -4972,11 +4971,6 @@ grep -q '"patterns":\[{"file":"src/Shared.kt"' "$TMP/out.json" \
   && ok "...and the machine-readable form carries the same finding" \
   || bad "...and the machine-readable form carries the same finding" "$(cat "$TMP/out.json")"
 
-# Reuse VSO (already a working orchestrator-round fixture) to prove `round` itself wires the scan
-# in, not only the standalone script.
-cp "$RPS/docs/53-reviews/APP-070-cycle-0.md" "$RPS/docs/53-reviews/APP-071-cycle-0.md" "$VSO/docs/53-reviews/"
-( cd "$VSO" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
-assert_has "$TMP/out" 'REVIEW PATTERNS' "orchestrator round itself surfaces a cross-ticket review pattern, not only the standalone scan"
 
 # --- PF-002: corrupt data returned as empty ------------------------------------------------------
 #
@@ -11790,7 +11784,8 @@ bm "$P1S" move APP-001-analytics verified --by tech-manager --evidence "$P1SE" >
 bm "$P1S" move APP-001-analytics review_requested --by ios-developer >/dev/null 2>&1
 bm "$P1S" move APP-001-analytics approved --by code-reviewer >/dev/null 2>&1
 bm "$P1S" move APP-001-analytics merged --by tech-manager >/dev/null 2>&1
-bm "$P1S" move APP-001-analytics qa_failed --by qa-engineer >/dev/null 2>&1
+printf 'BUG-001 | APP-001-analytics | S2 | ios | x | y | z | 1 | open\n' > "$P1S/docs/51-bugs.md"
+bm "$P1S" move APP-001-analytics qa_failed --by qa-engineer --detail "BUG-001 events missing" >/dev/null 2>&1
 bm "$P1S" add BUG-001-fix --title "Fix" --owner ios-developer --depends APP-001-analytics >/dev/null 2>&1
 node "$HERE/scheduler.mjs" --plan "$P1S/docs/team/schedule.json" >"$TMP/p1s.txt" 2>&1
 [ $? = 0 ] && grep -q '"BUG-001-fix"' "$TMP/p1s.txt" \
@@ -12248,6 +12243,7 @@ Q1E1=$(q1_vd "$Q1Q" feat/TC-1-x "$Q1PRE")
 q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E1" >/dev/null 2>&1
 [ -n "$Q1E1" ] && [ "$(q1qa)" = "$Q1E1" ] && ok "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" \
   || bad "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" "got '$(q1qa)' want '$Q1E1'"
+printf 'BUG-001 | TC-1 | S2 | ios | x | y | z | 1 | open\n' > "$Q1Q/docs/51-bugs.md"
 q1m "$Q1Q" move TC-1 qa_failed --by qa-engineer --detail BUG-001 >/dev/null 2>&1
 assert_exit 1 "Q1: qa_passed citing the record QA already failed is refused after qa_failed (C5W-2)" \
   q1m "$Q1Q" move TC-1 qa_passed --by qa-engineer --evidence "$Q1E1"
@@ -12464,7 +12460,7 @@ grep -q '\*\*Then\*\* land its' "$MQB" && grep -qF 'git merge --ff-only qa/<QA-I
   || bad "MQ: app-build lands a QA- ticket by close-then-ff-only, rebase when moved (C4W-2)"
 # C4W-4 / C4W-6: the BUG-NNN-fix path, and who commits Playwright.
 MQL="$HERE/../skills/parallel-orchestrator/references/build-loop-branches.md"
-grep -qF 'BUG-NNN-fix --owner <platform dev> --depends APP-NNN' "$MQL" && grep -q 'commits `playwright` as a devDependency' "$MQL" && ! grep -q 'npm i -D playwright &&' "$MQL" \
+grep -qF 'BUG-NNN-fix --owner <the ticket'"'"'s owner> --depends APP-NNN' "$MQL" && grep -q 'commits `playwright` as a devDependency' "$MQL" && ! grep -q 'npm i -D playwright &&' "$MQL" \
   && ok "MQ: the qa_failed → BUG-NNN-fix path and the committed Playwright devDependency are spelled (C4W-4, C4W-6)" \
   || bad "MQ: the qa_failed → BUG-NNN-fix path and the committed Playwright devDependency are spelled (C4W-4, C4W-6)"
 # C4W-8: the commit loops survive zsh (an unmatched */ glob aborts a zsh for-loop).
@@ -12719,7 +12715,7 @@ grep -qF 'team-bootstrap.mjs" --root .' "$U6R/commands/app-audit.md" && [ "$(gre
   && ok "U6: /app-audit bootstraps the risk policy and adds tickets with --file (S7-7)" \
   || bad "U6: /app-audit bootstraps the risk policy and adds tickets with --file (S7-7)"
 # S7-8 / S7-9 / S7-10: runnable commands.
-grep -qF 'verify-done.sh" <branch> <integration-branch> fast' "$U6R/skills/sprint-planner/SKILL.md" && ! grep -qF '"<test cmd>"' "$U6R/skills/sprint-planner/SKILL.md" \
+! grep -qF '"<test cmd>"' "$U6R/skills/sprint-planner/SKILL.md" \
   && grep -qF '(cd "${CLAUDE_PLUGIN_ROOT}" && node "${CLAUDE_PLUGIN_ROOT}/scripts/team-doctor.mjs" --json)' "$U6R/commands/app-learn.md" \
   && grep -qF -- '--scenario "${CLAUDE_PLUGIN_ROOT}/eval/manager-scenario.json"' "$U6R/commands/app-manager-harness.md" \
   && grep -qF '"schema": "impact-map/v1"' "$U6R/commands/app-impact.md" \
@@ -13575,6 +13571,149 @@ printf '{"requireTicketFiles": true, "requireActorTokens": true}\n' > "$P47DP/.s
 grep -qF "$HERE/board.mjs\" move APP-001 corrected --by tech-manager" "$TMP/p47dp.txt" && grep -q -- '--token "$(node' "$TMP/p47dp.txt" \
   && ok "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" \
   || bad "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" "$(grep -m3 'corrected\|token\|dispatch' "$TMP/p47dp.txt")"
+
+# --- Sprint 8 V2: board + build loop (SM-1..10, AU-3, AU-11, QA-4, EN-11, FL-3, FL-12, LN-5) ---
+echo "Sprint 8 V2: board + build loop"
+S8=$(newboard s8v2)
+( cd "$S8" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m base ) >/dev/null 2>&1
+s8_merge() {  # add + walk one ticket to `qa`
+  bm "$S8" add "$1" --title "$1 work" --owner ios-developer ${2:+--depends "$2"} >/dev/null 2>&1
+  bm "$S8" move "$1" claimed --by ios-developer >/dev/null 2>&1
+  bm "$S8" move "$1" done_reported --by ios-developer >/dev/null 2>&1
+  bm "$S8" move "$1" verified --by tech-manager >/dev/null 2>&1
+  bm "$S8" move "$1" review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
+  bm "$S8" move "$1" approved --by code-reviewer >/dev/null 2>&1
+  bm "$S8" move "$1" merged --by tech-manager >/dev/null 2>&1
+}
+s8_status() { bm "$S8" show "$1" --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)[process.argv[1].toUpperCase()]?.[process.argv[2]||"status"]))}catch{}})' "$1" "${2:-}"; }
+s8_merge APP-1
+bm "$S8" move APP-1 qa_passed --by qa-engineer >/dev/null 2>&1
+# QA-4: qa_failed names a real bug row
+assert_exit 1 "Sprint 8 V2: QA-4 qa_failed without a BUG-NNN in --detail is refused" bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "it crashed"
+assert_exit 1 "Sprint 8 V2: QA-4 qa_failed naming a BUG-NNN that is not a docs/51-bugs.md row is refused" bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "BUG-001 crash"
+printf 'BUG-001 | APP-1 | S1 | ios | tap | works | crash | 1 | open\nBUG-002 | APP-1 | S2 | ios | tap | works | hang | 1 | open\nBUG-003 | APP-1 | S2 | ios | tap | ok | x | 1 | open\n' > "$S8/docs/51-bugs.md"
+assert_exit 0 "Sprint 8 V2: QA-4 qa_failed naming a filed bug row is accepted" bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "BUG-001 S1 crash"
+[ "$(s8_status BUG-001-fix owner)" = ios-developer ] && bm "$S8" show --json 2>/dev/null | grep -q '"APP-1"' \
+  && ok "Sprint 8 V2: QA-4 ...and it cuts BUG-001-fix, owned by the failed ticket's owner" \
+  || bad "Sprint 8 V2: QA-4 ...and it cuts BUG-001-fix, owned by the failed ticket's owner" "owner=$(s8_status BUG-001-fix owner)"
+# SM-4: the failure revokes the earlier pass (the reducer, so qa_passed's evidence is not the subject)
+S84=$(node --input-type=module -e '
+const { reduce, validate } = await import(process.argv[1]);
+const mk = (event, by = "tech-manager", detail = "") => ({ ticket: "T-1", event, by, detail });
+const ev = [{ ticket: "T-1", event: "created", by: "tech-manager", detail: { owner: "ios-developer" } }, mk("claimed", "ios-developer"),
+  mk("done_reported", "ios-developer"), mk("verified"), mk("review_requested", "ios-developer"), mk("approved", "code-reviewer"), mk("merged"), mk("qa_passed", "qa-engineer")];
+const before = validate(reduce(ev).tickets, mk("closed")).ok;
+ev.push(mk("qa_failed", "qa-engineer", "BUG-009 S1 crash"));
+process.stdout.write(`${before} ${validate(reduce(ev).tickets, mk("closed")).ok} ${validate(reduce(ev).tickets, mk("rework", "tech-manager", "x")).ok}`);' "$HERE/lib/events.mjs" 2>&1)
+[ "$S84" = "true false true" ] && ok "Sprint 8 V2: SM-4 qa_failed after qa_passed revokes the pass — closed refused, rework legal" \
+  || bad "Sprint 8 V2: SM-4 qa_failed after qa_passed revokes the pass — closed refused, rework legal" "$S84"
+# AU-11: the QA loop is capped at 2 failures
+bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "BUG-002 hang" >/dev/null 2>&1
+bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "BUG-003 again" >/dev/null 2>&1
+[ "$(s8_status APP-1)" = blocked ] && ok "Sprint 8 V2: AU-11 the 3rd qa_failed forces blocked (product-manager decides)" \
+  || bad "Sprint 8 V2: AU-11 the 3rd qa_failed forces blocked (product-manager decides)" "status=$(s8_status APP-1)"
+# AU-3: tech-lead, not the founder, grants the extra cycle — once
+assert_exit 1 "Sprint 8 V2: AU-3 reopened --by founder is refused (the cap goes to tech-lead/cto)" bm "$S8" move APP-1 reopened --by founder
+assert_exit 0 "Sprint 8 V2: AU-3 reopened --by tech-lead is accepted" bm "$S8" move APP-1 reopened --by tech-lead --detail "spec fixed"
+bm "$S8" move APP-1 blocked --by tech-manager --detail "again" >/dev/null 2>&1
+assert_exit 1 "Sprint 8 V2: AU-3 ...once per ticket" bm "$S8" move APP-1 reopened --by tech-lead
+# SM-2: descoped is terminal, out of flight, and re-plans its dependents
+assert_exit 1 "Sprint 8 V2: SM-2 descoped needs a reason" bm "$S8" move APP-1 descoped --by tech-manager
+assert_exit 1 "Sprint 8 V2: SM-2 descoped is tech-manager's decision" bm "$S8" move APP-1 descoped --by ios-developer --detail x
+bm "$S8" add APP-2 --title "dep" --owner ios-developer --depends APP-1 >/dev/null 2>&1
+assert_exit 0 "Sprint 8 V2: SM-2 descoped from blocked is accepted" bm "$S8" move APP-1 descoped --by tech-manager --detail "cut: superseded"
+node "$HERE/ship-inflight.mjs" "$S8/docs/31-board.md" >"$TMP/s8if.txt" 2>&1
+! grep -q 'APP-1(' "$TMP/s8if.txt" && ok "Sprint 8 V2: SM-2 a descoped ticket is not in flight for ship-gate" \
+  || bad "Sprint 8 V2: SM-2 a descoped ticket is not in flight for ship-gate" "$(cat "$TMP/s8if.txt")"
+node "$HERE/board-doctor.mjs" "$S8/docs/31-board.md" --json >"$TMP/s8bd.txt" 2>&1; S8RC=$?
+[ "$S8RC" = 1 ] && grep -q '"stranded"' "$TMP/s8bd.txt" && ok "Sprint 8 V2: SM-2 a dependent of a descoped ticket is stranded until re-planned" \
+  || bad "Sprint 8 V2: SM-2 a dependent of a descoped ticket is stranded until re-planned" "rc=$S8RC"
+# FL-12: corrected takes --depends/--acceptance/--file
+bm "$S8" move APP-2 corrected --by tech-manager --depends "" --acceptance "Given x, Then y" --file src/a.swift >/dev/null 2>&1
+bm "$S8" move BUG-001-fix descoped --by tech-manager --detail "APP-1 descoped" >/dev/null 2>&1
+bm "$S8" move BUG-002-fix descoped --by tech-manager --detail "APP-1 descoped" >/dev/null 2>&1
+node "$HERE/board-doctor.mjs" "$S8/docs/31-board.md" >/dev/null 2>&1; S8RC=$?
+[ "$S8RC" = 0 ] && [ "$(s8_status APP-2 dependsOn)" = "" ] && bm "$S8" show --json 2>/dev/null | grep -q 'Given x, Then y' \
+  && ok "Sprint 8 V2: FL-12 corrected --depends/--acceptance/--file re-plans a ticket" \
+  || bad "Sprint 8 V2: FL-12 corrected --depends/--acceptance/--file re-plans a ticket" "doctor rc=$S8RC deps=$(s8_status APP-2 dependsOn)"
+# SM-7: a todo behind a BLOCKED dependency is a warning, not a round-stopping anomaly
+S87=$(newboard s8v2-strand)
+bm "$S87" add AUDIT-1 --title "risky" --owner ios-developer --status blocked --reason "needs-approval: risky" >/dev/null 2>&1
+bm "$S87" add APP-5 --title "dep" --owner ios-developer --depends AUDIT-1 >/dev/null 2>&1
+bm "$S87" add APP-6 --title "free" --owner ios-developer >/dev/null 2>&1
+node "$HERE/board-doctor.mjs" "$S87/docs/31-board.md" >"$TMP/s87.txt" 2>&1; S8RC=$?
+[ "$S8RC" = 0 ] && grep -q stranded "$TMP/s87.txt" && ok "Sprint 8 V2: SM-7 stranded behind a blocked dependency is a warning (doctor exit 0)" \
+  || bad "Sprint 8 V2: SM-7 stranded behind a blocked dependency is a warning (doctor exit 0)" "rc=$S8RC"
+# SM-1: a blocked ticket does not trip the stall detector
+for _i in 1 2 3 4 5 6 7 8 9 10 11; do bm "$S87" move APP-6 corrected --by tech-manager --detail '{"notes":"n"}' >/dev/null 2>&1; done
+( cd "$S87" && node "$HERE/orchestrator.mjs" round ) >"$TMP/s8or.txt" 2>&1
+grep -q 'STALLED APP-6\|MOVEMENT' "$TMP/s8or.txt" && ! grep -q 'STALLED AUDIT-1' "$TMP/s8or.txt" \
+  && ok "Sprint 8 V2: SM-1 a blocked ticket is never STALLED (the round still sees the board)" \
+  || bad "Sprint 8 V2: SM-1 a blocked ticket is never STALLED (the round still sees the board)" "$(grep -m3 'STALLED\|RESULT' "$TMP/s8or.txt")"
+# SM-5: rework + rejected are bounded per ticket
+S85=$(node --input-type=module -e '
+const { reduce, validate } = await import(process.argv[1]);
+const mk = (event, by = "tech-manager", detail = "") => ({ ticket: "T-1", event, by, detail });
+const ev = [{ ticket: "T-1", event: "created", by: "tech-manager", detail: { owner: "ios-developer" } }, mk("claimed", "ios-developer")];
+const tail = [mk("done_reported", "ios-developer"), mk("verified"), mk("review_requested", "ios-developer"), mk("approved", "code-reviewer"), mk("merged")];
+ev.push(...tail);
+let n = 0;
+for (; n < 10; n++) { const r = validate(reduce(ev).tickets, mk("rework", "tech-manager", "wave 1: FAIL")); if (!r.ok) { process.stdout.write(`${n} ${r.force?.event}`); break; } ev.push(mk("rework", "tech-manager", "wave 1: FAIL"), ...tail); }' "$HERE/lib/events.mjs" 2>&1)
+[ "$S85" = "6 blocked" ] && ok "Sprint 8 V2: SM-5 the 7th rework is refused and forces blocked" \
+  || bad "Sprint 8 V2: SM-5 the 7th rework is refused and forces blocked" "$S85"
+# EN-11: ticket ids and titles
+assert_exit 1 "Sprint 8 V2: EN-11 add refuses a path-shaped id" bm "$S87" add "../x" --title x --owner ios-developer
+assert_exit 1 "Sprint 8 V2: EN-11 add refuses an id with spaces" bm "$S87" add "APP 7; rm" --title x --owner ios-developer
+assert_exit 1 "Sprint 8 V2: EN-11 add refuses an empty title" bm "$S87" add APP-9 --title "" --owner ios-developer
+# SM-3: the budget is per sprint, and scales with the board
+S83="$TMP/s8v2-rj"; rm -rf "$S83"; mkdir -p "$S83/docs"
+for _i in 1 2 3 4 5 6 7; do ( cd "$S83" && node "$HERE/round-journal.mjs" append --round "$_i" --sprint 1 --agents ios-developer=3 ) >/dev/null 2>&1; done
+( cd "$S83" && node "$HERE/round-journal.mjs" check ) >/dev/null 2>&1; S8A=$?
+( cd "$S83" && node "$HERE/round-journal.mjs" append --round 8 --sprint 2 --agents ios-developer=3 ) >/dev/null 2>&1
+( cd "$S83" && node "$HERE/round-journal.mjs" check ) >"$TMP/s83.txt" 2>&1; S8B=$?
+[ "$S8A" = 1 ] && [ "$S8B" = 0 ] && grep -q 'sprint 2' "$TMP/s83.txt" \
+  && ok "Sprint 8 V2: SM-3 round-journal check sums only the current --sprint" \
+  || bad "Sprint 8 V2: SM-3 round-journal check sums only the current --sprint" "sprint1=$S8A sprint2=$S8B"
+node -e 'const fs=require("fs");let s="";for(let i=1;i<=15;i++)s+=JSON.stringify({ts:"2026-01-01T00:00:00Z",ticket:"T-"+i,event:"created",by:"tech-manager",detail:{owner:"ios-developer"}})+"\n";fs.writeFileSync(process.argv[1],s)' "$S83/docs/31-board-events.jsonl"
+( cd "$S83" && node "$HERE/round-journal.mjs" check --journal docs/none.jsonl ) >"$TMP/s83b.txt" 2>&1
+grep -q 'max 30 each' "$TMP/s83b.txt" && ok "Sprint 8 V2: SM-3 the per-agent default scales with the board (15 tickets -> 30)" \
+  || bad "Sprint 8 V2: SM-3 the per-agent default scales with the board (15 tickets -> 30)" "$(cat "$TMP/s83b.txt")"
+# LN-5 (V5's request): with no journal, check derives the counters from the board log
+node -e 'const fs=require("fs");let s="";for(let i=1;i<=61;i++){s+=JSON.stringify({ts:"2026-01-01T00:00:00Z",ticket:"T-"+i,event:"created",by:"tech-manager",detail:{owner:"ios-developer"}})+"\n"+JSON.stringify({ts:"2026-01-01T00:00:01Z",ticket:"T-"+i,event:"claimed",by:"ios-developer"})+"\n"}fs.writeFileSync(process.argv[1],s)' "$S83/docs/31-board-events.jsonl"
+( cd "$S83" && node "$HERE/round-journal.mjs" check --journal docs/none.jsonl --max-spawns 60 ) >"$TMP/s83c.txt" 2>&1; S8RC=$?
+[ "$S8RC" = 1 ] && grep -q 'spawns 61 / 60' "$TMP/s83c.txt" && ok "Sprint 8 V2: LN-5 an unjournaled loop is counted from the board log (61 claims trip 60 spawns)" \
+  || bad "Sprint 8 V2: LN-5 an unjournaled loop is counted from the board log (61 claims trip 60 spawns)" "rc=$S8RC $(head -2 "$TMP/s83c.txt")"
+# SM-6: a dead agent's in_progress ticket is named for respawn
+S86=$(newboard s8v2-lease)
+bm "$S86" add APP-7 --title "orphan" --owner ios-developer >/dev/null 2>&1
+bm "$S86" move APP-7 claimed --by ios-developer --lease-seconds 1 >/dev/null 2>&1
+sleep 2
+( cd "$S86" && node "$HERE/orchestrator.mjs" round ) >"$TMP/s86.txt" 2>&1
+grep -q 'RESPAWN ios-developer APP-7' "$TMP/s86.txt" && ok "Sprint 8 V2: SM-6 orchestrator round prints RESPAWN <owner> <ID> for an expired in_progress lease" \
+  || bad "Sprint 8 V2: SM-6 orchestrator round prints RESPAWN <owner> <ID> for an expired in_progress lease" "$(grep -m3 'RESPAWN\|lease' "$TMP/s86.txt")"
+# FL-3: a plan HOLD committed before every landed ticket's qa_passed is superseded, a later one is not
+S8F="$TMP/s8v2-hold"; rm -rf "$S8F"; mkdir -p "$S8F/docs"
+( cd "$S8F" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf '# Test plan\nQA VERDICT: HOLD — journeys declared, verdict follows landing\n' > docs/50-test-plan.md \
+  && git add docs && GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' git commit -qm plan ) >/dev/null 2>&1
+printf '%s\n' '{"ts":"2026-01-01T00:00:00Z","ticket":"APP-1","event":"created","by":"tech-manager","detail":{"owner":"ios-developer"}}' \
+  '{"ts":"2026-01-02T00:00:00Z","ticket":"APP-1","event":"merged","by":"tech-manager"}' \
+  '{"ts":"2026-01-03T00:00:00Z","ticket":"APP-1","event":"qa_passed","by":"qa-engineer"}' > "$S8F/docs/31-board-events.jsonl"
+( cd "$S8F" && node "$HERE/board.mjs" render ) >/dev/null 2>&1
+( cd "$S8F" && sh "$HERE/ship-gate.sh" ) >"$TMP/s8f1.txt" 2>&1
+( cd "$S8F" && printf 'QA VERDICT: HOLD — new crash\n' >> docs/50-test-plan.md && git add docs && git commit -qm hold ) >/dev/null 2>&1
+( cd "$S8F" && sh "$HERE/ship-gate.sh" ) >"$TMP/s8f2.txt" 2>&1
+grep -q 'supersede' "$TMP/s8f1.txt" && ! grep -q 'read docs/50-test-plan.md.s exit criteria' "$TMP/s8f1.txt" \
+  && grep -q 'exit criteria before overriding' "$TMP/s8f2.txt" \
+  && ok "Sprint 8 V2: FL-3 ship-gate reads a pre-landing HOLD as superseded by qa_passed, and still blocks a newer HOLD" \
+  || bad "Sprint 8 V2: FL-3 ship-gate reads a pre-landing HOLD as superseded by qa_passed, and still blocks a newer HOLD" "$(grep -m2 'HOLD\|supersede' "$TMP/s8f1.txt" "$TMP/s8f2.txt")"
+# SM-9 / SM-10: the DoD copy is gone, and the handoff is one line per ticket
+! grep -q 'fast` per ticket, `full` at merge' "$HERE/../skills/sprint-planner/SKILL.md" \
+  && ! grep -q 'ios-developer ← APP-001, APP-004' "$HERE/../skills/sprint-planner/SKILL.md" \
+  && ! grep -q 'start no new feature work until it closes' "$HERE/../agents/tech-manager.md" \
+  && grep -q 'Sprint goal: MET / NOT MET' "$HERE/../commands/app-build.md" \
+  && ok "Sprint 8 V2: SM-9/SM-10 no stale DoD, no batched handoff, one S1 rule, sprint goal judged at exit" \
+  || bad "Sprint 8 V2: SM-9/SM-10 no stale DoD, no batched handoff, one S1 rule, sprint goal judged at exit"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

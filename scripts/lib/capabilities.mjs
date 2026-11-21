@@ -64,6 +64,10 @@ const ROLE_GATES = {
 
   // The wave could not land a merged ticket: only the orchestrator, which runs the wave, sends it back.
   rework: ['tech-manager'],
+
+  // Sprint 8 AU-3: a capped review (or QA) loop goes to the engineering leads, one extra cycle once —
+  // a reviewer-developer deadlock is an engineering call (docs/03-decision-rights.md), not a legal one.
+  reopened: ['tech-lead', 'cto'],
 };
 
 /**
@@ -79,15 +83,7 @@ const ROLE_GATES = {
  */
 const NOT_ON_OWN_TICKET = new Set(['approved', 'qa_passed', 'verified', 'verified_static']);
 
-/**
- * Gates only the human may open. Kept OUT of ROLE_GATES on purpose: every role there must be an
- * agent (team-doctor checks agents/<role>.md exists), and the founder is not one. `reopened` hands
- * a capped or in-review ticket back to the developer with one more review cycle — overriding the
- * cycle cap is a founder decision, never an agent's.
- */
-const HUMAN_GATES = { reopened: ['founder'] };
-
-const GATE_EVENTS = new Set([...Object.keys(ROLE_GATES), ...Object.keys(HUMAN_GATES)]);
+const GATE_EVENTS = new Set(Object.keys(ROLE_GATES));
 
 /**
  * S7-2 / S7-3: events that are gates BECAUSE OF WHAT THEY CHANGE. Kept out of GATE_EVENTS (which
@@ -95,6 +91,7 @@ const GATE_EVENTS = new Set([...Object.keys(ROLE_GATES), ...Object.keys(HUMAN_GA
  * a closed role list here, and a token under requireActorTokens (board.mjs stampActor).
  *   corrected   rewrites invariants, acceptance, files and owner — what the reviewer checks and QA
  *               tests. The orchestrator's route (app-plan), never a worker's.
+ *   descoped    drops a ticket for good (Sprint 8 SM-2) — the orchestrator's planning decision.
  *   unblocked   of a `needs-approval:` block (app-audit's Risky ticket) — the founder's approval,
  *               recorded by the founder or by the orchestrator relaying it (its inline token).
  */
@@ -106,6 +103,7 @@ const needsApproval = (state) => {
 };
 function conditionalGate(state, name) {
   if (name === 'corrected') return ['tech-manager'];
+  if (name === 'descoped') return ['tech-manager'];
   if (name === 'unblocked' && needsApproval(state)) return ['tech-manager', 'founder'];
   return null;
 }
@@ -118,7 +116,7 @@ const ROLES_IN_MATRIX = [...new Set(Object.values(ROLE_GATES).flat())].sort();
  */
 function checkCapability(state, candidate, legal) {
   const { event: name, by } = candidate;
-  const allowed = ROLE_GATES[name] || HUMAN_GATES[name] || conditionalGate(state, name);
+  const allowed = ROLE_GATES[name] || conditionalGate(state, name);
   if (!allowed) return { ok: true };
   const actor = String(by || '').trim();
 
@@ -164,4 +162,4 @@ function checkCapability(state, candidate, legal) {
   return { ok: true };
 }
 
-export { ROLE_GATES, HUMAN_GATES, GATE_EVENTS, NOT_ON_OWN_TICKET, ROLES_IN_MATRIX, checkCapability, conditionalGate };
+export { ROLE_GATES, GATE_EVENTS, NOT_ON_OWN_TICKET, ROLES_IN_MATRIX, checkCapability, conditionalGate };

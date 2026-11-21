@@ -250,13 +250,13 @@
     },
     {
       "id": "tech-manager",
-      "version": "1.0.14",
+      "version": "1.0.15",
       "owner": "tech-manager",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-20",
+      "validated_on": "2026-11-21",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.13",
-      "content_hash": "973a1a06937dc66bf4d5e8a41fc654b7a67bf4972579bd8f2e5dae458d6e1959"
+      "rollback_version": "1.0.14",
+      "content_hash": "399e9d647d372ef956b61d7168a433947af9a7c88738f5ff8e96c4e68ac96fc7"
     },
     {
       "id": "test-automation-engineer",

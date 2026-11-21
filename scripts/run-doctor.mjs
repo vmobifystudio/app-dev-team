@@ -34,7 +34,7 @@ const byRun = new Map();
 for (const state of active) {
   const list = byRun.get(state.run_id) || []; list.push(state); byRun.set(state.run_id, list);
   if (!state.lease_until || Number.isNaN(new Date(state.lease_until).getTime())) { bad = true; console.error(`run-doctor: active attempt has no valid lease: ${state.attempt_id}`); }
-  else if (new Date(state.lease_until) <= now) { bad = true; console.error(`run-doctor: orphaned lease: ${state.run_id}/${state.attempt_id} expired ${state.lease_until}`); }
+  else if (new Date(state.lease_until) <= now) { bad = true; console.error(`run-doctor: orphaned lease: ${state.run_id}/${state.attempt_id} ticket ${state.ticket || '?'} role ${state.role || '?'} expired ${state.lease_until}`); }
 }
 for (const [run, attempts] of byRun) if (attempts.length > 1) { bad = true; console.error(`run-doctor: duplicate active attempts for ${run}: ${attempts.map((a) => a.attempt_id).join(', ')}`); }
 console.log(`RUN DOCTOR: ${bad ? 'ANOMALIES' : 'CLEAR'} — ${runs.size} attempt(s), ${active.length} active`);
