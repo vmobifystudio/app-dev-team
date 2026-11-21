@@ -824,7 +824,19 @@ function validateTransition(tickets, candidate) {
         return { ok: false, reason: `descoped drops ${id} from the sprint and must say why: move ${id} descoped --by tech-manager --detail "<decision and reason>"`, legal: legal.filter((e) => e !== 'descoped') };
       }
       return { ok: true };
-    case 'reopened':
+    case 'reopened': {
+      // PR49C-1: `reopened` grants a CAPPED ticket one more cycle. Any other block — above all a
+      // founder's `needs-approval:` — is lifted by its own `unblocked` (and its approver), never here.
+      const lastBlock = (state.events || []).findLast((e) => e.event === 'blocked');
+      const blockWhy = String(typeof lastBlock?.detail === 'object' && lastBlock?.detail ? (lastBlock.detail.reason || lastBlock.detail.note || JSON.stringify(lastBlock.detail)) : lastBlock?.detail || '');
+      if (!/\bcap \(\d+\) reached/.test(blockWhy)) {
+        return {
+          ok: false,
+          reason: `${id} is blocked for "${blockWhy || 'no reason'}", not a review/retry/QA cap — reopened only grants a capped ticket another cycle; lift this block with unblocked (a needs-approval block by its approver)`,
+          legal: legal.filter((e) => e !== 'reopened'),
+        };
+      }
+    }
       if (state.extraCycles >= 1) {
         return {
           ok: false,
@@ -846,7 +858,7 @@ function validateTransition(tickets, candidate) {
       return { ok: true };
     case 'rejected':
     case 'rework':
-      if (state.retries + 1 > MAX_TICKET_RETRIES) {
+      if (state.retries + 1 > MAX_TICKET_RETRIES + 2 * state.extraCycles) { // PR49C-3: reopened buys real retries
         return {
           ok: false,
           reason: `${id} has been sent back ${state.retries} times (rework + rejected) — the spec, not the developer, is the likely problem. tech-lead decides: "reopened" once (then assigned to tech-lead to take it over), or re-scope (corrected) / descope, recorded --by tech-manager`,

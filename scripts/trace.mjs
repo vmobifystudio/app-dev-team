@@ -499,7 +499,9 @@ if (ONLY === 'all' || ONLY === 'gates') {
   const covers = (id, subj) => {
     if (decisions === null || !subj) return false;
     const s = subj.toLowerCase();
-    if (id !== 'waiver' && founderWords.includes(s)) return true;
+    // PR49C-2: only a PRICE the founder wrote pre-approves — a keyword ("never a destructive
+    // migration", "no paid tier") is as likely a prohibition as a decision.
+    if (id === 'pricing' && /\d/.test(s) && founderWords.includes(s)) return true;
     const re = new RegExp(`FOUNDER DECISION:\\s*${id}\\b`, 'i');
     return decisions.split(/\r?\n/).some((l) => re.test(l) && l.toLowerCase().includes(s));
   };

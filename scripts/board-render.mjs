@@ -24,7 +24,7 @@ import { resolve, dirname, join } from 'node:path';
 
 import { readBoard, parseDependencies, isEmpty, findBlockingAncestor } from './lib/board.mjs';
 
-const COLUMNS = ['todo', 'in_progress', 'review', 'qa', 'done', 'blocked'];
+const COLUMNS = ['todo', 'in_progress', 'review', 'qa', 'done', 'blocked', 'descoped'];
 const COLUMN_LABEL = {
   todo: 'TODO',
   in_progress: 'IN PROGRESS',
@@ -32,6 +32,7 @@ const COLUMN_LABEL = {
   qa: 'QA',
   done: 'DONE',
   blocked: 'BLOCKED',
+  descoped: 'DESCOPED',
 };
 
 let useColor = process.stdout.isTTY && !process.argv.includes('--no-color');
@@ -50,6 +51,7 @@ const STATUS_PAINT = {
   qa: yellow,
   done: green,
   blocked: red,
+  descoped: dim,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -124,7 +126,7 @@ function renderKanban(model) {
 function renderSwimlanes(model) {
   const byOwner = new Map();
   for (const row of model.rows) {
-    if (row.status === 'done') continue;
+    if (row.status === 'done' || row.status === 'descoped') continue;
     const owner = isEmpty(row.owner) ? '(unassigned)' : row.owner;
     if (!byOwner.has(owner)) byOwner.set(owner, []);
     byOwner.get(owner).push(row);
@@ -295,7 +297,7 @@ function main() {
       ...(() => {
         const byOwner = new Map();
         for (const row of model.rows) {
-          if (row.status === 'done') continue;
+          if (row.status === 'done' || row.status === 'descoped') continue;
           const owner = isEmpty(row.owner) ? '(unassigned)' : row.owner;
           if (!byOwner.has(owner)) byOwner.set(owner, []);
           byOwner.get(owner).push(row);

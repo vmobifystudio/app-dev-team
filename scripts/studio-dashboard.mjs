@@ -78,7 +78,7 @@ const GENERATED = new Set([
   'docs/team/messages.md',
 ]);
 
-const STATUS_ORDER = ['todo', 'in_progress', 'review', 'qa', 'done', 'blocked'];
+const STATUS_ORDER = ['todo', 'in_progress', 'review', 'qa', 'done', 'blocked', 'descoped'];
 
 // ---------------------------------------------------------------------------------------------
 // sources — `lib/project.mjs` reads them; nothing in this file opens a state file itself
@@ -490,7 +490,7 @@ function panelBoard(model) {
 
   const byOwner = new Map();
   for (const row of model.rows) {
-    if (row.status === 'done') continue;
+    if (row.status === 'done' || row.status === 'descoped') continue;
     const owner = row.owner || '(unassigned)';
     if (!byOwner.has(owner)) byOwner.set(owner, []);
     byOwner.get(owner).push(row);

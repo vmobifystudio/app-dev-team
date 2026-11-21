@@ -657,6 +657,10 @@ MS8V4-09@@scripts/spawn-prompt.mjs@@  'release-auditor': ['house-conventions', '
 MS8L03@@hooks/contract-hooks.mjs@@  if (payload.tool_name === 'Bash' && runsRelease(input.command)) {@@  if (false) {@@Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)@@Sprint 8 lead
 MS8L04@@scripts/board.mjs@@flags.detail || (typeof flags.reason === 'string' ? flags.reason : '')@@flags.detail || ''@@Sprint 8 lead: a founder-gate block written with --reason keeps it and an IC cannot lift it (PR49P-1)@@Sprint 8 lead
 MS8L05@@scripts/run-ledger.mjs@@typeof flags.project !== 'string' || r.project === flags.project@@true@@Sprint 8 lead: run-ledger history --project returns that app's last run, not the studio's (PR49P-5)@@Sprint 8 lead
+MS8L06@@scripts/lib/events.mjs@@if (!/\bcap \(\d+\) reached/.test(blockWhy)) {@@if (false) {@@Sprint 8 lead: reopened cannot lift a needs-approval block; after a retry cap it buys real retries (PR49C-1, PR49C-3)@@Sprint 8 lead
+MS8L07@@scripts/lib/events.mjs@@MAX_TICKET_RETRIES + 2 * state.extraCycles) {@@MAX_TICKET_RETRIES) {@@Sprint 8 lead: reopened cannot lift a needs-approval block; after a retry cap it buys real retries (PR49C-1, PR49C-3)@@Sprint 8 lead
+MS8L08@@scripts/trace.mjs@@if (id === 'pricing' && /\d/.test(s) && founderWords.includes(s)) return true;@@if (founderWords.includes(s)) return true;@@Sprint 8 lead: 'never a destructive migration' in the brief does not pre-approve one (PR49C-2)@@Sprint 8 lead
+MS8L09@@scripts/spawn-prompt.mjs@@return evs.filter((e) => ['rework', 'rejected', 'reopened'].includes(e.event)).pop() || evs.filter((e) => e.event === 'blocked').pop();@@return evs.filter((e) => ['rework', 'rejected', 'reopened', 'blocked'].includes(e.event)).pop();@@Sprint 8 lead: a re-spawn after rejected → blocked → unblocked still says why it was rejected (PR49C-4)@@Sprint 8 lead
 CATALOGUE
 }
 

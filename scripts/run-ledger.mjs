@@ -160,7 +160,7 @@ if (command === 'summary') {
   }
   const line = {
     schema: 'runs-summary/v1', ts: String(flags.now || new Date().toISOString()), project: basename(root), stop,
-    tickets: tickets.length, done: tickets.filter((t) => t.status === 'done').length,
+    tickets: tickets.length, done: tickets.filter((t) => t.status === 'done').length, descoped: tickets.filter((t) => t.status === 'descoped').length,
     first_pass_rate: metrics.reviewPassRate, rework_rate: metrics.reworkRate,
     cycles_per_ticket: reviewed.length ? +(reviewed.reduce((n, t) => n + t.cycles, 0) / reviewed.length).toFixed(2) : 0,
     qa_failures: metrics.gateFires.qa_failed, rounds,

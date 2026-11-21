@@ -13975,9 +13975,16 @@ l8h() { node -e 'const [, a, c, d] = process.argv; const o = { hook_event_name: 
 l8h agent-1 "cd ios && bundle exec fastlane deliver --ipa x.ipa"; L8A=$?
 l8h agent-1 "git commit -m 'founder runs fastlane deliver later'"; L8B=$?
 l8h "" "fastlane deliver --ipa x.ipa"; L8C=$?
-[ "$L8A" = 2 ] && [ "$L8B" = 0 ] && [ "$L8C" = 0 ] \
+L8D=0; for c in "npx eas-cli submit -p ios" "eas build -p ios --auto-submit" "bundle exec fastlane ios release" \
+  "./gradlew publishReleaseBundle" "env X=1 fastlane deliver" "sudo -E fastlane deliver" "(fastlane deliver)" \
+  "bash -c \"fastlane deliver\"" "sleep 1 & fastlane pilot upload" "npx firebase-tools deploy" "netlify deploy -p"; do
+  l8h agent-1 "$c"; [ $? = 2 ] || { L8D="$c"; break; }; done
+L8E=0; for c in "git commit -m 'docs: notes
+firebase deploy is the founder step'" "bundle exec fastlane test" "./gradlew assembleRelease" "grep -rn 'eas submit' docs"; do
+  l8h agent-1 "$c"; [ $? = 0 ] || { L8E="$c"; break; }; done
+[ "$L8A" = 2 ] && [ "$L8B" = 0 ] && [ "$L8C" = 0 ] && [ "$L8D" = 0 ] && [ "$L8E" = 0 ] \
   && ok "Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)" \
-  || bad "Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)" "a=$L8A b=$L8B c=$L8C"
+  || bad "Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)" "a=$L8A b=$L8B c=$L8C missed=[$L8D] false-positive=[$L8E]"
 # PR49P-1: a `move … blocked --reason "needs-approval: …"` keeps its reason, so only the orchestrator lifts it.
 L8B="$TMP/s8lead-board"; rm -rf "$L8B"; mkdir -p "$L8B"
 ( cd "$L8B" && git init -q -b main . && node "$HERE/board.mjs" add APP-001 --title "pay" --owner ios-developer \
@@ -13994,6 +14001,54 @@ APP_TEAM_HOME="$L8R" node "$HERE/run-ledger.mjs" history --project app-a --last 
 grep -q '"project":"app-a"' "$TMP/s8lr.txt" && ! grep -q 'app-b' "$TMP/s8lr.txt" \
   && ok "Sprint 8 lead: run-ledger history --project returns that app's last run, not the studio's (PR49P-5)" \
   || bad "Sprint 8 lead: run-ledger history --project returns that app's last run, not the studio's (PR49P-5)" "$(head -c 300 "$TMP/s8lr.txt")"
+# PR49C-1/C-3: `reopened` lifts only a cap block; once used it buys real retries.
+L8E=$(node --input-type=module -e '
+const { reduce, validate } = await import(process.argv[1]);
+const mk = (event, by = "tech-manager", detail = "") => ({ ticket: "T-1", event, by, detail });
+const base = [{ ticket: "T-1", event: "created", by: "tech-manager", detail: { owner: "ios-developer" } }];
+const na = [...base, mk("blocked", "tech-manager", "needs-approval: founder-gate destructive-migration")];
+const a = validate(reduce(na).tickets, mk("reopened", "tech-lead", "x")).ok;
+const ev = [...base, mk("claimed", "ios-developer")];
+for (let i = 0; i < 6; i++) ev.push(mk("done_reported", "ios-developer"), mk("rejected", "tech-manager", "tests fail"));
+ev.push(mk("done_reported", "ios-developer"));
+const cap = validate(reduce(ev).tickets, mk("rejected", "tech-manager", "tests fail"));
+ev.push({ ...cap.force, ticket: "T-1", by: "tech-manager" });
+const b = validate(reduce(ev).tickets, mk("reopened", "tech-lead", "one more")).ok;
+ev.push(mk("reopened", "tech-lead", "one more"), mk("done_reported", "ios-developer"));
+const c = validate(reduce(ev).tickets, mk("rejected", "tech-manager", "tests fail")).ok;
+process.stdout.write(`${a} ${cap.force?.event} ${b} ${c}`);' "$HERE/lib/events.mjs" 2>&1)
+[ "$L8E" = "false blocked true true" ] \
+  && ok "Sprint 8 lead: reopened cannot lift a needs-approval block; after a retry cap it buys real retries (PR49C-1, PR49C-3)" \
+  || bad "Sprint 8 lead: reopened cannot lift a needs-approval block; after a retry cap it buys real retries (PR49C-1, PR49C-3)" "$L8E"
+# PR49C-2: a founder's prohibition is not an approval — only a price they wrote pre-approves.
+L8G="$TMP/s8lead-gate"; rm -rf "$L8G"; mkdir -p "$L8G/docs/00-founder-intent"
+printf '# Brief\nNever a destructive migration — my users must not lose a single reading.\n' > "$L8G/docs/00-founder-intent/brief.md"
+printf '# Architecture\n\nv2 schema: destructive migration of the readings table (drop and recreate).\n' > "$L8G/docs/20-architecture.md"
+node "$HERE/trace.mjs" --project-root "$L8G" --only gates --json >"$TMP/s8lg.json" 2>/dev/null
+grep -q 'destructive-migration' "$TMP/s8lg.json" \
+  && ok "Sprint 8 lead: 'never a destructive migration' in the brief does not pre-approve one (PR49C-2)" \
+  || bad "Sprint 8 lead: 'never a destructive migration' in the brief does not pre-approve one (PR49C-2)" "$(head -c 300 "$TMP/s8lg.json")"
+# PR49C-4: a later `blocked` pause does not hide the rejection that sent the ticket back.
+L8P="$TMP/s8lead-sp"; rm -rf "$L8P"; mkdir -p "$L8P"
+( cd "$L8P" && git init -q -b main . && git config user.email t@t && git config user.name t && echo x > a && git add a && git commit -qm base \
+  && node "$HERE/board.mjs" add APP-001 --title "x" --owner android-developer \
+  && node "$HERE/board.mjs" move APP-001 claimed --by android-developer \
+  && git branch feat/APP-001-x \
+  && node "$HERE/board.mjs" move APP-001 done_reported --by android-developer \
+  && node "$HERE/board.mjs" move APP-001 rejected --by tech-manager --detail "REJMARK tests fail" \
+  && node "$HERE/board.mjs" move APP-001 blocked --by android-developer --detail "BLKMARK waiting" \
+  && node "$HERE/board.mjs" move APP-001 unblocked --by tech-manager && mkdir -p .agent-wt/a ) >/dev/null 2>&1
+( cd "$L8P" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role android-developer --slot .agent-wt/a ) >"$TMP/s8lp.txt" 2>/dev/null
+grep -q 'REJMARK' "$TMP/s8lp.txt" \
+  && ok "Sprint 8 lead: a re-spawn after rejected → blocked → unblocked still says why it was rejected (PR49C-4)" \
+  || bad "Sprint 8 lead: a re-spawn after rejected → blocked → unblocked still says why it was rejected (PR49C-4)" "$(grep -m2 'Why it came back' -A2 "$TMP/s8lp.txt")"
+# PR49C-5: no journal + a long-lived board is not a breached round ceiling.
+L8J="$TMP/s8lead-rj"; rm -rf "$L8J"; mkdir -p "$L8J/docs"
+node -e 'let s="";for(let i=1;i<=12;i++){const d=`2026-01-${String(i).padStart(2,"0")}T00:00:00Z`;s+=JSON.stringify({ts:d,ticket:"T-"+i,event:"created",by:"tech-manager",detail:{owner:"ios-developer"}})+"\n"+JSON.stringify({ts:d,ticket:"T-"+i,event:"claimed",by:"ios-developer",detail:""})+"\n";}require("fs").writeFileSync(process.argv[1],s)' "$L8J/docs/31-board-events.jsonl"
+( cd "$L8J" && node "$HERE/round-journal.mjs" check ) >"$TMP/s8lj.txt" 2>&1; L8JR=$?
+[ "$L8JR" = 0 ] \
+  && ok "Sprint 8 lead: an unjournaled project with 12 claim days is not over the round ceiling (PR49C-5)" \
+  || bad "Sprint 8 lead: an unjournaled project with 12 claim days is not over the round ceiling (PR49C-5)" "rc=$L8JR $(head -2 "$TMP/s8lj.txt")"
 # FL-16: `trace --only gates` says what it checked, not "no break in the chain".
 L8T="$TMP/s8lead-trace"; rm -rf "$L8T"; mkdir -p "$L8T/docs/00-founder-intent"
 printf '# Brief\nA to-do list.\n' > "$L8T/docs/00-founder-intent/brief.md"

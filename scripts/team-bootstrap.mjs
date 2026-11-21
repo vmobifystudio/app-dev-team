@@ -278,7 +278,7 @@ if (written.includes('risk-policy.json') && existsSync(join(ROOT, 'docs/31-board
   try {
     const { parseEventLog, reduce } = await import('./lib/events.mjs');
     const unrouted = [...reduce(parseEventLog(readFileSync(join(ROOT, 'docs/31-board-events.jsonl'), 'utf8')).events).tickets.values()]
-      .filter((t) => t.status !== 'done' && !t.meta?.risk).map((t) => t.id);
+      .filter((t) => t.status !== 'done' && t.status !== 'descoped' && !t.meta?.risk).map((t) => t.id);
     if (unrouted.length) {
       riskNote = `\n  ${unrouted.length} ticket(s) predate this risk policy and carry no risk: ${unrouted.slice(0, 10).join(', ')}${unrouted.length > 10 ? ' …' : ''}\n` +
         '  `orchestrator.mjs round` lists the tier each would route to; the merge routes the real diff regardless.\n';

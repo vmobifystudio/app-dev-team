@@ -53,7 +53,7 @@ import { dirname, resolve } from 'node:path';
 
 import { parseArgs as parseArgv } from './lib/args.mjs';
 import { readStop, STOP_FILE } from './lib/stop.mjs';
-import { parseEventLog, deriveMetrics } from './lib/events.mjs';
+import { parseEventLog } from './lib/events.mjs';
 
 const DEFAULT_JOURNAL = 'docs/33-rounds.jsonl';
 const DEFAULTS = { rounds: 12, spawns: 60, retries: 30, spendUsd: null, agentSpawns: 20, staticStallRounds: 3 };
@@ -296,10 +296,14 @@ const cmdCheck = (flags, path) => {
   if (!all.length) {
     const n = (names) => events.filter((e) => names.includes(e.event)).length;
     t.spawns = Math.max(t.spawns, n(['claimed', 'approved', 'changes', 'qa_passed', 'qa_failed', 'rework']));
+    // PR49C-5: rounds are NOT derived — distinct claim days over a project's life are not this
+    // sprint's loop, and an upgraded project was refused on its first round. Retries are compared
+    // against a ceiling scaled to the board (below), like spawns already were.
     t.retries = Math.max(t.retries, n(['changes', 'rework', 'qa_failed']));
-    t.rounds = Math.max(t.rounds, Object.keys(deriveMetrics(events).ticketsPerRound).filter((k) => k !== 'unscheduled').length);
+    t.derived = true;
   }
   const caps = ceilings(flags, live.size);
+  if (t.derived && flags['max-retries'] === undefined && !process.env.APP_TEAM_MAX_RETRIES) caps.retries = Math.max(caps.retries, 2 * live.size);
   const agents = perAgent(rounds);
   const breached = [];
   if (t.rounds >= caps.rounds) breached.push(`rounds ${t.rounds} / ${caps.rounds}`);

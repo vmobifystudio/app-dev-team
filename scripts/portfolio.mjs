@@ -127,7 +127,7 @@ const DAY = 86_400_000;
  */
 function lifecycleOf(rows) {
   if (!rows.length) return 'unplanned';
-  const open = rows.filter((r) => r.status !== 'done' && r.status !== 'closed');
+  const open = rows.filter((r) => r.status !== 'done' && r.status !== 'closed' && r.status !== 'descoped');
   if (!open.length) return 'all tickets done';
   if (open.every((r) => r.status === 'blocked')) return 'blocked';
   if (open.some((r) => r.status === 'blocked')) return 'building (some blocked)';

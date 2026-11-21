@@ -369,8 +369,13 @@ function caughtLines(root, id) {
   return out.length ? ['', '**Already caught in review this sprint — do not repeat** (other tickets\' `Blocking:` lines):', ...out] : [];
 }
 
-/** CX-3: the latest event that sent this ticket back to its owner — `rework`, `rejected` or `blocked`. */
-const sentBack = (root, id) => ticketEvents(root, id).filter((e) => ['rework', 'rejected', 'blocked'].includes(e.event)).pop();
+/** CX-3: the latest event that sent this ticket back to its owner. PR49C-4: a `rework`, `rejected`
+ * or `reopened` wins over a later `blocked` pause (metadata, as on main) — otherwise the real reason
+ * and the CONFLICT rebase line vanish; a `blocked` is the reason only when nothing else sent it back. */
+const sentBack = (root, id) => {
+  const evs = ticketEvents(root, id);
+  return evs.filter((e) => ['rework', 'rejected', 'reopened'].includes(e.event)).pop() || evs.filter((e) => e.event === 'blocked').pop();
+};
 
 function resolveRoot() {
   if (typeof flags.root === 'string') return resolve(flags.root);
