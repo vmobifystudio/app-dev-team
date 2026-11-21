@@ -259,8 +259,6 @@ if [ -f "$ROOT/.studio-policy.json" ]; then
   fi
   grep -q '"requireAuditAnchor"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
     run_detector "audit-anchor" node "$HERE/audit-anchor.mjs" verify --log "$ROOT/docs/31-board-events.jsonl" --out "$ROOT/docs/team/audit-anchor.json"
-  grep -q '"requirePromptRegistry"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
-    run_detector "prompt-registry" node "$HERE/prompt-registry.mjs" --registry "$ROOT/docs/team/prompt-registry.json"
   grep -q '"requireEvaluation"[[:space:]]*:[[:space:]]*true' "$ROOT/.studio-policy.json" 2>/dev/null && \
     run_detector "eval-lab" node "$HERE/eval-lab.mjs" --manifest "$ROOT/eval/manifest.json"
 fi
@@ -451,11 +449,16 @@ import(lib).then(({ parseEventLog }) => {
     else if (e.by !== "qa-engineer") out.push(`${t}: qa_passed was recorded by ${e.by || "nobody"}, not qa-engineer`);
     else if (tokens && e.actor?.mode !== "token") out.push(`${t}: qa_passed carries no actor token, and requireActorTokens is on`);
   }
+  // FL-3: every landed ticket passed — say WHEN the oldest of those passes was, so a plan HOLD
+  // written before it (QA declares journeys first, verdicts follow the landing) is read as superseded.
+  const passes = [...landed].map((t) => Date.parse(last.get(t)?.ts || "")).filter(Number.isFinite);
+  if (!out.length && landed.size && passes.length === landed.size) out.push(`PASSED ${Math.floor(Math.min(...passes) / 1000)}`);
   process.stdout.write(out.join("\n"));
 }).catch((err) => { process.stdout.write(`UNREADABLE ${err.message}`); });' \
     "$HERE/lib/events.mjs" "$LOG" "$ROOT/.studio-policy.json" 2>/dev/null)
   case "$QA_EVENTS" in
     UNREADABLE*) unknown "the QA events in $LOG could not be read (${QA_EVENTS#UNREADABLE }) — QA's verdict is UNKNOWN." ;;
+    PASSED*) QA_PASSED_AT=${QA_EVENTS#PASSED } ;;
     ?*) block "QA has not passed every landed ticket on the board:
 $(printf '%s\n' "$QA_EVENTS" | sed 's/^/             /')
            qa-engineer records each with: board.mjs move <ID> qa_passed --by qa-engineer$(token_for qa-engineer "<ID>")" ;;
@@ -464,7 +467,17 @@ fi
 if [ -f "$PLAN" ]; then
   # G2-24: the plan is read only once it is known to exist.
   QAV=$(tr -d '*_' < "$PLAN" | grep -iE '^[[:space:]]*QA VERDICT:' || true)
-  if printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD([^A-Za-z]|$)'; then
+  # FL-3: the HOLD's age is the author time of the last commit to the plan (an uncommitted edit is
+  # treated as now). Older than every landed ticket's qa_passed, it was the pre-landing HOLD the
+  # per-ticket verdicts have since answered.
+  HOLD_AT=""
+  if [ -n "${QA_PASSED_AT:-}" ] && [ -z "$(git -C "$ROOT" status --porcelain -- docs/50-test-plan.md 2>/dev/null)" ]; then
+    HOLD_AT=$(git -C "$ROOT" log -1 --format=%at -- docs/50-test-plan.md 2>/dev/null)
+  fi
+  if printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD([^A-Za-z]|$)' \
+     && [ -n "$HOLD_AT" ] && [ "$HOLD_AT" -lt "$QA_PASSED_AT" ] 2>/dev/null; then
+    note "docs/50-test-plan.md's QA VERDICT: HOLD predates every landed ticket's qa_passed — the board's per-ticket verdicts supersede it."
+  elif printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*HOLD([^A-Za-z]|$)'; then
     block "$(printf '%s\n' "$QAV" | grep -iE 'QA VERDICT:[[:space:]]*HOLD([^A-Za-z]|$)' | head -1) — read docs/50-test-plan.md's exit criteria before overriding."
   elif printf '%s\n' "$QAV" | grep -qiE 'QA VERDICT:[[:space:]]*GO([^A-Za-z]|$)'; then
     :

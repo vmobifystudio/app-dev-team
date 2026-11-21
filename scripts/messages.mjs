@@ -37,6 +37,7 @@ import { fileURLToPath } from 'node:url';
 import { parseMessages, readBoard } from './lib/board.mjs';
 import { redact } from './lib/redact.mjs';
 import { withFileLock } from './lib/atomic.mjs';
+import { resolveProjectRoot, explainRootFailure } from './lib/root.mjs';
 import {
   SCHEMA_VERSION,
   KINDS,
@@ -131,8 +132,15 @@ function parseArgs(argv) {
 // paths — the .md is the human name everybody already passes; the .jsonl is its sibling
 // --------------------------------------------------------------------------------------------
 
+// CX-1: with no --ledger, the PROJECT's ledger (the main checkout's, from a slot too), never cwd's.
 function ledgerPaths(options) {
-  const md = resolve(process.cwd(), options.ledger || 'docs/team/messages.md');
+  let base = process.cwd();
+  if (!options.ledger) {
+    const r = resolveProjectRoot();
+    if (!r.ok) die(explainRootFailure(r).trim());
+    base = r.root;
+  }
+  const md = resolve(base, options.ledger || 'docs/team/messages.md');
   if (!md.endsWith('.md')) die(`--ledger must name the Markdown view (…/messages.md), got ${md}`);
   return { md, jsonl: md.replace(/\.md$/, '.jsonl') };
 }
@@ -583,7 +591,17 @@ function main() {
       // placed after it, the caller got the human block and the number, which is not a count.
       // /app-build step 1b was piping `--json` through `tr -dc` and a greedy `sed` to recover this,
       // a regex over prose summaries, in a runbook (N8).
-      if (options.count) { process.stdout.write(`${open.length}\n`); return 0; }
+      // CX-5: the count is also kept on disk, so `--was last` compares against it — a number held only
+      // in the orchestrator's context did not survive a Bash call, let alone a compaction.
+      // ponytail: one slot per project (`.studio-cache/` is gitignored); the latest --count wins.
+      const countFile = resolve(dirname(paths.jsonl), '..', '..', '.studio-cache', 'open-count');
+      if (options.count) {
+        try { mkdirSync(dirname(countFile), { recursive: true }); writeFileSync(countFile, `${open.length}\n`); } catch { /* the stdout count still stands */ }
+        process.stdout.write(`${open.length}\n`); return 0;
+      }
+      if (options.was === 'last') {
+        try { options.was = readFileSync(countFile, 'utf8').trim(); } catch { return die(`--was last: no count recorded at ${countFile} — run \`open --count\` before the batch`); }
+      }
 
       if (options.json) {
         process.stdout.write(`${JSON.stringify({
@@ -595,7 +613,7 @@ function main() {
         process.stdout.write(`OPEN QUESTIONS: ${open.length}\n`);
         for (const m of open) process.stdout.write(`  ${m.id}  ${m.ticket}  ${m.from} -> ${toArray(m.to).join(',')}  ${m.summary}\n`);
         if (escalations.length) {
-          process.stdout.write(`\nUNCLOSED ESCALATIONS: ${escalations.length} — these are the founder's, not the team's\n`);
+          process.stdout.write(`\nUNCLOSED ESCALATIONS: ${escalations.length} — settle each by its decider (docs/03-decision-rights.md); only money or irreversible items go to the founder\n`);
           for (const m of escalations) process.stdout.write(`  ${m.id}  ${m.ticket}  ${m.from}: ${m.summary}\n`);
           process.stdout.write(
             '  team-protocol: an escalation is resolved or passed to the user IN THE SAME ROUND.\n' +

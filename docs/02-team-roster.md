@@ -20,7 +20,6 @@ Product type: mobile-app  (source: docs/01-intake.md §Product type)
 | ceo | active | vision, success metrics, scope |
 | cpo | active | flagship keeps both exec product roles |
 | cto | active | flagship keeps both exec technical roles |
-| chief-of-staff | conditional | trigger: the founder is fielding more than one project, or more than five open decisions |
 | product-manager | active | flagship keeps the standing product owner |
 | product-researcher | conditional | trigger: docs/01-intake.md names a market or user assumption nobody has tested |
 | tech-lead | active | impl specs; on call for the pod all sprint |
@@ -35,7 +34,7 @@ Product type: mobile-app  (source: docs/01-intake.md §Product type)
 | aso-specialist | active | ships to the App Store and Play |
 | data-analyst | active | product analytics + consent gate |
 | devops-engineer | active | branch model, CI, signing |
-| product-validator | active | flagship: always on. Outside the cpo/cto/tech-manager chain; reports to the founder gate |
+| product-validator | active | always on, every tier. Outside the cpo/cto/tech-manager chain; reports to the founder gate |
 | qa-engineer | active | never tier-gated |
 | test-automation-engineer | conditional | trigger: the device-and-state matrix exceeds one exploratory pass, or a suite already exists to maintain |
 | code-reviewer | active | never tier-gated |
@@ -44,7 +43,7 @@ Product type: mobile-app  (source: docs/01-intake.md §Product type)
 | reliability-engineer | conditional | trigger: the product syncs, works offline, holds user-created data, or performs an operation that costs money |
 | red-team-agent | conditional | trigger: the product handles money, personal data, or user-to-user content — or the last release shipped a defect a gate should have caught |
 | verification-engineer | active | never off — certifies constants, proves guard rules can fail |
-| release-auditor | active | never off — separation of duties: release-manager performs an irreversible action and must not be its sole evaluator |
+| release-auditor | active | flagship: independent read of the gate record before the founder's upload (utility: merged into verification-engineer's ship pass) |
 | release-manager | active | store release channel |
 | incident-commander | conditional | trigger: incident-ledger.mjs has an open sev1/sev2 record |
 

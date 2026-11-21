@@ -67,8 +67,8 @@ Send a live `question` only when you can keep working on another part of the tic
 
 ## Ask before you block
 
-`BLOCKED` discards a warm context and costs a re-spawn. (1) Re-read the impl spec and flow doc.
-(2) Send one `question` and keep working elsewhere on the ticket. (3) Only then:
+`BLOCKED` costs a re-spawn. (1) Re-read the impl spec and flow doc. (2) Send one `question` and
+keep working elsewhere. (3) Only then (`Need: tech-lead` is answered this round, then you re-spawn):
 
 ```
 BLOCKED: APP-NNN
@@ -107,7 +107,6 @@ return every one, in order. A field you omit is a gate that silently passes. Fie
 | Incident ledger | `docs/team/incidents.jsonl` |
 | ship-gate · journey-gate · runtime-gate recorded verdicts | `docs/team/ship-gate-verdict.json` · `docs/team/journey-result.json` · `docs/team/runtime-result.json` |
 | Evidence, two dirs by writer: screenshots + human bundles · script-written gate records | `docs/54-evidence/` · `docs/team/evidence/` |
-| memory-curator's ledger | `docs/team/memory.jsonl` |
 | Journey contract · one declared P0 journey | `docs/team/journeys/README.md` · `docs/team/journeys/<journey-id>.json` |
 | Platform, toolchain, test scopes · artifact-to-commit binding | `docs/team/project-profile.json` · `docs/team/release-candidates.jsonl` |
 | Run ledger · slot leases (gitignored) · schema registry | `docs/team/runs.jsonl` · `docs/team/worktree-slots.json` · `docs/team/schema-registry.json` |
@@ -116,18 +115,17 @@ return every one, in order. A field you omit is a gate that silently passes. Fie
 | Per-spawn actor tokens — script-written only | `docs/team/actor-tokens.jsonl` |
 | Saved IC report (SubagentStop hook) | `docs/team/reports/<ticket>-<UTC>.md` |
 
-## Evidence bundle fields
+## Evidence
 
-A test claim with no discoverable bundle at `docs/54-evidence/<journey>-<build-id>.md` stays
-`unverified`. Every field is required; one you cannot fill says `unknown` and sets
-`Result: unverified`: `Build id:` · `Device:` · `OS:` · `Inputs:` · `Screenshot/recording:` ·
-`Logs:` · `Analytics events:` · `Result:` · `Requirement IDs:` · `Tester identity:` ·
-`Timestamp:` · `Artifact hash:`. Why each: `references/evidence-bundle.md`.
+A test claim's evidence is the gates' own records — `docs/team/journey-result.json` (screenshots by
+SHA-256), `docs/54-evidence/journeys/` and `docs/team/evidence/`, bound to a commit by
+`evidence-check.mjs`. A claim with none of them stays `unverified`. Nobody hand-writes a bundle; a
+manual pass adds free-text notes beside the record. Why: `references/evidence-bundle.md`.
 
 ## Escalate to the user when — and only when
 
-- Two roles disagree and neither has authority (a `cpo`/`cto` scope-vs-cost split)
-- A requirement is genuinely ambiguous and guessing would build the wrong thing
+- Never for anything reversible: the decider in `docs/03-decision-rights.md` decides and records
+  it; `cpo` vs `cto` goes to `ceo`.
 - The review-cycle cap or spawn budget is hit
 - A change is destructive and irreversible (data migration, billing, a store submission)
 

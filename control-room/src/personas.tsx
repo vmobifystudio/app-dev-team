@@ -94,13 +94,12 @@ export interface Persona {
 }
 
 /** Keyed by the REAL role slug from docs/team roster / board ownership — never a made-up id.
- * Covers every file in agents/ (30 roles), matched by personality/function, not just the 17 the
+ * Covers every file in agents/ (29 roles), matched by personality/function, not just the 17 the
  * README's roster table names — the studio spawns more roles than that table lists. */
 export const PERSONAS: Record<string, Persona> = {
   ceo: { name: 'Daenerys Targaryen', house: 'Targaryen', sigil: DragonSigil },
   cpo: { name: 'Tyrion Lannister', house: 'Lannister', sigil: LionSigil },
   cto: { name: 'Ned Stark', house: 'Stark', sigil: DirewolfSigil },
-  'chief-of-staff': { name: 'Jorah Mormont', house: 'Targaryen', sigil: DragonSigil },
 
   'tech-lead': { name: 'Jon Snow', house: 'Stark', sigil: DirewolfSigil },
   'tech-manager': { name: 'Sansa Stark', house: 'Stark', sigil: DirewolfSigil },

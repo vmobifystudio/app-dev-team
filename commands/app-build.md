@@ -53,7 +53,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/board.mjs" move <ID> <event> --by <role> [--
 | 4 | merge gate clears (you run it inline) | `merged` |
 | 5 | QA verdict (QA writes it) | `qa_passed` / `qa_failed`, then `closed` (a `QA-` ticket: `merged` → `closed`) |
 | any | stopped, for any reason | `blocked`, later `unblocked` |
-| cap | founder grants one more review cycle | `reopened` (`--by founder`, run by the human) |
+| cap | tech-lead grants one more cycle, once | `reopened --by tech-lead` |
 
 **Tokens.** Under `requireActorTokens` every gate event — `verified`, `verified_static`, `rejected`,
 `approved`, `changes`, `merged`, `qa_passed`, `qa_failed`, `closed`, `reopened` — needs `--token`.
@@ -143,15 +143,15 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    per question or per ticket — and prove the batch answered something:
 
    ```bash
-   BEFORE=$(node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --count)
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --count     # also records it
    # ... spawn tech-lead ONCE with the whole batch ...
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --was "$BEFORE"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --was last
    ```
 
-   (`$BEFORE` does not survive between Bash calls: note the count it printed and pass it literally.)
    Exit `1` → **the batch answered nothing** (prose, not ledger rows): re-spawn `tech-lead` requiring
    one `answer` row per question it can settle and ONE `escalation` for the rest, and do not proceed
-   to step 2. Contract: `skills/team-protocol/references/mid-sprint-qa.md`.
+   to step 2. Contract: `skills/team-protocol/references/mid-sprint-qa.md`. An `answer` settling a
+   `BLOCKED:` → `board.mjs move <ID> unblocked --by tech-manager`.
 
 2. **Spawn developers in parallel — run the `parallel-orchestrator` skill.** It is the one copy of
    the launch procedure: preflight and claim each ticket, lease one slot **per ticket**
@@ -205,7 +205,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      ```bash
      BASE=$(sh "${CLAUDE_PLUGIN_ROOT}/scripts/integration-branch.sh") \
        || { echo "$BASE"; echo "STOP: integration branch unresolved"; exit 2; }
-     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" --static <branch> "$BASE"
+     sh "${CLAUDE_PLUGIN_ROOT}/scripts/verify-done.sh" <branch> "$BASE" --static
      ```
 
      **If `integration-branch.sh` exits 2, STOP the round** and surface its message (`$BASE` holds
@@ -243,9 +243,6 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      raised must have its record on `docs/team/messages.jsonl`. A missing record is a report defect:
      file it yourself and say so in the standup. `ASSUMED, NOT RAISED` just needs
      routing (step 1a).
-   - **Check the daily fragment exists** at `docs/daily/<today>-<role>-<ticket>.md` on the branch —
-     that exact spelling (`team-protocol`'s canonical paths). Missing → ask that agent for it before
-     moving the row; never write it on their behalf.
    - Route it to review — status, reviewer and ledger row in one write; the reviewer is read out of
      the `--detail` arrow:
 
@@ -352,9 +349,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      parameter and name the tier in the standup. A `rejected` verify-done retry does **not**
      escalate.
    - **Cap: 2 review cycles, enforced at write time** — the 3rd `changes` is refused and becomes
-     `blocked`. Stop that ticket and surface it to the user; only the founder's `reopened` grants
-     another cycle (`build-loop-branches.md` §Step 4). The dependents the CLI names are now stranded;
-     step 0 re-checks every round.
+     `blocked`. Spawn `tech-lead`: one `reopened` grants another cycle; then it takes over,
+     re-scopes or descopes (`build-loop-branches.md` §Step 4).
 
    **Utility tier** → `build-loop-branches.md` §Step 4 — utility tier.
 
@@ -363,7 +359,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    round):
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --owner ios-developer-1
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-slot.mjs" release --slot ios-developer-1
    node "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-reap.mjs" --root . --apply
    ```
 
@@ -384,7 +380,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    **The wave lands the commit `merged` recorded** (W7-1); a later commit is unreviewed, so the wave
    holds that ticket out as `MOVED SINCE MERGED`. Route back: `board.mjs move APP-NNN rework --by tech-manager
    --detail "wave <N>: …" <TOKEN>` (printed) → `in_progress`; re-spawn the owner with the failure, or
-   the conflict to rebase (`git-pr-strategy` §6); steps 3–4 again. No ticket named → tech-lead.
+   the conflict to rebase (`git-workflow.md` conflicts); steps 3–4 again. No ticket named → tech-lead.
 
    **The push is a second call on the same, already-green wave branch** — no re-merge, no re-test:
 
@@ -406,7 +402,7 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 
    - Exit `0` → the app builds and launches. Name the evidence path in the standup.
    - Exit `1` → **the wave does not advance.** File an `S1` in `docs/51-bugs.md` (step 1 makes it
-     `BUG-NNN-fix`); re-spawn the owner with the gate's output **verbatim**.
+     `BUG-NNN-fix`); re-spawn its owners (`build-loop-branches.md` §Step 5), output **verbatim**.
    - Exit `2` → **CANNOT EVALUATE, not a pass** (`RUNTIME GATE: CANNOT EVALUATE`). QA still runs;
      nothing records this build as launched; `/app-ship` re-runs the gate.
 
@@ -483,20 +479,20 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    node "${CLAUDE_PLUGIN_ROOT}/scripts/board-render.mjs" docs/31-board.md --out docs/32-board-view.md
    ```
 
-   Surface what the channel still owes, and **escalate the founder's half to the founder**:
+   Surface what the channel still owes, and **settle every escalation this round**:
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/messages.mjs" open --escalations
    ```
 
-   Exit `1` → an escalation is open: **surface it to the user verbatim in this round's report**;
-   never carry it to the next round.
+   Exit `1` → spawn its decider (`docs/03-decision-rights.md`; `ceo` for cpo vs cto) to append the
+   closing `decision`; only money or irreversible items reach the user.
 
 6a. **Journal the round — one line, every round, before you loop** — to `docs/33-rounds.jsonl`,
    what happened to the loop (the event log records what happened to tickets).
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" append --round <N> \
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/round-journal.mjs" append --round <N> --sprint <S> \
      --tickets APP-001,APP-002 --verdicts approved=1,changes=1 \
      --agents ios-developer=2,code-reviewer=1 \
      --spawns <how many agents you launched> --retries <re-spawns> \
@@ -507,19 +503,19 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
    Print step 0's `BUDGET:` line in the standup. The fields, and when to pass `--spend-usd`:
    `build-loop-branches.md` §Step 6a.
 
-7. **Loop** back to step 0 until the board has no ready `todo` rows and nothing in `review`/`qa`.
+7. **Loop** back to step 0 until nothing is ready, `in_progress` (respawn per step 0's `RESPAWN`), `review` or `qa`.
 
 8. **Exit check — never declare a sprint done on an incoherent board.** Re-run the doctor. Print the
    sprint summary accounting for **every** non-`done` row — blocked, stranded and waiting tickets
-   named with their reason; a ticket that exists is never absent from the summary. Suggest
-   `/app-plan` (next sprint), `/app-ship` (release v1), or `/app-status` (inspect).
+   named with their reason; a ticket that exists is never absent from the summary. Print
+   `Sprint goal: MET / NOT MET — <why>` and this sprint's `LEARNING:` lines.
 
 ## Safety
 
 - **Never spawn a writing agent without its own worktree** (or, failing that, serialized), and never
   without `spawn-gate.sh` having said so.
 - **No repo-wide `git reset` / `stash` / `checkout -- .` / `clean` / `add -A` / `add .`** by any
-  agent sharing a tree — the one copy of the list; `compose` puts it in every prompt. Need a clean
+  agent sharing a tree — the one copy of the list; the git hook enforces it. Need a clean
   tree? Copy to a temp dir (`agent-isolation` Rule 2).
 - **Never spawn while the board doctor reports an anomaly.**
 - **Never move a row to `review` on an unverified `DONE`.**
@@ -532,8 +528,9 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 - **Spawn budget:** at most 6 developer retries per ticket across the sprint (review cycles plus
   rejected-DONE retries). Past that the ticket is `blocked` and goes to the user — a spec problem,
   not an effort problem.
-- A developer returning `BLOCKED: APP-NNN` → surface the blocker verbatim, append
-  `board.mjs move APP-NNN blocked --by <owner-role> --detail "<the blocker>"`, stop that ticket, and
-  do not invent an answer. Read the readiness cascade the CLI prints — those dependents are now
-  unclaimable.
+- A developer returning `BLOCKED: APP-NNN` → append `board.mjs move APP-NNN blocked --by
+  <owner-role> --detail "<the blocker>"`; never invent an answer. `Need:` names `tech-lead`,
+  `ux-architect` or `product-manager` → spawn that role once with the question: it commits the spec
+  edit and sends an `answer` row naming it; then `unblocked` and re-compose (the prompt carries the
+  answer and the existing branch). Anyone else → surface it verbatim and stop that ticket.
 - **Never hand-edit `docs/31-board.md`.** It is generated.

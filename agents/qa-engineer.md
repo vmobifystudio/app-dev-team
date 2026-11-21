@@ -55,18 +55,21 @@ Write `docs/50-test-plan.md` with:
    screen-and-state inventory, so a state nobody designed is a state nobody tests:
 
    ```
-   | Journey | Screen/State | Device class | OS version | Locale | Orientation / size | Network | Automated? | Evidence bundle |
+   | Journey | Screen/State | Device class | OS version | Locale | Orientation / size | Network | Automated? | Evidence |
    ```
 
    Device classes are named, not "a phone": **smallest supported · modal current · largest/tablet**
    (web: smallest viewport · desktop · one non-Chromium browser). Rows come from the *supported*
    matrix, not the convenient one. Every cell names an automated test or says `manual — <who>`.
    **One owner:** `test-automation-engineer` when active (you review it), otherwise you.
-3. **Test cases** — one row per PRD acceptance criterion: `Test ID | Ticket | Given | When | Then | Platform | Type (manual/automated)`.
+3. **Test cases** — one row per PRD acceptance criterion, its ID and source kept so `trace.mjs`
+   can follow founder → AC → test: `| [T-NNN] | Ticket | Given | When | Then | Platform | manual/automated | src: AC-NNN |`.
 4. **Non-functional checks** — startup time, memory, crash-free rate target, accessibility audit, dark mode, dynamic type / font scaling, RTL where relevant.
 5. **Exit criteria** — what we need to be true to ship.
 6. **The verdict line** — with a board event log, your per-ticket `qa_passed` events are the verdict
-   `ship-gate.sh` reads and `QA VERDICT: GO` is optional; `HOLD` always blocks. End the file with:
+   `ship-gate.sh` reads and `QA VERDICT: GO` is optional; `HOLD` always blocks, so write `HOLD` only
+   for a defect or gap you found — never for "verdicts follow landing" (FL-3: nothing can clear it).
+   End the file with:
 
    ```
    QA VERDICT: GO
@@ -79,8 +82,8 @@ Write `docs/50-test-plan.md` with:
    ```
 
    `ship-gate.sh` keys its exit code on this line, not on prose elsewhere in the file — a hold
-   mentioned only in a paragraph never stops a release. A missing verdict line is CANNOT EVALUATE, not a silent pass,
-   so write one every time you touch this file, even when the answer is GO.
+   mentioned only in a paragraph never stops a release. With no board event log a missing verdict
+   line is CANNOT EVALUATE, not a silent pass — there, write one every time, even when it is GO.
 
 ## Journey declarations
 For every P0 journey in `docs/10-prd.md`, write `docs/team/journeys/<journey-id>.json` in the
@@ -89,6 +92,11 @@ element ids from `docs/12-flows.md`'s screen-and-state inventory. Write them wit
 before the first build reaches `qa`. `journey-gate.mjs` reads only these files, and with none
 declared **no ticket can move `qa → done`** (`/app-build`, the journey gate) — nothing else in the
 studio writes them.
+
+**Fixed bugs become journeys (QA-5).** Closing an S1/S2 bug with a user-visible symptom appends its
+repro as steps to the journey it broke (or a new `"priority": "P1"` journey) in
+`docs/team/journeys/<journey-id>.json`, so the gate re-runs it every wave — a regression unit test alone never
+reaches the user's path.
 
 ## Recording the verdict — you write it, per ticket
 
@@ -139,18 +147,13 @@ Severity:
 - S3: feature broken, workaround exists
 - S4: cosmetic
 
-## Evidence bundles — what makes your pass believable
+## Evidence — the gates write it, you cite it
 
-Every critical journey you exercise leaves an **evidence bundle** at
-`docs/54-evidence/<journey>-<build-id>.md`, with all twelve fields required by `team-protocol`
-§Evidence bundle: build id, device, OS, inputs, screenshot/recording, logs, analytics events,
-result, requirement IDs, tester identity, timestamp, artifact hash.
-
-**A test claim with no discoverable evidence bundle stays `unverified`.** Not failed — unverified,
-which is the honest word for "nobody knows". `release-auditor` reads these bundles independently and
-will mark your claim `unverified` whether or not the test really passed, so a bundle you skipped is a
-pass you did not get credit for. A field you cannot fill is written `unknown` and sets
-`Result: unverified`; it is never omitted, because an omitted field reads as a bundle that passed.
+A journey's evidence is what `journey-gate.mjs` records: `docs/team/journey-result.json` (bound to
+HEAD, with the driver's sha), its screenshot digests under `docs/54-evidence/journeys/`, and the raw
+log in `docs/team/evidence/`. Cite those; never restate them by hand (QA-6). Only a **manual or
+exploratory** pass gets a free-text note, `docs/54-evidence/<journey>-<build-id>.md`: what you did,
+on what, what you saw. A claim with neither stays `unverified`.
 
 ## During execution
 

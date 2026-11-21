@@ -18,6 +18,10 @@
  * recorded at creation (see `validateTransition`'s `review_requested` case in lib/events.mjs).
  *   board.mjs move  <ID> <event> --by <role> [--detail "..."]
  *   board.mjs move  <ID> corrected --by tech-manager [--invariant "I1; I2"] [--test-profile]
+ *                        [--acceptance A] [--spec S] [--file a,b] [--depends A,B]   (FL-12: re-plan mid-sprint)
+ *   board.mjs move  <ID> descoped --by tech-manager --detail "<decision>"   todo|blocked -> descoped (terminal)
+ *   board.mjs move  <ID> qa_failed --by qa-engineer --detail "BUG-NNN ..."  the row must be in docs/51-bugs.md;
+ *                        cuts BUG-NNN-fix (owner = the ticket's, depends on it) when it is not on the board
  *
  * TEST COMMANDS ARE FROZEN (C3G-3, design C): the first gate event stamps the profile's test.fast /
  * test.full (+ the profile's sha) on the log; a later gate event under a profile that declares
@@ -32,10 +36,10 @@
  *
  * Events: created · claimed · assigned · done_reported · verified · verified_static · rejected ·
  *         review_requested · started · approved · changes · merged · qa_passed · qa_failed ·
- *         blocked · unblocked · reopened · closed
+ *         blocked · unblocked · reopened · descoped · closed
  *
- * `reopened` is founder-only (`--by founder`): blocked/review -> in_progress with one more review
- * cycle on top of the cap.
+ * `reopened` is tech-lead/cto (`--by tech-lead`), once per ticket: blocked/review -> in_progress with
+ * one more review (and QA-failure) cycle on top of the cap.
  *
  * `verified_static` is `verified`'s honest sibling: the branch, the commits and the changed files
  * check out and every non-executable check passed, but the test suite DID NOT RUN. It unlocks
@@ -167,7 +171,7 @@ const VALUE_FLAGS = new Set([
   'token', 'role', 'ticket', 'ttl-minutes', 'token-id', 'mismatch',
 ]);
 
-const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die, listFlags: { file: ',', depends: ',', invariant: ';' } });
+const parseArgs = (argv) => parseArgv(argv, { valueFlags: VALUE_FLAGS, die, listFlags: { file: ',', depends: ',', invariant: ';' }, help: false });
 
 /**
  * Every free-text field an agent supplies, filtered through the credential patterns before it is
@@ -578,8 +582,13 @@ function deriveRisk(flags, paths) {
   catch (e) { die(1, `risk-router.mjs produced unparseable output for ${policyPath}: ${e.message}`); }
 }
 
+// EN-11: the ID becomes a branch name and a file path in the IC's prompt; `../x` must not.
+const TICKET_ID = /^[A-Z][A-Z0-9]*-[A-Za-z0-9-]+$/;
+
 function cmdAdd(id, flags, paths, idempotencyKey = '') {
   if (!id) die(1, 'add needs a ticket ID: board.mjs add APP-001 --title "..."');
+  if (!TICKET_ID.test(normalizeId(id))) die(1, `"${id}" is not a ticket ID — <PREFIX>-<id>, letters, digits and dashes only (APP-001, BUG-001-fix)`);
+  if (typeof flags.title !== 'string' || !flags.title.trim()) die(1, `add ${id} needs a non-empty --title`);
   const birth = String(flags.status || 'todo').toLowerCase().trim();
   if (!BIRTH_STATUS.has(birth)) {
     die(
@@ -862,12 +871,22 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
   }
 
   // C3W-7: `corrected --invariant "I1; I2"` records invariants (same spelling as `add`).
-  if (name === 'corrected' && typeof flags.invariant === 'string') {
+  // FL-12: --acceptance, --spec, --file and --depends too — mid-sprint re-planning has a flag per field.
+  const fixes = {
+    ...(typeof flags.invariant === 'string' ? { invariants: flags.invariant.split(';').map((s) => scrub('--invariant', s.trim())).filter(Boolean) } : {}),
+    ...(typeof flags.acceptance === 'string' ? { acceptance: scrub('--acceptance', flags.acceptance) } : {}),
+    ...(typeof flags.spec === 'string' ? { spec: scrub('--spec', flags.spec) } : {}),
+    ...(typeof flags.file === 'string' ? { files: flags.file.split(',').map((f) => f.trim()).filter(Boolean) } : {}),
+    ...(typeof flags.depends === 'string' ? { dependsOn: parseDependencies(flags.depends) } : {}),
+  };
+  if (name === 'corrected' && Object.keys(fixes).length) {
     let base = event.detail;
     if (typeof base === 'string' && base.trim().startsWith('{')) { try { base = JSON.parse(base); } catch { /* kept as a note */ } }
-    const invariants = flags.invariant.split(';').map((s) => scrub('--invariant', s.trim())).filter(Boolean);
-    event.detail = { ...(typeof base === 'object' && base ? base : base ? { note: base } : {}), invariants };
+    event.detail = { ...(typeof base === 'object' && base ? base : base ? { note: base } : {}), ...fixes };
   }
+
+  // QA-4: a qa_failed names its bug row, and the fix ticket is cut here rather than remembered.
+  const bug = name === 'qa_failed' ? qaFailedBug(ticket, event.detail, paths) : '';
 
   // C3G-3 / design C: THE TEST COMMANDS ARE FROZEN AT THE FIRST GATE EVENT; changing them is an
   // orchestrator decision (`corrected --test-profile`), never a file edit.
@@ -1030,8 +1049,33 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
         '  merged; it may NOT be closed. Run the suite and append "verified" to clear this.\n'
     );
   }
-  if (name === 'blocked') reportCascade(next.tickets, ticket);
+  if (name === 'blocked' || name === 'descoped') reportCascade(next.tickets, ticket, name);
   if (name === 'closed' && isQaDocs(state)) printQaLanding(ticket, events);
+  if (bug && !next.tickets.has(key(`${bug}-fix`))) {
+    const fix = {
+      ts: new Date().toISOString(), ticket: `${bug}-fix`, event: 'created', by: flags.by || '', provenance: 'cli',
+      detail: { title: `Fix ${bug} (qa_failed on ${ticket})`, feature: state.meta.feature || '', owner: state.owner, dependsOn: [ticket],
+        estimate: '', spec: `docs/51-bugs.md#${bug}`, acceptance: `${bug} no longer reproduces; ${ticket}'s acceptance holds`, notes: '', invariants: [], rollback: '', files: state.meta.files || [], risk: state.meta.risk || null },
+      actor: stampActor(paths, {}, `${bug}-fix`, 'created'),
+    };
+    append(paths.log, fix);
+    writeView(paths.board, reduce([...events, event, fix]).tickets);
+    process.stdout.write(`${bug}-fix created (owner ${state.owner}, depends on ${ticket}) — the fix for ${bug}\n`);
+  }
+}
+
+/** QA-4: the BUG-NNN a qa_failed names, which must be a row in docs/51-bugs.md (the tree, or a branch QA has not landed yet). */
+function qaFailedBug(ticket, detail, paths) {
+  const text = typeof detail === 'object' && detail ? JSON.stringify(detail) : String(detail || '');
+  const bug = /\bBUG-\d+\b/i.exec(text)?.[0]?.toUpperCase();
+  if (!bug) die(1, `refused ${ticket} qa_failed — --detail must name its row in docs/51-bugs.md: --detail "BUG-NNN <one line>"`);
+  const row = new RegExp(`^\\|?\\s*${bug}\\s*\\|`, 'mi');
+  const bugsPath = resolve(dirname(paths.log), '51-bugs.md');
+  if (existsSync(bugsPath) && row.test(readFileSync(bugsPath, 'utf8'))) return bug;
+  const g = gitAt(dirname(paths.log));
+  const branches = (g(['for-each-ref', '--format=%(refname)', 'refs/heads']) || '').split('\n').filter(Boolean);
+  for (const ref of branches) if (row.test(g(['show', `${ref}:docs/51-bugs.md`]) || '')) return bug;
+  return die(1, `refused ${ticket} qa_failed — ${bug} is not a row in docs/51-bugs.md (working tree or any branch). File the bug row first, then record the failure.`);
 }
 
 /**
@@ -1329,11 +1373,12 @@ function syncLease(ticket, event, events, flags, paths) {
 const describeStatus = (state) => (state.verifiedStatic ? `${state.status} (static only)` : state.status);
 
 /** `blocked` cascades: say which dependents just stopped being claimable, and why. */
-function reportCascade(tickets, id) {
+function reportCascade(tickets, id, how = 'blocked') {
   const dependents = dependentsOf(tickets, id);
   if (!dependents.length) return;
-  process.stdout.write(
-    `readiness recomputed — not claimable while ${id} is blocked: ${dependents.join(', ')}\n`
+  process.stdout.write(how === 'descoped'
+    ? `${id} is descoped — re-plan its dependents (corrected --depends, or descoped): ${dependents.join(', ')}\n`
+    : `readiness recomputed — not claimable while ${id} is blocked: ${dependents.join(', ')}\n`
   );
 }
 
@@ -1883,7 +1928,8 @@ function dispatch(command, rest, flags, paths, idempotencyKey = '') {
           '  move <ID> verified_static --by <role> [--evidence <the --static record verify-done printed>]\n' +
           '  move <ID> corrected --by tech-manager --invariant "I1; I2"   record a ticket\'s invariants\n' +
           '  move <ID> corrected --by tech-manager --test-profile [--token T]   re-freeze the profile\'s test commands\n' +
-          '  move <ID> reopened --by founder  blocked|review -> in_progress, +1 review cycle over the cap\n' +
+          '  move <ID> reopened --by tech-lead  blocked|review -> in_progress, +1 review/QA cycle over the cap, once\n' +
+          '  move <ID> descoped --by tech-manager --detail "<why>"   todo|blocked -> descoped (terminal)\n' +
           '  assign <ID> --to <role>\n' +
           '  show [ID] [--json]\n' +
           '  render\n' +

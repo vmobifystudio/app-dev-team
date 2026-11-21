@@ -139,10 +139,13 @@ Dimension (optional, default = all): $ARGUMENTS
    A Risky ticket the user did not approve stays `blocked` with its `needs-approval:` reason.
 
    **`--yolo` (passed through from `/app-run --yolo`) — the defer mechanism.** No question is asked,
-   and the answer is fixed: **approve every Safe ticket, approve nothing Risky.** Concretely:
+   and the answer is fixed: **approve every Safe ticket and every Risky S1/S2 whose plan `tech-lead`
+   (or `cto`) approves; only a migration that deletes user data and a pricing change stay
+   `needs-approval:` / DEFERRED.** Concretely:
    - Safe tickets were born `todo` at step 3, so they are already claimable — step 5 fixes them.
-   - Risky tickets were born `blocked` with `--reason "needs-approval: ..."`. Under `--yolo` no
-     `unblocked` event is written for any of them, so none can be `claimed` — deferral is the board
+   - Risky tickets were born `blocked` with `--reason "needs-approval: ..."`. A Risky S1/S2 whose
+     written plan `tech-lead` approves gets `unblocked` by the orchestrator (inline tech-manager
+     token). The rest get no `unblocked` event, so none can be `claimed` — deferral is the board
      refusing the claim, not an agent remembering not to.
    - List the deferred set from the log (never from memory) and print it in the summary as
      `DEFERRED (needs-approval): <ID> <title>`, one per line, plus the same in `docs/80-audit.md`:

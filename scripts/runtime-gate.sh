@@ -377,6 +377,7 @@ ios_gate() {
     [ "$BOOTED_BY_US" -eq 1 ] && xcrun simctl shutdown "$UDID" >/dev/null 2>&1
     return
   fi
+  echo "APP-ID: ios $BUNDLE"   # QA-3: journey-gate reads it from the recorded log for drivers/ios.sh
 
   if ! run_capped "$LAUNCH_TIMEOUT" "$WORK/install.log" xcrun simctl install "$UDID" "$APP"; then
     fail "ios    " "compiles, but the build will not install on the simulator."
@@ -501,6 +502,7 @@ android_gate() {
                     Installing is not launching — this is not a pass."
     return
   fi
+  echo "APP-ID: android $PKG"   # QA-3: journey-gate reads it from the recorded log for drivers/android.sh
 
   if run_capped "$LAUNCH_TIMEOUT" "$WORK/adblaunch.log" \
        adb -s "$DEV" shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1; then
@@ -591,7 +593,15 @@ web_gate() {
 
   # No e2e: serve it and fetch the root — the web "launched and still running".
   SMOKE="$(cd "$(dirname "$0")" && pwd)/web-smoke.mjs"
-  if has_script start; then
+  # FL-5: a release candidate bound at this HEAD is what ships, so it is what gets served.
+  RCDIR=$(node "$(dirname "$SMOKE")/release-candidate.mjs" show --json --root "$ROOT" 2>/dev/null | node -e '
+    const fs = require("fs"), p = require("path"); let r = {}; try { r = JSON.parse(fs.readFileSync(0, "utf8")); } catch {}
+    const d = p.resolve(process.argv[1], r.artifact || "");
+    if (r.platform === "web" && r.commit === process.argv[2] && fs.existsSync(p.join(d, "index.html"))) process.stdout.write(d);' \
+    "$ROOT" "$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)")
+  if [ -n "$RCDIR" ]; then
+    SM=$(node "$SMOKE" --dir "$RCDIR" --timeout "$SERVE_TIMEOUT"); SRC=$?
+  elif has_script start; then
     SM=$(node "$SMOKE" --start --root "$ROOT" --timeout "$SERVE_TIMEOUT"); SRC=$?
   else
     OUTDIR=""

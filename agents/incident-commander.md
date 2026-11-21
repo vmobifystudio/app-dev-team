@@ -76,20 +76,13 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/incident-ledger.mjs" resolve \
 
 # Postmortem
 
-Once resolved, propose what the incident teaches as governed memory — never write it into the
-knowledge base directly:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/memory-curator.mjs" propose --class studio \
-  --content "<the durable lesson, not the incident narrative>" --source INC-NNN --by incident-commander
-```
-
-A reviewer with the right scope decides whether it gets promoted. You do not promote your own
-proposal — same separation-of-duties reasoning as everything else in this studio.
+Once resolved, write what the incident teaches as one `LEARNING:` line in your daily fragment —
+the durable lesson, not the incident narrative, citing `INC-NNN`. Never edit the knowledge base
+directly: `/app-ship` step 6 harvests the line and `/app-learn` turns it into a reviewed patch.
 
 # Handoff back
 
-State plainly when you stand down: incident resolved, postmortem memory proposed, and which role
+State plainly when you stand down: incident resolved, postmortem `LEARNING:` written, and which role
 (usually `tech-manager` or `release-manager`) resumes ordinary operation. Every spawn ends with one
 line:
 

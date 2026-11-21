@@ -22,10 +22,10 @@
 # whoever is working here to batch up guesses instead of checking one thing at a time, and batched
 # guesses are how you get a wrong fix that looks efficient.
 #
-# --only IS NOT THE GATE, AND CANNOT BE. Sections share fixtures and setup, so a section run alone
-# may fail for want of something an earlier section built. That is a stated limitation, not a bug:
-# the accelerator is for iterating, the full run is what decides. It says so on every invocation,
-# because a fast check that can be mistaken for the real one is worse than no fast check.
+# --only IS NOT THE GATE. A subset gets the fixtures it reads (helpers and constants replayed, and
+# any earlier section that builds a variable or $TMP file it needs pulled in whole, below), so a
+# section run alone passes or fails on behaviour (QA-9). It still runs fewer assertions than the
+# full suite, and the full run is what decides. It says so on every invocation.
 set -u
 # APP_TEAM_TEST_HERE is set only by the --only path below, which re-execs a GENERATED copy of this
 # file from a temp directory — where `dirname "$0"` is /tmp and every `$HERE/board.mjs` resolves to
@@ -52,14 +52,98 @@ if [ -n "$ONLY" ]; then
   # the sections are straight-line shell with no function boundary to skip over.
   SEL=$(mktemp)
   trap 'rm -f "$SEL"' EXIT
-  awk -v pat="$ONLY" -v self="$0" '
-    /^# --- / { inbody = 1; keep = (index($0, pat) > 0); matched += keep }
+  # A LIFTED SECTION GETS THE FIXTURES IT NEEDS (QA-9). `--only "W1 / G-F5"` used to report 14
+  # failures that were all `$VDG` unset: the repo it runs in is built by an earlier section. So:
+  #   1. a skipped section's helper functions and plain `NAME=value` constants are replayed in file
+  #      order (no command, no `$( )`, nothing in a heredoc), so `newrepo`, `vdg_declare` and `$BD`
+  #      exist. Where a function ends is decided by `sh -n`, on a line that could close it; one that
+  #      never completes is dropped, never half-printed.
+  #   2. a variable the selected section (or a function it calls) reads, which it does not set and
+  #      which an earlier section sets with a COMMAND, pulls that earlier section in whole — the
+  #      nearest one before it, and then that section's own needs, to a fixed point. The fixture is
+  #      built the way the full run builds it, in the same order, by the same lines.
+  # Pulled-in sections run their assertions too; the banner line printed for each says why it ran.
+  awk -v pat="$ONLY" -v self="$0" -v fnf="$SEL.fn" '
+    function whole(buf,   rc) { printf "%s", buf > fnf; close(fnf); rc = system("sh -n \"" fnf "\" 2>/dev/null"); return rc == 0 }
+    # tref: a mention of $TMP/<name> (or of a variable holding "$TMP/<name>..."). It PROVIDES the
+    # fixture when it is the exact path being reset, made or redirected into; otherwise it reads it.
+    function tref(sx, name, pre, post) {
+      if (name == "out" || name == "err") return
+      ment[sx, "T:" name] = 1
+      if (post !~ /^\//) {
+        if (pre ~ />[ ]*"?$/ || pre ~ /(^|[;&|( ])(rm -[rf]+|mkdir( -p)?)[ ][^;&|]*$/) { prov[sx, "T:" name] = 1; return }
+      }
+      if (infn != "") fuse[infn] = fuse[infn] " T:" name; else addv(sx, "T:" name)
+    }
+    function addv(sx, v) { if (!((sx, v) in used)) { used[sx, v] = 1; uses[sx] = uses[sx] " " v } }
+    function need(sx,   i, n, w, v, k, f, re, n2, ww) {
+      n = split(uses[sx], w, " ")
+      for (f in fsec) if (fsec[f] > 0) {
+        re = "(^|[^A-Za-z0-9_])" f "([^A-Za-z0-9_]|$)"
+        if (txt[sx] ~ re) { n2 = split(fuse[f], ww, " "); for (i = 1; i <= n2; i++) w[++n] = ww[i] }
+      }
+      for (i = 1; i <= n; i++) {
+        v = w[i]; if (v == "" || ((sx, v) in asg) || ((0, v) in asg) || ((sx, v) in prov)) continue
+        if (substr(v, 1, 2) == "T:") { for (k = sx - 1; k >= 1; k--) if ((k, v) in ment) break }
+        else for (k = sx - 1; k >= 1; k--) if ((k, v) in cmd) break
+        if (k >= 1 && !(k in inc)) { inc[k] = 1; q[++qn] = k }
+      }
+    }
+    FNR == NR {
+      if ($0 ~ /^# --- /) { sec++; infn = ""; ban[sec] = $0 }
+      if ($0 ~ /^echo "─────/) { done = 1 }
+      if (done) next
+      txt[sec] = txt[sec] "\n" $0
+      if (match($0, /^[A-Za-z_][A-Za-z0-9_]*\(\)/)) { infn = substr($0, 1, RLENGTH - 2); fsec[infn] = sec }
+      else if ($0 ~ /^[^ \t}]/ && $0 !~ /^#/) infn = ""
+      if (match($0, /^[ \t]*[A-Za-z_][A-Za-z0-9_]*=/)) {
+        v = substr($0, RSTART, RLENGTH - 1); sub(/^[ \t]+/, "", v); asg[sec, v] = 1
+        if (!($0 ~ /^[A-Za-z_][A-Za-z0-9_]*=("[^"`]*"|\047[^\047]*\047|[^ \t"\047`;&|]*)[ \t]*$/ && $0 !~ /\$\(/)) cmd[sec, v] = 1
+      }
+      if ($0 ~ /^[ \t]*#/) next   # a comment reads nothing
+      if (match($0, /^[A-Za-z_][A-Za-z0-9_]*="?\$TMP\/[A-Za-z0-9._-]+/)) {
+        v = substr($0, 1, RLENGTH); a = v; sub(/=.*/, "", a); sub(/^[^=]*="?\$TMP\//, "", v); alias[a] = v
+      }
+      # A FILE OR DIRECTORY under $TMP is a fixture too (`$TMP/port.txt` read here, written two
+      # sections up), whether it is spelled out or held in a variable (`$DFX`).
+      line = $0; pre = ""
+      while (match(line, /\$\{?[A-Za-z_][A-Za-z0-9_]*\}?(\/[A-Za-z0-9._-]+)?/)) {
+        tok = substr(line, RSTART, RLENGTH); pre = pre substr(line, 1, RSTART - 1); line = substr(line, RSTART + RLENGTH)
+        v = tok; sub(/^\$\{?/, "", v); sub(/[}\/].*/, "", v)
+        if (infn != "") fuse[infn] = fuse[infn] " " v; else addv(sec, v)
+        if (v == "TMP" && tok ~ /\//) { nm = tok; sub(/^[^\/]*\//, "", nm); tref(sec, nm, pre, line) }
+        else if (v in alias) { rest = tok; sub(/^\$\{?[A-Za-z0-9_]*\}?/, "", rest); tref(sec, alias[v], pre, rest line) }
+        pre = pre tok
+      }
+      next
+    }
+    FNR == 1 {
+      for (k = 1; k <= sec; k++) if (index(ban[k], pat)) { inc[k] = 1; sel[k] = 1; q[++qn] = k }
+      for (qi = 1; qi <= qn; qi++) need(q[qi])
+      s2 = 0
+    }
+    /^# --- / {
+      s2++; inbody = 1; keep = (s2 in inc); matched += (s2 in sel); hd = ""; fn = 0
+      if (keep && !(s2 in sel)) print "echo \"  (pulled in by --only: an earlier section that builds a fixture the selected one reads)\""
+    }
     /^echo "─────/ { inbody = 0; insummary = 1 }
-    { if (!inbody || keep || insummary) print }
+    {
+      if (!inbody || keep || insummary) { print; next }
+      if (fn) { buf = buf $0 "\n"; if ($0 ~ /}[ \t;]*(#.*)?$/ && whole(buf)) { printf "%s", buf; fn = 0 } next }
+      if (hd != "") { t = $0; sub(/^\t+/, "", t); if (t == hd) hd = ""; next }
+      if ($0 ~ /^[A-Za-z_][A-Za-z0-9_]*\(\)[ ]*\{/) {
+        buf = $0 "\n"; if ($0 ~ /}[ \t;]*(#.*)?$/ && whole(buf)) printf "%s", buf; else fn = 1; next
+      }
+      if (match($0, /<<-?[ ]*["\047]?[A-Za-z_][A-Za-z0-9_]*/)) {
+        hd = substr($0, RSTART, RLENGTH); sub(/^<<-?[ ]*["\047]?/, "", hd); next
+      }
+      if ($0 ~ /^[A-Za-z_][A-Za-z0-9_]*=("[^"`]*"|\047[^\047]*\047|[^ \t"\047`;&|]*)[ \t]*$/ && $0 !~ /\$\(/) print "set +u; " $0 "; set -u"
+    }
     END { if (!matched) { print "echo \"test.sh: --only " pat " matched no section in " self "\" >&2; exit 2" } }
-  ' "$0" > "$SEL"
-  echo "  RUNNING A SUBSET (--only $ONLY). This is an accelerator, NOT the gate — sections share"
-  echo "  fixtures, so a pass here is not a pass. Run the whole suite before you commit."
+  ' "$0" "$0" > "$SEL"
+  rm -f "$SEL.fn"
+  echo "  RUNNING A SUBSET (--only $ONLY). This is an accelerator, NOT the gate — a pass here is"
+  echo "  not a pass of the suite. Run the whole suite before you commit."
   # A lifted section can find a fixture variable unset (set by an earlier section) and then run its
   # git commands in the cwd — once that was the plugin's own worktree (PR47 fixes: a stray branch
   # with two commits). Run the subset from a throwaway repo so such commands land there instead.
@@ -76,9 +160,9 @@ if [ -n "$ONLY" ]; then
     # fault's clothes. That is DR4-001's class, and an accelerator that produces it silently would
     # send someone to fix a bug that does not exist.
     echo ""
-    echo "  A SUBSET FAILURE IS NOT YET A FINDING. Sections inherit setup from earlier sections, so"
-    echo "  these may be missing a fixture rather than a behaviour. Re-run the full suite before"
-    echo "  believing any failure above:  sh scripts/test.sh"
+    echo "  A subset pulls in the sections that build what it reads, so a failure above is normally a"
+    echo "  real one. If it names an unset variable or a missing file, the dependency is one the"
+    echo "  subset could not see — confirm with the full suite:  sh scripts/test.sh"
   fi
   exit $RC
 fi
@@ -247,7 +331,7 @@ echo "board-doctor"
 # --------------------------------------------------------------------------------------------
 assert_exit 0 "clean board passes"            node "$HERE/board-doctor.mjs" "$FIX/clean.md"
 assert_exit 1 "broken board blocks"           node "$HERE/board-doctor.mjs" "$FIX/broken.md"
-assert_exit 1 "stranded board blocks"         node "$HERE/board-doctor.mjs" "$FIX/stranded.md"
+assert_exit 0 "stranded behind a blocked dependency warns, not blocks (Sprint 8 SM-7)" node "$HERE/board-doctor.mjs" "$FIX/stranded.md"
 assert_exit 0 "legacy board degrades to warn" node "$HERE/board-doctor.mjs" "$FIX/legacy.md"
 assert_exit 2 "missing board is exit 2"       node "$HERE/board-doctor.mjs" "$TMP/nope.md"
 
@@ -263,7 +347,7 @@ done
 node "$HERE/board-doctor.mjs" "$FIX/stranded.md" --json > "$TMP/str.json" 2>/dev/null
 node -e '
 const j=require(process.argv[1]);
-const s=j.anomalies.filter(a=>a.code==="stranded").map(a=>a.ticketId).sort();
+const s=j.warnings.filter(a=>a.code==="stranded").map(a=>a.ticketId).sort();
 process.exit(JSON.stringify(s)===JSON.stringify(["APP-002","APP-003"])?0:1);
 ' "$TMP/str.json" && ok "stranded is transitive (APP-002 and APP-003)" \
                   || bad "stranded is transitive (APP-002 and APP-003)"
@@ -1515,19 +1599,6 @@ process.exit(j.findings.some(f=>f.code==="skill_unreferenced")?1:0);
 ' "$TMP/tdskill2.json" && ok "...and every shipped skill has a trigger, so the rule reports none" \
                        || bad "...and every shipped skill has a trigger, so the rule reports none"
 
-# --- the evidence bundle contract (P2.7) ---------------------------------------------------------
-# A test result is a claim by the actor that ran it; the bundle is what makes it checkable, and
-# `release-auditor` refuses one that is short a field. team-doctor cannot inspect a project's
-# bundles, but it can stop the field list rotting: every agent reads team-protocol's table and
-# nothing reads team-doctor, so a row quietly dropped from the table is a field nobody records and
-# a claim that stays `unverified` with nobody able to say which field is missing.
-cp "$PLUG/skills/team-protocol/SKILL.md" "$TMP/protocol-pristine.md"
-grep -v 'Artifact hash:' "$TMP/protocol-pristine.md" > "$PLUG/skills/team-protocol/SKILL.md"
-( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdev1.json" 2>/dev/null
-assert_finding "$TMP/tdev1.json" evidence_field_undocumented \
-  "an evidence-bundle field dropped from the published contract blocks" "Artifact hash:"
-cp "$TMP/protocol-pristine.md" "$PLUG/skills/team-protocol/SKILL.md"
-
 # And the matrix has to exist at all — the roster is generated from it. Asserted on the finding
 # code, not on exit status: removing the file also trips skill_missing, so exit 1 proves nothing.
 mv "$MATRIX" "$TMP/matrix-away.md"
@@ -1770,12 +1841,6 @@ else
   ok "mirror test: removing §4b from code-reviewer reproduces an unrequired round-trip rule"
 fi
 
-grep -q "corpus_recurrence" "$HERE/../commands/app-learn.md" \
-  && ok "/app-learn's failure pass reads the recurrence flag" \
-  || bad "/app-learn's failure pass reads the recurrence flag"
-grep -q "team-doctor.mjs" "$HERE/../commands/app-learn.md" \
-  && ok "...by running the script that produces it, not by re-deriving it" \
-  || bad "...by running the script that produces it, not by re-deriving it"
 
 echo
 # --------------------------------------------------------------------------------------------
@@ -2827,7 +2892,7 @@ ro_rework; bm "$RO" move R-001 changes --by code-reviewer >/dev/null 2>&1
 ro_rework; bm "$RO" move R-001 changes --by code-reviewer >/dev/null 2>&1   # the cap: forced to blocked
 assert_exit 1 "reopened is refused for an agent role, even tech-manager (G-F8)" \
   bm "$RO" move R-001 reopened --by tech-manager
-assert_exit 0 "...and accepted from blocked for --by founder" bm "$RO" move R-001 reopened --by founder
+assert_exit 0 "...and accepted from blocked for --by tech-lead (Sprint 8 AU-3: not the founder)" bm "$RO" move R-001 reopened --by tech-lead
 bm "$RO" show R-001 2>/dev/null | grep -q "in_progress" \
   && ok "...which hands the ticket back to in_progress" || bad "...which hands the ticket back to in_progress"
 ro_rework
@@ -2839,11 +2904,9 @@ grep -q cycle_cap_breached "$TMP/ro-doc.txt" \
 ro_rework
 assert_exit 1 "...but only one: the next REQUEST CHANGES is refused again" bm "$RO" move R-001 changes --by code-reviewer
 assert_has "$TMP/err" "moved to blocked instead" "...and forced to blocked, as at the original cap"
-bm "$RO" move R-001 reopened --by founder >/dev/null 2>&1
-ro_rework
-assert_exit 0 "reopened is legal from review too" bm "$RO" move R-001 reopened --by founder
-( cd "$RO" && node "$BD" --help ) 2>&1 | grep -q "reopened --by founder" \
-  && ok "board.mjs --help shows reopened --by founder" || bad "board.mjs --help shows reopened --by founder"
+assert_exit 1 "...and reopened is granted once per ticket (Sprint 8 AU-3)" bm "$RO" move R-001 reopened --by tech-lead
+( cd "$RO" && node "$BD" --help ) 2>&1 | grep -q "reopened --by tech-lead" \
+  && ok "board.mjs --help shows reopened --by tech-lead" || bad "board.mjs --help shows reopened --by tech-lead"
 
 # --- W8/G-F11: a QA- ticket IS the QA. Routing it through the `qa` stage asked qa-engineer to
 # qa_passed its own ticket (refused: NOT_ON_OWN_TICKET) and told nobody else to, so it never closed.
@@ -2874,7 +2937,8 @@ bm "$QT" move APP-020 merged --by tech-manager >/dev/null 2>&1
 assert_exit 1 "...an ordinary ticket still owes qa_passed before closed" bm "$QT" move APP-020 closed --by tech-manager
 assert_exit 1 "tech-manager may no longer write qa_passed" bm "$QT" move APP-020 qa_passed --by tech-manager
 assert_exit 1 "...nor qa_failed" bm "$QT" move APP-020 qa_failed --by tech-manager
-bm "$QT" move APP-020 qa_failed --by qa-engineer >/dev/null 2>&1
+printf 'BUG-020 | APP-020 | S2 | ios | x | y | z | 1 | open\n' > "$QT/docs/51-bugs.md"
+bm "$QT" move APP-020 qa_failed --by qa-engineer --detail "BUG-020 broken" >/dev/null 2>&1
 bm "$QT" add BUG-020-fix --title "Fix" --owner ios-developer --depends APP-020 >/dev/null 2>&1
 assert_exit 0 "a bug-fix ticket depending on a qa_failed original is claimable — merged satisfies it, not done (W16)" \
   bm "$QT" move BUG-020-fix claimed --by ios-developer
@@ -3070,7 +3134,7 @@ assert_exit 0 "...and the doctor reports no stranded ticket, so the board stays 
 # The counter-case, or the assertion above proves only that the doctor is quiet: filed the OLD way,
 # the identical ticket IS stranded. The check still works; `--status` is what makes it satisfiable.
 bm "$BI" add BUG-002-fix --title "Filed the old way" --owner ios-developer --depends APP-002 >/dev/null 2>&1
-assert_exit 1 "...while the same ticket filed as todo is still correctly reported stranded" \
+assert_exit 0 "...while the same ticket filed as todo is still reported stranded (a warning since Sprint 8 SM-7)" \
   node "$HERE/board-doctor.mjs" "$BI/docs/31-board.md"
 assert_has "$TMP/out" "stranded" "...by that exact code"
 # Nothing past blocked may be asserted at creation time: `review` would claim a verification and an
@@ -4952,32 +5016,6 @@ grep -q 'VERIFIED STATIC' "$TMP/out2" \
   && bad "a ticket verified for real (not static-only) is not counted on the odometer" "$(grep 'VERIFIED STATIC' "$TMP/out2")" \
   || ok "a ticket verified for real (not static-only) is not counted on the odometer"
 
-# --- OPS-014: cross-ticket review-finding pattern scan ----------------------------------------------
-#
-# Code review is per-ticket, so two tickets independently failing on the same underlying file get no
-# correlation — each burns its own retry rediscovering it. `review-pattern-scan.mjs` groups blocking
-# findings by the file they name; `orchestrator.mjs round` surfaces a shared one.
-RPS="$TMP/review-pattern"; rm -rf "$RPS"; mkdir -p "$RPS/docs/53-reviews"
-printf '## REQUEST CHANGES: APP-070\n\n## Blocking\n\n### 1. `src/Shared.kt:10` — wrong token\n\nDetail.\n' \
-  > "$RPS/docs/53-reviews/APP-070-cycle-0.md"
-printf '## REQUEST CHANGES: APP-071\n\n## Blocking\n\n### 1. `src/Shared.kt:22` — same wrong token, different line\n\nDetail.\n' \
-  > "$RPS/docs/53-reviews/APP-071-cycle-0.md"
-printf '## APPROVED: APP-072\n\nNothing to see here.\n' \
-  > "$RPS/docs/53-reviews/APP-072-cycle-0.md"
-node "$HERE/review-pattern-scan.mjs" --root "$RPS" >"$TMP/out" 2>&1
-assert_has "$TMP/out" 'src/Shared.kt' "two tickets blocking on the same file are correlated"
-assert_has "$TMP/out" 'APP-070, APP-071' "...naming both tickets, in order"
-node "$HERE/review-pattern-scan.mjs" --root "$RPS" --json >"$TMP/out.json" 2>&1
-grep -q '"patterns":\[{"file":"src/Shared.kt"' "$TMP/out.json" \
-  && ok "...and the machine-readable form carries the same finding" \
-  || bad "...and the machine-readable form carries the same finding" "$(cat "$TMP/out.json")"
-
-# Reuse VSO (already a working orchestrator-round fixture) to prove `round` itself wires the scan
-# in, not only the standalone script.
-cp "$RPS/docs/53-reviews/APP-070-cycle-0.md" "$RPS/docs/53-reviews/APP-071-cycle-0.md" "$VSO/docs/53-reviews/"
-( cd "$VSO" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
-assert_has "$TMP/out" 'REVIEW PATTERNS' "orchestrator round itself surfaces a cross-ticket review pattern, not only the standalone scan"
-
 # --- PF-002: corrupt data returned as empty ------------------------------------------------------
 #
 # THE FIRST PRODUCT DEFECT CLASS THIS STUDIO CAN DETECT. Across six dry runs not one product defect
@@ -5739,9 +5777,9 @@ grep -q 'never `release-manager`' "$AS" \
 grep -q '`release-manager` cannot satisfy this gate' "$AS" \
   && ok "...and release-manager cannot satisfy the gate that evaluates it" \
   || bad "...and release-manager cannot satisfy the gate that evaluates it"
-grep -q 'no discoverable evidence bundle stays `unverified`' "$AS" \
-  && ok "...a test claim with no discoverable evidence bundle stays unverified" \
-  || bad "...a test claim with no discoverable evidence bundle stays unverified"
+grep -q 'claim with no discoverable evidence is `unverified`' "$AS" \
+  && ok "...a test claim with no discoverable evidence stays unverified" \
+  || bad "...a test claim with no discoverable evidence stays unverified"
 
 # The device and state matrix is a matrix, not a device list: the states come from the flow
 # inventory, so a state nobody designed is a state nobody tests.
@@ -5910,13 +5948,12 @@ done
 assert_finding "$TMP/trace.json" conflict_resolved "a resolved conflict names the rule that resolved it" "outranks"
 assert_finding "$TMP/trace.json" conflict_unresolvable "an equal-rank conflict is REFUSED, not guessed" "Refusing"
 
-# Each of the eight conditional founder gates must be DETECTED, not merely described. `trace-gates`
+# Each of the four conditional founder gates must be DETECTED, not merely described. `trace-gates`
 # plants one line per trigger; a trigger that stops firing is a decision an agent starts making
 # alone, and nothing else in the system would notice.
 node "$TR" --project-root "$FIX/trace-gates" --only gates --json > "$TMP/gates.json" 2>/dev/null
 assert_exit 1 "an unapproved trigger stops the loop" node "$TR" --project-root "$FIX/trace-gates" --only gates
-for t in pricing sensitive-data destructive-migration account-deletion legal-disclosure \
-         visual-direction paid-infrastructure waiver; do
+for t in pricing destructive-migration paid-infrastructure waiver; do
   node -e '
 const [, json, id] = process.argv;
 process.exit(require(json).findings.some((f) => f.detail.includes(`TRIGGER ${id} `)) ? 0 : 1);
@@ -5956,7 +5993,7 @@ const lines = out.findings.map((f) => {
 });
 fs.appendFileSync(`${root}/docs/00-founder-intent/decisions.md`, "\n" + lines.join("\n") + "\n");
 ' "$TR" "$TMP/gates-ok" 2>/dev/null
-assert_exit 0 "...and decisions QUOTING each detected value clear all eight" node "$TR" --project-root "$TMP/gates-ok" --only gates
+assert_exit 0 "...and decisions QUOTING each detected value clear all four" node "$TR" --project-root "$TMP/gates-ok" --only gates
 
 # The finding codex raised on PR #10, as an assertion: an approval of one value must not authorize a
 # different one. Change the approved price and the gate must come back, even though a `pricing`
@@ -6103,7 +6140,7 @@ assert_exit 0 "...tech-manager may"             bm "$MG" move G-001 merged --by 
 
 # The matrix must name roles that exist. PROVEN BY: misspelling `code-reviewer` as `code-revewier`
 # in ROLE_GATES — team-doctor raised capability_role_unknown and this went from red to green.
-node "$HERE/team-doctor.mjs" --json > "$TMP/td-sec.json" 2>/dev/null
+( cd "$HERE/.." && node "$HERE/team-doctor.mjs" --json ) > "$TMP/td-sec.json" 2>/dev/null  # team-doctor reads the cwd
 node -e '
 const j=require(process.argv[1]);
 process.exit(j.findings.some(f=>f.code==="capability_role_unknown"||f.code==="capability_event_unreachable")?1:0);
@@ -6519,7 +6556,7 @@ assert_exit 0 "...while the same total spread across roles is within budget" \
   sh -c 'node "$1/round-journal.mjs" append --round 2 --journal "$2.b" --spawns 25 --agents a=9,b=8,c=8 >/dev/null && node "$1/round-journal.mjs" check --journal "$2.b" --max-agent-spawns 20' sh "$HERE" "$PJ"
 
 # The kill switch has to be reachable from the loop, or it is a file nobody checks.
-node "$HERE/team-doctor.mjs" --json > "$TMP/td-stop.json" 2>/dev/null
+( cd "$HERE/.." && node "$HERE/team-doctor.mjs" --json ) > "$TMP/td-stop.json" 2>/dev/null  # team-doctor reads the cwd
 node -e '
 const j=require(process.argv[1]);
 process.exit(j.findings.some(f=>f.code==="kill_switch_unreferenced")?1:0);
@@ -7276,7 +7313,7 @@ for FLAG in requireDurableRuns requireApprovalBinding; do
   grep -q "\"$FLAG\": true" "$INIT" && ok "/app-init's default policy turns on $FLAG" \
     || bad "/app-init's default policy turns on $FLAG"
 done
-for FLAG in requireAuditAnchor requirePromptRegistry requireEvaluation; do
+for FLAG in requireAuditAnchor requireEvaluation; do
   grep -q "\"$FLAG\": true" "$INIT" && bad "/app-init's default policy does NOT turn on $FLAG (no bootstrap artifact exists yet)" \
     "found \"$FLAG\": true in the default policy template" \
     || ok "/app-init's default policy does NOT turn on $FLAG (no bootstrap artifact exists yet)"
@@ -7505,104 +7542,8 @@ assert_exit 1 "...and an approval with no binding does not clear the board's mer
   bm "$AP" move AP-002 merged --by tech-manager --head main
 assert_has "$TMP/err" "missing detail.commit" "...because it binds nothing"
 
-MEMORY="$TMP/revamp-memory"; mkdir -p "$MEMORY"
-node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Keep acceptance criteria explicit" --by proposer --source docs/2026-07-29-revamp-master-plan.md --confidence 0.9 > "$MEMORY/proposal.json"
-MEMORY_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/proposal.json")
-assert_exit 0 "memory-curator verifies chained proposals" node "$HERE/memory-curator.mjs" verify --ledger "$MEMORY/memory.jsonl"
-assert_exit 1 "memory-curator refuses review of an unknown candidate" node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id MEM-NOT-FOUND --reason promote --content rationale --by reviewer
-node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$MEMORY_ID" --reason promote --content rationale --by reviewer >/dev/null
-
-# --- `retrieve` is the missing read path: propose/review write, but nothing read the six scopes
-# back — a memory vocabulary nobody queries is a write-only log, not governance. Live means
-# promoted, not expired as of --now, and not superseded/contradicted by a later PROMOTED memory.
-node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Expires before --now" --by proposer --source spec.md --confidence 0.5 --expires 2020-01-01T00:00:00Z > "$MEMORY/expiring.json"
-EXPIRING_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/expiring.json")
-node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$EXPIRING_ID" --reason promote --content rationale --by reviewer >/dev/null
-node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class platform \
-  --content "Never reviewed" --by proposer --source spec.md --confidence 0.4 >/dev/null
-node "$HERE/memory-curator.mjs" retrieve --ledger "$MEMORY/memory.jsonl" --now 2026-08-01T00:00:00Z > "$MEMORY/retrieved.json"
-grep -q "$MEMORY_ID" "$MEMORY/retrieved.json" \
-  && ok "retrieve returns a promoted, unexpired memory" \
-  || bad "retrieve returns a promoted, unexpired memory"
-grep -q "$EXPIRING_ID" "$MEMORY/retrieved.json" \
-  && bad "...and excludes one that expired before --now" "found $EXPIRING_ID in output" \
-  || ok "...and excludes one that expired before --now"
-grep -q "Never reviewed" "$MEMORY/retrieved.json" \
-  && bad "...and excludes one that was proposed but never reviewed" "found the unreviewed content" \
-  || ok "...and excludes one that was proposed but never reviewed"
-node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Superseding replacement" --by proposer --source spec2.md --confidence 0.9 --supersedes "$MEMORY_ID" > "$MEMORY/replacement.json"
-REPLACEMENT_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/replacement.json")
-node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$REPLACEMENT_ID" --reason promote --content rationale --by reviewer >/dev/null
-node "$HERE/memory-curator.mjs" retrieve --ledger "$MEMORY/memory.jsonl" --now 2026-08-01T00:00:00Z --class project > "$MEMORY/retrieved2.json"
-grep -q '"memory_id":"'"$MEMORY_ID"'"' "$MEMORY/retrieved2.json" \
-  && bad "a memory superseded by a later-promoted replacement stops being served" "found the superseded $MEMORY_ID as its own record" \
-  || ok "a memory superseded by a later-promoted replacement stops being served"
-grep -q "$REPLACEMENT_ID" "$MEMORY/retrieved2.json" \
-  && ok "...and the replacement is served in its place" \
-  || bad "...and the replacement is served in its place"
-
-# --- Studio self-improvement plan (2026-08-03): `retrieve` already filtered by `--class`, but
-# `list` — the one place a PENDING (proposed, not yet reviewed) memory is visible before promotion
-# — had no such filter, so the `studio` class (zero producers until /app-learn's new studio-process
-# pass) had no way to be looked at on its own; an operator had to scan every class's output by eye.
-STUDIO_MEM=$(node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class studio \
-  --content "question-quality: ask about offline behavior before implementation, not after" \
-  --by proposer --source docs/dry-runs/example.md --confidence 0.6)
-STUDIO_MEM_ID=$(node -e 'console.log(JSON.parse(process.argv[1]).memory_id)' "$STUDIO_MEM")
-node "$HERE/memory-curator.mjs" list --ledger "$MEMORY/memory.jsonl" --class studio > "$MEMORY/list-studio.json"
-grep -q "$STUDIO_MEM_ID" "$MEMORY/list-studio.json" \
-  && ok "memory-curator list --class studio surfaces a pending studio-class proposal" \
-  || bad "memory-curator list --class studio surfaces a pending studio-class proposal"
-grep -q "Keep acceptance criteria explicit" "$MEMORY/list-studio.json" \
-  && bad "...and does not leak a project-class proposal into a studio-class listing" \
-  || ok "...and does not leak a project-class proposal into a studio-class listing"
-# Mirror test: prove the filter is load-bearing, not decoration — `list` with no --class must still
-# show both.
-node "$HERE/memory-curator.mjs" list --ledger "$MEMORY/memory.jsonl" > "$MEMORY/list-all.json"
-grep -q "$STUDIO_MEM_ID" "$MEMORY/list-all.json" \
-  && ok "...while an unfiltered list still shows the studio-class entry alongside everything else" \
-  || bad "...while an unfiltered list still shows the studio-class entry alongside everything else"
-
-tr '\n' ' ' < "$HERE/../commands/app-learn.md" | tr -s ' ' | grep -q -- "--class studio" \
-  && grep -q "memory-curator.mjs.*list" "$HERE/../commands/app-learn.md" \
-  && ok "/app-learn documents the studio-process harvest via memory-curator's already-governed pipeline" \
-  || bad "/app-learn documents the studio-process harvest via memory-curator's already-governed pipeline"
-
-assert_exit 0 "prompt-registry accepts the shipped, populated registry" node "$HERE/prompt-registry.mjs" --registry "$HERE/../docs/team/prompt-registry.json"
-
-# --- `sync` is the only place a registry entry is ever written from real agent content — an empty
-# registry validates a shape nothing populated, which is scaffolding, not governance.
-PREG="$TMP/revamp-prompt-sync"; mkdir -p "$PREG/agents" "$PREG/docs/team"
-printf '# a\n' > "$PREG/agents/role-a.md"
-printf '# b\n' > "$PREG/agents/role-b.md"
-( cd "$PREG" && node "$HERE/prompt-registry.mjs" sync --now 2026-08-01 >/dev/null )
-node -e 'const r=require(process.argv[1]); if(r.entries.length!==2) process.exit(1); const a=r.entries.find(e=>e.id==="role-a"); if(a.version!=="1.0.0"||a.rollback_version!=="0.0.0"||!a.content_hash) process.exit(1)' "$PREG/docs/team/prompt-registry.json" \
-  && ok "sync seeds one entry per agent file, versioned from a real content hash" \
-  || bad "sync seeds one entry per agent file, versioned from a real content hash"
-printf '# a, edited\n' > "$PREG/agents/role-a.md"
-( cd "$PREG" && node "$HERE/prompt-registry.mjs" sync --now 2026-08-02 >/dev/null )
-node -e 'const r=require(process.argv[1]); const a=r.entries.find(e=>e.id==="role-a"); if(a.version!=="1.0.1"||a.rollback_version!=="1.0.0") process.exit(1)' "$PREG/docs/team/prompt-registry.json" \
-  && ok "...and re-syncing an edited agent file bumps its version, recording the old one as rollback" \
-  || bad "...and re-syncing an edited agent file bumps its version, recording the old one as rollback"
-
-# --- team-doctor reads the registry back: a role missing from a populated registry, or one whose
-# hash has drifted since its last sync, is a blocking finding — not silent staleness. Reuses $PLUG
-# (agents+commands+skills+knowledge, already set up above) rather than a fresh partial copy — a
-# scratch tree missing knowledge/ or docs/02-team-roster.md fails team-doctor for unrelated reasons.
-( cd "$PLUG" && node "$HERE/prompt-registry.mjs" sync --now 2026-08-01 >/dev/null )
-( cd "$PLUG" && node "$HERE/team-doctor.mjs" ) >/dev/null 2>&1
-[ $? = 0 ] && ok "team-doctor is clean once every agent has a fresh registry entry" \
-            || bad "team-doctor is clean once every agent has a fresh registry entry"
-printf '\nstale edit\n' >> "$PLUG/agents/android-developer.md"
-( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdprompt-stale.json" 2>/dev/null
-assert_finding "$TMP/tdprompt-stale.json" prompt_registry_stale \
-  "an agent file edited without re-syncing the registry is a blocking finding" "android-developer"
-cp "$HERE/../agents/android-developer.md" "$PLUG/agents/android-developer.md"
-rm -f "$PLUG/docs/team/prompt-registry.json"
-assert_exit 0 "evaluation lab runs the checked-in baseline suite" node "$HERE/eval-lab.mjs" --manifest "$HERE/../eval/manifest.json"
+# The manifest's cases use plugin-relative paths, so it runs from the plugin root, not the cwd.
+assert_exit 0 "evaluation lab runs the checked-in baseline suite" sh -c 'cd "$1/.." && node "$1/eval-lab.mjs" --manifest eval/manifest.json' sh "$HERE"
 
 SCHED="$TMP/revamp-scheduler"; mkdir -p "$SCHED"
 cat > "$SCHED/plan.json" <<'EOF'
@@ -7614,12 +7555,6 @@ cat > "$SCHED/capabilities.json" <<'EOF'
 EOF
 assert_exit 0 "capability-check allows a declared role operation" node "$HERE/capability-check.mjs" --manifest "$SCHED/capabilities.json" --role reviewer --operation read --path docs
 assert_exit 1 "capability-check rejects an undeclared operation" node "$HERE/capability-check.mjs" --manifest "$SCHED/capabilities.json" --role reviewer --operation write --path docs
-cat > "$SCHED/impact.json" <<'EOF'
-{"schema":"impact-map/v1","rules":[{"pattern":"^docs/","consumers":["reviewer","qa"]}]}
-EOF
-assert_exit 0 "impact-map accepts a declared changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file docs/10-prd.md
-assert_exit 1 "impact-map rejects an unmapped changed surface" node "$HERE/impact-map.mjs" --map "$SCHED/impact.json" --file Sources/App.swift
-
 DISPATCH="$TMP/revamp-dispatch"; mkdir -p "$DISPATCH/docs"
 printf 'context\n' > "$DISPATCH/docs/context.md"
 node "$HERE/context-manifest.mjs" create --root "$DISPATCH" --out "$DISPATCH/context.json" --source project:docs/context.md >/dev/null
@@ -7646,7 +7581,7 @@ printf '%s\n' '{"schema":"scheduler-plan/v1","max_parallel":1,"tasks":[{"id":"T1
 assert_exit 1 "...and a ticket whose dependency has not completed is refused the same way, not just an unknown ID" \
   node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH_BLOCKED" --ticket T1 --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 
-# --- audit-anchor, prompt-registry, and eval-lab used to be reachable only through ship-gate.sh at
+# --- audit-anchor and eval-lab used to be reachable only through ship-gate.sh at
 # release time — drift could sit for a whole sprint before anything noticed. Every spawn now composes
 # them too (still opt-in per .studio-policy.json), so this proves the composition catches drift at
 # the NEXT dispatch, not only at the release that happens to follow it.
@@ -7655,10 +7590,9 @@ cp "$DISPATCH/context.json" "$DISPATCH/schedule.json" "$DISPATCH/capabilities.js
 mkdir -p "$DISPATCH2/docs"; printf 'context\n' > "$DISPATCH2/docs/context.md"
 ( cd "$DISPATCH2" && node "$BD" add DP-001 --title "x" --owner ios-developer >/dev/null 2>&1 )
 ( cd "$DISPATCH2" && node "$HERE/audit-anchor.mjs" create --log docs/31-board-events.jsonl --out docs/team/audit-anchor.json >/dev/null )
-printf '{"schema":"prompt-registry/v1","entries":[]}\n' > "$DISPATCH2/docs/team/prompt-registry.json"
 printf '{"schema":"eval-manifest/v1","cases":[{"id":"trivial","command":["true"],"expect_exit":0}]}\n' > "$DISPATCH2/eval/manifest.json"
-printf '{"requireAuditAnchor":true,"requirePromptRegistry":true,"requireEvaluation":true}\n' > "$DISPATCH2/.studio-policy.json"
-assert_exit 0 "dispatch-preflight composes audit-anchor, prompt-registry and eval-lab when policy opts in" \
+printf '{"requireAuditAnchor":true,"requireEvaluation":true}\n' > "$DISPATCH2/.studio-policy.json"
+assert_exit 0 "dispatch-preflight composes audit-anchor and eval-lab when policy opts in" \
   node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH2" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
 ( cd "$DISPATCH2" && node "$BD" move DP-001 claimed --by ios-developer >/dev/null 2>&1 )
 assert_exit 1 "...and refuses the NEXT dispatch the moment the audit chain drifts, not only at ship time" \
@@ -7668,10 +7602,6 @@ cp "$DISPATCH/context.json" "$DISPATCH/schedule.json" "$DISPATCH/capabilities.js
 printf 'context\n' > "$DISPATCH3/docs/context.md"
 assert_exit 0 "...and a project with no .studio-policy.json pays nothing extra for controls it never opted into" \
   node "$HERE/dispatch-preflight.mjs" --root "$DISPATCH3" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
-
-node "$HERE/run-ledger.mjs" start --ledger "$RUNX/runs.jsonl" --run RUN-002 --ticket APP-002 --role ios-developer --now 2026-07-31T00:00:00Z --lease-seconds 60 >/dev/null
-assert_exit 0 "manager-failover holds while the primary lease is live" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:00:30Z
-assert_exit 0 "manager-failover recommends replacement after lease expiry" node "$HERE/manager-failover.mjs" --ledger "$RUNX/runs.jsonl" --run RUN-002 --manager ios-developer --backup tech-lead --now 2026-07-31T00:02:00Z
 
 assert_exit 0 "risk-router selects the critical route for payment changes" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json" --file Sources/Payment.swift --change billing
 assert_exit 1 "risk-router refuses missing route input" node "$HERE/risk-router.mjs" --policy "$HERE/../docs/team/risk-policy.json"
@@ -8387,34 +8317,6 @@ sh "$HERE/ship-gate.sh" "$OPD" >"$TMP/opd-sg2.txt" 2>&1
 grep -q "working tree is DIRTY" "$TMP/opd-sg2.txt" \
   && ok "ship-gate: a modified source file still makes approval binding UNKNOWN" \
   || bad "ship-gate: a modified source file still makes approval binding UNKNOWN" "$(tail -5 "$TMP/opd-sg2.txt")"
-
-# --- I-09: a criterion names its own proof -----------------------------------------------------
-# verify-done runs the suite; qa_passed records that QA exercised the ticket. Neither says anything
-# about a SPECIFIC criterion, so a green suite can coexist with the one behaviour the founder asked
-# for never having been exercised.
-FCC2="$TMP/fc-criterion"; rm -rf "$FCC2"; mkdir -p "$FCC2/docs/team" "$FCC2/artifacts"
-printf 'screenshot bytes\n' > "$FCC2/artifacts/ac1.png"
-CH=$(node -e "const c=require('crypto'),f=require('fs');process.stdout.write(c.createHash('sha256').update(f.readFileSync('$FCC2/artifacts/ac1.png')).digest('hex'))")
-cat > "$FCC2/docs/team/criteria.json" <<CJ
-{"schema":"criteria/v1","criteria":[
- {"id":"AC-001","ticket":"T-001","text":"a saved reading survives a restart",
-  "evidence":[{"path":"artifacts/ac1.png","sha256":"$CH"}]}]}
-CJ
-assert_exit 0 "a criterion backed by matching evidence is proven" \
-  node "$HERE/criterion-check.mjs" --root "$FCC2"
-# Same path, same name, still non-empty — only the digest can tell it is a different artifact.
-printf "a DIFFERENT run\n" > "$FCC2/artifacts/ac1.png"
-assert_exit 1 "...and becomes UNPROVEN when its evidence is overwritten with different bytes" \
-  node "$HERE/criterion-check.mjs" --root "$FCC2"
-# A criterion with no evidence is UNPROVEN, not trivially satisfied.
-printf '{"schema":"criteria/v1","criteria":[{"id":"AC-002","ticket":"T-001","text":"reachable","evidence":[]}]}\n' \
-  > "$FCC2/docs/team/criteria.json"
-assert_exit 1 "a criterion naming no evidence is unproven, not trivially satisfied" \
-  node "$HERE/criterion-check.mjs" --root "$FCC2"
-# No registry at all is CANNOT EVALUATE, never CLEAR — an absent contract must not read as a passing one.
-FCC3="$TMP/fc-criterion-none"; rm -rf "$FCC3"; mkdir -p "$FCC3"
-assert_exit 2 "no criteria registry is CANNOT EVALUATE, never a pass" \
-  node "$HERE/criterion-check.mjs" --root "$FCC3"
 
 # --- F20: the sanctioned correction path (and why it had to ship WITH the hand-edit ban) --------
 # There was no legal way to fix a typo in a ticket field, so agents edited docs/31-board.md — the
@@ -9380,7 +9282,7 @@ mop --from tech-manager --to ceo --ticket APP-001 --kind escalation \
 ( cd "$MOP" && node "$HERE/messages.mjs" open --escalations ) >"$TMP/mo4.txt" 2>&1
 [ $? = 1 ] && ok "...and an unclosed escalation exits 1, which is what /app-run surfaces to the user" \
   || bad "...and an unclosed escalation exits 1, which is what /app-run surfaces to the user" "$(cat "$TMP/mo4.txt")"
-assert_has "$TMP/mo4.txt" "these are the founder's" "...marked as the founder's, not the team's"
+assert_has "$TMP/mo4.txt" "settle each by its decider" "...routed to each one's decider, not dumped on the founder"
 
 # main() RETURNED an exit code and nothing read it, so every `return 1` above was decorative and
 # `open --was` reported its refusal on stderr while exiting 0. Invisible until a command needed a
@@ -10885,8 +10787,8 @@ grep -q IC-REPORT "$TMP/te-rv.txt" && ! grep -q 'SUFFIX-REPORT\|DESIGNQA-REPORT'
 assert_has "$TMP/te-rv.err" "mandatory skills" "S3E: the budget line counts the mandatory-skill closure (C2-20)"
 
 # C2-5 / C2-11 — the IC prints its base and checkout line; a retry goes onto the existing branch.
-te_compose --ticket APP-001 --role ios-developer >"$TMP/te-ic.txt" 2>/dev/null
-grep -qF 'checkout -b feat/APP-001-<short-slug> main' "$TMP/te-ic.txt" \
+te_compose --ticket APP-002 --role android-developer --slot .agent-wt/ios-developer >"$TMP/te-ic.txt" 2>/dev/null
+grep -qF 'checkout -b feat/APP-002-<short-slug> main' "$TMP/te-ic.txt" \
   && ok "S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)" \
   || bad "S3E: the IC prompt prints the base and the exact git checkout -b line (C2-5)"
 printf 'REVIEW VERDICT: REQUEST CHANGES\nScope: a..b\nBlocking: RETRY-BLOCKING-LINE\n\n## Not checked\nNothing\n' > "$TE/docs/v.md"
@@ -11414,7 +11316,7 @@ grep -E '^  CANNOT EVALUATE  toolchain .*\[project-profile: ' "$TMP/k2round.txt"
 # C3W-11 — a web profile with no package.json says exactly that, not "declared tools absent".
 printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{}}\n' > "$K2Q/docs/team/project-profile.json"
 node "$HERE/project-profile.mjs" check --root "$K2Q" >"$TMP/k2pp.txt" 2>&1
-[ $? = 2 ] && grep -q 'no package.json at' "$TMP/k2pp.txt" && grep -q 'web build script missing' "$TMP/k2pp.txt" && ! grep -q 'declared tool(s) are absent' "$TMP/k2pp.txt" \
+[ $? = 2 ] && grep -q 'no package.json at' "$TMP/k2pp.txt" && grep -q 'web build unproven' "$TMP/k2pp.txt" && ! grep -q 'declared tool(s) are absent' "$TMP/k2pp.txt" \
   && ok "K2: project-profile names the missing package.json / build script precisely (C3W-11)" \
   || bad "K2: project-profile names the missing package.json / build script precisely (C3W-11)" "$(cat "$TMP/k2pp.txt")"
 rm -rf "$K2Q"
@@ -11768,7 +11670,7 @@ process.exit(narrow.some((i) => /never in the reviewed range/.test(i)) && !whole
   || bad "P1: merged refuses an approval bound to tip~1..tip — the approved range must start at or before merge-base(integration, tip) (C4G-G5)"
 
 # ·· C4G-G7: a JS test command must install its deps in verify-done's fresh worktree
-P1P="$TMP/p1-prof"; rm -rf "$P1P"; mkdir -p "$P1P/docs/team"; printf '{"scripts":{"build":"true","test":"true"}}\n' > "$P1P/package.json"
+P1P="$TMP/p1-prof"; rm -rf "$P1P"; mkdir -p "$P1P/docs/team"; printf '{"scripts":{"build":"mkdir -p dist && echo x > dist/index.html","test":"true"}}\n' > "$P1P/package.json"
 printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"npm test"}}\n' > "$P1P/docs/team/project-profile.json"
 assert_exit 1 "P1: project-profile check BLOCKS a bare 'npm test' — the fresh worktree has no node_modules (C4G-G7)" \
   node "$HERE/project-profile.mjs" check --root "$P1P"
@@ -11790,7 +11692,8 @@ bm "$P1S" move APP-001-analytics verified --by tech-manager --evidence "$P1SE" >
 bm "$P1S" move APP-001-analytics review_requested --by ios-developer >/dev/null 2>&1
 bm "$P1S" move APP-001-analytics approved --by code-reviewer >/dev/null 2>&1
 bm "$P1S" move APP-001-analytics merged --by tech-manager >/dev/null 2>&1
-bm "$P1S" move APP-001-analytics qa_failed --by qa-engineer >/dev/null 2>&1
+printf 'BUG-001 | APP-001-analytics | S2 | ios | x | y | z | 1 | open\n' > "$P1S/docs/51-bugs.md"
+bm "$P1S" move APP-001-analytics qa_failed --by qa-engineer --detail "BUG-001 events missing" >/dev/null 2>&1
 bm "$P1S" add BUG-001-fix --title "Fix" --owner ios-developer --depends APP-001-analytics >/dev/null 2>&1
 node "$HERE/scheduler.mjs" --plan "$P1S/docs/team/schedule.json" >"$TMP/p1s.txt" 2>&1
 [ $? = 0 ] && grep -q '"BUG-001-fix"' "$TMP/p1s.txt" \
@@ -12248,6 +12151,7 @@ Q1E1=$(q1_vd "$Q1Q" feat/TC-1-x "$Q1PRE")
 q1m "$Q1Q" move TC-1 verified --by tech-manager --evidence "$Q1E1" >/dev/null 2>&1
 [ -n "$Q1E1" ] && [ "$(q1qa)" = "$Q1E1" ] && ok "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" \
   || bad "Q1: the QA prompt's evidence is the newest post-merge record (C5W-2)" "got '$(q1qa)' want '$Q1E1'"
+printf 'BUG-001 | TC-1 | S2 | ios | x | y | z | 1 | open\n' > "$Q1Q/docs/51-bugs.md"
 q1m "$Q1Q" move TC-1 qa_failed --by qa-engineer --detail BUG-001 >/dev/null 2>&1
 assert_exit 1 "Q1: qa_passed citing the record QA already failed is refused after qa_failed (C5W-2)" \
   q1m "$Q1Q" move TC-1 qa_passed --by qa-engineer --evidence "$Q1E1"
@@ -12464,7 +12368,7 @@ grep -q '\*\*Then\*\* land its' "$MQB" && grep -qF 'git merge --ff-only qa/<QA-I
   || bad "MQ: app-build lands a QA- ticket by close-then-ff-only, rebase when moved (C4W-2)"
 # C4W-4 / C4W-6: the BUG-NNN-fix path, and who commits Playwright.
 MQL="$HERE/../skills/parallel-orchestrator/references/build-loop-branches.md"
-grep -qF 'BUG-NNN-fix --owner <platform dev> --depends APP-NNN' "$MQL" && grep -q 'commits `playwright` as a devDependency' "$MQL" && ! grep -q 'npm i -D playwright &&' "$MQL" \
+grep -qF 'BUG-NNN-fix --owner <the ticket'"'"'s owner> --depends APP-NNN' "$MQL" && grep -q 'commits `playwright` as a devDependency' "$MQL" && ! grep -q 'npm i -D playwright &&' "$MQL" \
   && ok "MQ: the qa_failed → BUG-NNN-fix path and the committed Playwright devDependency are spelled (C4W-4, C4W-6)" \
   || bad "MQ: the qa_failed → BUG-NNN-fix path and the committed Playwright devDependency are spelled (C4W-4, C4W-6)"
 # C4W-8: the commit loops survive zsh (an unmatched */ glob aborts a zsh for-loop).
@@ -12647,10 +12551,9 @@ node -e 'const s=require(process.argv[1]).selection||{};process.exit(s.only==="h
 # ·· S7-13: the journey contract is printed at the plugin's path.
 U2N="$TMP/u2-nojr"; rm -rf "$U2N"; mkdir -p "$U2N"
 node "$HERE/journey-gate.mjs" --root "$U2N" >"$TMP/u2n.txt" 2>&1
-node "$HERE/criterion-check.mjs" --root "$U2N" >>"$TMP/u2n.txt" 2>&1
-[ "$(grep -c "$U2R/docs/team/journeys/README.md" "$TMP/u2n.txt")" = 2 ] && [ -f "$U2R/docs/team/journeys/README.md" ] \
-  && ok "U2: journey-gate and criterion-check name the plugin's journey README, which exists (S7-13)" \
-  || bad "U2: journey-gate and criterion-check name the plugin's journey README, which exists (S7-13)" "$(cat "$TMP/u2n.txt")"
+[ "$(grep -c "$U2R/docs/team/journeys/README.md" "$TMP/u2n.txt")" = 1 ] && [ -f "$U2R/docs/team/journeys/README.md" ] \
+  && ok "U2: journey-gate names the plugin's journey README, which exists (S7-13)" \
+  || bad "U2: journey-gate names the plugin's journey README, which exists (S7-13)" "$(cat "$TMP/u2n.txt")"
 
 # ·· S7-2 / S7-3: unblocking a needs-approval ticket and correcting a ticket are gates.
 U2A="$TMP/u2-gates"; rm -rf "$U2A"; mkdir -p "$U2A"
@@ -12719,12 +12622,9 @@ grep -qF 'team-bootstrap.mjs" --root .' "$U6R/commands/app-audit.md" && [ "$(gre
   && ok "U6: /app-audit bootstraps the risk policy and adds tickets with --file (S7-7)" \
   || bad "U6: /app-audit bootstraps the risk policy and adds tickets with --file (S7-7)"
 # S7-8 / S7-9 / S7-10: runnable commands.
-grep -qF 'verify-done.sh" <branch> <integration-branch> fast' "$U6R/skills/sprint-planner/SKILL.md" && ! grep -qF '"<test cmd>"' "$U6R/skills/sprint-planner/SKILL.md" \
-  && grep -qF '(cd "${CLAUDE_PLUGIN_ROOT}" && node "${CLAUDE_PLUGIN_ROOT}/scripts/team-doctor.mjs" --json)' "$U6R/commands/app-learn.md" \
-  && grep -qF -- '--scenario "${CLAUDE_PLUGIN_ROOT}/eval/manager-scenario.json"' "$U6R/commands/app-manager-harness.md" \
-  && grep -qF '"schema": "impact-map/v1"' "$U6R/commands/app-impact.md" \
-  && ok "U6: sprint-planner, app-learn, manager-harness and app-impact commands run from a project (S7-8/9/10)" \
-  || bad "U6: sprint-planner, app-learn, manager-harness and app-impact commands run from a project (S7-8/9/10)"
+! grep -qF '"<test cmd>"' "$U6R/skills/sprint-planner/SKILL.md" \
+  && ok "U6: sprint-planner command runs from a project (S7-8)" \
+  || bad "U6: sprint-planner command runs from a project (S7-8)"
 # S7-12 / W7-4 / W7-10: app-ship re-runs orchestrator ship only; manifest committed; CURRENT-but-not-PASS.
 ! grep -qF 'Then **re-run `ship-gate.sh`**' "$U6R/commands/app-ship.md" && ! grep -qF 'Then re-run the gate.' "$U6R/commands/app-ship.md" \
   && grep -qF 'docs/00-founder-intent/MANIFEST.sha256` when a waiver was recorded' "$U6R/agents/release-manager.md" \
@@ -12863,17 +12763,6 @@ node -e 'process.stdout.write(JSON.stringify({ hook_event_name: "SubagentStop", 
 [ $? = 0 ] && ok "Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)" \
   || bad "Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)" "$(cat "$TMP/u4-aso.err")"
 
-# R7-13 — the spawn templates are versioned in the prompt registry next to the role files.
-U4R="$TMP/s7u4-reg"; rm -rf "$U4R"; mkdir -p "$U4R/agents" "$U4R/scripts/lib"
-printf '# a\n' > "$U4R/agents/role-a.md"; printf 'one\n' > "$U4R/scripts/spawn-prompt.mjs"; printf 'c\n' > "$U4R/scripts/lib/contract.mjs"
-( cd "$U4R" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-20 >/dev/null )
-printf 'two\n' > "$U4R/scripts/spawn-prompt.mjs"
-( cd "$U4R" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-21 >/dev/null )
-node -e 'const r = require(process.argv[1]); const t = r.entries.find((e) => e.id === "template/scripts/spawn-prompt.mjs");
-  process.exit(t && t.version === "1.0.1" && r.entries.some((e) => e.id === "template/scripts/lib/contract.mjs") ? 0 : 1)' "$U4R/docs/team/prompt-registry.json" \
-  && ok "Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)" \
-  || bad "Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)"
-
 # --- Sprint 7 U5: tools, locks, test infrastructure ---
 #
 # C7-1: no test edits the plugin's tracked files in place; the exit trap proves the plugin's git
@@ -12977,27 +12866,6 @@ node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from cto 
 assert_exit 1 "R7-11: ...while a real decision still refuses a reopen without evidence" \
   node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from release-manager --to qa-engineer \
     --ticket APP-006 --kind question --summary "Sign-off on APP-006?"
-
-# R7-3: review-pattern-scan reads the verdict format the board accepts.
-U5R="$TMP/u5-reviews"; rm -rf "$U5R"; mkdir -p "$U5R/docs/53-reviews"
-printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-101\nScope: a..b\nBlocking: app/Store.swift:42 force unwrap — guard it\nNotes (non-blocking): none\n\n## Not checked\nNothing.\n' \
-  > "$U5R/docs/53-reviews/APP-101-cycle-1.md"
-printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-102\nScope: a..b\nBlocking:\n- `app/Store.swift:42` same force unwrap\nNotes (non-blocking): none\n\n## Not checked\nNothing.\n' \
-  > "$U5R/docs/53-reviews/APP-102.md"
-node "$HERE/review-pattern-scan.mjs" --root "$U5R" >"$TMP/u5-rps.txt" 2>&1
-assert_has "$TMP/u5-rps.txt" "SHARED FILE: app/Store.swift blocked 2 ticket(s): APP-101, APP-102" \
-  "R7-3: two current-format verdicts blocking on one file are correlated"
-
-# S7-11: the proposer cannot review its own memory, and propose names its proposer.
-U5MEM="$TMP/u5-memory.jsonl"; rm -f "$U5MEM"
-U5MID=$(node "$HERE/memory-curator.mjs" propose --ledger "$U5MEM" --class project --content "x" --source s.md --by tech-lead \
-  | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>console.log(JSON.parse(s).memory_id))')
-assert_exit 1 "S7-11: memory review by the proposer is refused" \
-  node "$HERE/memory-curator.mjs" review --ledger "$U5MEM" --id "$U5MID" --reason promote --content ok --by tech-lead
-assert_exit 0 "S7-11: ...and a different reviewer may promote it" \
-  node "$HERE/memory-curator.mjs" review --ledger "$U5MEM" --id "$U5MID" --reason promote --content ok --by cto
-assert_exit 2 "S7-11: ...and propose without --by is refused" \
-  node "$HERE/memory-curator.mjs" propose --ledger "$U5MEM" --class project --content "y" --source s.md
 
 # S7-1: the build cache build-env.sh creates is operational, not a dirty tree.
 U5C="$TMP/u5-cache"; rm -rf "$U5C"; mkdir -p "$U5C"
@@ -13479,14 +13347,6 @@ grep -q 'names no holder pid' "$TMP/p47lk.txt" && grep -qF "rm -rf \"$P47LK/x.lo
   && ok "PR47 fixes: an aged lock naming no holder says how to clear it, not 'never delete'" \
   || bad "PR47 fixes: an aged lock naming no holder says how to clear it, not 'never delete'" "$(head -c 400 "$TMP/p47lk.txt")"
 
-# --- PR47 fixes: team-doctor checks the template hashes ---
-echo "PR47 fixes: team-doctor checks the template hashes"
-P47TD=$(plugin_copy p47td)
-( cd "$P47TD" && node "$HERE/prompt-registry.mjs" sync --now 2026-11-20 >/dev/null && printf '\n// drift\n' >> scripts/spawn-prompt.mjs \
-  && node "$HERE/team-doctor.mjs" --json ) > "$TMP/p47td.json" 2>/dev/null
-assert_finding "$TMP/p47td.json" prompt_registry_stale \
-  "PR47 fixes: a spawn template edited without a registry sync is a team-doctor finding" "template/scripts/spawn-prompt.mjs"
-
 # --- PR47 fixes: an anchor that disagrees blocks; only an absent one is unknown ---
 echo "PR47 fixes: an anchor that disagrees blocks; only an absent one is unknown"
 P47AN="$TMP/p47-anchor"; rm -rf "$P47AN"; mkdir -p "$P47AN"
@@ -13575,6 +13435,636 @@ printf '{"requireTicketFiles": true, "requireActorTokens": true}\n' > "$P47DP/.s
 grep -qF "$HERE/board.mjs\" move APP-001 corrected --by tech-manager" "$TMP/p47dp.txt" && grep -q -- '--token "$(node' "$TMP/p47dp.txt" \
   && ok "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" \
   || bad "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" "$(grep -m3 'corrected\|token\|dispatch' "$TMP/p47dp.txt")"
+
+# --- Sprint 8 V6: prune dead weight, --help, and a mutation run that is one section ---
+echo "Sprint 8 V6: prune dead weight, --help, and a mutation run that is one section"
+# EN-10: `--help` was nobody's flag. team-bootstrap ran its real action and wrote four manifests into
+# the cwd; foundation-conformance ignored its arguments and ran every invariant.
+V6H="$TMP/s8v6-help"; rm -rf "$V6H"; mkdir -p "$V6H"
+( cd "$V6H" && node "$HERE/team-bootstrap.mjs" --help ) >"$TMP/v6h.txt" 2>&1; V6RC=$?
+[ "$V6RC" = 0 ] && grep -q 'team-bootstrap' "$TMP/v6h.txt" && [ ! -e "$V6H/docs" ] \
+  && ok "Sprint 8 V6: team-bootstrap --help prints its usage, exits 0 and writes nothing (EN-10)" \
+  || bad "Sprint 8 V6: team-bootstrap --help prints its usage, exits 0 and writes nothing (EN-10)" "rc=$V6RC $(ls -R "$V6H" | head -5)"
+assert_exit 0 "Sprint 8 V6: foundation-conformance --help exits 0 without running the suite (EN-10)" \
+  node "$HERE/foundation-conformance.mjs" --help
+assert_has "$TMP/out" "Usage:" "Sprint 8 V6: ...and prints its usage header (EN-10)"
+assert_exit 2 "Sprint 8 V6: foundation-conformance rejects an argument that is not an invariant id (EN-10)" \
+  node "$HERE/foundation-conformance.mjs" bogus
+# CX-9: requirePromptRegistry is gone with its script. A policy that still sets it is not a crash.
+V6D="$TMP/s8v6-dispatch"; rm -rf "$V6D"; mkdir -p "$V6D/docs"
+printf 'context\n' > "$V6D/docs/context.md"
+node "$HERE/context-manifest.mjs" create --root "$V6D" --out "$V6D/context.json" --source project:docs/context.md >/dev/null
+printf '%s\n' '{"schema":"scheduler-plan/v1","max_parallel":1,"tasks":[{"id":"T","owner":"reviewer","status":"pending"}]}' > "$V6D/schedule.json"
+printf '%s\n' '{"schema":"capability-manifest/v1","root":".","roles":[{"role":"reviewer","operations":["write"],"allowed_paths":["docs"]}]}' > "$V6D/capabilities.json"
+cp "$HERE/../docs/team/risk-policy.json" "$V6D/risk.json"
+printf '{"requirePromptRegistry":true}\n' > "$V6D/.studio-policy.json"
+assert_exit 0 "Sprint 8 V6: a policy still naming requirePromptRegistry does not block dispatch (CX-9)" \
+  node "$HERE/dispatch-preflight.mjs" --root "$V6D" --ticket T --context context.json --schedule schedule.json --capability capabilities.json --risk risk.json --role reviewer --operation write --path docs/context.md --file docs/context.md --change update
+# QA-9: every catalogue row runs ONE section of this file, never the whole suite (a full catalogue
+# was ~450 x the full suite). A row naming no scope gets the section that holds its label.
+sh "$HERE/mutate.sh" --list >"$TMP/v6m.txt" 2>&1
+V6RUNS=$(grep -c '^      runs: ' "$TMP/v6m.txt"); V6WHOLE=$(grep -c '^      runs: THE WHOLE SUITE' "$TMP/v6m.txt")
+[ "$V6RUNS" -gt 400 ] && [ "$V6WHOLE" = 0 ] \
+  && ok "Sprint 8 V6: every mutate.sh catalogue row runs one test.sh section, never the whole suite (QA-9)" \
+  || bad "Sprint 8 V6: every mutate.sh catalogue row runs one test.sh section, never the whole suite (QA-9)" "rows=$V6RUNS whole-suite=$V6WHOLE"
+sed -n '/^M07 /,/runs:/p' "$TMP/v6m.txt" | grep -q 'runs: # --- `self_review`' \
+  && ok "Sprint 8 V6: ...and a row with no scope runs the section holding its own assertion (M07)" \
+  || bad "Sprint 8 V6: ...and a row with no scope runs the section holding its own assertion (M07)" "$(sed -n '/^M07 /,/runs:/p' "$TMP/v6m.txt")"
+# An empty field (MF47T's empty replacement) used to collapse under a tab IFS: the anchor was
+# replaced by the assertion label and the label became the scope.
+sed -n '/^MF47T /,/runs:/p' "$TMP/v6m.txt" | grep -qx '      + ' \
+  && sed -n '/^MF47T /,/runs:/p' "$TMP/v6m.txt" | grep -q "expects to fail: PR47 fixes: dispatch-preflight's corrected command" \
+  && ok "Sprint 8 V6: an empty replacement field stays empty and the fields after it do not shift (MF47T)" \
+  || bad "Sprint 8 V6: an empty replacement field stays empty and the fields after it do not shift (MF47T)" "$(sed -n '/^MF47T /,/runs:/p' "$TMP/v6m.txt")"
+# QA-9: `--only "W1 / G-F5"` was 79 passed / 14 failed, every failure an unset `$VDG` that an
+# earlier section builds. A lifted section now gets that section pulled in, and passes on behaviour.
+sh "$HERE/test.sh" --only "W1 / G-F5" >"$TMP/v6only.txt" 2>&1; V6RC=$?
+[ "$V6RC" = 0 ] && grep -q ' 0 failed' "$TMP/v6only.txt" && grep -q 'pulled in by --only' "$TMP/v6only.txt" \
+  && ok "Sprint 8 V6: test.sh --only on a section that reads an earlier fixture pulls that section in and passes (QA-9)" \
+  || bad "Sprint 8 V6: test.sh --only on a section that reads an earlier fixture pulls that section in and passes (QA-9)" "rc=$V6RC $(grep -m3 'FAIL\|unbound' "$TMP/v6only.txt")"
+# --- Sprint 8 V7: team shape and engineering guidance ---
+V7="$HERE/.."
+V7RA="$V7/skills/role-activation/SKILL.md"
+# SK-3/SK-4: utility merges release-auditor into verification-engineer; product-validator never tiers; data-analyst needs a telemetry SDK.
+grep -q '^| `release-auditor` | on .*utility: off, merged into `verification-engineer`' "$V7RA" \
+  && grep -q '^6\. `release-auditor` → `off(merged-into: verification-engineer' "$V7RA" \
+  && grep -q '^`qa-engineer`, `product-validator`\. Utility means' "$V7RA" \
+  && grep -q '`data-analyst` → `conditional(docs/20-architecture.md names a telemetry/analytics SDK)`' "$V7RA" \
+  && ! grep -q 'the vision states a KPI target\|executes the one irreversible action' "$V7RA" \
+  && ok "Sprint 8 V7: utility roster drops release-auditor and the no-op data-analyst/product-validator deltas (SK-3, SK-4)" \
+  || bad "Sprint 8 V7: utility roster drops release-auditor and the no-op data-analyst/product-validator deltas (SK-3, SK-4)"
+# SK-3: /app-ship prints the utility N/A instead of spawning the auditor.
+grep -q 'On utility, `release-auditor` is `off`' "$V7/commands/app-ship.md" \
+  && ok "Sprint 8 V7: /app-ship skips release-auditor on utility with a printed N/A (SK-3)" \
+  || bad "Sprint 8 V7: /app-ship skips release-auditor on utility with a printed N/A (SK-3)"
+# SK-2: /app-ship decides every still-conditional roster row before its review fan-out.
+V7S2=$(grep -n 'row still `conditional` is decided now' "$V7/commands/app-ship.md" | cut -d: -f1)
+V7F=$(grep -n '^2\. \*\*Spawn the `active` roles among `security-reviewer`' "$V7/commands/app-ship.md" | cut -d: -f1)
+V7M=$(grep -n '^3\. \*\*Spawn `release-manager`\*\*' "$V7/commands/app-ship.md" | cut -d: -f1)
+[ -n "$V7S2" ] && [ -n "$V7F" ] && [ -n "$V7M" ] && [ "$V7S2" -gt "$V7F" ] && [ "$V7S2" -lt "$V7M" ] \
+  && ok "Sprint 8 V7: /app-ship re-evaluates conditional roles before the ship fan-out (SK-2)" \
+  || bad "Sprint 8 V7: /app-ship re-evaluates conditional roles before the ship fan-out (SK-2)"
+# SK-1: product-researcher is spawned after ceo and before cpo.
+V7R=$(grep -n 'has `product-researcher` `active`, spawn it now' "$V7/commands/app-init.md" | cut -d: -f1)
+V7C=$(grep -n '^3\. \*\*Spawn `cpo` and `cto` in parallel' "$V7/commands/app-init.md" | cut -d: -f1)
+V7E=$(grep -n '^2\. \*\*Spawn the `ceo` agent' "$V7/commands/app-init.md" | cut -d: -f1)
+[ -n "$V7R" ] && [ -n "$V7C" ] && [ -n "$V7E" ] && [ "$V7E" -lt "$V7R" ] && [ "$V7R" -lt "$V7C" ] \
+  && ok "Sprint 8 V7: /app-init spawns product-researcher between ceo and cpo (SK-1)" \
+  || bad "Sprint 8 V7: /app-init spawns product-researcher between ceo and cpo (SK-1)" "ceo=$V7E researcher=$V7R cpo=$V7C"
+# FL-6: the auditor's journey evidence is the step-3b journey record; the kill-switch item applies only when §4 names one.
+grep -qF 'evidence-check.mjs" --head' "$V7/agents/release-auditor.md" \
+  && grep -q 'only when `docs/20-architecture.md` §4 names one' "$V7/agents/release-auditor.md" \
+  && ! grep -q 'artifact hash in the bundle' "$V7/agents/release-auditor.md" \
+  && ok "Sprint 8 V7: release-auditor binds journeys via evidence-check, kill switch only when named (FL-6)" \
+  || bad "Sprint 8 V7: release-auditor binds journeys via evidence-check, kill switch only when named (FL-6)"
+# EN-1: the architecture section list has exactly one copy.
+V7N=$(grep -rl '\*\*Non-functional budgets\*\*' "$V7/agents" "$V7/skills" | wc -l | tr -d ' ')
+[ "$V7N" = 1 ] && grep -q '\*\*Non-functional budgets\*\*' "$V7/skills/architecture-builder/SKILL.md" \
+  && grep -q 'invoke `architecture-builder`' "$V7/agents/tech-lead.md" \
+  && ok "Sprint 8 V7: one architecture section list, in architecture-builder; utility tech-lead invokes it (EN-1, SK-9)" \
+  || bad "Sprint 8 V7: one architecture section list, in architecture-builder; utility tech-lead invokes it (EN-1, SK-9)" "copies=$V7N"
+# EN-2/EN-3: v1 structure with split triggers; the ViewBinding/TinyDB stack is brownfield-only.
+grep -q '^## v1 structure' "$V7/knowledge/stack-defaults.md" \
+  && grep -q 'v1 is one app module plus the pure domain package' "$V7/agents/tech-lead.md" \
+  && grep -q 'brownfield reference only' "$V7/knowledge/stack-defaults.md" \
+  && grep -q 'brownfield reference only' "$V7/knowledge/android-conventions.md" \
+  && ! grep -q 'README.md` at the module root' "$V7/skills/architecture-builder/SKILL.md" \
+  && ok "Sprint 8 V7: new apps start as one module + domain package; utility ViewBinding stack is brownfield-only (EN-2, EN-3)" \
+  || bad "Sprint 8 V7: new apps start as one module + domain package; utility ViewBinding stack is brownfield-only (EN-2, EN-3)"
+# EN-4, EN-6, EN-12, SK-7: one review track source; tests follow the diff; one backend branch form; migrations routed.
+[ ! -d "$V7/skills/process-tiering" ] \
+  && grep -q 'for the layers your diff changes' "$V7/agents/ios-developer.md" \
+  && grep -q 'for the layers your diff changes' "$V7/agents/android-developer.md" \
+  && ! grep -q -- '-be-' "$V7/agents/backend-developer.md" \
+  && grep -q '^- `database-migration`' "$V7/agents/ios-developer.md" \
+  && grep -q '^- `database-migration`' "$V7/agents/android-developer.md" \
+  && grep -q '^- `database-migration`' "$V7/agents/code-reviewer.md" \
+  && ok "Sprint 8 V7: XS review is the floor track, IC tests follow the diff, one backend branch form, migrations routed (EN-4, EN-6, EN-12, SK-7)" \
+  || bad "Sprint 8 V7: XS review is the floor track, IC tests follow the diff, one backend branch form, migrations routed (EN-4, EN-6, EN-12, SK-7)"
+# SK-10: policy-checker and interaction-motion are merged away and nothing in agents/commands still names them.
+[ ! -d "$V7/skills/policy-checker" ] && [ ! -d "$V7/skills/interaction-motion" ] \
+  && ! grep -rqE 'policy-checker|interaction-motion' "$V7/agents" "$V7/commands" \
+  && grep -q '^## Motion' "$V7/skills/design-system/SKILL.md" \
+  && grep -qF 'scripts/policy-check.mjs" .' "$V7/agents/code-reviewer.md" \
+  && ok "Sprint 8 V7: policy-checker folded into code-reviewer, interaction-motion into design-system (SK-10)" \
+  || bad "Sprint 8 V7: policy-checker folded into code-reviewer, interaction-motion into design-system (SK-10)"
+# --- Sprint 8 V1: founder gates are money-or-irreversible, value-matched, and never re-ask the founder ---
+echo "Sprint 8 V1: founder gates are money-or-irreversible, value-matched, and never re-ask the founder"
+V1TR="$HERE/trace.mjs"
+# AU-1 / PR-1(c): a normal PRD — the store-mandated account deletion, the privacy-policy appendix CPO
+# is told to write, sensitive data and a visual-direction claim — fires no founder gate. These four
+# triggers used to stop every greenfield /app-run at round 1.
+V1G="$TMP/s8v1-gates"; rm -rf "$V1G"; mkdir -p "$V1G/docs/00-founder-intent"
+printf '# Brief\n\nA habit tracker. Free with a $2.99/month premium. Users sign in.\n' > "$V1G/docs/00-founder-intent/brief.md"
+printf '# PRD\n\n- Pro tier is $2.99/month.\n- Settings links the Privacy Policy and Terms of Service.\n- Settings offers account deletion.\n- Onboarding asks for precise location.\n' > "$V1G/docs/10-prd.md"
+printf 'claim: visual-direction = calm pastel\n' > "$V1G/docs/13-design-tokens.md"
+assert_exit 0 "Sprint 8 V1: a price in the founder's own words, account deletion, privacy policy, sensitive data and visual direction fire no gate (AU-1, PR-1)" \
+  node "$V1TR" --project-root "$V1G" --only gates
+printf '# PRD\n\n- Pro tier is $4.99/month.\n' > "$V1G/docs/10-prd.md"
+assert_exit 1 "Sprint 8 V1: ...but a price the founder never wrote still fires (PR-1b)" \
+  node "$V1TR" --project-root "$V1G" --only gates
+assert_has "$TMP/out" "Block only the tickets it touches" "Sprint 8 V1: ...and blocks only its tickets, not the loop"
+# PR-2: an approval is matched case-insensitively — a re-cased document is not a new decision.
+printf '2026-11-21 FOUNDER DECISION: Pricing — $4.99/MONTH — approved at Gate 1\n' > "$V1G/docs/00-founder-intent/decisions.md"
+assert_exit 0 "Sprint 8 V1: a decision matches its subject case-insensitively (PR-2)" \
+  node "$V1TR" --project-root "$V1G" --only gates
+# AU-7: release-manager appends `— vX.Y.Z` to a WAIVED: line once the version heading exists; the
+# founder's one approval must still cover it, so nobody restates it into decisions.md.
+V1W="$TMP/s8v1-waiver"; rm -rf "$V1W"; mkdir -p "$V1W/docs/00-founder-intent"
+printf 'brief\n' > "$V1W/docs/00-founder-intent/brief.md"
+printf '2026-11-21 FOUNDER DECISION: waiver — docs/51-bugs.md — founder — no QA pass this time — Approved by founder\n' > "$V1W/docs/00-founder-intent/decisions.md"
+printf '## v1.0.0\n\nWAIVED: docs/51-bugs.md — founder — no QA pass this time — v1.0.0\n' > "$V1W/docs/60-releases.md"
+assert_exit 0 "Sprint 8 V1: the version field release-manager appends does not re-open an approved waiver (AU-7)" \
+  node "$V1TR" --project-root "$V1W" --only gates
+printf '## v1.0.0\n\nWAIVED: docs/50-test-plan.md — founder — skipped — v1.0.0\n' > "$V1W/docs/60-releases.md"
+assert_exit 1 "Sprint 8 V1: ...while a different waiver still fires" node "$V1TR" --project-root "$V1W" --only gates
+# FL-10: with no docs/52-analytics.md the founder never asked for telemetry; shipped code owes no event.
+V1A="$TMP/s8v1-analytics"; rm -rf "$V1A"; cp -R "$FIX/trace-broken" "$V1A"
+node "$V1TR" --project-root "$V1A" --only trace --json > "$TMP/s8v1a.json" 2>/dev/null
+assert_finding "$TMP/s8v1a.json" code_no_analytics "Sprint 8 V1: a project with an analytics plan still owes events"
+rm -f "$V1A/docs/52-analytics.md"
+node "$V1TR" --project-root "$V1A" --only trace --json > "$TMP/s8v1a.json" 2>/dev/null
+node -e 'process.exit(require(process.argv[1]).findings.some((f) => f.code === "code_no_analytics") ? 1 : 0)' "$TMP/s8v1a.json" \
+  && ok "Sprint 8 V1: ...and one without docs/52-analytics.md owes none (FL-10)" \
+  || bad "Sprint 8 V1: ...and one without docs/52-analytics.md owes none (FL-10)"
+# PR-10: intake writes its Q&A to a new file; founder-intent accepts it (appending to brief.md is TAMPERED).
+V1I="$TMP/s8v1-intake"; rm -rf "$V1I"; mkdir -p "$V1I/docs/00-founder-intent"
+printf 'A habit tracker.\n' > "$V1I/docs/00-founder-intent/brief.md"
+node "$HERE/founder-intent.mjs" --project-root "$V1I" --write >/dev/null 2>&1
+printf 'Q: who is it for? A: students\n' > "$V1I/docs/00-founder-intent/intake-qa-2026-11-21.md"
+node "$HERE/founder-intent.mjs" --project-root "$V1I" --write >/dev/null 2>&1
+assert_exit 0 "Sprint 8 V1: intake Q&A in its own dated file keeps the founder record clean (PR-10)" \
+  node "$HERE/founder-intent.mjs" --project-root "$V1I"
+grep -qF 'intake-qa-<date>.md' "$HERE/../skills/requirements-intake/SKILL.md" && grep -qF 'Under `--yolo` (or `/loop`) ask nothing.' "$HERE/../skills/requirements-intake/SKILL.md" \
+  && ok "Sprint 8 V1: ...and the intake skill says so, and asks nothing under --yolo (PR-9)" \
+  || bad "Sprint 8 V1: ...and the intake skill says so, and asks nothing under --yolo (PR-9)"
+# --- Sprint 8 V5: continuous learning ---
+echo "Sprint 8 V5: continuous learning — run summary, recurrences, pack limit, reviewed KB patch"
+# LN-4 / LN-6: one line per run, derived from the board and the verdicts, in a studio home that
+# survives a reinstall; recurrences counted from FC IDs the verdicts cite, not from hand rows.
+V5="$TMP/v5-proj"; V5H="$TMP/v5-home"; rm -rf "$V5" "$V5H"; mkdir -p "$V5/docs/53-reviews"
+for e in 'APP-001","event":"created' 'APP-001","event":"claimed' 'APP-001","event":"review_requested' 'APP-001","event":"changes' \
+         'APP-002","event":"created' 'APP-002","event":"claimed' 'APP-002","event":"review_requested' 'APP-002","event":"approved'; do
+  printf '{"ts":"2026-11-20T09:00:00Z","ticket":"%s","by":"x"}\n' "$e"
+done > "$V5/docs/31-board-events.jsonl"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-001\nBlocking: src/a.ts:3 Float for money (FC-002)\n' > "$V5/docs/53-reviews/APP-001-cycle-1.md"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-001\nBlocking: src/b.ts:1 one layer short (FC-001)\n' > "$V5/docs/53-reviews/APP-001-cycle-0.md"
+touch -t 202607010000 "$V5/docs/53-reviews/APP-001-cycle-0.md"
+printf 'REVIEW VERDICT: APPROVE\nTicket: APP-002\nNotes (non-blocking): FC-003 checked, fine\n' > "$V5/docs/53-reviews/APP-002-cycle-0.md"
+APP_TEAM_HOME="$V5H" node "$HERE/run-ledger.mjs" summary --stop blocked --root "$V5" >"$TMP/v5-sum.txt" 2>&1
+assert_has "$TMP/v5-sum.txt" 'RECURRENCE FC-002 — cited in docs/53-reviews/APP-001-cycle-1.md' \
+  "Sprint 8 V5: a REQUEST CHANGES verdict citing an FC class after its Rule shipped date is counted as a recurrence (LN-4)"
+grep -q 'RECURRENCE FC-001' "$TMP/v5-sum.txt" \
+  && bad "Sprint 8 V5: ...but a citation dated before the rule shipped is not" "$(cat "$TMP/v5-sum.txt")" \
+  || ok "Sprint 8 V5: ...but a citation dated before the rule shipped is not"
+grep -q '"FC-003"' "$TMP/v5-sum.txt" \
+  && bad "Sprint 8 V5: ...and an APPROVE verdict's FC mention is not a citation" "$(cat "$TMP/v5-sum.txt")" \
+  || ok "Sprint 8 V5: ...and an APPROVE verdict's FC mention is not a citation"
+grep -q '"first_pass_rate":0.5,' "$TMP/v5-sum.txt" && grep -q '"stop":"blocked"' "$TMP/v5-sum.txt" \
+  && [ "$(wc -l < "$V5H/runs-summary.jsonl" | tr -d ' ')" = 1 ] && [ ! -e "$HERE/../runs-summary.jsonl" ] \
+  && ok "Sprint 8 V5: a BLOCKED run appends one line with its first-pass rate to APP_TEAM_HOME, not the plugin (LN-6, LN-1)" \
+  || bad "Sprint 8 V5: a BLOCKED run appends one line with its first-pass rate to APP_TEAM_HOME, not the plugin (LN-6, LN-1)" "$(cat "$TMP/v5-sum.txt")"
+APP_TEAM_HOME="$V5H" node "$HERE/run-ledger.mjs" summary --stop shipped --root "$V5" >"$TMP/v5-sum2.txt" 2>&1
+assert_has "$TMP/v5-sum2.txt" 'VS LAST RUN (v5-proj, blocked): first-pass 50%→50%' "Sprint 8 V5: the next run is compared with the last one"
+APP_TEAM_HOME="$V5H" node "$HERE/run-ledger.mjs" history >"$TMP/v5-hist.txt" 2>&1
+assert_has "$TMP/v5-hist.txt" 'TREND (2 runs): first-pass 50%→50%' "Sprint 8 V5: history reads the runs back with a trend line"
+assert_exit 2 "Sprint 8 V5: summary refuses an unnamed stop cause" env APP_TEAM_HOME="$V5H" node "$HERE/run-ledger.mjs" summary --root "$V5"
+# LN-8: packs are inlined whole into spawns, so none may grow past the limit /app-learn states.
+V5BIG=""
+for f in "$HERE"/../knowledge/*.md; do
+  case "$f" in *failure-corpus.md|*/README.md) continue ;; esac
+  [ "$(wc -w < "$f" | tr -d ' ')" -le 1500 ] || V5BIG="$V5BIG $(basename "$f")"
+done
+[ -z "$V5BIG" ] && grep -qF '**Pack limit: 1500 words**' "$HERE/../commands/app-learn.md" \
+  && ok "Sprint 8 V5: every inlined KB pack is within /app-learn's 1500-word limit (LN-8)" \
+  || bad "Sprint 8 V5: every inlined KB pack is within /app-learn's 1500-word limit (LN-8)" "over:$V5BIG"
+# LN-1 / LN-7 / LN-3: /app-learn writes a scanned, provenance-stamped patch — never the install dir.
+V5L="$HERE/../commands/app-learn.md"
+grep -qF '(cd "$W" && diff -ruN a b) > docs/kb-patch.diff' "$V5L" && grep -qF 'injection-scan.mjs" docs/92-learnings.md' "$V5L" \
+  && grep -qF '(src: <app>/<file:line>, <YYYY-MM-DD>)' "$V5L" && ! grep -q 'memory-curator\|CHANGELOG' "$V5L" \
+  && [ ! -e "$HERE/memory-curator.mjs" ] && [ ! -e "$HERE/../commands/app-memory.md" ] && [ ! -e "$HERE/review-pattern-scan.mjs" ] \
+  && ok "Sprint 8 V5: /app-learn emits a scanned, stamped patch and governed memory is gone (LN-1, LN-3, LN-7)" \
+  || bad "Sprint 8 V5: /app-learn emits a scanned, stamped patch and governed memory is gone (LN-1, LN-3, LN-7)"
+grep -qF 'run-ledger.mjs" summary --stop' "$HERE/../commands/app-ship.md" && grep -qF 'on every outcome: shipped, BLOCKED' "$HERE/../commands/app-ship.md" \
+  && ok "Sprint 8 V5: /app-ship harvests and records blocked and stopped runs too (LN-4)" \
+  || bad "Sprint 8 V5: /app-ship harvests and records blocked and stopped runs too (LN-4)"
+rm -rf "$V5" "$V5H"
+
+# --- Sprint 8 V3: journey drivers that drive, and the evidence they leave -------------------------
+# QA-1: android.sh read the LAST node of a one-line uiautomator dump, so it PASSed the exact defects
+# it exists to catch. QA-2: ios.sh could run no step but launch. QA-3: no command passed the app id.
+# FL-2/FL-5: the web gate needed a hand-started server and never served the bound artifact.
+# FL-15: no checked-state assert. QA-11: an id that is not a CSS identifier crashed web.sh.
+echo "Sprint 8 V3: journey drivers that drive, and the evidence they leave"
+V3="$TMP/s8v3"; rm -rf "$V3"; mkdir -p "$V3/bin"
+cat > "$V3/bin/adb" <<'EOF'
+#!/bin/sh
+case "$*" in
+  devices) printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  *pidof*) echo 4213 ;;
+  "shell pm list packages") echo "package:com.example.app" ;;
+  "shell wm density") echo "Physical density: 440" ;;
+  "pull "*) cp "$V3DUMP" "$3" ;;
+  *screencap*) printf 'png' ;;
+  "shell input tap"*) echo "$*" >> "$V3TAPS" ;;
+  *) exit 0 ;;
+esac
+EOF
+printf '#!/bin/sh\nprintf "package: name='"'"'com.example.app'"'"' versionCode='"'"'1'"'"'\\n"\n' > "$V3/bin/aapt2"
+chmod +x "$V3/bin/adb" "$V3/bin/aapt2"
+# One line, as uiautomator writes it: the target (24dp at 440dpi, no content-desc) and, after it, a
+# node carrying exactly the values the journey asserts.
+printf '<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="1999-01-02" resource-id="com.example.app:id/saved_date" class="android.widget.TextView" content-desc="" checkable="true" checked="false" bounds="[0,0][66,66]" /><node index="1" text="2001-02-03" resource-id="com.example.app:id/other" class="android.widget.TextView" content-desc="Saved" checkable="true" checked="true" bounds="[0,100][400,400]" /></hierarchy>' > "$V3/dump.xml"
+v3and() { # v3and <steps json> — android.sh on the stub device; prints its exit code
+  mkdir -p "$V3/a"; printf '{"schema":"journey/v1","id":"j","steps":[{"action":"launch"},%s]}\n' "$1" > "$V3/a/j.json"; : > "$V3/taps"
+  ( cd "$V3/a" && PATH="$V3/bin:$PATH" V3DUMP="$V3/dump.xml" V3TAPS="$V3/taps" STUDIO_ANDROID_PACKAGE=com.example.app \
+    sh "$HERE/drivers/android.sh" --journey j.json --evidence-dir ev >"$V3/a.out" 2>&1; echo $? )
+}
+[ "$(v3and '{"assert":"value_equals","id":"saved_date","value":"2001-02-03"}')" = 1 ] && grep -q 'reads \\"1999-01-02\\"' "$V3/a.out" \
+  && ok "Sprint 8 V3: android value_equals reads the TARGET node of a one-line dump, not the last node (QA-1)" \
+  || bad "Sprint 8 V3: android value_equals reads the TARGET node of a one-line dump, not the last node (QA-1)" "$(cat "$V3/a.out")"
+[ "$(v3and '{"assert":"min_touch_target","id":"saved_date","dp":48}')" = 1 ] && grep -q 'measures 24dp' "$V3/a.out" \
+  && ok "Sprint 8 V3: android min_touch_target measures the target, 24dp fails a 48dp spec (QA-1)" \
+  || bad "Sprint 8 V3: android min_touch_target measures the target, 24dp fails a 48dp spec (QA-1)" "$(cat "$V3/a.out")"
+[ "$(v3and '{"assert":"announces","id":"saved_date","value":"Saved"}')" = 1 ] \
+  && ok "Sprint 8 V3: android announces reads the target's empty content-desc (QA-1)" \
+  || bad "Sprint 8 V3: android announces reads the target's empty content-desc (QA-1)" "$(cat "$V3/a.out")"
+[ "$(v3and '{"action":"tap","id":"saved_date"},{"assert":"is_checked","id":"saved_date","value":true}')" = 1 ] && grep -q 'tap 33 33' "$V3/taps" \
+  && ok "Sprint 8 V3: android taps the target's centre, and is_checked reads its checked state (QA-1, FL-15)" \
+  || bad "Sprint 8 V3: android taps the target's centre, and is_checked reads its checked state (QA-1, FL-15)" "taps=$(cat "$V3/taps") $(cat "$V3/a.out")"
+printf '{"schema":"journey/v1","id":"k","steps":[{"action":"launch"},{"assert":"is_checked","id":"x","value":"yes"}]}\n' > "$V3/a/k.json"
+assert_exit 1 "Sprint 8 V3: journey-gate refuses an is_checked whose value is not true/false (FL-15)" \
+  node "$HERE/journey-gate.mjs" --root "$V3" --journeys "$V3/a" --list
+
+# QA-3, end to end: runtime-gate --record finds the package; journey-gate hands it to the driver.
+V3P="$V3/proj"; mkdir -p "$V3P/docs/team/journeys"; : > "$V3P/build.gradle"
+printf '#!/bin/sh\nmkdir -p app/build/outputs/apk/debug; : > app/build/outputs/apk/debug/app-debug.apk\n' > "$V3P/gradlew"; chmod +x "$V3P/gradlew"
+( cd "$V3P" && git init -q -b main . && git add -A && git -c user.name=t -c user.email=t@t commit -qm base ) >/dev/null 2>&1
+env PATH="$V3/bin:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$V3P" --record >"$V3/rg.out" 2>&1
+printf '{"schema":"journey/v1","id":"saved","priority":"P0","steps":[{"action":"launch"},{"assert":"value_equals","id":"saved_date","value":"1999-01-02"}]}\n' > "$V3P/docs/team/journeys/saved.json"
+( cd "$V3P" && env -u STUDIO_ANDROID_PACKAGE PATH="$V3/bin:$PATH" V3DUMP="$V3/dump.xml" V3TAPS="$V3/taps" \
+  node "$HERE/journey-gate.mjs" --root . --driver "$HERE/drivers/android.sh" ) >"$V3/jg.out" 2>&1; V3RC=$?
+[ "$V3RC" = 0 ] && grep -q '^RESULT: PASS' "$V3/jg.out" \
+  && ok "Sprint 8 V3: journey-gate passes runtime-gate's recorded package id to the android driver — no env var (QA-3)" \
+  || bad "Sprint 8 V3: journey-gate passes runtime-gate's recorded package id to the android driver — no env var (QA-3)" "rc=$V3RC $(cat "$V3/jg.out") | $(tail -3 "$V3/rg.out")"
+
+# QA-2: the iOS driver executes steps through AXe on a booted simulator (stubs: xcrun, axe).
+cat > "$V3/bin/xcrun" <<'EOF'
+#!/bin/sh
+case "$*" in
+  "simctl list devices booted -j") printf '{"devices":{"iOS":[{"udid":"U1","state":"Booted"}]}}\n' ;;
+  "simctl get_app_container U1 com.example.app") echo /app ;;
+  "simctl launch"*) echo ok ;;
+  "simctl io U1 screenshot "*) printf png > "$5" ;;
+  *) exit 1 ;;
+esac
+EOF
+cat > "$V3/bin/axe" <<'EOF'
+#!/bin/sh
+case "$1" in --version) echo 1.6.0 ;; describe-ui) cat "$V3UI" ;; tap|type) echo "$*" >> "$V3TAPS" ;; esac
+EOF
+chmod +x "$V3/bin/xcrun" "$V3/bin/axe"
+printf '[{"AXLabel":"Root","children":[{"AXUniqueId":"saved_date","AXLabel":"1999-01-02","frame":{"x":0,"y":0,"width":24,"height":24}},{"AXUniqueId":"done","AXLabel":"Done","AXValue":"1","AXFrame":"{{10, 200}, {50, 50}}"}]}]\n' > "$V3/ui.json"
+v3ios() {
+  mkdir -p "$V3/i"; printf '{"schema":"journey/v1","id":"j","steps":[{"action":"launch"},%s]}\n' "$1" > "$V3/i/j.json"; : > "$V3/taps"
+  ( cd "$V3/i" && PATH="$V3/bin:$PATH" V3UI="$V3/ui.json" V3TAPS="$V3/taps" sh "$HERE/drivers/ios.sh" --journey j.json --bundle com.example.app --evidence-dir ev >"$V3/i.out" 2>&1; echo $? )
+}
+[ "$(v3ios '{"action":"tap","id":"done"},{"assert":"value_equals","id":"saved_date","value":"1999-01-02"},{"assert":"is_checked","id":"done","value":true}')" = 0 ] \
+  && grep -q 'tap -x 35 -y 225 --udid U1' "$V3/taps" && [ -s "$V3/i/ev/j.png" ] \
+  && ok "Sprint 8 V3: the iOS driver taps, reads back and PASSes with a screenshot — steps run, not CANNOT EVALUATE (QA-2)" \
+  || bad "Sprint 8 V3: the iOS driver taps, reads back and PASSes with a screenshot — steps run, not CANNOT EVALUATE (QA-2)" "taps=$(cat "$V3/taps") $(cat "$V3/i.out")"
+[ "$(v3ios '{"assert":"min_touch_target","id":"saved_date","dp":44}')" = 1 ] && grep -q 'measures 24pt' "$V3/i.out" \
+  && ok "Sprint 8 V3: the iOS driver FAILs a 24pt target against a 44pt spec (QA-2)" \
+  || bad "Sprint 8 V3: the iOS driver FAILs a 24pt target against a 44pt spec (QA-2)" "$(cat "$V3/i.out")"
+printf '#!/bin/sh\nexit 127\n' > "$V3/bin/axe"   # shadow any real AXe on this machine
+[ "$(v3ios '{"assert":"text_visible","value":"x"}')" = 2 ] && grep -q 'brew install cameroncooke/axe/axe' "$V3/i.out" \
+  && ok "Sprint 8 V3: without AXe the iOS driver is CANNOT EVALUATE naming the one install line (QA-2)" \
+  || bad "Sprint 8 V3: without AXe the iOS driver is CANNOT EVALUATE naming the one install line (QA-2)" "$(cat "$V3/i.out")"
+
+# FL-2 / FL-5 / QA-11: journey-gate serves the web app itself — the bound release artifact first.
+V3W="$V3/web"; mkdir -p "$V3W/docs/team/journeys" "$V3W/src" "$V3W/dist" "$V3W/node_modules/playwright"
+printf 'dist/\nnode_modules/\n' > "$V3W/.gitignore"
+printf '{"scripts":{"build":"node -e 0","start":"node src/serve.js"}}\n' > "$V3W/package.json"
+printf 'require("http").createServer((q, r) => r.end("<p id=\\"1st-item\\">SOURCE</p>")).listen(+process.env.PORT, "127.0.0.1");\n' > "$V3W/src/serve.js"
+printf '<p id="1st-item">BUILT</p>\n' > "$V3W/dist/index.html"
+cat > "$V3W/node_modules/playwright/index.js" <<'JS'
+// Real HTTP to the served URL; a selector Chromium would reject (`#1st-item`) throws as it does.
+let html = '';
+const loc = (sel) => { if (/#\d/.test(sel)) throw new Error(`invalid selector ${sel}`); return { first() { return this; }, async waitFor() {},
+  async evaluate() { return html.replace(/<[^>]*>/g, '').trim(); }, async innerText() { return html.replace(/<[^>]*>/g, ''); } }; };
+exports.chromium = { async launch() { return { async newPage() { return { async goto(u) { html = await (await fetch(u)).text(); }, locator: loc,
+  async screenshot({ path }) { require('fs').writeFileSync(path, 'png'); } }; }, async close() {} }; } };
+JS
+printf '{"schema":"journey/v1","id":"w","priority":"P0","steps":[{"action":"launch"},{"assert":"value_equals","id":"1st-item","value":"BUILT"}]}\n' > "$V3W/docs/team/journeys/w.json"
+( cd "$V3W" && git init -q -b main . && git add -A && git -c user.name=t -c user.email=t@t commit -qm base \
+  && node "$HERE/release-candidate.mjs" record --artifact dist --platform web --root . ) >/dev/null 2>&1
+( cd "$V3W" && STUDIO_WEB_URL= node "$HERE/journey-gate.mjs" --root . --driver "$HERE/drivers/web.sh" ) >"$V3/w1.out" 2>&1; V3RC=$?
+[ "$V3RC" = 0 ] && grep -q 'served: static dist' "$V3/w1.out" \
+  && ok "Sprint 8 V3: journey-gate serves the release candidate bound at HEAD, not npm start on source (FL-5, QA-11)" \
+  || bad "Sprint 8 V3: journey-gate serves the release candidate bound at HEAD, not npm start on source (FL-5, QA-11)" "rc=$V3RC $(cat "$V3/w1.out")"
+rm -f "$V3W/docs/team/release-candidates.jsonl"
+printf '{"schema":"journey/v1","id":"w","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"SOURCE"}]}\n' > "$V3W/docs/team/journeys/w.json"
+( cd "$V3W" && git add -A && git -c user.name=t -c user.email=t@t commit -qm src && STUDIO_WEB_URL= node "$HERE/journey-gate.mjs" --root . --driver "$HERE/drivers/web.sh" ) >"$V3/w2.out" 2>&1; V3RC=$?
+[ "$V3RC" = 0 ] && grep -q 'served: npm run start' "$V3/w2.out" \
+  && ok "Sprint 8 V3: with no candidate, journey-gate starts the app itself — no hand-exported STUDIO_WEB_URL (FL-2)" \
+  || bad "Sprint 8 V3: with no candidate, journey-gate starts the app itself — no hand-exported STUDIO_WEB_URL (FL-2)" "rc=$V3RC $(cat "$V3/w2.out")"
+
+( cd "$V3W" && node "$HERE/release-candidate.mjs" record --artifact dist --platform web --root . ) >/dev/null 2>&1
+sh "$HERE/runtime-gate.sh" --platform web --project-root "$V3W" >"$V3/rgw.out" 2>&1; V3RC=$?
+[ "$V3RC" = 0 ] && grep -q "served and smoked .*static $V3W/dist" "$V3/rgw.out" \
+  && ok "Sprint 8 V3: runtime-gate smokes the release candidate bound at HEAD, not npm start on source (FL-5)" \
+  || bad "Sprint 8 V3: runtime-gate smokes the release candidate bound at HEAD, not npm start on source (FL-5)" "rc=$V3RC $(cat "$V3/rgw.out")"
+# --- Sprint 8 V8: web project path (scaffold, build output, privacy N/A, capabilities, context) ---
+echo "Sprint 8 V8: web project path"
+V8="$TMP/s8v8"; rm -rf "$V8"; mkdir -p "$V8/docs/team"
+( cd "$V8" && git init -q -b main . )
+printf '{"schema":"project-profile/v1","platform":"web","toolchain":[{"tool":"node","args":["--version"],"expect":"v"}],"test":{"fast":"npm ci && npm test"}}\n' > "$V8/docs/team/project-profile.json"
+echo '<p>hi</p>' > "$V8/index.html"
+# FL-4: a build that writes no output dir is caught at the profile check, not at release-candidate.
+printf '{"scripts":{"build":"node -e 0","test":"true"}}\n' > "$V8/package.json"
+assert_exit 1 "Sprint 8 V8: FL-4 project-profile BLOCKS a web build that writes no output dir" node "$HERE/project-profile.mjs" check --root "$V8"
+assert_has "$TMP/out" "release-candidate has no build output to bind" "Sprint 8 V8: FL-4 ...naming release-candidate's refusal"
+printf '{"scripts":{"build":"mkdir -p dist && cp index.html dist/","test":"true"}}\n' > "$V8/package.json"
+assert_exit 1 "Sprint 8 V8: FL-4 project-profile BLOCKS a build output dir that is not gitignored" node "$HERE/project-profile.mjs" check --root "$V8"
+echo 'dist/' > "$V8/.gitignore"
+assert_exit 0 "Sprint 8 V8: FL-4 ...and clears a gitignored dist/ the build wrote" node "$HERE/project-profile.mjs" check --root "$V8"
+# FL-9: no store listing on a roster with aso-specialist off is N/A, not CANNOT EVALUATE.
+printf '# Roster\n\n| Role | State | Reason |\n|---|---|---|\n| aso-specialist | off | web-app has no store listing |\n' > "$V8/docs/02-team-roster.md"
+assert_exit 0 "Sprint 8 V8: FL-9 privacy scan is N/A when aso-specialist is off and docs/15-aso.md is absent" node "$HERE/privacy-disclosure-scan.mjs" "$V8"
+assert_has "$TMP/out" "N/A: store disclosure" "Sprint 8 V8: FL-9 ...saying N/A: store disclosure"
+printf '# Roster\n\n| Role | State | Reason |\n|---|---|---|\n| aso-specialist | active | mobile |\n' > "$V8/docs/02-team-roster.md"
+assert_exit 2 "Sprint 8 V8: FL-9 ...but stays CANNOT EVALUATE when aso-specialist is active" node "$HERE/privacy-disclosure-scan.mjs" "$V8"
+# EN-10: --help prints usage and writes nothing.
+V8H="$TMP/s8v8-help"; rm -rf "$V8H"; mkdir -p "$V8H"
+( cd "$V8H" && node "$HERE/team-bootstrap.mjs" --help ) >"$TMP/s8v8h.txt" 2>&1; V8RC=$?
+[ "$V8RC" = 0 ] && grep -q 'Usage:' "$TMP/s8v8h.txt" && [ ! -e "$V8H/docs" ] \
+  && ok "Sprint 8 V8: EN-10 team-bootstrap --help prints usage, exits 0 and writes no manifest" \
+  || bad "Sprint 8 V8: EN-10 team-bootstrap --help prints usage, exits 0 and writes no manifest" "rc=$V8RC $(ls "$V8H")"
+# FL-7 / FL-8: web-developer may write the ordinary web layout; context tracks the impl spec, not vision.
+for f in 00-vision.md 10-prd.md 22-impl-spec-web.md; do echo "# $f" > "$V8/docs/$f"; done
+node "$HERE/team-bootstrap.mjs" --root "$V8" --force >/dev/null 2>&1
+assert_exit 0 "Sprint 8 V8: FL-7 web-developer may write a root index.html" node "$HERE/capability-check.mjs" --manifest "$V8/docs/team/capabilities.json" --role web-developer --operation write --path "$V8/index.html"
+assert_exit 0 "Sprint 8 V8: FL-7 ...and scripts/build.mjs" node "$HERE/capability-check.mjs" --manifest "$V8/docs/team/capabilities.json" --role web-developer --operation write --path "$V8/scripts/build.mjs"
+assert_exit 1 "Sprint 8 V8: FL-7 ...while ios-developer still may not write index.html" node "$HERE/capability-check.mjs" --manifest "$V8/docs/team/capabilities.json" --role ios-developer --operation write --path "$V8/index.html"
+grep -q '22-impl-spec-web.md' "$V8/docs/team/context-manifest.json" && ! grep -q '00-vision.md' "$V8/docs/team/context-manifest.json" \
+  && ok "Sprint 8 V8: FL-8 the context manifest hashes the impl spec and not the vision" \
+  || bad "Sprint 8 V8: FL-8 the context manifest hashes the impl spec and not the vision" "$(grep -o 'docs/[^"]*' "$V8/docs/team/context-manifest.json" | sort -u | tr '\n' ' ')"
+# FL-1 / FL-2: devops-engineer owns the web scaffold at /app-init; no ticket is assigned it.
+! grep -q 'first `web-developer` scaffold ticket' "$HERE/../commands/app-init.md" && grep -q 'playwright' "$HERE/../agents/devops-engineer.md" \
+  && ok "Sprint 8 V8: FL-1/FL-2 devops-engineer scaffolds package.json + Playwright at /app-init" \
+  || bad "Sprint 8 V8: FL-1/FL-2 devops-engineer scaffolds package.json + Playwright at /app-init"
+rm -rf "$V8" "$V8H"
+# --- Sprint 8 V2: board + build loop (SM-1..10, AU-3, AU-11, QA-4, EN-11, FL-3, FL-12, LN-5) ---
+echo "Sprint 8 V2: board + build loop"
+S8=$(newboard s8v2)
+( cd "$S8" && git init -q -b main . && git config user.email t@t.t && git config user.name T && git commit -q --allow-empty -m base ) >/dev/null 2>&1
+s8_merge() {  # add + walk one ticket to `qa`
+  bm "$S8" add "$1" --title "$1 work" --owner ios-developer ${2:+--depends "$2"} >/dev/null 2>&1
+  bm "$S8" move "$1" claimed --by ios-developer >/dev/null 2>&1
+  bm "$S8" move "$1" done_reported --by ios-developer >/dev/null 2>&1
+  bm "$S8" move "$1" verified --by tech-manager >/dev/null 2>&1
+  bm "$S8" move "$1" review_requested --by ios-developer --detail "-> code-reviewer" >/dev/null 2>&1
+  bm "$S8" move "$1" approved --by code-reviewer >/dev/null 2>&1
+  bm "$S8" move "$1" merged --by tech-manager >/dev/null 2>&1
+}
+s8_status() { bm "$S8" show "$1" --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)[process.argv[1].toUpperCase()]?.[process.argv[2]||"status"]))}catch{}})' "$1" "${2:-}"; }
+s8_merge APP-1
+bm "$S8" move APP-1 qa_passed --by qa-engineer >/dev/null 2>&1
+# QA-4: qa_failed names a real bug row
+assert_exit 1 "Sprint 8 V2: QA-4 qa_failed without a BUG-NNN in --detail is refused" bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "it crashed"
+assert_exit 1 "Sprint 8 V2: QA-4 qa_failed naming a BUG-NNN that is not a docs/51-bugs.md row is refused" bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "BUG-001 crash"
+printf 'BUG-001 | APP-1 | S1 | ios | tap | works | crash | 1 | open\nBUG-002 | APP-1 | S2 | ios | tap | works | hang | 1 | open\nBUG-003 | APP-1 | S2 | ios | tap | ok | x | 1 | open\n' > "$S8/docs/51-bugs.md"
+assert_exit 0 "Sprint 8 V2: QA-4 qa_failed naming a filed bug row is accepted" bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "BUG-001 S1 crash"
+[ "$(s8_status BUG-001-fix owner)" = ios-developer ] && bm "$S8" show --json 2>/dev/null | grep -q '"APP-1"' \
+  && ok "Sprint 8 V2: QA-4 ...and it cuts BUG-001-fix, owned by the failed ticket's owner" \
+  || bad "Sprint 8 V2: QA-4 ...and it cuts BUG-001-fix, owned by the failed ticket's owner" "owner=$(s8_status BUG-001-fix owner)"
+# SM-4: the failure revokes the earlier pass (the reducer, so qa_passed's evidence is not the subject)
+S84=$(node --input-type=module -e '
+const { reduce, validate } = await import(process.argv[1]);
+const mk = (event, by = "tech-manager", detail = "") => ({ ticket: "T-1", event, by, detail });
+const ev = [{ ticket: "T-1", event: "created", by: "tech-manager", detail: { owner: "ios-developer" } }, mk("claimed", "ios-developer"),
+  mk("done_reported", "ios-developer"), mk("verified"), mk("review_requested", "ios-developer"), mk("approved", "code-reviewer"), mk("merged"), mk("qa_passed", "qa-engineer")];
+const before = validate(reduce(ev).tickets, mk("closed")).ok;
+ev.push(mk("qa_failed", "qa-engineer", "BUG-009 S1 crash"));
+process.stdout.write(`${before} ${validate(reduce(ev).tickets, mk("closed")).ok} ${validate(reduce(ev).tickets, mk("rework", "tech-manager", "x")).ok}`);' "$HERE/lib/events.mjs" 2>&1)
+[ "$S84" = "true false true" ] && ok "Sprint 8 V2: SM-4 qa_failed after qa_passed revokes the pass — closed refused, rework legal" \
+  || bad "Sprint 8 V2: SM-4 qa_failed after qa_passed revokes the pass — closed refused, rework legal" "$S84"
+# AU-11: the QA loop is capped at 2 failures
+bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "BUG-002 hang" >/dev/null 2>&1
+bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "BUG-003 again" >/dev/null 2>&1
+[ "$(s8_status APP-1)" = blocked ] && ok "Sprint 8 V2: AU-11 the 3rd qa_failed forces blocked (product-manager decides)" \
+  || bad "Sprint 8 V2: AU-11 the 3rd qa_failed forces blocked (product-manager decides)" "status=$(s8_status APP-1)"
+# AU-3: tech-lead, not the founder, grants the extra cycle — once
+assert_exit 1 "Sprint 8 V2: AU-3 reopened --by founder is refused (the cap goes to tech-lead/cto)" bm "$S8" move APP-1 reopened --by founder
+assert_exit 0 "Sprint 8 V2: AU-3 reopened --by tech-lead is accepted" bm "$S8" move APP-1 reopened --by tech-lead --detail "spec fixed"
+bm "$S8" move APP-1 blocked --by tech-manager --detail "again" >/dev/null 2>&1
+assert_exit 1 "Sprint 8 V2: AU-3 ...once per ticket" bm "$S8" move APP-1 reopened --by tech-lead
+# SM-2: descoped is terminal, out of flight, and re-plans its dependents
+assert_exit 1 "Sprint 8 V2: SM-2 descoped needs a reason" bm "$S8" move APP-1 descoped --by tech-manager
+assert_exit 1 "Sprint 8 V2: SM-2 descoped is tech-manager's decision" bm "$S8" move APP-1 descoped --by ios-developer --detail x
+bm "$S8" add APP-2 --title "dep" --owner ios-developer --depends APP-1 >/dev/null 2>&1
+assert_exit 0 "Sprint 8 V2: SM-2 descoped from blocked is accepted" bm "$S8" move APP-1 descoped --by tech-manager --detail "cut: superseded"
+node "$HERE/ship-inflight.mjs" "$S8/docs/31-board.md" >"$TMP/s8if.txt" 2>&1
+! grep -q 'APP-1(' "$TMP/s8if.txt" && ok "Sprint 8 V2: SM-2 a descoped ticket is not in flight for ship-gate" \
+  || bad "Sprint 8 V2: SM-2 a descoped ticket is not in flight for ship-gate" "$(cat "$TMP/s8if.txt")"
+node "$HERE/board-doctor.mjs" "$S8/docs/31-board.md" --json >"$TMP/s8bd.txt" 2>&1; S8RC=$?
+[ "$S8RC" = 1 ] && grep -q '"stranded"' "$TMP/s8bd.txt" && ok "Sprint 8 V2: SM-2 a dependent of a descoped ticket is stranded until re-planned" \
+  || bad "Sprint 8 V2: SM-2 a dependent of a descoped ticket is stranded until re-planned" "rc=$S8RC"
+# FL-12: corrected takes --depends/--acceptance/--file
+bm "$S8" move APP-2 corrected --by tech-manager --depends "" --acceptance "Given x, Then y" --file src/a.swift >/dev/null 2>&1
+bm "$S8" move BUG-001-fix descoped --by tech-manager --detail "APP-1 descoped" >/dev/null 2>&1
+bm "$S8" move BUG-002-fix descoped --by tech-manager --detail "APP-1 descoped" >/dev/null 2>&1
+node "$HERE/board-doctor.mjs" "$S8/docs/31-board.md" >/dev/null 2>&1; S8RC=$?
+[ "$S8RC" = 0 ] && [ "$(s8_status APP-2 dependsOn)" = "" ] && bm "$S8" show --json 2>/dev/null | grep -q 'Given x, Then y' \
+  && ok "Sprint 8 V2: FL-12 corrected --depends/--acceptance/--file re-plans a ticket" \
+  || bad "Sprint 8 V2: FL-12 corrected --depends/--acceptance/--file re-plans a ticket" "doctor rc=$S8RC deps=$(s8_status APP-2 dependsOn)"
+# SM-7: a todo behind a BLOCKED dependency is a warning, not a round-stopping anomaly
+S87=$(newboard s8v2-strand)
+bm "$S87" add AUDIT-1 --title "risky" --owner ios-developer --status blocked --reason "needs-approval: risky" >/dev/null 2>&1
+bm "$S87" add APP-5 --title "dep" --owner ios-developer --depends AUDIT-1 >/dev/null 2>&1
+bm "$S87" add APP-6 --title "free" --owner ios-developer >/dev/null 2>&1
+node "$HERE/board-doctor.mjs" "$S87/docs/31-board.md" >"$TMP/s87.txt" 2>&1; S8RC=$?
+[ "$S8RC" = 0 ] && grep -q stranded "$TMP/s87.txt" && ok "Sprint 8 V2: SM-7 stranded behind a blocked dependency is a warning (doctor exit 0)" \
+  || bad "Sprint 8 V2: SM-7 stranded behind a blocked dependency is a warning (doctor exit 0)" "rc=$S8RC"
+# SM-1: a blocked ticket does not trip the stall detector
+for _i in 1 2 3 4 5 6 7 8 9 10 11; do bm "$S87" move APP-6 corrected --by tech-manager --detail '{"notes":"n"}' >/dev/null 2>&1; done
+( cd "$S87" && node "$HERE/orchestrator.mjs" round ) >"$TMP/s8or.txt" 2>&1
+grep -q 'STALLED APP-6\|MOVEMENT' "$TMP/s8or.txt" && ! grep -q 'STALLED AUDIT-1' "$TMP/s8or.txt" \
+  && ok "Sprint 8 V2: SM-1 a blocked ticket is never STALLED (the round still sees the board)" \
+  || bad "Sprint 8 V2: SM-1 a blocked ticket is never STALLED (the round still sees the board)" "$(grep -m3 'STALLED\|RESULT' "$TMP/s8or.txt")"
+# SM-5: rework + rejected are bounded per ticket
+S85=$(node --input-type=module -e '
+const { reduce, validate } = await import(process.argv[1]);
+const mk = (event, by = "tech-manager", detail = "") => ({ ticket: "T-1", event, by, detail });
+const ev = [{ ticket: "T-1", event: "created", by: "tech-manager", detail: { owner: "ios-developer" } }, mk("claimed", "ios-developer")];
+const tail = [mk("done_reported", "ios-developer"), mk("verified"), mk("review_requested", "ios-developer"), mk("approved", "code-reviewer"), mk("merged")];
+ev.push(...tail);
+let n = 0;
+for (; n < 10; n++) { const r = validate(reduce(ev).tickets, mk("rework", "tech-manager", "wave 1: FAIL")); if (!r.ok) { process.stdout.write(`${n} ${r.force?.event}`); break; } ev.push(mk("rework", "tech-manager", "wave 1: FAIL"), ...tail); }' "$HERE/lib/events.mjs" 2>&1)
+[ "$S85" = "6 blocked" ] && ok "Sprint 8 V2: SM-5 the 7th rework is refused and forces blocked" \
+  || bad "Sprint 8 V2: SM-5 the 7th rework is refused and forces blocked" "$S85"
+# EN-11: ticket ids and titles
+assert_exit 1 "Sprint 8 V2: EN-11 add refuses a path-shaped id" bm "$S87" add "../x" --title x --owner ios-developer
+assert_exit 1 "Sprint 8 V2: EN-11 add refuses an id with spaces" bm "$S87" add "APP 7; rm" --title x --owner ios-developer
+assert_exit 1 "Sprint 8 V2: EN-11 add refuses an empty title" bm "$S87" add APP-9 --title "" --owner ios-developer
+# SM-3: the budget is per sprint, and scales with the board
+S83="$TMP/s8v2-rj"; rm -rf "$S83"; mkdir -p "$S83/docs"
+for _i in 1 2 3 4 5 6 7; do ( cd "$S83" && node "$HERE/round-journal.mjs" append --round "$_i" --sprint 1 --agents ios-developer=3 ) >/dev/null 2>&1; done
+( cd "$S83" && node "$HERE/round-journal.mjs" check ) >/dev/null 2>&1; S8A=$?
+( cd "$S83" && node "$HERE/round-journal.mjs" append --round 8 --sprint 2 --agents ios-developer=3 ) >/dev/null 2>&1
+( cd "$S83" && node "$HERE/round-journal.mjs" check ) >"$TMP/s83.txt" 2>&1; S8B=$?
+[ "$S8A" = 1 ] && [ "$S8B" = 0 ] && grep -q 'sprint 2' "$TMP/s83.txt" \
+  && ok "Sprint 8 V2: SM-3 round-journal check sums only the current --sprint" \
+  || bad "Sprint 8 V2: SM-3 round-journal check sums only the current --sprint" "sprint1=$S8A sprint2=$S8B"
+node -e 'const fs=require("fs");let s="";for(let i=1;i<=15;i++)s+=JSON.stringify({ts:"2026-01-01T00:00:00Z",ticket:"T-"+i,event:"created",by:"tech-manager",detail:{owner:"ios-developer"}})+"\n";fs.writeFileSync(process.argv[1],s)' "$S83/docs/31-board-events.jsonl"
+( cd "$S83" && node "$HERE/round-journal.mjs" check --journal docs/none.jsonl ) >"$TMP/s83b.txt" 2>&1
+grep -q 'max 30 each' "$TMP/s83b.txt" && ok "Sprint 8 V2: SM-3 the per-agent default scales with the board (15 tickets -> 30)" \
+  || bad "Sprint 8 V2: SM-3 the per-agent default scales with the board (15 tickets -> 30)" "$(cat "$TMP/s83b.txt")"
+# LN-5 (V5's request): with no journal, check derives the counters from the board log
+node -e 'const fs=require("fs");let s="";for(let i=1;i<=61;i++){s+=JSON.stringify({ts:"2026-01-01T00:00:00Z",ticket:"T-"+i,event:"created",by:"tech-manager",detail:{owner:"ios-developer"}})+"\n"+JSON.stringify({ts:"2026-01-01T00:00:01Z",ticket:"T-"+i,event:"claimed",by:"ios-developer"})+"\n"}fs.writeFileSync(process.argv[1],s)' "$S83/docs/31-board-events.jsonl"
+( cd "$S83" && node "$HERE/round-journal.mjs" check --journal docs/none.jsonl --max-spawns 60 ) >"$TMP/s83c.txt" 2>&1; S8RC=$?
+[ "$S8RC" = 1 ] && grep -q 'spawns 61 / 60' "$TMP/s83c.txt" && ok "Sprint 8 V2: LN-5 an unjournaled loop is counted from the board log (61 claims trip 60 spawns)" \
+  || bad "Sprint 8 V2: LN-5 an unjournaled loop is counted from the board log (61 claims trip 60 spawns)" "rc=$S8RC $(head -2 "$TMP/s83c.txt")"
+# SM-6: a dead agent's in_progress ticket is named for respawn
+S86=$(newboard s8v2-lease)
+bm "$S86" add APP-7 --title "orphan" --owner ios-developer >/dev/null 2>&1
+bm "$S86" move APP-7 claimed --by ios-developer --lease-seconds 1 >/dev/null 2>&1
+sleep 2
+( cd "$S86" && node "$HERE/orchestrator.mjs" round ) >"$TMP/s86.txt" 2>&1
+grep -q 'RESPAWN ios-developer APP-7' "$TMP/s86.txt" && ok "Sprint 8 V2: SM-6 orchestrator round prints RESPAWN <owner> <ID> for an expired in_progress lease" \
+  || bad "Sprint 8 V2: SM-6 orchestrator round prints RESPAWN <owner> <ID> for an expired in_progress lease" "$(grep -m3 'RESPAWN\|lease' "$TMP/s86.txt")"
+# FL-3: a plan HOLD committed before every landed ticket's qa_passed is superseded, a later one is not
+S8F="$TMP/s8v2-hold"; rm -rf "$S8F"; mkdir -p "$S8F/docs"
+( cd "$S8F" && git init -q -b main . && git config user.email t@t.t && git config user.name T \
+  && printf '# Test plan\nQA VERDICT: HOLD — journeys declared, verdict follows landing\n' > docs/50-test-plan.md \
+  && git add docs && GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' git commit -qm plan ) >/dev/null 2>&1
+printf '%s\n' '{"ts":"2026-01-01T00:00:00Z","ticket":"APP-1","event":"created","by":"tech-manager","detail":{"owner":"ios-developer"}}' \
+  '{"ts":"2026-01-02T00:00:00Z","ticket":"APP-1","event":"merged","by":"tech-manager"}' \
+  '{"ts":"2026-01-03T00:00:00Z","ticket":"APP-1","event":"qa_passed","by":"qa-engineer"}' > "$S8F/docs/31-board-events.jsonl"
+( cd "$S8F" && node "$HERE/board.mjs" render ) >/dev/null 2>&1
+( cd "$S8F" && sh "$HERE/ship-gate.sh" ) >"$TMP/s8f1.txt" 2>&1
+( cd "$S8F" && printf 'QA VERDICT: HOLD — new crash\n' >> docs/50-test-plan.md && git add docs && git commit -qm hold ) >/dev/null 2>&1
+( cd "$S8F" && sh "$HERE/ship-gate.sh" ) >"$TMP/s8f2.txt" 2>&1
+grep -q 'supersede' "$TMP/s8f1.txt" && ! grep -q 'read docs/50-test-plan.md.s exit criteria' "$TMP/s8f1.txt" \
+  && grep -q 'exit criteria before overriding' "$TMP/s8f2.txt" \
+  && ok "Sprint 8 V2: FL-3 ship-gate reads a pre-landing HOLD as superseded by qa_passed, and still blocks a newer HOLD" \
+  || bad "Sprint 8 V2: FL-3 ship-gate reads a pre-landing HOLD as superseded by qa_passed, and still blocks a newer HOLD" "$(grep -m2 'HOLD\|supersede' "$TMP/s8f1.txt" "$TMP/s8f2.txt")"
+# SM-9 / SM-10: the DoD copy is gone, and the handoff is one line per ticket
+! grep -q 'fast` per ticket, `full` at merge' "$HERE/../skills/sprint-planner/SKILL.md" \
+  && ! grep -q 'ios-developer ← APP-001, APP-004' "$HERE/../skills/sprint-planner/SKILL.md" \
+  && ! grep -q 'start no new feature work until it closes' "$HERE/../agents/tech-manager.md" \
+  && grep -q 'Sprint goal: MET / NOT MET' "$HERE/../commands/app-build.md" \
+  && ok "Sprint 8 V2: SM-9/SM-10 no stale DoD, no batched handoff, one S1 rule, sprint goal judged at exit" \
+  || bad "Sprint 8 V2: SM-9/SM-10 no stale DoD, no batched handoff, one S1 rule, sprint goal judged at exit"
+
+# --- Sprint 8 lead: cross-track follow-ups ---
+echo "Sprint 8 lead: cross-track follow-ups"
+# FL-13: a lease note fires for real uncommitted work, never for the studio's own operational files.
+L8W="$TMP/s8lead-wt"; rm -rf "$L8W"; mkdir -p "$L8W"
+( cd "$L8W" && git init -q -b main . && git config user.email t@t && git config user.name t \
+  && echo x > a && git add a && git commit -qm base && mkdir -p docs/daily && echo s > docs/daily/2026-11-21.md ) >/dev/null 2>&1
+( cd "$L8W" && node "$HERE/worktree-slot.mjs" lease --owner web-developer --tickets APP-1 ) >"$TMP/s8l1.txt" 2>&1
+( cd "$L8W" && echo y > b.txt && node "$HERE/worktree-slot.mjs" lease --owner web-developer --tickets APP-2 ) >"$TMP/s8l2.txt" 2>&1
+! grep -q 'uncommitted path' "$TMP/s8l1.txt" && grep -q 'had 1 uncommitted path' "$TMP/s8l2.txt" \
+  && ok "Sprint 8 lead: a tracked standup is not a lease warning; a real uncommitted file still is (FL-13)" \
+  || bad "Sprint 8 lead: a tracked standup is not a lease warning; a real uncommitted file still is (FL-13)" "$(cat "$TMP/s8l1.txt" "$TMP/s8l2.txt" | head -c 400)"
+# AU-9: a subagent never runs a store upload / production deploy; a mention of one is not refused.
+L8H="$HERE/../hooks/guard-gate-writes.sh"; L8S="$TMP/s8lead-studio"; rm -rf "$L8S"; mkdir -p "$L8S/docs"
+( cd "$L8S" && git init -q -b main . && : > docs/31-board-events.jsonl ) >/dev/null 2>&1
+l8h() { node -e 'const [, a, c, d] = process.argv; const o = { hook_event_name: "PreToolUse", tool_name: "Bash", cwd: d, tool_input: { command: c } }; if (a) o.agent_id = a; process.stdout.write(JSON.stringify(o))' "$1" "$2" "$L8S" | sh "$L8H" >/dev/null 2>&1; }
+l8h agent-1 "cd ios && bundle exec fastlane deliver --ipa x.ipa"; L8A=$?
+l8h agent-1 "git commit -m 'founder runs fastlane deliver later'"; L8B=$?
+l8h "" "fastlane deliver --ipa x.ipa"; L8C=$?
+[ "$L8A" = 2 ] && [ "$L8B" = 0 ] && [ "$L8C" = 0 ] \
+  && ok "Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)" \
+  || bad "Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)" "a=$L8A b=$L8B c=$L8C"
+# FL-16: `trace --only gates` says what it checked, not "no break in the chain".
+L8T="$TMP/s8lead-trace"; rm -rf "$L8T"; mkdir -p "$L8T/docs/00-founder-intent"
+printf '# Brief\nA to-do list.\n' > "$L8T/docs/00-founder-intent/brief.md"
+node "$HERE/trace.mjs" --project-root "$L8T" --only gates >"$TMP/s8lt.txt" 2>&1; L8RC=$?
+[ "$L8RC" = 0 ] && grep -q 'no gate fired' "$TMP/s8lt.txt" && ! grep -q 'no break in the chain' "$TMP/s8lt.txt" \
+  && ok "Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)" \
+  || bad "Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)" "rc=$L8RC $(head -c 300 "$TMP/s8lt.txt")"
+
+# --- Sprint 8 V4: context and agent communication ---
+echo "Sprint 8 V4: context and agent communication"
+V4="$TMP/s8v4"; rm -rf "$V4"; mkdir -p "$V4/docs/53-reviews" "$V4/.agent-wt/android-developer"
+cat > "$V4/docs/10-prd.md" <<'V4PRD'
+# PRD
+
+## Features
+
+| ID | Feature |
+|---|---|
+| F-001 | Log a dose |
+| F-002 | Refill reminder |
+
+## Acceptance
+
+- [AC-001] F-001: a dose is logged in one tap
+- [AC-002] F-002: a reminder fires three days before the pills run out
+V4PRD
+( cd "$V4" && git init -q -b main . && git config user.email t@t && git config user.name t && git add docs && git commit -qm base \
+  && node "$HERE/board.mjs" add APP-101 --feature F-001 --title "Dose" --owner android-developer --acceptance AC-001 --by tech-manager \
+  && node "$HERE/board.mjs" add APP-102 --feature F-002 --title "Refill" --owner android-developer --by tech-manager \
+  && git branch feat/APP-101-dose && node "$HERE/board.mjs" move APP-101 claimed --by android-developer \
+  && node "$HERE/board.mjs" move APP-101 done_reported --by android-developer \
+  && node "$HERE/board.mjs" move APP-101 rejected --by tech-manager --detail "V4MARK no commits on the branch" \
+  && git worktree add -q --detach "$V4/.agent-wt/slot1" ) >/dev/null 2>&1
+
+# CX-1: a question sent from a slot lands in the MAIN checkout's ledger, where step 1b reads it.
+( cd "$V4/.agent-wt/slot1" && sh "$HERE/team-message.sh" --from android-developer --to tech-lead --ticket APP-101 \
+  --kind question --summary "which unit?" ) >/dev/null 2>&1
+[ -f "$V4/docs/team/messages.jsonl" ] && [ ! -e "$V4/.agent-wt/slot1/docs/team/messages.jsonl" ] \
+  && [ "$(cd "$V4/.agent-wt/slot1" && node "$HERE/messages.mjs" open --count 2>/dev/null)" = 1 ] \
+  && ok "Sprint 8 V4: a question sent from a slot lands in the main checkout's ledger (CX-1)" \
+  || bad "Sprint 8 V4: a question sent from a slot lands in the main checkout's ledger (CX-1)" "$(ls "$V4/docs/team" "$V4/.agent-wt/slot1/docs/team" 2>&1 | tr '\n' ' ')"
+( cd "$V4" && node "$HERE/messages.mjs" open --was last ) >/dev/null 2>&1; V4W1=$?
+grep -q 'docs/team/messages.md docs/team/messages.jsonl' "$HERE/../commands/app-init.md" \
+  && ok "Sprint 8 V4: app-init ignores docs/team/messages.jsonl (CX-1)" \
+  || bad "Sprint 8 V4: app-init ignores docs/team/messages.jsonl (CX-1)"
+
+# CX-2 / LN-2 fixtures: tech-lead's answer on APP-101, and a REQUEST CHANGES on APP-102 naming its verdict file.
+printf '%s\n' '{"id":"MSG-0002","v":1,"ts":"2026-11-21T10:00Z","ticket":"APP-101","kind":"answer","from":"tech-lead","to":["android-developer"],"summary":"V4ANSWER milligrams, stored as Decimal","artifact":"docs/22-impl-spec-android.md"}' >> "$V4/docs/team/messages.jsonl"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-102\nScope: a..b\nBlocking:\n- src/b.ts:4 V4CAUGHT uses Float for money — use Decimal\nNotes (non-blocking): none\n\n## Not checked\nNothing\n' > "$V4/docs/53-reviews/APP-102-cycle-0.md"
+chain_append "$V4/docs/31-board-events.jsonl" \
+  '{"ts":"2026-11-21T10:05:00Z","ticket":"APP-102","event":"changes","by":"code-reviewer","detail":{"verdict":"REQUEST CHANGES","verdict_path":"docs/53-reviews/APP-102-cycle-0.md"},"provenance":"cli"}'
+# CX-5: `open --was last` compares against the count `open --count` recorded — nothing to remember.
+( cd "$V4" && node "$HERE/messages.mjs" open --was last ) >/dev/null 2>&1; V4W2=$?
+[ "$V4W1" = 1 ] && [ "$V4W2" = 0 ] \
+  && ok "Sprint 8 V4: open --was last reads the recorded count: unfallen exits 1, answered exits 0 (CX-5)" \
+  || bad "Sprint 8 V4: open --was last reads the recorded count: unfallen exits 1, answered exits 0 (CX-5)" "before-answer=$V4W1 after=$V4W2"
+( cd "$V4" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-101 --role android-developer \
+  --slot .agent-wt/android-developer --integration-branch main ) >"$TMP/v4ic.txt" 2>/dev/null
+
+# CX-3: a re-spawn onto an existing branch checks it out and carries why it came back.
+grep -q 'checkout feat/APP-101-dose' "$TMP/v4ic.txt" && ! grep -q 'checkout -b' "$TMP/v4ic.txt" && grep -q 'V4MARK' "$TMP/v4ic.txt" \
+  && ok "Sprint 8 V4: a rejected ticket's re-spawn checks out its existing branch with the rejection inlined (CX-3)" \
+  || bad "Sprint 8 V4: a rejected ticket's re-spawn checks out its existing branch with the rejection inlined (CX-3)" "$(grep -m2 'checkout' "$TMP/v4ic.txt")"
+# CX-2: the answer reaches the asker's prompt and the reviewer's.
+( cd "$V4" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-101 --role code-reviewer ) >"$TMP/v4rv.txt" 2>/dev/null
+grep -q 'V4ANSWER' "$TMP/v4ic.txt" && grep -q 'V4ANSWER' "$TMP/v4rv.txt" \
+  && ok "Sprint 8 V4: tech-lead's answer on the ticket is inlined in the IC and the reviewer prompt (CX-2)" \
+  || bad "Sprint 8 V4: tech-lead's answer on the ticket is inlined in the IC and the reviewer prompt (CX-2)"
+# LN-2: another ticket's Blocking: line reaches this ticket's IC prompt.
+grep -q 'V4CAUGHT' "$TMP/v4ic.txt" \
+  && ok "Sprint 8 V4: this sprint's REQUEST CHANGES blockers are inlined in the next IC prompt (LN-2)" \
+  || bad "Sprint 8 V4: this sprint's REQUEST CHANGES blockers are inlined in the next IC prompt (LN-2)"
+# CX-8: the excerpt keeps only this ticket's rows of a shared table and criteria list.
+grep -q 'F-001 | Log a dose' "$TMP/v4ic.txt" && grep -q 'AC-001' "$TMP/v4ic.txt" \
+  && ! grep -q 'Refill reminder' "$TMP/v4ic.txt" && ! grep -q 'AC-002' "$TMP/v4ic.txt" \
+  && ok "Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)" \
+  || bad "Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)" "$(grep -n 'F-00\|AC-00' "$TMP/v4ic.txt" | head -5)"
+# CX-11: team-protocol is conditional for release-auditor, so its budget line no longer counts it.
+( cd "$V4" && node "$HERE/spawn-prompt.mjs" compose --root . --role release-auditor ) 2>"$TMP/v4ra.err" >/dev/null
+grep -q 'mandatory skills' "$TMP/v4ra.err" && ! grep 'mandatory skills' "$TMP/v4ra.err" | grep -q 'team-protocol' \
+  && ok "Sprint 8 V4: release-auditor's budget does not count the conditional team-protocol (CX-11)" \
+  || bad "Sprint 8 V4: release-auditor's budget does not count the conditional team-protocol (CX-11)" "$(cat "$TMP/v4ra.err")"
+# CX-4: /app-run resumes from the files before it detects greenfield/brownfield.
+awk '/^0\. \*\*Resume first/{z=NR} /^1\. \*\*Detect greenfield/{d=NR} END{exit !(z && d && z < d)}' "$HERE/../commands/app-run.md" \
+  && grep -q '`docs/31-board-events.jsonl` exists → step 4' "$HERE/../commands/app-run.md" \
+  && ok "Sprint 8 V4: /app-run has a resume step 0 ahead of brownfield detection (CX-4)" \
+  || bad "Sprint 8 V4: /app-run has a resume step 0 ahead of brownfield detection (CX-4)"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

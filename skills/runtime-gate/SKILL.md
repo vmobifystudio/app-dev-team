@@ -57,7 +57,9 @@ gives far more, and you should route to it:
 
 All three are **external and optional** — another plugin or a user-level skill, not this one's
 `skills/`. Their absence
-is normal; it is never a defect to file.
+is normal; it is never a defect to file. They give diagnosis, not a verdict: only
+`journey-gate.mjs` with the plugin's `drivers/ios.sh` (AXe on a booted simulator) records a
+journey PASS, so declare the journey and run the gate.
 
 Absent toolchain → **degrade to the plain script and say so**. Never silently skip a step: an
 unavailable capability produces a stated CANNOT EVALUATE for that step, never a quiet pass. An

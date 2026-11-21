@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 /**
- * FOUNDATION CONFORMANCE SUITE — the twelve invariants (I-01..I-12).
+ * FOUNDATION CONFORMANCE SUITE — twelve invariants (I-01..I-12; I-09 "criterion-level proof" now
+ * checks journey-gate evidence by digest — criterion-check.mjs, which no flow ever ran, is gone, QA-7).
+ *
+ * Usage:  node scripts/foundation-conformance.mjs [I-NN ...]    (no ids: every invariant)
+ * Exit:   0 all hold · 1 one or more fail · 2 cannot evaluate, or a bad argument
  *
  * WHY THIS EXISTS, AND WHY IT WAS COMMITTED RED. The studio has 981 regression assertions and they
  * were all green while the board could lose two thirds of its concurrent writes and the read layer
@@ -22,6 +26,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+import { checkGateLog, writeEvidenceLog } from './lib/evidence.mjs';
+
+import { parseArgs } from './lib/args.mjs';
 
 // A CI runner has no git identity ("fatal: empty ident name"), and the scripts these sandboxes run
 // commit. Set one only when git cannot form its own, so a configured machine is left as it was
@@ -32,7 +40,13 @@ try { execFileSync('git', ['var', 'GIT_COMMITTER_IDENT'], { stdio: 'ignore' }); 
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
-const only = process.argv.slice(2).filter((a) => /^I-\d+$/.test(a));
+// EN-10: arguments were filtered, not parsed — `--help` (or a typo) ran the whole suite.
+const { positional: only } = parseArgs(process.argv.slice(2), {
+  valueFlags: new Set(), knownFlags: new Set(),
+  die: (code, message) => { process.stderr.write(`foundation-conformance: ${message}\n`); process.exit(2); },
+});
+const badId = only.find((a) => !/^I-\d\d$/.test(a));
+if (badId) { process.stderr.write(`foundation-conformance: not an invariant id: ${badId} (usage: [I-NN ...])\n`); process.exit(2); }
 
 const results = [];
 
@@ -421,35 +435,18 @@ invariant('I-08', 'Bidirectional scope coverage', true, () => sandbox((dir) => {
 // I-09  Criterion-level proof
 // ---------------------------------------------------------------------------------------------
 invariant('I-09', 'Criterion-level proof', true, () => sandbox((dir) => {
-  // Behavioural: a generic green suite must NOT stand in for a specific criterion. That
-  // substitution is how a feature ships having satisfied its own interpretation and nothing else.
-  mkdirSync(join(dir, 'docs/team'), { recursive: true });
+  // Sprint 8 (QA-7): criteria are proven by journey assertions, each journey's evidence named by
+  // digest in journey-gate's result. criterion-check.mjs + criteria.json had no writer and no caller.
   mkdirSync(join(dir, 'artifacts'), { recursive: true });
   writeFileSync(join(dir, 'artifacts/ac1.png'), 'screenshot bytes\n');
-  const digest = run('node', ['-e',
-    "const c=require('crypto'),f=require('fs');process.stdout.write(c.createHash('sha256').update(f.readFileSync('artifacts/ac1.png')).digest('hex'))"], dir).out.trim();
-  writeFileSync(join(dir, 'docs/team/criteria.json'), JSON.stringify({
-    schema: 'criteria/v1',
-    criteria: [
-      { id: 'AC-001', ticket: 'T-001', text: 'a saved reading survives a restart', evidence: [{ path: 'artifacts/ac1.png', sha256: digest }] },
-      { id: 'AC-002', ticket: 'T-001', text: 'the export button is reachable', evidence: [] },
-    ],
-  }));
-  const cc = join(ROOT, 'scripts/criterion-check.mjs');
-  // AC-002 has no evidence at all. "Trivially satisfied" is the wrong reading — it is UNPROVEN.
-  const withGap = run('node', [cc, '--root', dir], dir);
-  if (withGap.code === 0) return { state: 'FAIL', detail: 'a criterion naming no evidence was reported as satisfied' };
-  // ...and evidence that exists but no longer matches its digest is STALE, not proof.
-  writeFileSync(join(dir, 'docs/team/criteria.json'), JSON.stringify({
-    schema: 'criteria/v1',
-    criteria: [{ id: 'AC-001', ticket: 'T-001', text: 'x', evidence: [{ path: 'artifacts/ac1.png', sha256: digest }] }],
-  }));
-  const clean = run('node', [cc, '--root', dir], dir);
-  if (clean.code !== 0) return { state: 'FAIL', detail: `a fully proven criterion was still reported unproven: ${clean.out.trim().split('\n')[1] || ''}` };
+  const sha256 = createHash('sha256').update(readFileSync(join(dir, 'artifacts/ac1.png'))).digest('hex');
+  const v = { schema: 'gate-result/v1', gate: 'journey-gate', subject: { head: null }, result: 'PASS',
+    journeys: [{ id: 'AC-001', state: 'PASS', evidence: [{ path: 'artifacts/ac1.png', sha256 }] }],
+    ...writeEvidenceLog(dir, 'journey-i09', 'RESULT: PASS\nGATE-SUBJECT: null\n') };
+  if (!checkGateLog(dir, v, { coverage: false }).ok) return { state: 'FAIL', detail: 'a journey verdict whose evidence still matches was refused' };
   writeFileSync(join(dir, 'artifacts/ac1.png'), 'a DIFFERENT run\n');
-  const moved = run('node', [cc, '--root', dir], dir);
-  if (moved.code === 0) return { state: 'FAIL', detail: 'the criterion stayed proven after its evidence was overwritten with different bytes' };
-  return { state: 'PASS', detail: 'each criterion names its own evidence, matched by digest; a gap or a changed artifact blocks' };
+  if (checkGateLog(dir, v, { coverage: false }).ok) return { state: 'FAIL', detail: 'the journey stayed proven after its evidence was overwritten with different bytes' };
+  return { state: 'PASS', detail: 'each journey names its own evidence, matched by digest; a changed artifact blocks' };
 }));
 
 // ---------------------------------------------------------------------------------------------
@@ -534,7 +531,7 @@ const pass = results.filter((r) => r.state === 'PASS').length;
 const fail = results.filter((r) => r.state === 'FAIL').length;
 const unknown = results.filter((r) => r.state === 'CANNOT_EVALUATE').length;
 
-process.stdout.write('FOUNDATION CONFORMANCE — I-01..I-12\n\n');
+process.stdout.write('FOUNDATION CONFORMANCE — I-01..I-12 (I-09 retired)\n\n');
 for (const r of results) {
   const mark = r.state === 'PASS' ? 'PASS' : r.state === 'FAIL' ? 'FAIL' : '????';
   process.stdout.write(`  ${mark}  ${r.id}  ${r.title}\n        ${r.detail}\n`);

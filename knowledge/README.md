@@ -25,7 +25,8 @@ The two corpora are the odd ones out and deliberately so: every other pack learn
 `failure-corpus.md` is read
 by `code-reviewer` and `verification-engineer` as prior information about what goes wrong here, and is
 fed by `/app-learn`'s failure pass. Its single most valuable output is a class that **recurs after
-its rule shipped** — `team-doctor` fails on that, because it is proof the rule does not work.
+its rule shipped** — `run-ledger.mjs summary` counts those from the FC IDs review verdicts cite, and
+`team-doctor` fails on a recurrence row, because it is proof the rule does not work.
 
 ## How agents use these
 
@@ -33,12 +34,15 @@ An agent loads the relevant pack(s) via the `house-conventions` skill **before**
 or specs, then follows them unless the project's own `docs/` explicitly overrides a rule.
 House conventions are the floor, not a ceiling — a project can be stricter.
 
-## Governance — living and auto-updated
+## Governance — living, and changed only by reviewed patch
 
-This KB improves after every shipped app:
+This KB improves after every run, shipped or stopped:
 
-- `/app-learn <path-to-app>` re-mines a (new or existing) app and folds net-new learnings back
-  into these packs, printing a diff summary.
+- `/app-learn <path-to-app>` re-mines a (new or existing) app and writes its net-new learnings, each
+  stamped `(src: <app>/<file:line>, <date>)`, as `docs/kb-patch.diff` in that project. It never
+  writes into the installed plugin (a reinstall would erase it); the patch lands here as a reviewed PR.
+- **Each pack stays under 1500 words** — packs are inlined whole into spawn prompts, so a full pack
+  takes a merge or a replacement, never an append. The suite enforces it.
 - **Conflicts are flagged, never silently overwritten.** When two apps disagree (e.g. analytics
   default opt-in vs opt-out — a real disagreement found between one internal app's code and its
   CLAUDE.md), the pack records both and the studio's chosen default, and surfaces the conflict
@@ -50,7 +54,7 @@ This KB improves after every shipped app:
 ## Tiers
 
 Some packs distinguish two app archetypes the studio ships:
-- **Flagship** — content/AI/subscription apps: modern Compose/SwiftUI, multi-module, high test
+- **Flagship** — content/AI/subscription apps: modern Compose/SwiftUI, multi-module once a split trigger fires (`stack-defaults.md` §v1 structure), high test
   coverage, subscription-first.
 - **Utility** — single-purpose tools: leaner, ad-first monetization, faster to ship. The plugin
   defaults to **Flagship** rules unless a project declares itself a utility.

@@ -67,7 +67,6 @@ exists, for module boundaries and patterns.
 3. Test: unit tests for service and validation, plus an integration test against the endpoint.
 4. **Update the API contract doc (`docs/40-api.md`) — the mobile devs read this**, and a shipped
    endpoint the contract does not describe is an endpoint nobody can call.
-5. Your branch is `feat/APP-NNN-be-short-slug`.
 
 # What you never do
 
@@ -79,7 +78,7 @@ Beyond the core skill's list:
 # Output
 
 Return the output block your spawn prompt prints, verbatim, `DONE: APP-NNN` first, every field
-filled, `Branch:` in the `-be-` form above. Its labels, for reference: `DONE:` · `Worktree:` ·
+filled, `Branch:` exactly as your spawn prompt's `git checkout -b` line names it. Its labels, for reference: `DONE:` · `Worktree:` ·
 `Branch:` · `Staged (explicit paths):` · `Mutation confirmed:` · `Files:` · `Tests:` ·
 `Second-path check:` · `Daily fragment:` · `Assumptions & open questions:` ·
 `Shared surfaces touched:` · `Next:`. Then append, before `Next: code-reviewer`:

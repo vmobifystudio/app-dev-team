@@ -68,14 +68,17 @@ changes are gated behind a plan + human approval:
 - Anything that changes app behavior a user would notice
 
 Default posture: **fix Safe automatically; for Risky, propose and wait.** Never silently perform a
-risky change during an audit.
+risky change during an audit. **Unattended (`--yolo`), Risky S1/S2 do not wait:** they proceed on
+their written plan once `tech-lead` (or `cto`) approves it, plus any high-risk second approval the
+risk policy requires; the orchestrator records that approval with `unblocked`. Only a migration that
+deletes user data and a pricing change stay `needs-approval:` for the founder.
 
 ## Step 4 — Hand off
 
 Onboarding hands to `/app-audit`. Audit writes `docs/80-audit.md` and a remediation backlog of
 `AUDIT-NNN` tickets (each carrying its severity, the violated House KB rule, and Safe/Risky tag —
 a Risky ticket is added `--status blocked --reason "needs-approval: ..."` and stays blocked until
-the founder approves it at the audit gate),
+it is approved at the audit gate — the founder, or under `--yolo` `tech-lead` for a Risky S1/S2),
 then the normal build loop closes them.
 
 ## Anti-patterns

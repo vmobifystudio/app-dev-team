@@ -171,9 +171,12 @@ function cmdLease() {
 
   // FOUND BY RUNNING A REAL SPRINT (H9, 2026-08-09): `git worktree add` snapshots the last COMMIT,
   // never the live working directory — an uncommitted spec is invisible to the developer cut from
-  // it. Report-only, read BEFORE this command's own writes. `docs/team/` is excluded: its state
-  // files churn on every ordinary call, and a warning that always fires is ignored.
-  const dirtyBefore = git(['status', '--porcelain'])
+  // it. Report-only, read BEFORE this command's own writes. `docs/team/` and the studio's own
+  // operational files (lib/operational-paths.txt — standups, board, register) are excluded: they
+  // churn on every ordinary call, and a warning that always fires is ignored (FL-13).
+  const opExcludes = readFileSync(resolve(HERE, 'lib/operational-paths.txt'), 'utf8')
+    .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((p) => `:(exclude)${p}`);
+  const dirtyBefore = git(['status', '--porcelain', '--', ':(top)', ':(exclude)docs/team', ':(exclude).agent-wt', ...opExcludes])
     .split('\n')
     .filter((line) => line.trim() && !/(^|[\s"])docs\/team\//.test(line))
     .join('\n');

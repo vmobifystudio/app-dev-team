@@ -36,8 +36,9 @@ docs/00-founder-intent/
 - **Verbatim.** Summarised intent is interpreted intent, which is the thing being guarded against.
 - **Every material scope decision points here.** A goal with no source in this directory is a goal
   the team invented — `trace.mjs` reports it as `goal_no_founder_source`.
-- **Thin is a finding, not a pass.** A one-line brief cannot support a PRD; `product-validator`
-  returns `INTENT: CANNOT EVALUATE` and says what is missing.
+- **Thin is filled by recorded defaults, not by questions.** What a one-line brief leaves open the
+  team decides under `docs/03-decision-rights.md` § Team decides, as `[TD-NNN]` lines; only a brief
+  with no persona, core action or product type is `INTENT: CANNOT EVALUATE`.
 
 **The tamper check:**
 
@@ -55,7 +56,7 @@ One convention, extending the existing `[F-NNN]`. Every node **declares** itself
 first token on its line, and names its source and its verifier:
 
 ```markdown
-| [F-004] | Offline export | src: brief.md#L22 · ver: product-validator · state: unverified · rev: 2026-07-29 |
+| [F-004] | Offline export | src: O-002 · ver: product-validator · state: unverified · rev: 2026-07-29 |
 - [AC-011] Given no rows, When export runs, Then it shows the empty state — src: F-004 · ver: T-011
 [EV-003] export_completed — src: F-004 · ver: data-analyst · state: no-event-data
 ```
@@ -119,22 +120,19 @@ claim: export-format = CSV
 
 Every conflict produces a **report naming both sides and the rule that resolved it**
 (`conflict_resolved`), never a silent choice. Two sides at the same rank cannot be resolved by rule,
-so the tool **refuses** (`conflict_unresolvable`) and the disagreement goes to the founder. A
+so the tool **refuses** (`conflict_unresolvable`) and the disagreement goes to the decider that
+`docs/03-decision-rights.md` names for that row — the founder only for a founder row. A
 resolved conflict is still a finding: the losing document is wrong and someone has to fix it.
 
 ## 5. Conditional founder gates
 
-Scope-lock and ship are the two standing gates. These eight stop the loop as well, whenever they are
-detected and no founder decision covers them:
+Scope-lock and ship are the two standing gates. These four are money or irreversible; a fired one
+blocks only the tickets it touches (`/app-run` step 4) until a founder decision covers it:
 
 | Trigger | Detected by |
 |---|---|
 | `pricing` | a price, term or subscription tier asserted in `docs/41-monetization.md` or `docs/10-prd.md` |
-| `sensitive-data` | health, biometric, precise-location, contacts, payment-card, government-ID or under-13 collection named in any doc |
 | `destructive-migration` | a drop/wipe/destructive-migration instruction in any doc |
-| `account-deletion` | account-deletion or erase-all-data behaviour in any doc |
-| `legal-disclosure` | a privacy policy, terms, EULA or export-compliance declaration |
-| `visual-direction` | `claim: visual-direction = ...` in the design docs |
 | `paid-infrastructure` | a paid plan, billing account or per-month cost in `docs/20-architecture.md` |
 | `waiver` | any `WAIVED:` line — waiving a failed or unavailable gate is always a founder decision |
 
@@ -144,7 +142,8 @@ A trigger is cleared by an **append-only** line in `docs/00-founder-intent/decis
 2026-07-29 FOUNDER DECISION: pricing — £3.99/month, annual at £29.99. Approved by <founder>.
 ```
 
-The gate is silent afterwards. It is not cleared by an agent deciding it is fine.
+The gate is silent afterwards (matching is case-insensitive). A price or plan the founder wrote in
+their own brief is already decided. It is not cleared by an agent deciding it is fine.
 
 ## 6. Running it
 

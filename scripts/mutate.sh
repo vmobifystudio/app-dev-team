@@ -36,7 +36,7 @@
 # named assertion is decorative even though the score looks fine.
 #
 # Usage:
-#   sh scripts/mutate.sh                 every mutation (~1 min per mutation — the whole suite runs)
+#   sh scripts/mutate.sh                 every mutation, each against ONLY its test.sh section
 #   sh scripts/mutate.sh --list          print the catalogue and exit
 #   sh scripts/mutate.sh --only M04      one mutation (or a list: --only M38,M39,M40)
 #   sh scripts/mutate.sh --sample 4      4 mutations, spread evenly across the catalogue (CI)
@@ -92,7 +92,10 @@ set -u
 
 ME=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$ME/.." && pwd)
-TAB=$(printf '\t')
+# The field separator is US (\037), not a tab: IFS treats a tab as whitespace, so an EMPTY field
+# (MF47T's empty replacement) collapsed and every later field shifted one left: the mutation
+# replaced its anchor with the assertion label, and the label became the scope.
+TAB=$(printf '\037')
 ONLY=""
 SAMPLE=""
 LIST=0
@@ -127,10 +130,10 @@ catalogue() {
 M01@@scripts/spawn-gate.sh@@exit 1@@exit 0@@REFUSES two writing agents when neither has a worktree
 M02@@scripts/ship-gate.sh@@[ "${OPEN:-0}" -gt 0 ] && block@@[ "${OPEN:-0}" -lt 0 ] && block@@counts open S1/S2 bugs correctly
 M03@@scripts/ship-gate.sh@@grep -nE '(\|\|[[:space:]]*(true|:)([[:space:]]|$))|continue-on-error:[[:space:]]*true'@@grep -nE 'zzzz-this-pattern-matches-nothing'@@a generated workflow that masks an exit code blocks the release
-M04@@scripts/board-doctor.mjs@@(reviewChecksBlock ? anomalies : warnings).push(item)@@warnings.push(item)@@emits done_without_review
+M04@@scripts/board-doctor.mjs@@(reviewChecksBlock ? anomalies : warnings).push(item)@@warnings.push(item)@@emits done_without_review@@DR4-001: a MISSING TOOLCHAIN is not a FAILING TEST
 M05@@scripts/board-doctor.mjs@@effectiveCycles > cap && ACTIVE_STATUS.has(row.status)@@effectiveCycles >= cap && ACTIVE_STATUS.has(row.status)@@Cycles = 2 in review is the budget spent, not a breach
 M06@@scripts/lib/board.mjs@@/[A-Za-z]+-\d+(?:-[A-Za-z]+)?/g@@/[A-Za-z]+-\d+/g@@suffixed ticket ids parse whole (BUG-NNN-fix)
-M07@@scripts/lib/events.mjs@@if (by && workers.has(by)) {@@if (false) {@@a role approving work it did is refused
+M07@@scripts/lib/events.mjs@@if (by && workers.has(by)) {@@if (false) {@@the ticket's owner approving their own ticket is refused
 M08@@scripts/lib/events.mjs@@if (!external.length) {@@if (false) {@@a merge with no approval at all is refused
 M09@@scripts/lib/events.mjs@@if (!state.verified) {@@if (false) {@@review_requested on a DONE with no verify-done result is refused
 M10@@scripts/integration-branch.sh@@integration branch is not recoverable by a later fix. Create the branch, or fix the doc."@@integration branch is not recoverable by a later fix."; echo "$FALLBACK"; exit 0@@a declared branch that does not exist is exit 2, never a fallback
@@ -156,11 +159,11 @@ M29@@scripts/lib/messages.mjs@@m.expires && m.expires < today@@m.expires && m.ex
 M30@@scripts/lib/messages.mjs@@if (record.v !== SCHEMA_VERSION) {@@if (false) {@@a schema-v2 record makes board-doctor CANNOT EVALUATE, never a pass
 M31@@scripts/messages.mjs@@writeFileSync(md, renderMessages(messages));@@if (!existsSync(md)) writeFileSync(md, renderMessages(messages));@@a hand edit to the generated view is overwritten by the next render
 M32@@scripts/accessibility-scan.mjs@@&& !/accessibilityLabel/.test(block)@@&& false@@comment-only and unlabelled SwiftUI controls remain detectable
-M33@@scripts/privacy-disclosure-scan.mjs@@if (!findings.length)@@if (true)@@a blanket privacy claim with outbound identity data blocks release
-M34@@scripts/subscription-restore-scan.mjs@@&& !/Transaction\.currentEntitlements/.test(match[1])@@&& false@@a sync-only restore path blocks release
+M33@@scripts/privacy-disclosure-scan.mjs@@if (!findings.length)@@if (true)@@the lab passes against this tree@@S.7 repository controls
+M34@@scripts/subscription-restore-scan.mjs@@&& !/Transaction\.currentEntitlements/.test(match[1])@@&& false@@the lab passes against this tree@@S.7 repository controls
 M35@@scripts/financial-constant-scan.mjs@@if (!findings.length)@@if (true)@@a bankers rounding implementation under a half-up rule blocks release
-M36@@scripts/requirements-conflict-scan.mjs@@if (prdQuota && archQuota && prdQuota !== archQuota)@@if (false)@@a quota conflict blocks release
-M37@@scripts/analytics-coverage-scan.mjs@@if (!missing.length)@@if (true)@@a missing P0 analytics event blocks release
+M36@@scripts/requirements-conflict-scan.mjs@@if (prdQuota && archQuota && prdQuota !== archQuota)@@if (false)@@the lab passes against this tree@@S.7 repository controls
+M37@@scripts/analytics-coverage-scan.mjs@@if (!missing.length)@@if (true)@@the lab passes against this tree@@S.7 repository controls
 M38@@scripts/lib/register.mjs@@if (NEEDS_REASON.has(status)@@if (false && NEEDS_REASON.has(status)@@DEFERRED with no --reason is REFUSED (a deferral without one is an omission)@@register: the two trackers
 M39@@scripts/lib/register.mjs@@if (status === 'FIXED' && !ticket) {@@if (false) {@@FIXED with no --ticket is REFUSED (nothing would be checkable against the board)@@register: the two trackers
 M40@@scripts/worktree-reap.mjs@@dirty: state.live ? false : dirty(w.path)@@dirty: false@@a DIRTY orphan is reported, not reclaimed@@worktree-reap: the leak
@@ -184,7 +187,7 @@ M58@@scripts/ci-status.mjs@@const headline = ARMED || code === 0 ? state : `ADVI
 M59@@scripts/worktree-slot.mjs@@  if (mine) {@@  if (mine && !flags.force) {@@--force no longer buys a second lease past the guard its own header calls the one that matters@@B4/B5/B6
 M60@@scripts/lib/board.mjs@@  return !(row.staticOnly === true || row.verifiedStatic === true);@@  return true;@@...and a merge-gated one awaiting the wave has NOT (board-row spelling)@@N1/N9: one predicate
 M61@@scripts/messages.mjs@@if (m.kind === 'decision' && pending.length) pending.shift();@@if (m.kind === 'decision') { const j = pending.findIndex((x) => x.kind === 'escalation'); if (j >= 0) pending.splice(j, 1); }@@a decision that answered a QUESTION does not also close an escalation@@N5: one decision
-M62@@scripts/messages.mjs@@if (options.count) { process.stdout.write(`${open.length}\n`); return 0; }@@if (false) { process.stdout.write(`${open.length}\n`); return 0; }@@...and that line is a bare number the runbook can use without a regex@@N8: --count
+M62@@scripts/messages.mjs@@      if (options.count) {@@      if (false) {@@...and that line is a bare number the runbook can use without a regex@@N8: --count
 M63@@scripts/wave-integrate.mjs@@  if (outstanding.length > 1) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }@@  if (false) { ambiguous.push({ id: t.id, branches: outstanding }); continue; }@@a ticket with two unintegrated branches is REPORTED, not picked between@@N2: ambiguity
 M64@@scripts/wave-integrate.mjs@@branches.filter((b) => matchesTicket(b, t.id, ALL_IDS))@@branches.filter((b) => b.includes(t.id))@@...and APP-1 does not match the branch of APP-12@@N2: ambiguity
 M65@@scripts/worktree-reap.mjs@@  if (/^integration-wave-/.test(name)) {@@  if (false) {@@...and --apply never reaps it, because a kept wave tree is CLEAN and the dirty check would not save it@@N3: the kept
@@ -197,7 +200,6 @@ M71@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$HEAD" ] && pick_decla
 M72@@scripts/wave-integrate.mjs@@if (push.ok) {@@if (false) {@@--push runs merge-reconcile.mjs again right after the wave lands@@B1: --push must land
 M73@@scripts/orchestrator.mjs@@const staticOnly = [...tickets.values()].filter((t) => t.verifiedStatic === true).map((t) => t.id);@@const staticOnly = [];@@a ticket still carrying verified_static is counted, every round@@OPS-013: the verified_static
 M74@@scripts/messages.mjs@@if (candidate.kind === 'answer' && candidate.ticket !== TICKETLESS) {@@if (false) {@@an answer on an already-shipped ticket says it filed a register item
-M75@@scripts/review-pattern-scan.mjs@@.filter(([, tickets]) => tickets.size >= 2)@@.filter(([, tickets]) => tickets.size >= 99)@@two tickets blocking on the same file are correlated@@OPS-014: cross-ticket
 M76@@hooks/block-shared-tree-destructive-git.sh@@if [ -n "$REFBLOCK" ]; then@@if false; then@@a push refspec ending :main is blocked, even from a different branch entirely
 M77@@scripts/lib/test-evidence.mjs@@/^#\s*(?:tests|pass)\s+([0-9]+)/gim,@@/zzzz-never-matches-([0-9]+)/gim,@@a wave whose suite is Node's own `node --test` TAP summary is recognized as GREEN
 M78@@scripts/lib/test-evidence.mjs@@/^#\s*(?:tests|pass)\s+([0-9]+)/gim,@@/zzzz-never-matches-([0-9]+)/gim,@@Node's own `node --test` TAP summary (count after the noun) verifies too
@@ -316,7 +318,7 @@ MF24@@scripts/board.mjs@@if (state && isQaDocs(state)) {@@if (false) {@@F1: ...a
 MF25@@scripts/board.mjs@@const integration = integrationBase(gitAt(process.cwd()));@@const integration = 'main';@@F1: ...and the recorded base is develop's tip, not main's@@Sprint 3 track F1
 MF26@@scripts/verify-done.sh@@TOKFLAG=$(node "$EV" token-flag@@TOKFLAG=$(true "$EV" token-flag@@F1: verify-done prints the board command with the inline-mint --token under requireActorTokens (W2-10)@@Sprint 3 track F1
 MM01@@commands/app-init.md@@docs/53-reviews/ docs/54-evidence/@@docs/53-review/ docs/54-evidence/@@K3: every path /app-init gitignores is an operational path (C3W-12)@@Sprint 4 track K3
-MM02@@commands/app-ship.md@@waiver is the exception: android, ios and web drivers all ship.@@Drivers do not ship yet.@@K3: app-build and app-ship name the web driver and its setup (C3W-3)@@Sprint 4 track K3
+MM02@@commands/app-ship.md@@waiver is the exception: android, ios (with AXe) and web drivers all execute every step —@@Drivers do not ship yet.@@K3: app-build and app-ship name the web driver and its setup (C3W-3)@@Sprint 4 track K3
 MM03@@commands/app-build.md@@on every tier, except a wave made only of@@skip it on the utility tier and a wave made only of@@K3: the utility lane runs one QA- ticket per wave, like flagship (C3W-2)@@Sprint 4 track K3
 ML01@@hooks/contract-hooks.mjs@@if (script === 'spawn-prompt.mjs' && after.some((w) => w.v.text === 'compose'))@@if (false)@@spawn-prompt.mjs" compose --ticket APP-001 --role qa-engineer@@Sprint 4 track K2
 ML02@@hooks/contract-hooks.mjs@@if (dynamicMjs || dynamicScript) {@@if (false) {@@K2: guard exit 2 for Bash: node scripts/b?ard.mjs@@Sprint 4 track K2
@@ -521,7 +523,6 @@ U412@@scripts/spawn-prompt.mjs@@[...new Set(['docs/10-prd.md', PLATFORM_SPEC[rol
 U413@@scripts/spawn-prompt.mjs@@die(2, `slot ${slot} does not exist.@@process.stderr.write(`slot ${slot} does not exist.@@Sprint 7 U4: compose refuses a slot that does not exist (C7-12)@@Sprint 7 U4
 U414@@scripts/spawn-prompt.mjs@@readPolicy(ROOT);  // C7-12@@void ROOT;  // C7-12@@Sprint 7 U4: compose refuses an unparseable .studio-policy.json, as the board does (C7-12)@@Sprint 7 U4
 U415@@scripts/lib/contract.mjs@@'ASO BLOCKED', 'ASO:'],@@'ASO BLOCKED'],@@Sprint 7 U4: an aso-specialist 'ASO: CANNOT EVALUATE' stop is not blocked as a missing DONE (R7-9)@@Sprint 7 U4
-U416@@scripts/prompt-registry.mjs@@...TEMPLATES.map((rel)@@...[].map((rel)@@Sprint 7 U4: prompt-registry sync versions spawn-prompt.mjs and lib/contract.mjs, bumping on change (R7-13)@@Sprint 7 U4
 U417@@scripts/spawn-prompt.mjs@@'You write no board event: the orchestrator records a FAIL as `changes`.',@@...tokenLines(ROOT, role, row.id),@@Sprint 7 U4: ...mints no token for a spawn that writes no board event, and clears verify (R7-13)@@Sprint 7 U4
 
 M7U5-01@@scripts/test.sh@@if [ "$_after" != "$PLUGIN_STATUS_BEFORE" ]; then@@if false; then@@C7-1: a run that writes a tracked plugin file fails loudly on exit@@Sprint 7 U5
@@ -533,9 +534,6 @@ M7U5-06@@scripts/run-ledger.mjs@@withFileLock(ledger, () => {@@((fn) => { if (ex
 M7U5-07@@scripts/messages.mjs@@return withFileLock(ledgerPaths(options).jsonl, () => cmdSend(options), { die: lockDie });@@if (existsSync(ledgerPaths(options).jsonl + '.lock')) die('locked'); return cmdSend(options);@@C7-10: messages.mjs takes the same shared lock and reaps the same dead holder@@Sprint 7 U5
 M7U5-08@@scripts/lib/messages.mjs@@const roles = new Set([from, ...(isRegistration(candidate) ? [] : to)]);@@const roles = new Set([from, ...to]);@@R7-2: messages.mjs artifact ADR --by cto --ticket APP-060 is not chain_too_deep@@Sprint 7 U5
 M7U5-09@@scripts/lib/messages.mjs@@m.kind === 'decision' && !isRegistration(m)@@m.kind === 'decision'@@R7-11: an artifact registration does not close the ticket thread to a later question@@Sprint 7 U5
-M7U5-10@@scripts/review-pattern-scan.mjs@@if (/^REVIEW VERDICT:\s*REQUEST CHANGES\s*$/m.test(text)) {@@if (false) {@@R7-3: two current-format verdicts blocking on one file are correlated@@Sprint 7 U5
-M7U5-11@@scripts/memory-curator.mjs@@if (candidate.by === by) die(1,@@if (false) die(1,@@S7-11: memory review by the proposer is refused@@Sprint 7 U5
-M7U5-12@@scripts/memory-curator.mjs@@by: required('by') });@@by: flags.by || null });@@S7-11: ...and propose without --by is refused@@Sprint 7 U5
 M7U5-13@@scripts/lib/operational-paths.txt@@.studio-cache@@.studio-cache-x@@S7-1: a .studio-cache/ build cache does not make the tree dirty@@Sprint 7 U5
 M7U5-14@@scripts/run-doctor.mjs@@for (const a of active) console.log(@@for (const a of []) console.log(@@S7-4: run-doctor --root reads that project and lists the live attempt's run and attempt ids@@Sprint 7 U5
 M7U5-15@@scripts/run-doctor.mjs@@resolve(String(flags.root || '.'), String(flags.ledger@@resolve(String(flags.ledger@@S7-4: run-doctor --root reads that project and lists the live attempt's run and attempt ids@@Sprint 7 U5
@@ -554,6 +552,10 @@ MS7U1I@@scripts/wave-integrate.mjs@@const GREEN_REF = `refs/studio/wave-green/${
 MS7U1J@@scripts/board-doctor.mjs@@if (!anchor.ok) {@@if (false) {@@Sprint 7 U1: board-doctor is CANNOT EVALUATE on a log whose anchor is gone, naming adopt (W7-5)@@Sprint 7 U1
 MS7U1K@@scripts/ship-gate.sh@@(absent)'; then CHAIN_RC=3;@@(absent)'; then CHAIN_RC=1;@@Sprint 7 U1: ship-gate tells a missing anchor from a broken chain, and names adopt (W7-5)@@Sprint 7 U1
 MS7U1L@@scripts/runtime-gate.sh@@if [ -n "$IB_SHA" ] && [ "$IB_SHA" != "$HEAD_SHA" ]@@if false@@Sprint 7 U1: runtime-gate refuses a main checkout that is not on the integration branch tip (W7-3)@@Sprint 7 U1
+MS8V5-1@@scripts/run-ledger.mjs@@if (shipped[id] && date > shipped[id]) recurrences.push@@if (false) recurrences.push@@Sprint 8 V5: a REQUEST CHANGES verdict citing an FC class after its Rule shipped date is counted as a recurrence (LN-4)@@Sprint 8 V5
+MS8V5-2@@scripts/run-ledger.mjs@@CHANGES\s*$/m.test(text)) continue;@@CHANGES\s*$/m.test(text)) {}@@Sprint 8 V5: ...and an APPROVE verdict's FC mention is not a citation@@Sprint 8 V5
+MS8V5-3@@scripts/run-ledger.mjs@@join(process.env.APP_TEAM_HOME || join(homedir(), '.app-dev-team'), 'runs-summary.jsonl')@@fileURLToPath(new URL('../runs-summary.jsonl', import.meta.url))@@Sprint 8 V5: a BLOCKED run appends one line with its first-pass rate to APP_TEAM_HOME, not the plugin (LN-6, LN-1)@@Sprint 8 V5
+MS8V5-4@@scripts/run-ledger.mjs@@if (!STOPS.has(stop)) die(2,@@if (false) die(2,@@Sprint 8 V5: summary refuses an unnamed stop cause@@Sprint 8 V5
 
 MV01@@hooks/contract-hooks.mjs@@if (n && !n.startsWith('#')) WRAPPERS.set(n, { ops: Number(ops) || 0, vals: new Set(vals) });@@void n;@@U3: guard exit 2 — wrappers.txt row 'timeout' wraps rm@@Sprint 7 U3
 MV02@@hooks/block-shared-tree-destructive-git.sh@@nf = split(line, F, /[ \t]+/); WRAP[F[1]] = 1;@@nf = split(line, F, /[ \t]+/);@@U3: git hook exit 2 — wrappers.txt row 'setsid' wraps git@@Sprint 7 U3
@@ -574,19 +576,17 @@ MP47A@@scripts/lib/events.mjs@@...(isQaDocs(state) ? [] : ['rework'])@@...(isQaD
 MP47B@@hooks/block-shared-tree-destructive-git.sh@@      STAT=$( { git -C "$GDIR" status --porcelain -uno -- ':/' 2>/dev/null@@      STAT=$( { true@@PR47: a tracked operational file with uncommitted changes still blocks git reset --hard@@PR47 review
 MP47C@@scripts/runtime-gate.sh@@[ -f "$TOPL/docs/31-board-events.jsonl" ]@@true@@PR47: the runtime gate's integration-tip check skips a repo that is not a studio project@@PR47 review
 MP47D@@scripts/runtime-gate.sh@@[ "$(cd "$ROOT" && pwd -P)" = "$(cd "$TOPL" && pwd -P)" ]@@true@@PR47: the runtime gate's integration-tip check skips a fixture directory inside another repo@@PR47 review
-MP47E@@scripts/spawn-prompt.mjs@@return ticketEvents(root, id).filter((e) => !METADATA_EVENTS.has(e.event)).pop();@@return ticketEvents(root, id).pop();@@PR47 round 2: a corrected event after rework still composes the rework (existing branch, wave reason)@@PR47 fixes
 MP47F@@scripts/spawn-prompt.mjs@@} else if (qa && base && tryGit(ROOT, ['rev-parse', '--verify', '-q', `refs/heads/${branchName}`])) {@@} else if (false) {@@PR47 round 3: QA's first spawn cuts qa/QA-1; the re-spawn once it exists is a verdict pass on the landed tree@@PR47 fixes
 MF47A@@scripts/integration-branch.sh@@-e 's/^[[:space:]>*|#-]*([0-9]+\.[[:space:]]*)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@-e 's/^[[:space:]>*|-]*(@)?[Ii]ntegration branch[[:space:]]*(\*\*)?@@PR47 fixes: heading, numbered, hyphen@@PR47 fixes
 MF47B@@hooks/block-shared-tree-destructive-git.sh@@printf 'main master develop %s'@@printf 'main %s'@@PR47 fixes: an unresolvable declaration still protects develop from a raw merge@@PR47 fixes
 MF47C@@hooks/block-shared-tree-destructive-git.sh@@case $REF in i) SWEEP=1; EXCL="" ;; u) EXCL="" ;; esac@@SWEEP=1; EXCL=""@@PR47 fixes: git clean -fd runs when the only operational file is the gitignored board log@@PR47 fixes
 MF47D@@hooks/block-shared-tree-destructive-git.sh@@m = (sc == "clean") ? "u" : ""@@m = ""@@PR47 fixes: git clean -fd is refused when an untracked operational file exists@@PR47 fixes
-MF47E@@scripts/spawn-prompt.mjs@@} else if (lastWorkEvent(ROOT, row.id)?.event === 'rework') {@@} else if (false) {@@PR47 fixes: after rework, compose checks out the existing branch and carries the wave's reason@@PR47 fixes
+MF47E@@scripts/spawn-prompt.mjs@@    const rework = back?.event === 'rework';@@    const rework = false;@@PR47 fixes: after rework, compose checks out the existing branch and carries the wave's reason@@PR47 fixes
 MF47F@@hooks/contract-hooks.mjs@@.filter((w) => w.includes('/') && !/^[~/]/.test(w)@@.filter((w) => false && !/^[~/]/.test(w)@@PR47 fixes: rm -rf ../proj/docs/team/evidence from a non-studio cwd is refused@@PR47 fixes
 MF47G@@scripts/messages.mjs@@if (String(options.channel || '').replace(/^#/, '') === 'artifacts') die(@@if (false) die(@@PR47 fixes: send refuses --channel artifacts@@PR47 fixes
 MF47H@@scripts/messages.mjs@@      registration: true,@@      registration: false,@@PR47 fixes: messages.mjs artifact stamps registration:true@@PR47 fixes
 MF47I@@scripts/lib/atomic.mjs@@const ownerFile = (lockPath) => (statSync(lockPath).isDirectory() ? join(lockPath, 'owner') : lockPath);@@const ownerFile = (lockPath) => lockPath;@@PR47 fixes: main's directory lock with a dead owner is reaped, not waited out@@PR47 fixes
 MF47J@@scripts/lib/atomic.mjs@@if ((Number.isInteger(pid) && pid > 0) || age < ORPHAN_AGE_MS) return '';@@return '';@@PR47 fixes: an aged lock naming no holder says how to clear it@@PR47 fixes
-MF47K@@scripts/team-doctor.mjs@@for (const entry of registry.entries.filter((e) => String(e.id).startsWith('template/') && e.content_hash)) {@@for (const entry of []) {@@PR47 fixes: a spawn template edited without a registry sync is a team-doctor finding@@PR47 fixes
 MF47L@@scripts/board-doctor.mjs@@process.exit(anchor.kind === 'absent' ? 2 : 1);@@process.exit(2);@@PR47 fixes: board-doctor exits 1 on a log with lines deleted under its anchor@@PR47 fixes
 MF47M@@scripts/ship-gate.sh@@then CHAIN_RC=3; else CHAIN_RC=4; fi@@then CHAIN_RC=3; else CHAIN_RC=3; fi@@PR47 fixes: ship-gate blocks a deleted-lines anchor mismatch@@PR47 fixes
 MF47N@@scripts/wave-integrate.mjs@@if (r.base.startsWith('origin/')) {@@if (false) {@@PR47 fixes: in a fresh clone the wave names origin/develop@@PR47 fixes
@@ -596,10 +596,69 @@ MF47Q@@scripts/lib/evidence.mjs@@&& /^integration\/wave-/.test(String(rec.branch
 MF47R@@scripts/spawn-prompt.mjs@@row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict@@row.status === 'qa') return composeQaVerdict@@PR47 fixes: a QA- ticket at qa is composed as a verification@@PR47 fixes
 MF47S@@scripts/merge-reconcile.mjs@@corrected --by tech-manager --detail "<what went wrong>"@@corrected --detail "<what went wrong>"@@PR47 fixes: merge-reconcile prints the full corrected command, with --by@@PR47 fixes
 MF47T@@scripts/dispatch-preflight.mjs@@${inlineTokenFlag(resolve(String(flags.root)), 'tech-manager', flags.ticket)}@@@@PR47 fixes: dispatch-preflight's corrected command is absolute@@PR47 fixes
+V601@@scripts/lib/args.mjs@@if (help && name === 'help' && inline === undefined) {@@if (false) {@@Sprint 8 V6: team-bootstrap --help prints its usage, exits 0 and writes nothing (EN-10)@@Sprint 8 V6
+V602@@scripts/foundation-conformance.mjs@@if (badId) {@@if (false) {@@Sprint 8 V6: foundation-conformance rejects an argument that is not an invariant id (EN-10)@@Sprint 8 V6
+MV701@@skills/role-activation/SKILL.md@@| flagship. utility: off, merged into `verification-engineer`'s ship pass (delta 6) |@@| never off on a staffed type, never tier-gated |@@Sprint 8 V7: utility roster drops release-auditor and the no-op data-analyst/product-validator deltas (SK-3, SK-4)@@Sprint 8 V7
+MV702@@commands/app-ship.md@@row still `conditional` is decided now@@row still `conditional` stays as written@@Sprint 8 V7: /app-ship re-evaluates conditional roles before the ship fan-out (SK-2)@@Sprint 8 V7
+MV703@@commands/app-init.md@@has `product-researcher` `active`, spawn it now@@has `product-researcher` `active`, spawn it after scope-lock@@Sprint 8 V7: /app-init spawns product-researcher between ceo and cpo (SK-1)@@Sprint 8 V7
+MV704@@agents/release-auditor.md@@evidence-check.mjs" --head@@evidence-check.mjs" --skip@@Sprint 8 V7: release-auditor binds journeys via evidence-check, kill switch only when named (FL-6)@@Sprint 8 V7
+MV705@@agents/code-reviewer.md@@- `database-migration` — any persisted model or schema change@@- schema changes need no procedure@@Sprint 8 V7: XS review is the floor track, IC tests follow the diff, one backend branch form, migrations routed (EN-4, EN-6, EN-12, SK-7)@@Sprint 8 V7
+S8V1A@@scripts/trace.mjs@@if (id !== 'waiver' && founderWords.includes(s)) return true;@@if (false) return true;@@Sprint 8 V1: a price in the founder's own words@@Sprint 8 V1
+S8V1B@@scripts/trace.mjs@@re.test(l) && l.toLowerCase().includes(s)@@re.test(l) && l.includes(subj)@@Sprint 8 V1: a decision matches its subject case-insensitively@@Sprint 8 V1
+S8V1C@@scripts/trace.mjs@@.replace(/\s*—\s*v\d+\.\d+\.\d+\s*$/, '')@@@@Sprint 8 V1: the version field release-manager appends does not re-open an approved waiver@@Sprint 8 V1
+S8V1D@@scripts/trace.mjs@@const wantsAnalytics = docs.some((d) => d.rel === 'docs/52-analytics.md');@@const wantsAnalytics = true;@@Sprint 8 V1: ...and one without docs/52-analytics.md owes none@@Sprint 8 V1
+S8V1E@@scripts/trace.mjs@@  { id: 'destructive-migration', where:@@  { id: 'account-deletion', where: /^docs\//, pattern: /\baccount deletion\b/i, why: 'x' }, { id: 'destructive-migration', where:@@Sprint 8 V1: a price in the founder's own words@@Sprint 8 V1
+MS8V3-01@@scripts/drivers/android.sh@@tr '>' '\n' < "$DUMP" | grep "resource-id=@@tr '>' '>\n' < "$DUMP" | grep "resource-id=@@Sprint 8 V3: android value_equals reads the TARGET node of a one-line dump@@Sprint 8 V3
+MS8V3-02@@scripts/drivers/android.sh@@[ "$GOT" = "$SCHK" ] ||@@true ||@@Sprint 8 V3: android taps the target's centre, and is_checked reads its checked state@@Sprint 8 V3
+MS8V3-03@@scripts/journey-gate.mjs@@(!step.id || typeof step.value !== 'boolean')@@(false)@@Sprint 8 V3: journey-gate refuses an is_checked whose value is not true/false@@Sprint 8 V3
+MS8V3-04@@scripts/journey-gate.mjs@@    if (!env[k]) env[k] = id;@@    if (false) env[k] = id;@@Sprint 8 V3: journey-gate passes runtime-gate's recorded package id@@Sprint 8 V3
+MS8V3-05@@scripts/runtime-gate.sh@@  echo "APP-ID: android $PKG"@@  :@@Sprint 8 V3: journey-gate passes runtime-gate's recorded package id@@Sprint 8 V3
+MS8V3-06@@scripts/drivers/ios.sh@@    case 'tap': tap(waitFor(s.id, 5)); break;@@    case 'tap': break;@@Sprint 8 V3: the iOS driver taps, reads back and PASSes@@Sprint 8 V3
+MS8V3-07@@scripts/drivers/ios.sh@@if (got + 0.5 < Number(s.dp)) fail(@@if (false) fail(@@Sprint 8 V3: the iOS driver FAILs a 24pt target@@Sprint 8 V3
+MS8V3-08@@scripts/journey-gate.mjs@@rc && rc.platform === 'web' && rc.commit === head@@false && rc.platform === 'web' && rc.commit === head@@Sprint 8 V3: journey-gate serves the release candidate bound at HEAD@@Sprint 8 V3
+MS8V3-09@@scripts/journey-gate.mjs@@  if (dir || scripts.start) {@@  if (false) {@@Sprint 8 V3: with no candidate, journey-gate starts the app itself@@Sprint 8 V3
+MS8V3-10@@scripts/drivers/web.sh@@[id=${q}]@@#${String(id)}@@Sprint 8 V3: journey-gate serves the release candidate bound at HEAD, not npm start on source (FL-5, QA-11)@@Sprint 8 V3
+MS8V3-11@@scripts/runtime-gate.sh@@  if [ -n "$RCDIR" ]; then@@  if false; then@@Sprint 8 V3: runtime-gate smokes the release candidate bound at HEAD@@Sprint 8 V3
+MS8V8-1@@scripts/project-profile.mjs@@if (inRepo && !/^!! /m.test(@@if (false && !/^!! /m.test(@@Sprint 8 V8: FL-4 project-profile BLOCKS a build output dir that is not gitignored@@Sprint 8 V8
+MS8V8-2@@scripts/project-profile.mjs@@return { blocked: 'npm run build wrote nothing@@return { dir: 'dist', blocked: 'npm run build wrote nothing@@Sprint 8 V8: FL-4 project-profile BLOCKS a web build that writes no output dir@@Sprint 8 V8
+MS8V8-3@@scripts/privacy-disclosure-scan.mjs@@r.role === 'aso-specialist' && r.state === 'off'@@r.role === 'aso-specialist' && r.state === 'never'@@Sprint 8 V8: FL-9 privacy scan is N/A when aso-specialist is off@@Sprint 8 V8
+MS8V8-4@@scripts/team-bootstrap.mjs@@...(role === 'web-developer' ? ['index.html'@@...(role === 'web-developer-x' ? ['index.html'@@Sprint 8 V8: FL-7 web-developer may write a root index.html@@Sprint 8 V8
+MS8V8-5@@scripts/team-bootstrap.mjs@@'docs/21-engineering-principles.md', ...specs];@@'docs/21-engineering-principles.md'];@@Sprint 8 V8: FL-8 the context manifest hashes the impl spec and not the vision@@Sprint 8 V8
+MS8V8-6@@scripts/team-bootstrap.mjs@@if (process.argv.slice(2).includes('--help')) {@@if (false) {@@Sprint 8 V8: EN-10 team-bootstrap --help prints usage@@Sprint 8 V8
+M8V2A@@scripts/lib/events.mjs@@        state.qaPassed = false;@@        ;@@Sprint 8 V2: SM-4 qa_failed after qa_passed revokes the pass@@Sprint 8 V2
+M8V2B@@scripts/lib/events.mjs@@if (state.retries + 1 > MAX_TICKET_RETRIES) {@@if (false) {@@Sprint 8 V2: SM-5 the 7th rework is refused and forces blocked@@Sprint 8 V2
+M8V2C@@scripts/lib/events.mjs@@if (state.qaFailures + 1 > MAX_QA_FAILURES + state.extraCycles) {@@if (false) {@@Sprint 8 V2: AU-11 the 3rd qa_failed forces blocked@@Sprint 8 V2
+M8V2D@@scripts/lib/capabilities.mjs@@reopened: ['tech-lead', 'cto'],@@reopened: ['founder'],@@Sprint 8 V2: AU-3 reopened --by tech-lead is accepted@@Sprint 8 V2
+M8V2E@@scripts/lib/events.mjs@@if (state.extraCycles >= 1) {@@if (false) {@@Sprint 8 V2: AU-3 ...once per ticket@@Sprint 8 V2
+M8V2F@@scripts/orchestrator.mjs@@if (t.status === 'blocked') continue;@@;@@Sprint 8 V2: SM-1 a blocked ticket is never STALLED@@Sprint 8 V2
+M8V2G@@scripts/board-doctor.mjs@@if (blocker && blocker.root === 'blocked') {@@if (false) {@@Sprint 8 V2: SM-7 stranded behind a blocked dependency is a warning@@Sprint 8 V2
+M8V2H@@scripts/lib/events.mjs@@return withCorrection(['unblocked', 'reopened', 'descoped']);@@return withCorrection(['unblocked', 'reopened']);@@Sprint 8 V2: SM-2 descoped from blocked is accepted@@Sprint 8 V2
+M8V2I@@scripts/round-journal.mjs@@const rounds = tagged.filter((r) => r.sprintOf === sprint);@@const rounds = tagged;@@Sprint 8 V2: SM-3 round-journal check sums only the current --sprint@@Sprint 8 V2
+M8V2J@@scripts/board.mjs@@if (!TICKET_ID.test(normalizeId(id)))@@if (false)@@Sprint 8 V2: EN-11 add refuses a path-shaped id@@Sprint 8 V2
+M8V2L@@scripts/board.mjs@@  return die(1, `refused ${ticket} qa_failed — ${bug} is not a row@@  return bug; die(1, `refused ${ticket} qa_failed — ${bug} is not a row@@Sprint 8 V2: QA-4 qa_failed naming a BUG-NNN that is not a docs/51-bugs.md row is refused@@Sprint 8 V2
+M8V2M@@scripts/board.mjs@@if (bug && !next.tickets.has(key(`${bug}-fix`))) {@@if (false) {@@Sprint 8 V2: QA-4 ...and it cuts BUG-001-fix@@Sprint 8 V2
+M8V2N@@scripts/ship-gate.sh@@PASSED*) QA_PASSED_AT=${QA_EVENTS#PASSED } ;;@@PASSED*) QA_PASSED_AT= ;;@@Sprint 8 V2: FL-3 ship-gate reads a pre-landing HOLD as superseded@@Sprint 8 V2
+M8V2O@@scripts/orchestrator.mjs@@.filter(([, id]) => tickets.get(key(id))?.status === 'in_progress');@@.filter(() => false);@@Sprint 8 V2: SM-6 orchestrator round prints RESPAWN@@Sprint 8 V2
+M8V2P@@scripts/round-journal.mjs@@Math.max(DEFAULTS.agentSpawns, 2 * tickets)@@DEFAULTS.agentSpawns@@Sprint 8 V2: SM-3 the per-agent default scales with the board@@Sprint 8 V2
+M8V2Q@@scripts/round-journal.mjs@@  if (!all.length) {@@  if (false) {@@Sprint 8 V2: LN-5 an unjournaled loop is counted from the board log@@Sprint 8 V2
+M8V2R@@scripts/board.mjs@@if (typeof flags.title !== 'string' || !flags.title.trim()) die(1,@@if (false) die(1,@@Sprint 8 V2: EN-11 add refuses an empty title@@Sprint 8 V2
+M8V2S@@scripts/lib/events.mjs@@        if (Array.isArray(fields.dependsOn)) state.dependsOn = state.meta.dependsOn = fields.dependsOn.map(String);@@        ;@@Sprint 8 V2: FL-12 corrected --depends/--acceptance/--file re-plans a ticket@@Sprint 8 V2
+MS8L01@@scripts/worktree-slot.mjs@@':(exclude).agent-wt', ...opExcludes]@@':(exclude).agent-wt']@@Sprint 8 lead: a tracked standup is not a lease warning; a real uncommitted file still is (FL-13)@@Sprint 8 lead
+MS8L02@@scripts/trace.mjs@@: ONLY === 'gates' ? 'TRACED — no gate fired.'@@: false ? ''@@Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)@@Sprint 8 lead
+MS8V4-01@@scripts/team-message.sh@@ROOT=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)@@ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)@@Sprint 8 V4: a question sent from a slot lands in the main checkout's ledger (CX-1)@@Sprint 8 V4
+MS8V4-02@@scripts/messages.mjs@@    base = r.root;@@    base = process.cwd();@@Sprint 8 V4: a question sent from a slot lands in the main checkout's ledger (CX-1)@@Sprint 8 V4
+MS8V4-03@@scripts/spawn-prompt.mjs@@(found = ticketBranch(ROOT, row.id, allIds)).branch || found.ambiguous.length@@false@@Sprint 8 V4: a rejected ticket's re-spawn checks out its existing branch with the rejection inlined (CX-3)@@Sprint 8 V4
+MS8V4-04@@scripts/spawn-prompt.mjs@@.filter((m) => CLOSING_KINDS.has(m.kind) && String@@.filter((m) => false && String@@Sprint 8 V4: tech-lead's answer on the ticket is inlined in the IC and the reviewer prompt (CX-2)@@Sprint 8 V4
+MS8V4-05@@scripts/spawn-prompt.mjs@@return e.event === 'changes' && e.detail?.verdict_path@@return false && e.detail?.verdict_path@@Sprint 8 V4: this sprint's REQUEST CHANGES blockers are inlined in the next IC prompt (LN-2)@@Sprint 8 V4
+MS8V4-06@@scripts/spawn-prompt.mjs@@const rows = table.slice(head.length).filter(hit);@@const rows = table.slice(head.length);@@Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)@@Sprint 8 V4
+MS8V4-07@@scripts/spawn-prompt.mjs@@if (ITEM_RE.test(l)) { keepItem = hit(l);@@if (ITEM_RE.test(l)) { keepItem = true;@@Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)@@Sprint 8 V4
+MS8V4-08@@scripts/messages.mjs@@if (options.was === 'last') {@@if (false) {@@Sprint 8 V4: open --was last reads the recorded count: unfallen exits 1, answered exits 0 (CX-5)@@Sprint 8 V4
+MS8V4-09@@scripts/spawn-prompt.mjs@@  'release-auditor': ['house-conventions', 'board-doctor'],@@  'release-auditor': ['house-conventions', 'board-doctor', 'team-protocol'],@@Sprint 8 V4: release-auditor's budget does not count the conditional team-protocol (CX-11)@@Sprint 8 V4
+MS8L03@@hooks/contract-hooks.mjs@@  if (payload.tool_name === 'Bash' && runsRelease(input.command)) {@@  if (false) {@@Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)@@Sprint 8 lead
 CATALOGUE
 }
 
-catalogue_tsv() { catalogue | awk '{ gsub(/@@/, "\t"); print }'; }
+catalogue_tsv() { catalogue | awk '{ gsub(/@@/, "\037"); print }'; }
 
 # Assertions that exist but CANNOT be mutation-tested on this host, with the reason. Printed with
 # the score. Counted in neither numerator nor denominator — and said out loud, because a score that
@@ -617,17 +676,38 @@ test.sh — the unescaped-backtick self-check@@The only mutation that would prov
 EXCLUDED
 }
 
+# A ROW WITH NO SCOPE GETS ONE DERIVED, NOT THE WHOLE SUITE (QA-9). 49 rows named no section, so
+# each ran all ~1400 assertions; a full catalogue cost ~450 x full suite, about 7.5 hours, and so
+# nobody ran it. The section that holds the row's own assertion label is exactly the scope a human
+# would have typed. Derived only when ONE section holds the label; none or several stays unscoped
+# (full suite). `--full-suite` still ignores every scope.
+#
+# A label in the preamble (before the first banner) runs in EVERY subset, so any section is its
+# scope: the first one is used. A label is also looked up with test.sh's \` escaping.
+derive_scope() {
+  MUT_LABEL="$1" awk '
+    BEGIN { l = ENVIRON["MUT_LABEL"]; e = l; gsub(/`/, "\\`", e); pre = 1 }
+    /^# --- / { b = $0; pre = 0; if (first == "") first = $0 }
+    /^echo "─────/ { b = "" }
+    (index($0, l) || index($0, e)) { if (pre) inpre = 1; else if (b != "" && !(b in seen)) { seen[b] = 1; n++; hit = b } }
+    END { if (n == 1) print hit; else if (n == 0 && inpre) print first }
+  ' "$REPO/scripts/test.sh"
+}
+
 if [ "$LIST" = "1" ]; then
   echo "MUTATION CATALOGUE"
   echo
   catalogue_tsv | while IFS="$TAB" read -r id file old new expect scope; do
+    [ -n "$id" ] || continue
     printf '%-5s %s\n' "$id" "$file"
     printf '      - %s\n' "$old"
     printf '      + %s\n' "$new"
-    printf '      expects to fail: %s\n\n' "$expect"
+    printf '      expects to fail: %s\n' "$expect"
+    [ -n "$scope" ] || scope=$(derive_scope "$expect")
+    printf '      runs: %s\n\n' "${scope:-THE WHOLE SUITE (no section holds the label)}"
   done
   echo "NOT MUTATABLE HERE"
-  excluded | awk '{ gsub(/@@/, "\t"); print }' | while IFS="$TAB" read -r what why; do
+  excluded | awk '{ gsub(/@@/, "\037"); print }' | while IFS="$TAB" read -r what why; do
     printf '  · %s\n      %s\n' "$what" "$why"
   done
   exit 0
@@ -645,7 +725,7 @@ if [ -n "$ONLY" ]; then
     [ -n "$_id" ] || continue
     catalogue | grep -q "^$_id@@" || { echo "mutate: no mutation with id '$_id'. Try --list." >&2; exit 3; }
   done || exit 2
-  ONLY_RE=$(echo "$ONLY" | tr ',' '|' | sed 's/^/^(/; s/$/)\t/')
+  ONLY_RE=$(echo "$ONLY" | tr ',' '|' | sed "s/^/^(/; s/\$/)$TAB/")
 fi
 
 # ---------------------------------------------------------------------------------------------
@@ -775,6 +855,13 @@ else
   cp "$WORK/cat.txt" "$WORK/sel.txt"
 fi
 SELECTED=$(grep -c . "$WORK/sel.txt")
+
+if [ "$FULL_SUITE" != "1" ]; then
+  while IFS="$TAB" read -r id file old new expect scope; do
+    [ -n "$scope" ] || scope=$(derive_scope "$expect")
+    printf "%s$TAB%s$TAB%s$TAB%s$TAB%s$TAB%s\n" "$id" "$file" "$old" "$new" "$expect" "$scope"
+  done < "$WORK/sel.txt" > "$WORK/sel.scoped" && mv "$WORK/sel.scoped" "$WORK/sel.txt"
+fi
 
 # THE FULL BASELINE IS SKIPPED WHEN EVERY SELECTED MUTATION IS SCOPED, and that is the whole speed
 # win. `--only M30` used to cost two full suites — one baseline, one mutated — for a verdict about a
@@ -907,9 +994,9 @@ echo "────────────────────────�
 echo "MUTATION SCORE: $CAUGHT/$SELECTED caught"
 [ "$SELECTED" != "$TOTAL" ] && echo "  ($SELECTED of $TOTAL catalogued mutations — a sample, not the whole of it)"
 echo
-echo "Denominator: $SELECTED mutations over $(cut -f2 "$WORK/sel.txt" | sort -u | grep -c .) file(s)."
+echo "Denominator: $SELECTED mutations over $(cut -d "$TAB" -f2 "$WORK/sel.txt" | sort -u | grep -c .) file(s)."
 echo "It EXCLUDES the following, which cannot be mutation-tested on this host:"
-excluded | awk '{ gsub(/@@/, "\t"); print }' | while IFS="$TAB" read -r what why; do
+excluded | awk '{ gsub(/@@/, "\037"); print }' | while IFS="$TAB" read -r what why; do
   printf '  · %s\n      %s\n' "$what" "$why"
 done
 echo "  Those assertions are UNPROVEN here. The score does not claim otherwise."

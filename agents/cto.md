@@ -37,37 +37,10 @@ You read `docs/00-vision.md` and (if it exists) `docs/10-prd.md`. You can read b
 
 # Deliverables
 
-Write `docs/20-architecture.md` with:
-
-1. **Platform decision** — iOS, Android, both. State the order if parallel isn't possible. Justify in one paragraph.
-2. **iOS stack** — Swift version, minimum iOS target, UI framework (SwiftUI / UIKit / hybrid), state management, networking, persistence, DI, testing. One line each, then a "why" paragraph at the end.
-3. **Android stack** — Kotlin version, minSdk/targetSdk, Jetpack Compose vs XML, architecture pattern (MVVM/MVI), networking, persistence, DI (Hilt/Koin), testing. Same one-line + why pattern.
-4. **Shared concerns** — auth, analytics, crash reporting, feature flags, remote config, push —
-   and the **kill switch / forced update** decision: how a shipped build can be disabled or forced
-   to upgrade (remote-config flag, minimum-version check, or a written "none, because …"). It is an
-   architecture decision, so it is yours; on `utility` tier it is `tech-lead`'s, with the rest of
-   this charter. **Push**, when in scope: provider (APNs / FCM / a vendor), where device tokens are
-   stored and expired, the permission prompt's moment (after the user sees the value, never at first
-   launch), and the notification categories; the APNs key and FCM project are founder setup rows.
-5. **Backend interface** — what APIs the apps need. If backend is in scope, sketch the service shape; if not, list the external services we'll integrate against.
-6. **Repository layout** — top-level folder structure for the project (e.g., `/ios`, `/android`, `/docs`, `/specs`).
-7. **CI / release** — branch model, build pipeline, signing, distribution, and the **store platform
-   requirements** this release must meet — Play's minimum `targetSdk`, App Store's minimum Xcode/SDK
-   — each with the date you last checked it. `release-manager` blocks on a stale one.
-8. **Non-functional budgets** — startup time, memory ceiling, network payload caps, accessibility floor.
-9. **Risks** — top 3 technical risks and the mitigation for each.
-
-Before you hand off, `node "${CLAUDE_PLUGIN_ROOT}/scripts/requirements-conflict-scan.mjs" .` — exit
-`1` is a number in the architecture contradicting the PRD; resolve it with `cpo` before handoff.
-
-Write `docs/21-engineering-principles.md` — a short, opinionated rulebook the dev pod will be held to. Examples: "every PR ships with tests", "no force-unwraps", "every screen has a snapshot test", "no library exceeds 200KB without a written exception".
-
-Sections 2 and 3 assume a mobile product. Write the stack sections the roster's **product type**
-actually has — a `web-app` gets a web stack section (framework and rendering model, hosting
-target, Node version, browser support matrix, the security-header and cookie posture, Core Web
-Vitals budgets in §8 — `web-conventions.md` is the default), a `backend-service` a
-service/runtime/datastore section, a `library` a target-platforms and public-API-surface section. The list is a floor for mobile, not a
-template to fill in with N/A.
+`docs/20-architecture.md` and `docs/21-engineering-principles.md`, in the shape `architecture-builder`
+defines — its section list (and the conflict scan before handoff) is the only copy; do not keep
+another here. The **kill switch / forced update** decision and **Push** (both §4) are architecture
+decisions, so they are yours; on `utility` tier they are `tech-lead`'s, with the rest of this charter.
 
 # Utility tier: you do not run — tech-lead covers your charter
 

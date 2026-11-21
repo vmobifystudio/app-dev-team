@@ -659,9 +659,20 @@ function pluginLib(body, hereAbs) {
  * stops the confused and the literal, and makes the hostile leave a visible trail in its own
  * transcript.
  */
+// AU-9: store upload, production deploy and spending are the founder's checklist rows. Read per
+// command segment (after env assignments and a runner prefix), so a sentence that merely MENTIONS
+// one — a commit message, a grep — is not refused. ponytail: a fixed list; add a CLI when one ships.
+const RELEASE_CMD = /^(fastlane\s+(deliver|supply|pilot|upload_to_\w+)|xcrun\s+altool\b.*--upload|xcrun\s+notarytool\s+submit|eas\s+submit|vercel\b.*--prod|netlify\s+deploy\b.*--prod|firebase\s+deploy|gcloud\s+projects\s+create)\b/;
+const runsRelease = (cmd) => String(cmd || '').split(/\n|;|&&|\|\||\|/)
+  .map((seg) => seg.trim().replace(/^(\w+=\S*\s+)*/, '').replace(/^(sudo|npx|bunx|exec|bundle\s+exec)\s+/, ''))
+  .some((seg) => RELEASE_CMD.test(seg));
+
 function guardGateWrites() {
   if (!payload.agent_id) allow();
   const input = payload.tool_input || {};
+  if (payload.tool_name === 'Bash' && runsRelease(input.command)) {
+    block('guard-gate-writes: store upload, production deploy and spending are the founder\'s checklist rows (docs/60-releases.md) — a subagent never runs them.');
+  }
   const cwd = realish(resolve(payload.cwd || process.cwd()));
   // G7-12: the studio a target belongs to comes from the TARGET, not only from the cwd — `rm -rf
   // /abs/proj/docs/team/evidence` from /tmp names a studio root too. Each absolute path's nearest

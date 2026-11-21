@@ -67,7 +67,6 @@ not a new agent file. Re-run this table whenever a new role is proposed, and exp
 | `ceo` | `authority` | final scope/vision authority no other role holds |
 | `cpo` | `authority` | product-decision authority distinct from engineering |
 | `cto` | `authority` | technical-strategy authority distinct from product |
-| `chief-of-staff` | `context` | one founder-facing decision-brief context, deliberately not the CEO's own strategic framing — its own description says it "is only worth running if it removes more decisions than it creates" |
 | `product-manager` | `capability` | day-to-day ticket-clarification capability below CPO's strategic layer, so CPO is not the bottleneck for every clarification |
 | `product-researcher` | `context` | evidence-gathering that must not inherit the CPO's framing, or it would confirm its own hypothesis rather than test it |
 | `tech-lead` | `authority` | technical-design authority distinct from CTO's strategic layer |
@@ -91,8 +90,8 @@ not a new agent file. Re-run this table whenever a new role is proposed, and exp
 | `reliability-engineer` | `capability` | offline/retry/recovery is broad enough to need its own pass — "a checklist item inside code review is where it has always been skipped" |
 | `red-team-agent` | `context` | adversarial framing does not compose with a reviewer's frame — its own description states this explicitly |
 | `verification-engineer` | `duties` | certifies a claim nobody executed — independent of whoever made the claim |
-| `release-auditor` | `duties` | the actor performing an irreversible release action must not be its sole evaluator |
-| `release-manager` | `authority` | executes the one irreversible action (the actual upload) |
+| `release-auditor` | `duties` | flagship: an independent read of the gate record before the founder's irreversible upload, by a role that assembled none of it |
+| `release-manager` | `authority` | assembles the signed candidate and owns the version, notes and submission checklist — it never uploads; the founder performs the one irreversible action |
 | `incident-commander` | `authority` | independent coordination authority during a live sev1/sev2 — deliberately not `release-manager` (may be the cause) or `tech-manager` (running an unrelated sprint) |
 
 ## The activation matrix
@@ -105,9 +104,8 @@ not a new agent file. Re-run this table whenever a new role is proposed, and exp
 | `ceo` | on | on | on | on | on | — | on | utility: absorbs the `cpo` charter (founder pass) |
 | `cpo` | on | on | on | on | on | — | on | utility: off, merged into `ceo` |
 | `cto` | on | on | on | on | on | — | on | utility: off, merged into `tech-lead` |
-| `chief-of-staff` | ? | ? | ? | ? | ? | — | ? | `?` flagship **and** the founder is fielding more than one project or more than five open decisions — otherwise `ceo` is already the founder interface and this role adds load instead of removing it |
 | `product-manager` | on | on | on | on | on | — | — | utility: off, merged into `cpo`/`ceo` · `—` a library's consumers are engineers; `tech-lead` fields their questions |
-| `product-researcher` | ? | ? | ? | ? | ? | — | — | `?` new-product or repositioning work, i.e. `docs/01-intake.md` names a market or user assumption nobody has tested · `—` a library's market question is API design |
+| `product-researcher` | ? | ? | ? | ? | ? | — | — | `?` flagship **and** new-product or repositioning work, i.e. `docs/01-intake.md` names a market or user assumption nobody has tested · `—` a library's market question is API design |
 | `tech-lead` | on | on | on | on | on | — | on | utility: absorbs the `cto` charter (one technical pass) |
 | `tech-manager` | on | on | on | on | on | — | on | someone must run the board on every staffed product |
 | `ux-architect` | on | on | on | — | on | — | — | `—` no human-facing surface; API ergonomics belong to `tech-lead` |
@@ -118,9 +116,9 @@ not a new agent file. Re-run this table whenever a new role is proposed, and exp
 | `web-developer` | — | — | — | — | on | — | ? | `?` the library ships a JS/TS or browser target · `—` no browser surface |
 | `monetization-engineer` | ? | ? | ? | — | ? | — | — | `?` the product sells IAP/subscriptions or serves ads · `—` no store-billing or ad surface (this role's charter is StoreKit 2 / Play Billing / AdMob) |
 | `aso-specialist` | on | on | on | — | — | — | — | `—` no app-store listing exists to prepare |
-| `data-analyst` | on | on | on | ? | on | — | — | `?` the product emits telemetry or the vision states KPI targets · `—` a library must not phone home; its consumers own analytics |
+| `data-analyst` | on | on | on | ? | on | — | — | `?` `docs/20-architecture.md` names a telemetry/analytics SDK · `—` a library must not phone home; its consumers own analytics |
 | `devops-engineer` | on | on | on | on | on | — | on | every staffed product has a branch model, CI, and a release channel |
-| `product-validator` | on | on | on | on | on | — | on | flagship: always on. utility: `?` — on when `docs/00-founder-intent/` holds a record to validate against. **Outside the cpo/cto/tech-manager chain by construction; it reports to the founder gate** |
+| `product-validator` | on | on | on | on | on | — | on | always on, every tier — `/app-init` step 0 always writes `docs/00-founder-intent/`. **Outside the cpo/cto/tech-manager chain by construction; it reports to the founder gate** |
 | `qa-engineer` | on | on | on | on | on | — | on | never tier-gated |
 | `test-automation-engineer` | ? | ? | ? | ? | ? | — | ? | `?` flagship **and** the device-and-state matrix exceeds what one exploratory pass can cover, or a suite already exists to maintain. Utility: off — `qa-engineer` covers it |
 | `code-reviewer` | on | on | on | on | on | — | on | never tier-gated |
@@ -129,7 +127,7 @@ not a new agent file. Re-run this table whenever a new role is proposed, and exp
 | `reliability-engineer` | ? | ? | ? | ? | ? | — | ? | `?` flagship **and** the product syncs, works offline, holds user-created data, or performs an operation that costs money |
 | `red-team-agent` | ? | ? | ? | ? | ? | — | ? | `?` flagship **and** (the product handles money, personal data, or user-to-user content) — or the last release shipped a defect a gate should have caught |
 | `verification-engineer` | on | on | on | on | on | — | on | **never off on a staffed type.** It certifies constants and proves guard rules can fail — every product has both |
-| `release-auditor` | on | on | on | on | on | — | on | **never off on a staffed type, never tier-gated.** Separation of duties: `release-manager` performs an irreversible action and must not be its sole evaluator |
+| `release-auditor` | on | on | on | on | on | — | on | flagship. utility: off, merged into `verification-engineer`'s ship pass (delta 6) |
 | `release-manager` | on | on | on | on | on | — | on | the channel differs (store · deploy · package registry), the role does not |
 | `incident-commander` | ? | ? | ? | ? | ? | — | ? | `?` `incident-ledger.mjs` has an open `sev1`/`sev2` record — never active between incidents; a role that ran all sprint for no reason is the opposite of what a conditional role is for |
 
@@ -168,23 +166,24 @@ Flagship uses the matrix as-is. Utility applies exactly these eight changes and 
    directly)`. On a three-screen tool there is no clarification queue to absorb.
 4. `product-designer` → `conditional(more than one non-trivial screen, or any custom component)`.
    `ux-architect` stays on: a flow that is wrong is wrong on every screen, however small.
-5. `data-analyst` → `conditional(the vision states a KPI target)`.
-6. `product-validator` → `conditional(docs/00-founder-intent/ holds a record)`. The trigger is the
-   record, not the tier: a utility app built from a real brief still drifts from it, and a utility
-   app built from a one-line idea has nothing to validate against — which the role would report as
-   `INTENT: CANNOT EVALUATE` anyway. **The one thing that never flips is the independence:** on
-   utility the `ceo` runs the founder pass and writes the PRD, so `product-validator` is the only
-   role left that did not write what it checks. Merging it into anything defeats it.
+5. `data-analyst` → `conditional(docs/20-architecture.md names a telemetry/analytics SDK)`. A
+   KPI target alone is not a trigger — every vision states one.
+6. `release-auditor` → `off(merged-into: verification-engineer — ship pass)`. `release-manager`
+   assembles and the founder uploads, so no studio actor performs an irreversible action;
+   `release-candidate verify` and `orchestrator.mjs ship` (`/app-ship` step 3b) already bind the
+   candidate, and `verification-engineer` marks any claim whose only witness is `release-manager`
+   `unverified`.
 7. `privacy-reviewer` → `off(merged-into: security-reviewer — privacy MODE)`. One role, two
    checklists: `security-reviewer` runs its own list and then `agents/privacy-reviewer.md`'s,
    and reports both verdict lines. **Utility means one reviewer, never one checklist.**
-8. `chief-of-staff`, `test-automation-engineer`, `reliability-engineer`, `red-team-agent` →
+8. `test-automation-engineer`, `reliability-engineer`, `red-team-agent`, `product-researcher` →
    `off(flagship-only)`. Their triggers are flagship-gated in the matrix already; this states it in
    the roster so the reason is on the record rather than inferred from a blank.
 
 **Never a tier delta:** `security-reviewer`, `verification-engineer`, `code-reviewer`,
-`qa-engineer`, `release-auditor`. Utility means less ceremony, not less safety — and `release-auditor`
-in particular is *separation of duties*, which a small project needs exactly as much as a large one.
+`qa-engineer`, `product-validator`. Utility means less ceremony, not less safety — and on utility
+the `ceo` writes the PRD, so `product-validator` is the only role left that did not write what it
+checks. Merging it into anything defeats it.
 
 ## Writing the roster — `docs/02-team-roster.md`
 
@@ -192,6 +191,8 @@ Written once, by `/app-init` or `/app-onboard`, after both axes are fixed; every
 instead of re-deriving activation. Three states only — `active`, `conditional`, `off` — and **every
 role gets a row**: a missing role is unaccounted for, not off. A `conditional` role flips to `active`
 the moment its trigger is met — amend the row, keep the reason, note the round. Never delete a row.
+`/app-ship` step 2 re-evaluates every row still `conditional` against the PRD and architecture and
+amends it to `active` or `off(<reason>)` before its fan-out, so no review is silently absent.
 The exact template: `references/variants-and-staffing.md`.
 
 

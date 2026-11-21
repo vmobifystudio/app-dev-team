@@ -1,0 +1,1 @@
+{"schema":"journey/v1","id":"record-a-date","priority":"P0","steps":[{"action":"launch"},{"action":"enter","id":"date","value":"1999-01-02"},{"action":"tap","id":"save"},{"assert":"value_equals","id":"saved_date","value":"1999-01-02"}]}

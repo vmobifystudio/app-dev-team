@@ -9,8 +9,10 @@ plugin, not this one's `skills/`. Absent → this pack is the authority; never f
 
 `View → ViewModel → Service → Repository → Persistence`
 
+The direction is fixed, the count is not: no pass-through layers (`stack-defaults.md` §v1 structure).
+
 - Views never touch repositories, `ModelContext`, the DB queue, or `@Model`/GRDB records.
-- ViewModels call **Services only** — never repositories directly.
+- Once a feature has a Service, its ViewModels call **the Service only** — never its repositories.
 - Only repositories touch persistence (`ModelContext` / GRDB `DatabaseQueue`).
 - `Core/` never imports `Features/`. Domain layer is pure Swift (no SwiftUI/UIKit/DB).
 

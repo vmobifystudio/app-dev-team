@@ -43,7 +43,7 @@
  *
  * WHAT IT WILL NOT DO, deliberately:
  *   - it never force-pushes, never rewrites the integration branch, and never resolves a conflict on
- *     its own. Conflicts are REPORTED with their files; `git-pr-strategy` §6 requires reading both
+ *     its own. Conflicts are REPORTED with their files; `knowledge/git-workflow.md` ("Conflicts have an owner") requires reading both
  *     sides and the governing spec, and a script that picks a side is picking one blind;
  *   - it never appends a board event. Every mutation of the board goes through `board.mjs` by a
  *     named role. This prints the commands; a human or the manager runs them;
@@ -330,7 +330,7 @@ for (const c of conflicted) {
   process.stdout.write(
     `\n  CONFLICT ${c.id} (${c.branch}) on:\n` +
     c.conflicts.map((f) => `      ${f}\n`).join('') +
-    '    Read both sides and the governing spec (git-pr-strategy §6). Nothing here picks a side:\n' +
+    '    Read both sides and the governing spec (knowledge/git-workflow.md). Nothing here picks a side:\n' +
     '    `ours`/`theirs` on an unread conflict is a silent lost edit wearing a merge commit.\n' +
     '    The resolution is a NEW commit on the ticket branch, so it is reviewed like any other (W7-1):\n' +
     '    send the ticket back, rebase it onto the integration branch in its slot (a BEHAVIOUR or\n' +

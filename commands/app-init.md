@@ -25,7 +25,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    nothing to be checked against is what makes this team's loop closed. The directory is append-only:
    never edit a recorded file, add a dated line to `decisions.md` instead.
 
-1. **Run the `requirements-intake` skill** to get a clean `docs/01-intake.md`. If the user's prompt is already detailed, ask only the questions still unanswered.
+1. **Run the `requirements-intake` skill** to get a clean `docs/01-intake.md`. It asks only what it cannot infer, and under `--yolo` nothing.
 
 1a. **Activate the roster.** Invoke the `role-activation` skill: fix the **tier** (`--utility` /
    `--flagship`, else derived from the intake) and the **product type** (from the intake's
@@ -45,6 +45,12 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 2. **Spawn the `ceo` agent** with the intake and the roster as input. CEO writes `docs/00-vision.md`.
    On `utility` tier the CEO runs the **founder pass** — vision plus the PRD and backlog `cpo` would
    have written — and `cpo` is not spawned at all (its roster row already says why).
+
+2a. **If the roster has `product-researcher` `active`, spawn it now** — after the vision, before the
+   PRD. Its trigger is flagship-gated and reads only the intake, so step 1a decides it `active` or
+   `off`, never `conditional`. It writes `docs/16-research.md` in its own
+   context, and `cpo` in step 3 reads it as an input. Run after scope-lock, research cannot change
+   the scope it was meant to test.
 
 3. **Spawn `cpo` and `cto` in parallel** in a single message — they both read `docs/00-vision.md` and produce their respective docs (PRD/backlog and architecture/principles).
    Skip either if the roster has it `off`: on `utility` both are, `cpo` merged into `ceo` above and
@@ -69,14 +75,16 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      `cto` would have run. Write only the impl specs for platforms the product type actually has:
      a `backend-service` gets `22-impl-spec-backend.md` and no iOS or Android spec; a `web-app` gets
      `22-impl-spec-web.md` (what `web-developer` reads — it names the `build`, `start` and `test`
-     scripts; `devops-engineer`, or the first `web-developer` scaffold ticket, writes them into
-     `package.json`), plus `22-impl-spec-backend.md` only if a
+     scripts; `devops-engineer` writes them into `package.json` here), plus `22-impl-spec-backend.md` only if a
      backend is in scope.
    - `devops-engineer` reads architecture, writes `docs/23-git-strategy.md`, a platform
      `.gitignore`, and the CI workflow — seeded from the House KB `git-workflow.md`.
      The `.gitignore` **must include `.agent-wt/`** — that is where per-agent git worktrees live
      (`agent-isolation`), and an un-ignored worktree dir shows up as untracked noise in every
      agent's `git status`.
+     On a `web-app` it also commits `package.json` (the spec's `build`/`start`/`test` scripts and
+     the `playwright` devDependency the journey gate drives), its lockfile, and the build output dir
+     in `.gitignore` — round 1 cannot dispatch without them (`project-profile.mjs check` builds once).
 
 5. **Bootstrap the project.** First make it a git repository — every later step leases git
    worktrees, and a worktree sees only what is committed:
@@ -90,7 +98,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
             docs/53-reviews/ docs/54-evidence/runtime/ docs/54-evidence/journeys/ \
             docs/33-rounds.jsonl docs/team/evidence/ \
             docs/team/worktree-slots.json docs/team/ship-gate-verdict.json \
-            docs/32-board-view.md docs/team/messages.md \
+            docs/32-board-view.md docs/team/messages.md docs/team/messages.jsonl \
             docs/90-register.jsonl docs/90-register.md docs/team/release-candidates.jsonl; do
      grep -qxF "$p" .gitignore || printf '%s\n' "$p" >> .gitignore
    done
@@ -107,7 +115,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    The register (`docs/90-register.jsonl` / `.md`) and `docs/team/release-candidates.jsonl` are
    written in the main checkout after init and nothing commits them, so they are ignored too (W7-9):
    as untracked files they made the destructive-git hook treat the checkout as holding uncommitted
-   work. The rest of that file (`docs/daily/`, the channel, `schedule.json`, `memory.jsonl`,
+   work. The rest of that file (`docs/daily/`, the channel, `schedule.json`,
    `incidents.jsonl`, `audit-anchor.json`) is tracked on purpose: dirty checks skip it, history keeps it. The
    board log and its rendering live in the main checkout only — a
    `git checkout` must not roll the board back, and ICs get their ticket through the spawn prompt,
@@ -131,7 +139,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
      No command created this file. Observed live: an agent reported raising a question on the
      channel when the channel had never existed, and nothing contradicted it.
 
-   - **`.studio-policy.json`, if it does not already exist** — turns two of the five Revamp P0 trust
+   - **`.studio-policy.json`, if it does not already exist** — turns two of the four Revamp P0 trust
      controls on by default for every new project. They are opt-in at the `ship-gate` layer precisely
      so an *existing*, onboarded repo is not retroactively blocked by controls it never adopted — a
      fresh project has no such excuse, and shipping with these silently absent is the gap, not a
@@ -151,34 +159,31 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 
      Edit `owner` to the actual accountable role once one is decided; `ship-gate.sh`'s `policy-check`
      only requires the field to be non-empty, not who it names. `requireActorTokens` (not one of the
-     five) is also on: `spawn-prompt.mjs compose` mints each spawned agent's token, so it needs
+     four) is also on: `spawn-prompt.mjs compose` mints each spawned agent's token, so it needs
      nothing before the first spawn.
 
      **Only these two default on.** Codex found (PR #15) that turning on all five here breaks the
-     very first spawn: `requireAuditAnchor`, `requirePromptRegistry`, and `requireEvaluation` are all
+     very first spawn: `requireAuditAnchor` and `requireEvaluation` are both
      composed into `dispatch-preflight.mjs`, which runs before *every* ticket claim — and
      each needs an artifact this step cannot produce yet. Reproduced directly against a fresh
      project directory: `audit-anchor.mjs verify` needs `docs/31-board-events.jsonl`, which does not
-     exist until the first ticket is added (later, at planning); `prompt-registry.mjs sync` needs an
-     `agents/` directory, which a shipped app project does not have — that concept describes *this
-     plugin's* prompt registry, not a customer project's; `eval-lab.mjs` needs `eval/manifest.json`
-     naming planted-defect golden fixtures, which a fresh project has none of. Enabling any of the
-     three at init time turns "cannot evaluate yet" into "every spawn is blocked forever," which is
+     exist until the first ticket is added (later, at planning); `eval-lab.mjs` needs `eval/manifest.json`
+     naming planted-defect golden fixtures, which a fresh project has none of. Enabling either of the
+     two at init time turns "cannot evaluate yet" into "every spawn is blocked forever," which is
      worse than the opt-in gap they were meant to close. `requireDurableRuns` and
      `requireApprovalBinding` have no such ordering problem — `run-ledger.mjs` and
      `approval-check.mjs` degrade to CANNOT EVALUATE on an empty/absent log rather than erroring at
      spawn time — so they default on safely. Neither is checked at spawn: `ship-gate.sh` checks both
      at release, and the merge gate (`/app-build` step 4, run inline by the orchestrator) checks the
-     ticket's own approval, which is why `code-reviewer` approves with `--bind` on such a project. Turn the other three on explicitly, per project, once their
+     ticket's own approval, which is why `code-reviewer` approves with `--bind` on such a project. Turn the other two on explicitly, per project, once their
      prerequisite exists: `requireAuditAnchor` after the board has its first ticket and someone runs
-     `audit-anchor.mjs create`; `requireEvaluation` once the project has its own `eval/manifest.json`;
-     `requirePromptRegistry` is a studio-repo concept and does not apply to a shipped project at all.
+     `audit-anchor.mjs create`; `requireEvaluation` once the project has its own `eval/manifest.json`.
 
 5a. **Commit the planning docs and everything `devops-engineer` wrote**, staging by explicit path —
    never a blanket add:
 
    ```bash
-   sh -c 'for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent/ docs/team/messages.jsonl \
+   sh -c 'for f in .gitignore CLAUDE.md .studio-policy.json docs/00-founder-intent/ \
             docs/*.md .github fastlane \
             package.json package-lock.json pnpm-lock.yaml yarn.lock .nvmrc */package.json \
             Package.swift Package.resolved */Package.swift build.gradle build.gradle.kts \
@@ -236,7 +241,8 @@ You are starting a fresh app project. The user's one-liner (if any) is:
 7. **GATE 1 — scope-lock (human).** Print a one-screen brief — vision, P0 feature list, architecture
    headline, rough effort, top risk — and ask *"Approve scope and proceed to planning?"* Wait for the
    answer and record it in `docs/00-vision.md` under a `## Scope lock` heading, with the date and
-   anything the user cut or added.
+   anything the user cut or added, plus the `FOUNDER DECISION` lines `/app-run` step 2 writes for
+   each approved gate finding.
 
    This is the same Gate 1 `/app-run` runs, and it is the **only** place the manual flow
    (`/app-init` → `/app-plan` → `/app-build`) asks a human to approve scope before the pod starts

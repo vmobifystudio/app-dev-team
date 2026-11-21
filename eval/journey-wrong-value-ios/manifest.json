@@ -1,0 +1,14 @@
+{
+  "name": "journey-wrong-value-ios",
+  "defect": "drivers/ios.sh against a simulator whose saved_date reads the clock's date (2026-11-21) after the journey entered 1999-01-02 — the discarded-date-picker defect, which no iOS journey could catch before QA-2 because every step was CANNOT EVALUATE.",
+  "expected_detector": "scripts/journey-gate.mjs",
+  "expected_signal": "did not survive the round trip",
+  "severity": "S2",
+  "why": "QA-8: every other fixture here is caught by a detector written for it, and none needed a running app, so the journey drivers were never measured. This one plants a defect only a driven app shows; the device is a stub on PATH, the driver and gate are real.",
+  "detector": {
+    "run": ["sh", "{root}/eval/journey-run.sh", "ios", "{project}"],
+    "expect_exit": 1
+  },
+  "last_verified_at": "2026-11-21",
+  "status": "detector-exists-and-is-scored"
+}
