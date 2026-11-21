@@ -86,12 +86,12 @@ invalid owner makes "who acts next" unanswerable.
 | `dependency_self` | Ticket depends on itself | Remove the edge |
 | `dependency_missing` | Depends on an ID with no row | Restore or drop it |
 | `dependency_cycle` | A → B → A | Break the cycle |
-| **`stranded`** | `todo` behind a `blocked` dependency (transitively) | **Unblock, re-scope, or mark blocked so it is reported.** Emergent, not drift — no hand-edit to hunt. A ticket that *belongs* blocked should be created that way: `board.mjs add <ID> --depends X --status blocked` |
+| **`stranded`** | `todo` behind a `descoped` dependency (transitively); behind a `blocked` one it is a **warning** (Sprint 8 SM-7 — the CLI cascade already reported it) | **Re-plan: `corrected --depends`, or `descoped` too.** Emergent, not drift — no hand-edit to hunt. A ticket that *belongs* blocked should be created that way: `board.mjs add <ID> --depends X --status blocked` |
 | `reviewer_missing` | In `review` with no reviewer recorded | Record the reviewer |
 | `self_review` | Reviewer role == owner role, or the owner approved in the ledger | Assign a different reviewer; void the approval |
 | `done_without_review` | `qa`/`done` with no approval in the ledger | Move back to review, or append the missing line |
 | `cycles_invalid` | Cycles isn't an integer | Set an integer |
-| `cycle_cap_breached` | `Cycles` above the cap (2, plus one per founder `reopened`) while the ticket is still active (`todo`/`in_progress`/`review`) | Stop the ticket, set blocked, surface to the user. `Cycles = 2` is a ticket that used its budget legitimately |
+| `cycle_cap_breached` | `Cycles` above the cap (2, plus one per tech-lead `reopened`) while the ticket is still active (`todo`/`in_progress`/`review`) | Stop the ticket, set blocked, hand it to tech-lead. `Cycles = 2` is a ticket that used its budget legitimately |
 | `shared_file_collision` | Two `in_progress` tickets name the same `Primary file:` | Serialize them or split the file scope before spawning both writers |
 | `ledger_action_unknown` | A ledger row uses a word outside `requested/started/changes/approved/merged` | Append a corrected line — the verdict is otherwise invisible to every check |
 

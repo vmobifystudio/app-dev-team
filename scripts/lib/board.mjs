@@ -57,7 +57,8 @@ const KNOWN_OWNERS = new Set([
   'tech-manager',
 ]);
 
-const VALID_STATUS = new Set(['todo', 'in_progress', 'review', 'qa', 'done', 'blocked']);
+// `descoped` (Sprint 8 SM-2): terminal like `done`, never in flight — the team decided not to do it.
+const VALID_STATUS = new Set(['todo', 'in_progress', 'review', 'qa', 'done', 'blocked', 'descoped']);
 
 /**
  * Statuses where the sprint loop can still act on the ticket.
@@ -281,9 +282,11 @@ function findBlockingAncestor(id, rowsById, seen = new Set()) {
   for (const depId of parseDependencies(rowsById.get(id)?.dependsOn)) {
     const dep = rowsById.get(depId);
     if (!dep) continue; // reported separately as dependency_missing
-    if (dep.status === 'blocked') return { via: depId, reason: 'blocked' };
+    // `root` is the status at the bottom of the chain: board-doctor reports a blocked root as a
+    // warning (the CLI cascade already said so, SM-7) and a descoped one as work to re-plan (SM-2).
+    if (dep.status === 'blocked' || dep.status === 'descoped') return { via: depId, reason: dep.status, root: dep.status };
     const deeper = findBlockingAncestor(depId, rowsById, seen);
-    if (deeper) return { via: depId, reason: `blocked via ${deeper.via}` };
+    if (deeper) return { via: depId, reason: `${deeper.root} via ${deeper.via}`, root: deeper.root };
   }
   return null;
 }

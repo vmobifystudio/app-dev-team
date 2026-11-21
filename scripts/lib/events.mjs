@@ -60,11 +60,14 @@ const EVENTS = new Set([
   'qa_failed',
   'blocked',
   'unblocked',
-  // `reopened` — the founder hands a ticket back to its developer from `blocked` (typically the
-  // review-cycle cap) or `review`, with ONE more review cycle on top of the cap. Without it the
-  // cap's only exit was `approved`: blocked -> unblocked -> review, where another REQUEST CHANGES
-  // is refused again (G-F8). Founder-only: lib/capabilities.mjs HUMAN_GATES.
+  // `reopened` — tech-lead/cto hand a ticket back to its developer from `blocked` (the review-cycle
+  // or QA-failure cap) or `review`, with ONE more cycle on top of the cap, ONCE per ticket (Sprint 8
+  // AU-3: a review deadlock is an engineering call, not the founder's). After that the paths are
+  // take it over (`assigned`), re-scope it (`corrected`), or `descoped` with a follow-up ticket.
   'reopened',
+  // `descoped` — the team decided not to do this ticket (cut at scope-lock, superseded, deferred
+  // Risky audit work). Terminal; tech-manager only, with a reason (Sprint 8 SM-2).
+  'descoped',
   // `rework` — the wave could not land a merged ticket (FAIL / CONFLICT): the orchestrator sends it
   // back to its developer from `qa`, before qa_passed, with the wave's reason. Its verification and
   // approvals are void; it goes done_reported -> verified -> review -> approved -> merged again.
@@ -107,6 +110,10 @@ const STATUS_PRESERVING = new Set(['assigned', 'started', 'verified', 'verified_
  */
 const key = (id) => String(id ?? '').toUpperCase();
 
+// Sprint 8 SM-5 / AU-11: per-ticket loop bounds, enforced at the append like the review-cycle cap.
+const MAX_TICKET_RETRIES = 6; // rework + rejected
+const MAX_QA_FAILURES = 2;
+
 /** What may legally happen next, keyed by derived status. Anything absent is refused. */
 function legalEvents(state) {
   // `corrected` is legal from EVERY state, including terminal ones. A typo in a closed ticket's
@@ -115,7 +122,7 @@ function legalEvents(state) {
   const withCorrection = (events) => [...events, 'corrected'];
   switch (state.status) {
     case 'todo':
-      return withCorrection(['claimed', 'assigned', 'blocked']);
+      return withCorrection(['claimed', 'assigned', 'blocked', 'descoped']);
     case 'in_progress':
       if (state.verifyPending) return withCorrection(['verified', 'verified_static', 'rejected', 'blocked', 'assigned']);
       // `review_requested` is listed whether or not a verification is on record. This function
@@ -143,9 +150,10 @@ function legalEvents(state) {
       if (isQaTicket(state)) return withCorrection(['closed', 'verified', 'qa_failed', 'blocked', ...(isQaDocs(state) ? [] : ['rework'])]);
       return withCorrection(['qa_passed', 'verified', 'qa_failed', 'blocked', 'rework']);
     case 'done':
+    case 'descoped':
       return withCorrection([]);
     case 'blocked':
-      return withCorrection(['unblocked', 'reopened']);
+      return withCorrection(['unblocked', 'reopened', 'descoped']);
     default:
       return withCorrection([]);
   }
@@ -366,6 +374,7 @@ function blankTicket(id) {
     verifyPending: false,
     qaPassed: false,
     qaFailures: 0,
+    retries: 0,
     prevStatus: 'todo',
     meta: {},
     events: [],
@@ -446,6 +455,8 @@ function reduce(events) {
         // C3W-7: invariants are correctable too. A high-risk ticket created without --invariant
         // could never reach review, and nothing could add one. (`corrected --invariant "I1; I2"`.)
         if (Array.isArray(fields.invariants)) state.meta.invariants = fields.invariants.map(String).filter(Boolean);
+        // Sprint 8 SM-2 / FL-12: a dependency that was descoped is re-planned by correcting the edge.
+        if (Array.isArray(fields.dependsOn)) state.dependsOn = state.meta.dependsOn = fields.dependsOn.map(String);
         // `owner` is corrigible because a mis-assigned ticket is a real and common mistake, and
         // leaving it wrong forces the hand-edit this event exists to replace.
         if (typeof fields.owner === 'string' && fields.owner) state.owner = fields.owner;
@@ -491,6 +502,7 @@ function reduce(events) {
         state.staticUnrun = 'the executable test suite';
         break;
       case 'rejected':
+        state.retries += 1;
         state.verifyPending = false;
         state.verified = false;
         state.verifiedStatic = false;
@@ -511,6 +523,7 @@ function reduce(events) {
         break;
       case 'rework':
         // The approvals and the verification were of the merged commit; the fix is a new one.
+        state.retries += 1;
         Object.assign(state, { status: 'in_progress', approvals: [], qaPassed: false, verified: false, verifiedStatic: false, staticUnrun: '', verifyPending: false });
         break;
       case 'changes':
@@ -527,11 +540,16 @@ function reduce(events) {
         state.qaPassed = true;
         break;
       case 'qa_failed':
+        // SM-4: a failure after a pass revokes it — closing needs a fresh qa_passed.
+        state.qaPassed = false;
         state.qaFailures += 1;
         break;
       case 'closed':
         state.status = 'done';
         state.closedAt = event.ts;
+        break;
+      case 'descoped':
+        state.status = 'descoped';
         break;
       case 'blocked':
         if (state.status !== 'blocked') state.prevStatus = state.status;
@@ -801,7 +819,42 @@ function validateTransition(tickets, candidate) {
       }
       return { ok: true };
     }
+    case 'descoped':
+      if (!String(typeof candidate.detail === 'object' && candidate.detail ? JSON.stringify(candidate.detail) : candidate.detail || '').trim()) {
+        return { ok: false, reason: `descoped drops ${id} from the sprint and must say why: move ${id} descoped --by tech-manager --detail "<decision and reason>"`, legal: legal.filter((e) => e !== 'descoped') };
+      }
+      return { ok: true };
+    case 'reopened':
+      if (state.extraCycles >= 1) {
+        return {
+          ok: false,
+          reason: `${id} was already reopened once — tech-lead now takes it over (assigned), re-scopes it (corrected), or descopes it with a follow-up ticket`,
+          legal: legal.filter((e) => e !== 'reopened'),
+        };
+      }
+      return { ok: true };
+    case 'qa_failed':
+      if (state.qaFailures + 1 > MAX_QA_FAILURES + state.extraCycles) {
+        const why = String(typeof candidate.detail === 'object' && candidate.detail ? JSON.stringify(candidate.detail) : candidate.detail || '');
+        return {
+          ok: false,
+          reason: `${id} has failed QA ${state.qaFailures} times — product-manager (cpo for a P0) decides: fix (tech-lead "reopened"), accept as an S3 known issue, or "descoped"`,
+          legal: ['blocked'],
+          force: { event: 'blocked', detail: `qa-failure cap (${MAX_QA_FAILURES}) reached: ${why}`.trim() },
+        };
+      }
+      return { ok: true };
+    case 'rejected':
     case 'rework':
+      if (state.retries + 1 > MAX_TICKET_RETRIES) {
+        return {
+          ok: false,
+          reason: `${id} has been sent back ${state.retries} times (rework + rejected) — the spec, not the developer, is the likely problem. tech-lead decides: take it over, re-scope it (corrected), or "reopened" once`,
+          legal: ['blocked'],
+          force: { event: 'blocked', detail: `retry cap (${MAX_TICKET_RETRIES}) reached — tech-lead decides` },
+        };
+      }
+      if (name === 'rejected') return { ok: true };
       if (!String(typeof candidate.detail === 'object' && candidate.detail ? JSON.stringify(candidate.detail) : candidate.detail || '').trim()) {
         return {
           ok: false,
@@ -814,7 +867,7 @@ function validateTransition(tickets, candidate) {
       if (state.cycles + 1 > MAX_REVIEW_CYCLES + state.extraCycles) {
         return {
           ok: false,
-          reason: `${id} has spent its ${MAX_REVIEW_CYCLES + state.extraCycles} review cycles — another rejection is an escalation, not another loop (only the founder can grant more: "reopened --by founder")`,
+          reason: `${id} has spent its ${MAX_REVIEW_CYCLES + state.extraCycles} review cycles — another rejection is an escalation, not another loop (tech-lead or cto may grant one more: "reopened --by tech-lead")`,
           legal: ['approved', 'blocked'],
           force: { event: 'blocked', detail: `review cycle cap (${MAX_REVIEW_CYCLES}) reached` },
         };

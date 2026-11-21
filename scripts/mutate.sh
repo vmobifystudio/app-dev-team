@@ -626,6 +626,24 @@ MS8V8-3@@scripts/privacy-disclosure-scan.mjs@@r.role === 'aso-specialist' && r.s
 MS8V8-4@@scripts/team-bootstrap.mjs@@...(role === 'web-developer' ? ['index.html'@@...(role === 'web-developer-x' ? ['index.html'@@Sprint 8 V8: FL-7 web-developer may write a root index.html@@Sprint 8 V8
 MS8V8-5@@scripts/team-bootstrap.mjs@@'docs/21-engineering-principles.md', ...specs];@@'docs/21-engineering-principles.md'];@@Sprint 8 V8: FL-8 the context manifest hashes the impl spec and not the vision@@Sprint 8 V8
 MS8V8-6@@scripts/team-bootstrap.mjs@@if (process.argv.slice(2).includes('--help')) {@@if (false) {@@Sprint 8 V8: EN-10 team-bootstrap --help prints usage@@Sprint 8 V8
+M8V2A@@scripts/lib/events.mjs@@        state.qaPassed = false;@@        ;@@Sprint 8 V2: SM-4 qa_failed after qa_passed revokes the pass@@Sprint 8 V2
+M8V2B@@scripts/lib/events.mjs@@if (state.retries + 1 > MAX_TICKET_RETRIES) {@@if (false) {@@Sprint 8 V2: SM-5 the 7th rework is refused and forces blocked@@Sprint 8 V2
+M8V2C@@scripts/lib/events.mjs@@if (state.qaFailures + 1 > MAX_QA_FAILURES + state.extraCycles) {@@if (false) {@@Sprint 8 V2: AU-11 the 3rd qa_failed forces blocked@@Sprint 8 V2
+M8V2D@@scripts/lib/capabilities.mjs@@reopened: ['tech-lead', 'cto'],@@reopened: ['founder'],@@Sprint 8 V2: AU-3 reopened --by tech-lead is accepted@@Sprint 8 V2
+M8V2E@@scripts/lib/events.mjs@@if (state.extraCycles >= 1) {@@if (false) {@@Sprint 8 V2: AU-3 ...once per ticket@@Sprint 8 V2
+M8V2F@@scripts/orchestrator.mjs@@if (t.status === 'blocked') continue;@@;@@Sprint 8 V2: SM-1 a blocked ticket is never STALLED@@Sprint 8 V2
+M8V2G@@scripts/board-doctor.mjs@@if (blocker && blocker.root === 'blocked') {@@if (false) {@@Sprint 8 V2: SM-7 stranded behind a blocked dependency is a warning@@Sprint 8 V2
+M8V2H@@scripts/lib/events.mjs@@return withCorrection(['unblocked', 'reopened', 'descoped']);@@return withCorrection(['unblocked', 'reopened']);@@Sprint 8 V2: SM-2 descoped from blocked is accepted@@Sprint 8 V2
+M8V2I@@scripts/round-journal.mjs@@const rounds = tagged.filter((r) => r.sprintOf === sprint);@@const rounds = tagged;@@Sprint 8 V2: SM-3 round-journal check sums only the current --sprint@@Sprint 8 V2
+M8V2J@@scripts/board.mjs@@if (!TICKET_ID.test(normalizeId(id)))@@if (false)@@Sprint 8 V2: EN-11 add refuses a path-shaped id@@Sprint 8 V2
+M8V2L@@scripts/board.mjs@@  return die(1, `refused ${ticket} qa_failed — ${bug} is not a row@@  return bug; die(1, `refused ${ticket} qa_failed — ${bug} is not a row@@Sprint 8 V2: QA-4 qa_failed naming a BUG-NNN that is not a docs/51-bugs.md row is refused@@Sprint 8 V2
+M8V2M@@scripts/board.mjs@@if (bug && !next.tickets.has(key(`${bug}-fix`))) {@@if (false) {@@Sprint 8 V2: QA-4 ...and it cuts BUG-001-fix@@Sprint 8 V2
+M8V2N@@scripts/ship-gate.sh@@PASSED*) QA_PASSED_AT=${QA_EVENTS#PASSED } ;;@@PASSED*) QA_PASSED_AT= ;;@@Sprint 8 V2: FL-3 ship-gate reads a pre-landing HOLD as superseded@@Sprint 8 V2
+M8V2O@@scripts/orchestrator.mjs@@.filter(([, id]) => tickets.get(key(id))?.status === 'in_progress');@@.filter(() => false);@@Sprint 8 V2: SM-6 orchestrator round prints RESPAWN@@Sprint 8 V2
+M8V2P@@scripts/round-journal.mjs@@Math.max(DEFAULTS.agentSpawns, 2 * tickets)@@DEFAULTS.agentSpawns@@Sprint 8 V2: SM-3 the per-agent default scales with the board@@Sprint 8 V2
+M8V2Q@@scripts/round-journal.mjs@@  if (!all.length) {@@  if (false) {@@Sprint 8 V2: LN-5 an unjournaled loop is counted from the board log@@Sprint 8 V2
+M8V2R@@scripts/board.mjs@@if (typeof flags.title !== 'string' || !flags.title.trim()) die(1,@@if (false) die(1,@@Sprint 8 V2: EN-11 add refuses an empty title@@Sprint 8 V2
+M8V2S@@scripts/lib/events.mjs@@        if (Array.isArray(fields.dependsOn)) state.dependsOn = state.meta.dependsOn = fields.dependsOn.map(String);@@        ;@@Sprint 8 V2: FL-12 corrected --depends/--acceptance/--file re-plans a ticket@@Sprint 8 V2
 CATALOGUE
 }
 

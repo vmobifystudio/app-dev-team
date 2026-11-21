@@ -311,13 +311,18 @@ const STALL_EVENTS = Number(process.env.APP_TEAM_STALL_EVENTS || 10);
 // Caught by the third experiment, which was aimed at those six tickets and found the transitions
 // out of `merged` work cleanly (H3 falsified). The blind spot only surfaced because the experiment
 // then asked whether the new instrument would have SEEN them. It would not have.
-const TERMINAL = new Set(['done']);
+const TERMINAL = new Set(['done', 'descoped']);
 
 function movement(tickets, events) {
   const unclaimed = [];
   const stalled = [];
   for (const t of tickets.values()) {
     if (TERMINAL.has(t.status)) continue;
+    // SM-1: a blocked ticket is waiting by decision, and stranded/the standup already report it —
+    // its quiet must not stop every independent round. Nor a `qa` ticket waiting on its BUG-fix.
+    if (t.status === 'blocked') continue;
+    if (t.status === 'qa' && t.qaFailures > 0 && !t.qaPassed
+      && [...tickets.values()].some((d) => !TERMINAL.has(d.status) && (d.dependsOn || []).map(key).includes(key(t.id)))) continue;
     const deps = (t.dependsOn || []).filter((d) => {
       const dep = tickets.get(key(d));
       return !dep || !['qa', 'done'].includes(dep.status) || dep.verifiedStatic === true;
@@ -436,6 +441,19 @@ function cmdRound() {
     process.stdout.write('\n');
   }
 
+  // SM-6: AN in_progress TICKET WHOSE AGENT DIED. Its claim lease (docs/team/runs.jsonl) expires and
+  // nothing else notices — the loop's exit test looks at todo/review/qa. Reported, not blocking: the
+  // remedy is one respawn, and a stale lease must not stop independent work (SM-1).
+  {
+    const rd = spawnSync(process.execPath, [resolve(HERE_SCRIPTS, 'run-doctor.mjs'), '--root', ROOT], { cwd: ROOT, encoding: 'utf8' });
+    const orphans = [...String(rd.stderr || '').matchAll(/orphaned lease: \S+ ticket (\S+) role (\S+)/g)]
+      .filter(([, id]) => tickets.get(key(id))?.status === 'in_progress');
+    for (const [, id, role] of orphans) {
+      process.stdout.write(`  RESPAWN ${tickets.get(key(id)).owner || role} ${id} — its claim lease expired with the ticket still in_progress (the agent is gone)\n`);
+    }
+    if (orphans.length) process.stdout.write('    Re-spawn the owner on the same ticket (run-ledger.mjs abandon the dead attempt first).\n\n');
+  }
+
   // THE REGISTER IS REPORTED HERE AND ENFORCED AT SHIP, and the asymmetry is deliberate.
   //
   // Open bugs and unanswered findings mid-sprint are NORMAL — that is what a sprint is for — so
@@ -477,26 +495,6 @@ function cmdRound() {
         '    Cleared by a green `wave-integrate.mjs` for the wave each belongs to. If this count is not\n' +
         '    shrinking round over round, waves are not landing — that is the thing to chase, not the flag.\n\n'
       );
-    }
-  }
-
-  // CROSS-TICKET REVIEW PATTERNS (OPS-014). Code review is per-ticket, so three tickets failing
-  // review on the same underlying spec defect each burn their own retry with no correlation, even
-  // though every verdict is already on disk in `docs/53-reviews/`. Report-only: a shared blocking
-  // file across tickets is a lead for a human or tech-manager, never a block on its own.
-  {
-    const scan = spawnSync(process.execPath, [resolve(HERE_SCRIPTS, 'review-pattern-scan.mjs'), '--root', ROOT, '--json'], { cwd: ROOT, encoding: 'utf8' });
-    if (scan.status === 0) {
-      try {
-        const parsed = JSON.parse(scan.stdout);
-        if (parsed.evaluated && parsed.patterns?.length) {
-          process.stdout.write(`  REVIEW PATTERNS — ${parsed.patterns.length} file(s) have blocked more than one ticket\n`);
-          for (const p of parsed.patterns.slice(0, 5)) {
-            process.stdout.write(`    ${p.file} -> ${p.tickets.join(', ')}\n`);
-          }
-          process.stdout.write('    Same file, multiple tickets — worth checking for one shared root cause before a\n    further ticket retries into it blind (review-pattern-scan.mjs for the full list).\n\n');
-        }
-      } catch { /* an unparsable scan is not this reporter's failure */ }
     }
   }
 
