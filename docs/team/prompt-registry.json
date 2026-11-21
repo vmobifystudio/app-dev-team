@@ -300,13 +300,13 @@
     },
     {
       "id": "incident-commander",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "owner": "incident-commander",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-21",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.3",
-      "content_hash": "438b9679e998b0070223978b42c5047c461f3630db5f36d470065c418791d9f3"
+      "rollback_version": "1.0.4",
+      "content_hash": "cf0599ee826bd9e03ef3a82e834dba7dd2be7180f39c3586271231ff3db7dd69"
     },
     {
       "id": "template/scripts/spawn-prompt.mjs",

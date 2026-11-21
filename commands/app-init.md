@@ -107,7 +107,7 @@ You are starting a fresh app project. The user's one-liner (if any) is:
    The register (`docs/90-register.jsonl` / `.md`) and `docs/team/release-candidates.jsonl` are
    written in the main checkout after init and nothing commits them, so they are ignored too (W7-9):
    as untracked files they made the destructive-git hook treat the checkout as holding uncommitted
-   work. The rest of that file (`docs/daily/`, the channel, `schedule.json`, `memory.jsonl`,
+   work. The rest of that file (`docs/daily/`, the channel, `schedule.json`,
    `incidents.jsonl`, `audit-anchor.json`) is tracked on purpose: dirty checks skip it, history keeps it. The
    board log and its rendering live in the main checkout only — a
    `git checkout` must not roll the board back, and ICs get their ticket through the spawn prompt,

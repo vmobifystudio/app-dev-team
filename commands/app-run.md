@@ -85,7 +85,8 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 
 3. **Plan.** Run `/app-plan` (tech-manager builds the parallel board via `sprint-planner`), which
    runs **non-interactively here** — scope was approved at Gate 1 and this command has no third
-   gate. Ensure every P0 feature has a paired `APP-NNN-analytics` ticket, owned per the roster
+   gate. Hand `tech-manager` the output of `node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" history` (the last 5 runs' first-pass
+   rate, cycles per ticket and rounds) and size the sprint to that record. Ensure every P0 feature has a paired `APP-NNN-analytics` ticket, owned per the roster
    (`data-analyst` where active; otherwise the feature's IC), and that it passes `dispatch-preflight`
    for that owner like any other ticket.
 
@@ -117,7 +118,8 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      digest; otherwise use the portable respawn model backed by the same files.
    - **The budget ceiling stops this loop and says why** (`/app-build` step 0). An unattended run
      has no other economic brake: `round-journal.mjs check` runs at the top of every round, exit 1
-     ends the run with the ceiling named and every unfinished ticket listed. Do not raise a ceiling
+     ends the run with the ceiling named and every unfinished ticket listed — after `/app-ship`
+     step 6's harvest with `--stop budget` (`stopped` for the kill switch). Do not raise a ceiling
      to keep going — that is a decision to hand back to the user, and it is Gate-shaped.
    - **The kill switch outranks everything in this file.** An unattended run is the case the studio
      emergency stop exists for: an operator who cannot reach a keyboard writes

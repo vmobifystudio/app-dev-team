@@ -344,7 +344,7 @@ This repo is its own Claude Code **marketplace**, so installing is two commands.
 > 💡 **AI App Studio** is the friendly name for the **`app-dev-team`** plugin — that's the ID you
 > install and the command prefix (`/app-*`) you'll use.
 
-The plugin is enabled automatically — its 30 agents, 27 commands, and 32 skills are now available.
+The plugin is enabled automatically — its 30 agents, 26 commands, and 32 skills are now available.
 Run `/plugin` anytime to browse, enable/disable, or remove it. To update later, re-run
 `/plugin marketplace add vmobifystudio/app-dev-team` and reinstall.
 
@@ -496,7 +496,6 @@ avatar in the control room, or open the **Team** tab, to see it live.
 | `/app-context` | Create or verify the explicit context manifest used by an execution attempt. |
 | `/app-run-status` | Check durable run leases, checkpoints, and orphaned attempts. |
 | `/app-recover` | Recover interrupted work through an explicit terminal ledger record. |
-| `/app-memory` | Govern durable memory proposals, provenance, promotion, rejection, and contradictions. |
 | `/app-eval` | Run deterministic role, policy, and workflow evaluation fixtures. |
 | `/app-schedule` | Compute dependency-ready work with bounded parallelism and backpressure. |
 | `/app-capabilities` | Enforce role operation and path capabilities from an allowlist. |
@@ -510,7 +509,7 @@ avatar in the control room, or open the **Team** tab, to see it live.
 | `/app-dashboard` | The zero-dependency diagnostic dashboard (`scripts/studio-dashboard.mjs`, `:4173`) — one file, Node stdlib, works when the UI build is broken; `--export` writes a static snapshot. |
 | `/app-control-room` | The full control room (`control-room/`, `:4174`) — five screens; build it once with `npm install && npm run build`. |
 | `/app-portfolio` | **(Many apps)** Ranks every registered project by **attention needed** — where should the next hour go? An unreadable project is reported as unreadable, never omitted. |
-| `/app-learn <app paths>` | Mines a shipped app's conventions into the **living** House KB; flags conflicts for your decision. Its failure pass harvests findings into the failure corpus and flags any class that **recurred after its rule shipped**. |
+| `/app-learn <app paths>` | Mines an app's conventions into a reviewed House KB patch (`docs/kb-patch.diff`, never the installed plugin); flags conflicts for your decision. Its failure pass harvests findings into the failure corpus and flags any class that **recurred after its rule shipped**. |
 | `/app-team` | Lists the roster. |
 
 ## The House Knowledge Base (`knowledge/`)
@@ -536,7 +535,7 @@ The operating skills also include `context-preflight`, `dependency-policy`, `pol
 reviews, and Git/PR lifecycle actions; they complement rather than duplicate `agent-isolation`,
 `team-protocol`, `house-conventions`, `defect-hunting`, and `mutation-testing`.
 
-It's **living** — `/app-learn` folds new learnings from each shipped app back in, and flags
+It's **living** — `/app-learn` turns each run's learnings into a reviewed patch for this repo, and flags
 conflicts (it never silently overwrites a convention).
 
 Every pack but two learns from apps that **shipped**, which means the KB only ever learned from

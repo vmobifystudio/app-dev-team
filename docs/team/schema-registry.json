@@ -129,12 +129,6 @@
       ],
       "reader": null
     },
-    "memory-ledger/v1": {
-      "files": [
-        "scripts/memory-curator.mjs"
-      ],
-      "reader": null
-    },
     "messages-open/v1": {
       "files": [
         "scripts/messages.mjs"
@@ -210,6 +204,12 @@
         "scripts/run-ledger.mjs"
       ],
       "reader": null
+    },
+    "runs-summary/v1": {
+      "files": [
+        "scripts/run-ledger.mjs"
+      ],
+      "reader": "scripts/run-ledger.mjs history"
     },
     "schedule-result/v1": {
       "files": [

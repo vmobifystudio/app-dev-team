@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 3.1.0 (`main`) · **Date:** 2026-11-17
-**Scale:** 30 roles · 32 skills · 27 commands · 75 top-level scripts (+24 shared libs) · 9 knowledge packs · 1485 assertions
+**Scale:** 30 roles · 32 skills · 26 commands · 73 top-level scripts (+24 shared libs) · 9 knowledge packs · 1485 assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
 drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
@@ -104,7 +104,6 @@ truth and the command documentation must be corrected.
 | Layered context | `context-manifest.mjs` | Hidden context, stale sources, precedence ambiguity |
 | Approval evidence | `approval-check.mjs` | Approval of a different commit, diff, context, or evidence set |
 | Audit integrity | Board chain plus `audit-anchor.mjs` | Unnoticed release-time event-log changes |
-| Memory governance | `memory-curator.mjs` (`propose`/`review`/`retrieve`) | Unreviewed, unscoped, unprovenanced agent memory — `retrieve` excludes unpromoted, expired, and superseded/contradicted records, not just a write-only ledger |
 | Prompt governance | `prompt-registry.mjs` (`sync`/check) | Unversioned prompts, missing owners, no rollback metadata — `sync` populates one entry per `agents/*.md` from a real content hash; `team-doctor.mjs` blocks on a missing or stale entry |
 | Evaluation | `eval-lab.mjs`, `eval/manifest.json` | Claims that a role/workflow works without an executable case |
 | Scheduling | `scheduler.mjs` | Dependency violations, starvation, uncontrolled parallelism |
@@ -131,7 +130,7 @@ truth and the command documentation must be corrected.
 | Evidence controls | `/app-preflight`, `/app-context`, `/app-run-status`, `/app-recover`, `/app-manager-failover`, `/app-manager-harness` | Establish context, inspect durable state, recover safely, and verify manager modes |
 | Coordination controls | `/app-schedule`, `/app-capabilities`, `/app-impact`, `/app-risk` | Decide what may run, who may do it, what it affects, and what assurance it needs |
 | Quality and release | `/app-ship`, `/app-eval`, `/app-incident` | Gate release, execute evaluations, and record operational failures |
-| Visibility and learning | `/app-status`, `/app-dashboard`, `/app-control-room`, `/app-portfolio`, `/app-memory`, `/app-learn`, `/app-team` | Observe work, curate memory, learn from shipped work, and inspect the roster |
+| Visibility and learning | `/app-status`, `/app-dashboard`, `/app-control-room`, `/app-portfolio`, `/app-learn`, `/app-team` | Observe work, learn from shipped work, and inspect the roster |
 
 ### Artifact map
 
@@ -140,7 +139,6 @@ truth and the command documentation must be corrected.
 | `docs/31-board-events.jsonl` | Append-only ticket event source; `docs/31-board.md` is a generated view |
 | `docs/team/runs.jsonl` | Durable execution attempts, checkpoints, leases, and terminal outcomes |
 | `docs/team/context-manifest.json` | Layered context snapshot and freshness boundary |
-| `docs/team/memory.jsonl` | Proposed and reviewed memory records |
 | `docs/team/prompt-registry.json` | Versioned prompt/policy metadata |
 | `docs/team/schedule.json` | Scheduler input plan |
 | `docs/team/capabilities.json` | Role operation/path allowlist |
@@ -571,7 +569,6 @@ say, not the other way around — fix the role file first if the two ever disagr
 | `/app-context` | Create or verify a deterministic context snapshot before review or irreversible work |
 | `/app-run-status` | Audit durable run leases, checkpoints, and orphaned attempts |
 | `/app-recover` | Recover an interrupted run without silently creating a competing attempt |
-| `/app-memory` | Propose and review governed memory with provenance and contradiction history |
 | `/app-eval` | Execute deterministic role, policy, and workflow evaluation fixtures |
 | `/app-schedule` | Compute dependency-ready work with fairness and bounded parallelism |
 | `/app-capabilities` | Check role operation and path permissions against an allowlist |
@@ -745,7 +742,6 @@ FC-001 alone accounts for eleven of the sixteen findings in the team's own revie
 | `approval-check.mjs` | Binds approvals to commit, diff, context, and evidence — on by default for new projects (`--bind`), opt-in for onboarded ones |
 | `audit-anchor.mjs` | Digest and tip anchor for the board event log — composed into `dispatch-preflight.mjs`, not release-time-only |
 | `dispatch-preflight.mjs` | The gate before every ticket claim (reviewers and retries on a claimed ticket skip it): composes context, scheduler, capability, risk, and (when enabled) audit-anchor/prompt-registry/eval-lab |
-| `memory-curator.mjs` | Append-only proposals, explicit reviewer decisions, and `retrieve` — the read path: live means promoted, unexpired, not superseded |
 | `prompt-registry.mjs` | Semantic versions, owners, evaluation suites, rollback metadata — `sync` populates real entries; `team-doctor.mjs` blocks on a missing or stale one |
 | `eval-lab.mjs` | Deterministic executable evaluation cases, plus static contract-clause checks over the agent files carrying this studio's hardest-won rules |
 | `scheduler.mjs` | Ready queue, dependency, fairness, and backpressure decisions |

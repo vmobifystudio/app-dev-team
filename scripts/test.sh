@@ -1770,12 +1770,6 @@ else
   ok "mirror test: removing §4b from code-reviewer reproduces an unrequired round-trip rule"
 fi
 
-grep -q "corpus_recurrence" "$HERE/../commands/app-learn.md" \
-  && ok "/app-learn's failure pass reads the recurrence flag" \
-  || bad "/app-learn's failure pass reads the recurrence flag"
-grep -q "team-doctor.mjs" "$HERE/../commands/app-learn.md" \
-  && ok "...by running the script that produces it, not by re-deriving it" \
-  || bad "...by running the script that produces it, not by re-deriving it"
 
 echo
 # --------------------------------------------------------------------------------------------
@@ -4952,32 +4946,6 @@ grep -q 'VERIFIED STATIC' "$TMP/out2" \
   && bad "a ticket verified for real (not static-only) is not counted on the odometer" "$(grep 'VERIFIED STATIC' "$TMP/out2")" \
   || ok "a ticket verified for real (not static-only) is not counted on the odometer"
 
-# --- OPS-014: cross-ticket review-finding pattern scan ----------------------------------------------
-#
-# Code review is per-ticket, so two tickets independently failing on the same underlying file get no
-# correlation — each burns its own retry rediscovering it. `review-pattern-scan.mjs` groups blocking
-# findings by the file they name; `orchestrator.mjs round` surfaces a shared one.
-RPS="$TMP/review-pattern"; rm -rf "$RPS"; mkdir -p "$RPS/docs/53-reviews"
-printf '## REQUEST CHANGES: APP-070\n\n## Blocking\n\n### 1. `src/Shared.kt:10` — wrong token\n\nDetail.\n' \
-  > "$RPS/docs/53-reviews/APP-070-cycle-0.md"
-printf '## REQUEST CHANGES: APP-071\n\n## Blocking\n\n### 1. `src/Shared.kt:22` — same wrong token, different line\n\nDetail.\n' \
-  > "$RPS/docs/53-reviews/APP-071-cycle-0.md"
-printf '## APPROVED: APP-072\n\nNothing to see here.\n' \
-  > "$RPS/docs/53-reviews/APP-072-cycle-0.md"
-node "$HERE/review-pattern-scan.mjs" --root "$RPS" >"$TMP/out" 2>&1
-assert_has "$TMP/out" 'src/Shared.kt' "two tickets blocking on the same file are correlated"
-assert_has "$TMP/out" 'APP-070, APP-071' "...naming both tickets, in order"
-node "$HERE/review-pattern-scan.mjs" --root "$RPS" --json >"$TMP/out.json" 2>&1
-grep -q '"patterns":\[{"file":"src/Shared.kt"' "$TMP/out.json" \
-  && ok "...and the machine-readable form carries the same finding" \
-  || bad "...and the machine-readable form carries the same finding" "$(cat "$TMP/out.json")"
-
-# Reuse VSO (already a working orchestrator-round fixture) to prove `round` itself wires the scan
-# in, not only the standalone script.
-cp "$RPS/docs/53-reviews/APP-070-cycle-0.md" "$RPS/docs/53-reviews/APP-071-cycle-0.md" "$VSO/docs/53-reviews/"
-( cd "$VSO" && node "$HERE/orchestrator.mjs" round ) >"$TMP/out" 2>&1
-assert_has "$TMP/out" 'REVIEW PATTERNS' "orchestrator round itself surfaces a cross-ticket review pattern, not only the standalone scan"
-
 # --- PF-002: corrupt data returned as empty ------------------------------------------------------
 #
 # THE FIRST PRODUCT DEFECT CLASS THIS STUDIO CAN DETECT. Across six dry runs not one product defect
@@ -7504,72 +7472,6 @@ assert_has "$TMP/err" "Pass --head" "...and says so"
 assert_exit 1 "...and an approval with no binding does not clear the board's merge gate" \
   bm "$AP" move AP-002 merged --by tech-manager --head main
 assert_has "$TMP/err" "missing detail.commit" "...because it binds nothing"
-
-MEMORY="$TMP/revamp-memory"; mkdir -p "$MEMORY"
-node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Keep acceptance criteria explicit" --by proposer --source docs/2026-07-29-revamp-master-plan.md --confidence 0.9 > "$MEMORY/proposal.json"
-MEMORY_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/proposal.json")
-assert_exit 0 "memory-curator verifies chained proposals" node "$HERE/memory-curator.mjs" verify --ledger "$MEMORY/memory.jsonl"
-assert_exit 1 "memory-curator refuses review of an unknown candidate" node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id MEM-NOT-FOUND --reason promote --content rationale --by reviewer
-node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$MEMORY_ID" --reason promote --content rationale --by reviewer >/dev/null
-
-# --- `retrieve` is the missing read path: propose/review write, but nothing read the six scopes
-# back — a memory vocabulary nobody queries is a write-only log, not governance. Live means
-# promoted, not expired as of --now, and not superseded/contradicted by a later PROMOTED memory.
-node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Expires before --now" --by proposer --source spec.md --confidence 0.5 --expires 2020-01-01T00:00:00Z > "$MEMORY/expiring.json"
-EXPIRING_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/expiring.json")
-node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$EXPIRING_ID" --reason promote --content rationale --by reviewer >/dev/null
-node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class platform \
-  --content "Never reviewed" --by proposer --source spec.md --confidence 0.4 >/dev/null
-node "$HERE/memory-curator.mjs" retrieve --ledger "$MEMORY/memory.jsonl" --now 2026-08-01T00:00:00Z > "$MEMORY/retrieved.json"
-grep -q "$MEMORY_ID" "$MEMORY/retrieved.json" \
-  && ok "retrieve returns a promoted, unexpired memory" \
-  || bad "retrieve returns a promoted, unexpired memory"
-grep -q "$EXPIRING_ID" "$MEMORY/retrieved.json" \
-  && bad "...and excludes one that expired before --now" "found $EXPIRING_ID in output" \
-  || ok "...and excludes one that expired before --now"
-grep -q "Never reviewed" "$MEMORY/retrieved.json" \
-  && bad "...and excludes one that was proposed but never reviewed" "found the unreviewed content" \
-  || ok "...and excludes one that was proposed but never reviewed"
-node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class project \
-  --content "Superseding replacement" --by proposer --source spec2.md --confidence 0.9 --supersedes "$MEMORY_ID" > "$MEMORY/replacement.json"
-REPLACEMENT_ID=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).memory_id)' "$MEMORY/replacement.json")
-node "$HERE/memory-curator.mjs" review --ledger "$MEMORY/memory.jsonl" --id "$REPLACEMENT_ID" --reason promote --content rationale --by reviewer >/dev/null
-node "$HERE/memory-curator.mjs" retrieve --ledger "$MEMORY/memory.jsonl" --now 2026-08-01T00:00:00Z --class project > "$MEMORY/retrieved2.json"
-grep -q '"memory_id":"'"$MEMORY_ID"'"' "$MEMORY/retrieved2.json" \
-  && bad "a memory superseded by a later-promoted replacement stops being served" "found the superseded $MEMORY_ID as its own record" \
-  || ok "a memory superseded by a later-promoted replacement stops being served"
-grep -q "$REPLACEMENT_ID" "$MEMORY/retrieved2.json" \
-  && ok "...and the replacement is served in its place" \
-  || bad "...and the replacement is served in its place"
-
-# --- Studio self-improvement plan (2026-08-03): `retrieve` already filtered by `--class`, but
-# `list` — the one place a PENDING (proposed, not yet reviewed) memory is visible before promotion
-# — had no such filter, so the `studio` class (zero producers until /app-learn's new studio-process
-# pass) had no way to be looked at on its own; an operator had to scan every class's output by eye.
-STUDIO_MEM=$(node "$HERE/memory-curator.mjs" propose --ledger "$MEMORY/memory.jsonl" --class studio \
-  --content "question-quality: ask about offline behavior before implementation, not after" \
-  --by proposer --source docs/dry-runs/example.md --confidence 0.6)
-STUDIO_MEM_ID=$(node -e 'console.log(JSON.parse(process.argv[1]).memory_id)' "$STUDIO_MEM")
-node "$HERE/memory-curator.mjs" list --ledger "$MEMORY/memory.jsonl" --class studio > "$MEMORY/list-studio.json"
-grep -q "$STUDIO_MEM_ID" "$MEMORY/list-studio.json" \
-  && ok "memory-curator list --class studio surfaces a pending studio-class proposal" \
-  || bad "memory-curator list --class studio surfaces a pending studio-class proposal"
-grep -q "Keep acceptance criteria explicit" "$MEMORY/list-studio.json" \
-  && bad "...and does not leak a project-class proposal into a studio-class listing" \
-  || ok "...and does not leak a project-class proposal into a studio-class listing"
-# Mirror test: prove the filter is load-bearing, not decoration — `list` with no --class must still
-# show both.
-node "$HERE/memory-curator.mjs" list --ledger "$MEMORY/memory.jsonl" > "$MEMORY/list-all.json"
-grep -q "$STUDIO_MEM_ID" "$MEMORY/list-all.json" \
-  && ok "...while an unfiltered list still shows the studio-class entry alongside everything else" \
-  || bad "...while an unfiltered list still shows the studio-class entry alongside everything else"
-
-tr '\n' ' ' < "$HERE/../commands/app-learn.md" | tr -s ' ' | grep -q -- "--class studio" \
-  && grep -q "memory-curator.mjs.*list" "$HERE/../commands/app-learn.md" \
-  && ok "/app-learn documents the studio-process harvest via memory-curator's already-governed pipeline" \
-  || bad "/app-learn documents the studio-process harvest via memory-curator's already-governed pipeline"
 
 assert_exit 0 "prompt-registry accepts the shipped, populated registry" node "$HERE/prompt-registry.mjs" --registry "$HERE/../docs/team/prompt-registry.json"
 
@@ -12720,7 +12622,6 @@ grep -qF 'team-bootstrap.mjs" --root .' "$U6R/commands/app-audit.md" && [ "$(gre
   || bad "U6: /app-audit bootstraps the risk policy and adds tickets with --file (S7-7)"
 # S7-8 / S7-9 / S7-10: runnable commands.
 grep -qF 'verify-done.sh" <branch> <integration-branch> fast' "$U6R/skills/sprint-planner/SKILL.md" && ! grep -qF '"<test cmd>"' "$U6R/skills/sprint-planner/SKILL.md" \
-  && grep -qF '(cd "${CLAUDE_PLUGIN_ROOT}" && node "${CLAUDE_PLUGIN_ROOT}/scripts/team-doctor.mjs" --json)' "$U6R/commands/app-learn.md" \
   && grep -qF -- '--scenario "${CLAUDE_PLUGIN_ROOT}/eval/manager-scenario.json"' "$U6R/commands/app-manager-harness.md" \
   && grep -qF '"schema": "impact-map/v1"' "$U6R/commands/app-impact.md" \
   && ok "U6: sprint-planner, app-learn, manager-harness and app-impact commands run from a project (S7-8/9/10)" \
@@ -12977,27 +12878,6 @@ node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from cto 
 assert_exit 1 "R7-11: ...while a real decision still refuses a reopen without evidence" \
   node "$HERE/messages.mjs" send --ledger "$U5M/docs/team/messages.md" --from release-manager --to qa-engineer \
     --ticket APP-006 --kind question --summary "Sign-off on APP-006?"
-
-# R7-3: review-pattern-scan reads the verdict format the board accepts.
-U5R="$TMP/u5-reviews"; rm -rf "$U5R"; mkdir -p "$U5R/docs/53-reviews"
-printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-101\nScope: a..b\nBlocking: app/Store.swift:42 force unwrap — guard it\nNotes (non-blocking): none\n\n## Not checked\nNothing.\n' \
-  > "$U5R/docs/53-reviews/APP-101-cycle-1.md"
-printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-102\nScope: a..b\nBlocking:\n- `app/Store.swift:42` same force unwrap\nNotes (non-blocking): none\n\n## Not checked\nNothing.\n' \
-  > "$U5R/docs/53-reviews/APP-102.md"
-node "$HERE/review-pattern-scan.mjs" --root "$U5R" >"$TMP/u5-rps.txt" 2>&1
-assert_has "$TMP/u5-rps.txt" "SHARED FILE: app/Store.swift blocked 2 ticket(s): APP-101, APP-102" \
-  "R7-3: two current-format verdicts blocking on one file are correlated"
-
-# S7-11: the proposer cannot review its own memory, and propose names its proposer.
-U5MEM="$TMP/u5-memory.jsonl"; rm -f "$U5MEM"
-U5MID=$(node "$HERE/memory-curator.mjs" propose --ledger "$U5MEM" --class project --content "x" --source s.md --by tech-lead \
-  | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>console.log(JSON.parse(s).memory_id))')
-assert_exit 1 "S7-11: memory review by the proposer is refused" \
-  node "$HERE/memory-curator.mjs" review --ledger "$U5MEM" --id "$U5MID" --reason promote --content ok --by tech-lead
-assert_exit 0 "S7-11: ...and a different reviewer may promote it" \
-  node "$HERE/memory-curator.mjs" review --ledger "$U5MEM" --id "$U5MID" --reason promote --content ok --by cto
-assert_exit 2 "S7-11: ...and propose without --by is refused" \
-  node "$HERE/memory-curator.mjs" propose --ledger "$U5MEM" --class project --content "y" --source s.md
 
 # S7-1: the build cache build-env.sh creates is operational, not a dirty tree.
 U5C="$TMP/u5-cache"; rm -rf "$U5C"; mkdir -p "$U5C"
@@ -13575,6 +13455,58 @@ printf '{"requireTicketFiles": true, "requireActorTokens": true}\n' > "$P47DP/.s
 grep -qF "$HERE/board.mjs\" move APP-001 corrected --by tech-manager" "$TMP/p47dp.txt" && grep -q -- '--token "$(node' "$TMP/p47dp.txt" \
   && ok "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" \
   || bad "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" "$(grep -m3 'corrected\|token\|dispatch' "$TMP/p47dp.txt")"
+
+# --- Sprint 8 V5: continuous learning ---
+echo "Sprint 8 V5: continuous learning — run summary, recurrences, pack limit, reviewed KB patch"
+# LN-4 / LN-6: one line per run, derived from the board and the verdicts, in a studio home that
+# survives a reinstall; recurrences counted from FC IDs the verdicts cite, not from hand rows.
+V5="$TMP/v5-proj"; V5H="$TMP/v5-home"; rm -rf "$V5" "$V5H"; mkdir -p "$V5/docs/53-reviews"
+for e in 'APP-001","event":"created' 'APP-001","event":"claimed' 'APP-001","event":"review_requested' 'APP-001","event":"changes' \
+         'APP-002","event":"created' 'APP-002","event":"claimed' 'APP-002","event":"review_requested' 'APP-002","event":"approved'; do
+  printf '{"ts":"2026-11-20T09:00:00Z","ticket":"%s","by":"x"}\n' "$e"
+done > "$V5/docs/31-board-events.jsonl"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-001\nBlocking: src/a.ts:3 Float for money (FC-002)\n' > "$V5/docs/53-reviews/APP-001-cycle-1.md"
+printf 'REVIEW VERDICT: REQUEST CHANGES\nTicket: APP-001\nBlocking: src/b.ts:1 one layer short (FC-001)\n' > "$V5/docs/53-reviews/APP-001-cycle-0.md"
+touch -t 202607010000 "$V5/docs/53-reviews/APP-001-cycle-0.md"
+printf 'REVIEW VERDICT: APPROVE\nTicket: APP-002\nNotes (non-blocking): FC-003 checked, fine\n' > "$V5/docs/53-reviews/APP-002-cycle-0.md"
+APP_TEAM_HOME="$V5H" node "$HERE/run-ledger.mjs" summary --stop blocked --root "$V5" >"$TMP/v5-sum.txt" 2>&1
+assert_has "$TMP/v5-sum.txt" 'RECURRENCE FC-002 — cited in docs/53-reviews/APP-001-cycle-1.md' \
+  "Sprint 8 V5: a REQUEST CHANGES verdict citing an FC class after its Rule shipped date is counted as a recurrence (LN-4)"
+grep -q 'RECURRENCE FC-001' "$TMP/v5-sum.txt" \
+  && bad "Sprint 8 V5: ...but a citation dated before the rule shipped is not" "$(cat "$TMP/v5-sum.txt")" \
+  || ok "Sprint 8 V5: ...but a citation dated before the rule shipped is not"
+grep -q '"FC-003"' "$TMP/v5-sum.txt" \
+  && bad "Sprint 8 V5: ...and an APPROVE verdict's FC mention is not a citation" "$(cat "$TMP/v5-sum.txt")" \
+  || ok "Sprint 8 V5: ...and an APPROVE verdict's FC mention is not a citation"
+grep -q '"first_pass_rate":0.5,' "$TMP/v5-sum.txt" && grep -q '"stop":"blocked"' "$TMP/v5-sum.txt" \
+  && [ "$(wc -l < "$V5H/runs-summary.jsonl" | tr -d ' ')" = 1 ] && [ ! -e "$HERE/../runs-summary.jsonl" ] \
+  && ok "Sprint 8 V5: a BLOCKED run appends one line with its first-pass rate to APP_TEAM_HOME, not the plugin (LN-6, LN-1)" \
+  || bad "Sprint 8 V5: a BLOCKED run appends one line with its first-pass rate to APP_TEAM_HOME, not the plugin (LN-6, LN-1)" "$(cat "$TMP/v5-sum.txt")"
+APP_TEAM_HOME="$V5H" node "$HERE/run-ledger.mjs" summary --stop shipped --root "$V5" >"$TMP/v5-sum2.txt" 2>&1
+assert_has "$TMP/v5-sum2.txt" 'VS LAST RUN (v5-proj, blocked): first-pass 50%→50%' "Sprint 8 V5: the next run is compared with the last one"
+APP_TEAM_HOME="$V5H" node "$HERE/run-ledger.mjs" history >"$TMP/v5-hist.txt" 2>&1
+assert_has "$TMP/v5-hist.txt" 'TREND (2 runs): first-pass 50%→50%' "Sprint 8 V5: history reads the runs back with a trend line"
+assert_exit 2 "Sprint 8 V5: summary refuses an unnamed stop cause" env APP_TEAM_HOME="$V5H" node "$HERE/run-ledger.mjs" summary --root "$V5"
+# LN-8: packs are inlined whole into spawns, so none may grow past the limit /app-learn states.
+V5BIG=""
+for f in "$HERE"/../knowledge/*.md; do
+  case "$f" in *failure-corpus.md|*/README.md) continue ;; esac
+  [ "$(wc -w < "$f" | tr -d ' ')" -le 1500 ] || V5BIG="$V5BIG $(basename "$f")"
+done
+[ -z "$V5BIG" ] && grep -qF '**Pack limit: 1500 words**' "$HERE/../commands/app-learn.md" \
+  && ok "Sprint 8 V5: every inlined KB pack is within /app-learn's 1500-word limit (LN-8)" \
+  || bad "Sprint 8 V5: every inlined KB pack is within /app-learn's 1500-word limit (LN-8)" "over:$V5BIG"
+# LN-1 / LN-7 / LN-3: /app-learn writes a scanned, provenance-stamped patch — never the install dir.
+V5L="$HERE/../commands/app-learn.md"
+grep -qF '(cd "$W" && diff -ruN a b) > docs/kb-patch.diff' "$V5L" && grep -qF 'injection-scan.mjs" docs/92-learnings.md' "$V5L" \
+  && grep -qF '(src: <app>/<file:line>, <YYYY-MM-DD>)' "$V5L" && ! grep -q 'memory-curator\|CHANGELOG' "$V5L" \
+  && [ ! -e "$HERE/memory-curator.mjs" ] && [ ! -e "$HERE/../commands/app-memory.md" ] && [ ! -e "$HERE/review-pattern-scan.mjs" ] \
+  && ok "Sprint 8 V5: /app-learn emits a scanned, stamped patch and governed memory is gone (LN-1, LN-3, LN-7)" \
+  || bad "Sprint 8 V5: /app-learn emits a scanned, stamped patch and governed memory is gone (LN-1, LN-3, LN-7)"
+grep -qF 'run-ledger.mjs" summary --stop' "$HERE/../commands/app-ship.md" && grep -qF 'on every outcome: shipped, BLOCKED' "$HERE/../commands/app-ship.md" \
+  && ok "Sprint 8 V5: /app-ship harvests and records blocked and stopped runs too (LN-4)" \
+  || bad "Sprint 8 V5: /app-ship harvests and records blocked and stopped runs too (LN-4)"
+rm -rf "$V5" "$V5H"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
