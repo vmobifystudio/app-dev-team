@@ -5739,9 +5739,9 @@ grep -q 'never `release-manager`' "$AS" \
 grep -q '`release-manager` cannot satisfy this gate' "$AS" \
   && ok "...and release-manager cannot satisfy the gate that evaluates it" \
   || bad "...and release-manager cannot satisfy the gate that evaluates it"
-grep -q 'no discoverable evidence bundle stays `unverified`' "$AS" \
-  && ok "...a test claim with no discoverable evidence bundle stays unverified" \
-  || bad "...a test claim with no discoverable evidence bundle stays unverified"
+grep -q 'claim with no discoverable evidence is `unverified`' "$AS" \
+  && ok "...a test claim with no discoverable evidence stays unverified" \
+  || bad "...a test claim with no discoverable evidence stays unverified"
 
 # The device and state matrix is a matrix, not a device list: the states come from the flow
 # inventory, so a state nobody designed is a state nobody tests.
@@ -13575,6 +13575,73 @@ printf '{"requireTicketFiles": true, "requireActorTokens": true}\n' > "$P47DP/.s
 grep -qF "$HERE/board.mjs\" move APP-001 corrected --by tech-manager" "$TMP/p47dp.txt" && grep -q -- '--token "$(node' "$TMP/p47dp.txt" \
   && ok "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" \
   || bad "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" "$(grep -m3 'corrected\|token\|dispatch' "$TMP/p47dp.txt")"
+
+# --- Sprint 8 V7: team shape and engineering guidance ---
+V7="$HERE/.."
+V7RA="$V7/skills/role-activation/SKILL.md"
+# SK-3/SK-4: utility merges release-auditor into verification-engineer; product-validator never tiers; data-analyst needs a telemetry SDK.
+grep -q '^| `release-auditor` | on .*utility: off, merged into `verification-engineer`' "$V7RA" \
+  && grep -q '^6\. `release-auditor` → `off(merged-into: verification-engineer' "$V7RA" \
+  && grep -q '^`qa-engineer`, `product-validator`\. Utility means' "$V7RA" \
+  && grep -q '`data-analyst` → `conditional(docs/20-architecture.md names a telemetry/analytics SDK)`' "$V7RA" \
+  && ! grep -q 'the vision states a KPI target\|executes the one irreversible action' "$V7RA" \
+  && ok "Sprint 8 V7: utility roster drops release-auditor and the no-op data-analyst/product-validator deltas (SK-3, SK-4)" \
+  || bad "Sprint 8 V7: utility roster drops release-auditor and the no-op data-analyst/product-validator deltas (SK-3, SK-4)"
+# SK-3: /app-ship prints the utility N/A instead of spawning the auditor.
+grep -q 'On utility, `release-auditor` is `off`' "$V7/commands/app-ship.md" \
+  && ok "Sprint 8 V7: /app-ship skips release-auditor on utility with a printed N/A (SK-3)" \
+  || bad "Sprint 8 V7: /app-ship skips release-auditor on utility with a printed N/A (SK-3)"
+# SK-2: /app-ship decides every still-conditional roster row before its review fan-out.
+V7S2=$(grep -n 'row still `conditional` is decided now' "$V7/commands/app-ship.md" | cut -d: -f1)
+V7F=$(grep -n '^2\. \*\*Spawn the `active` roles among `security-reviewer`' "$V7/commands/app-ship.md" | cut -d: -f1)
+V7M=$(grep -n '^3\. \*\*Spawn `release-manager`\*\*' "$V7/commands/app-ship.md" | cut -d: -f1)
+[ -n "$V7S2" ] && [ -n "$V7F" ] && [ -n "$V7M" ] && [ "$V7S2" -gt "$V7F" ] && [ "$V7S2" -lt "$V7M" ] \
+  && ok "Sprint 8 V7: /app-ship re-evaluates conditional roles before the ship fan-out (SK-2)" \
+  || bad "Sprint 8 V7: /app-ship re-evaluates conditional roles before the ship fan-out (SK-2)"
+# SK-1: product-researcher is spawned after ceo and before cpo.
+V7R=$(grep -n 'has `product-researcher` `active`, spawn it now' "$V7/commands/app-init.md" | cut -d: -f1)
+V7C=$(grep -n '^3\. \*\*Spawn `cpo` and `cto` in parallel' "$V7/commands/app-init.md" | cut -d: -f1)
+V7E=$(grep -n '^2\. \*\*Spawn the `ceo` agent' "$V7/commands/app-init.md" | cut -d: -f1)
+[ -n "$V7R" ] && [ -n "$V7C" ] && [ -n "$V7E" ] && [ "$V7E" -lt "$V7R" ] && [ "$V7R" -lt "$V7C" ] \
+  && ok "Sprint 8 V7: /app-init spawns product-researcher between ceo and cpo (SK-1)" \
+  || bad "Sprint 8 V7: /app-init spawns product-researcher between ceo and cpo (SK-1)" "ceo=$V7E researcher=$V7R cpo=$V7C"
+# FL-6: the auditor's journey evidence is the step-3b journey record; the kill-switch item applies only when §4 names one.
+grep -qF 'evidence-check.mjs" --head' "$V7/agents/release-auditor.md" \
+  && grep -q 'only when `docs/20-architecture.md` §4 names one' "$V7/agents/release-auditor.md" \
+  && ! grep -q 'artifact hash in the bundle' "$V7/agents/release-auditor.md" \
+  && ok "Sprint 8 V7: release-auditor binds journeys via evidence-check, kill switch only when named (FL-6)" \
+  || bad "Sprint 8 V7: release-auditor binds journeys via evidence-check, kill switch only when named (FL-6)"
+# EN-1: the architecture section list has exactly one copy.
+V7N=$(grep -rl '\*\*Non-functional budgets\*\*' "$V7/agents" "$V7/skills" | wc -l | tr -d ' ')
+[ "$V7N" = 1 ] && grep -q '\*\*Non-functional budgets\*\*' "$V7/skills/architecture-builder/SKILL.md" \
+  && grep -q 'invoke `architecture-builder`' "$V7/agents/tech-lead.md" \
+  && ok "Sprint 8 V7: one architecture section list, in architecture-builder; utility tech-lead invokes it (EN-1, SK-9)" \
+  || bad "Sprint 8 V7: one architecture section list, in architecture-builder; utility tech-lead invokes it (EN-1, SK-9)" "copies=$V7N"
+# EN-2/EN-3: v1 structure with split triggers; the ViewBinding/TinyDB stack is brownfield-only.
+grep -q '^## v1 structure' "$V7/knowledge/stack-defaults.md" \
+  && grep -q 'v1 is one app module plus the pure domain package' "$V7/agents/tech-lead.md" \
+  && grep -q 'brownfield reference only' "$V7/knowledge/stack-defaults.md" \
+  && grep -q 'brownfield reference only' "$V7/knowledge/android-conventions.md" \
+  && ! grep -q 'README.md` at the module root' "$V7/skills/architecture-builder/SKILL.md" \
+  && ok "Sprint 8 V7: new apps start as one module + domain package; utility ViewBinding stack is brownfield-only (EN-2, EN-3)" \
+  || bad "Sprint 8 V7: new apps start as one module + domain package; utility ViewBinding stack is brownfield-only (EN-2, EN-3)"
+# EN-4, EN-6, EN-12, SK-7: one review track source; tests follow the diff; one backend branch form; migrations routed.
+! grep -q 'still runs the full review' "$V7/skills/process-tiering/SKILL.md" \
+  && grep -q 'for the layers your diff changes' "$V7/agents/ios-developer.md" \
+  && grep -q 'for the layers your diff changes' "$V7/agents/android-developer.md" \
+  && ! grep -q -- '-be-' "$V7/agents/backend-developer.md" \
+  && grep -q '^- `database-migration`' "$V7/agents/ios-developer.md" \
+  && grep -q '^- `database-migration`' "$V7/agents/android-developer.md" \
+  && grep -q '^- `database-migration`' "$V7/agents/code-reviewer.md" \
+  && ok "Sprint 8 V7: XS review is the floor track, IC tests follow the diff, one backend branch form, migrations routed (EN-4, EN-6, EN-12, SK-7)" \
+  || bad "Sprint 8 V7: XS review is the floor track, IC tests follow the diff, one backend branch form, migrations routed (EN-4, EN-6, EN-12, SK-7)"
+# SK-10: policy-checker and interaction-motion are merged away and nothing in agents/commands still names them.
+[ ! -d "$V7/skills/policy-checker" ] && [ ! -d "$V7/skills/interaction-motion" ] \
+  && ! grep -rqE 'policy-checker|interaction-motion' "$V7/agents" "$V7/commands" \
+  && grep -q '^## Motion' "$V7/skills/design-system/SKILL.md" \
+  && grep -qF 'scripts/policy-check.mjs" .' "$V7/agents/code-reviewer.md" \
+  && ok "Sprint 8 V7: policy-checker folded into code-reviewer, interaction-motion into design-system (SK-10)" \
+  || bad "Sprint 8 V7: policy-checker folded into code-reviewer, interaction-motion into design-system (SK-10)"
 
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"

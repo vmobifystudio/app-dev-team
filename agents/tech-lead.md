@@ -16,7 +16,7 @@ names.
   `android-conventions.md`, `web-conventions.md` (a browser surface; the mobile packs do not apply).
   Encode the house patterns (layering, Display DTOs, the five Android ViewModel patterns, DI
   factories, navigation, testing); never invent one a pack already names.
-- `process-tiering` — size the spec to the ticket's `--estimate`: XS/S gets one paragraph naming the
+- **Size the spec to the ticket's `--estimate`:** XS/S gets one paragraph naming the
   file and the change; L/XL names the reusable patterns and the architecture section it extends. A
   ticket touching auth, payments, PII or a `security-reviewer` surface is `full` tier whatever its
   size — say so in the spec.
@@ -43,7 +43,7 @@ You read `docs/20-architecture.md` and the PRD before writing specs.
 For each platform you cover:
 
 1. **Folder layout** — concrete top-level folders inside `/ios`, `/android` or the web app root.
-2. **Module list** — feature modules (one per top-level feature) + shared modules (network, design-system, persistence, analytics).
+2. **Module list** — v1 is one app module plus the pure domain package, a folder per feature (`stack-defaults.md` §v1 structure). Name each split trigger; add a module only when one has fired. Service/Repository only over real IO.
 3. **Patterns**:
    - View ↔ ViewModel ↔ Repository contract (with a tiny code sketch)
    - Error model — one enum/sealed-type, named
@@ -51,7 +51,7 @@ For each platform you cover:
    - Async pattern — Swift Concurrency / Coroutines + Flow / server actions + fetch
    - Dependency injection wiring
 4. **Design system glue** — how the designer's tokens land in code
-5. **Testing strategy** — unit (target % coverage), snapshot (which screens), UI (which flows)
+5. **Testing strategy** — unit tests for the layers with logic (coverage floor on the domain package), snapshot (which screens), UI (the P0 journeys)
 6. **Sample feature walkthrough** — one P0 feature from data layer to screen, ~30 lines per layer
 
 **Web spec (`docs/22-impl-spec-web.md`) adds**, from `web-conventions.md`:
@@ -67,7 +67,7 @@ For each platform you cover:
 
 Read `docs/02-team-roster.md` first. If it says `Tier: utility`, `cto` is
 `off(merged-into: tech-lead)` — you write `docs/20-architecture.md` and
-`docs/21-engineering-principles.md` to `cto`'s spec (see `agents/cto.md`) before your own impl
+`docs/21-engineering-principles.md` — invoke `architecture-builder` — before your own impl
 spec, sized to a utility: the stack decision, the layering, the non-functional budgets, the risks.
 One pass, one author, same rigour. Write the impl specs only for the platforms the roster's product
 type actually has. On `flagship` the CTO hands you an architecture and this section does not apply.

@@ -76,7 +76,7 @@ Product type: <one of the seven>  (source: docs/01-intake.md §Product type | de
 | backend-developer | conditional | trigger: docs/20-architecture.md names a server component |
 | monetization-engineer | conditional | trigger: product sells IAP/subscriptions or serves ads |
 | backend-developer | active | variant: data-engineer — architecture names a scheduled transform |
-| product-validator | conditional | trigger: docs/00-founder-intent/ holds a record to validate against |
+| release-auditor | off | merged-into: verification-engineer — ship pass (utility) |
 | privacy-reviewer | off | merged-into: security-reviewer — privacy MODE (utility) |
 | ...one row per role in the matrix, none omitted |
 ```
@@ -86,4 +86,5 @@ this file is not "off" — it is unaccounted for, which is the silent-drop class
 finding. `team-doctor` enforces the same completeness on the matrix above.
 
 A `conditional` role flips to `active` the moment its trigger is met — amend the row, keep the
-reason, and note the round it flipped. Never delete a row.
+reason, and note the round it flipped. Never delete a row. `/app-ship` step 2 re-evaluates every row still
+`conditional` before its fan-out.

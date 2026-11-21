@@ -67,7 +67,8 @@ are cold forever. Xcode has no environment variable for DerivedData, so the proj
 command must pass `-derivedDataPath "$STUDIO_DERIVED_DATA"`; `build-env.sh --check` says per project
 whether it does, rather than letting an exported variable stand in for a saving nobody made.
 
-**Conflicts have an owner.** `wave-integrate.mjs` aborts the one merge that conflicted, keeps the
+**Conflicts have an owner.** Resolve one by reading both sides and the governing spec — never
+pick "ours" or "theirs" blindly. `wave-integrate.mjs` aborts the one merge that conflicted, keeps the
 rest of the wave, and names the files. A textual conflict is `tech-manager`'s to resolve in the
 integration tree; a conflict that changes behaviour or a contract goes back as a ticket to the owner
 of that contract. Re-spawning a developer cold to perform a mechanical rebase buys a full context

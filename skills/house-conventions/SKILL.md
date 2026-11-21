@@ -35,7 +35,8 @@ work **before** the first edit or spec, so what you produce matches the studio's
 
    **Tier:** default to the **Flagship** rules in each pack. If the project declares itself a
    *utility* app (in its `docs/` or `CLAUDE.md`), apply the **Utility** branch where a pack defines
-   one (e.g. ad-first monetization, leaner stack) — see `${CLAUDE_PLUGIN_ROOT}/knowledge/README.md` §Tiers.
+   one (e.g. ad-first monetization, Koin); *brownfield reference only* sections never apply to a
+   new app. See `${CLAUDE_PLUGIN_ROOT}/knowledge/README.md` §Tiers.
 
 2a. **Load only what the project has.** Read `docs/02-team-roster.md` (tier, product type,
    platforms) before the pack. Do not produce a section for a platform, role or capability the
