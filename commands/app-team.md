@@ -35,7 +35,7 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
 - monetization-engineer — StoreKit/Play Billing IAP, paywall gateway, AdMob + consent
 - code-reviewer — gate on every PR-equivalent; runs Axiom auditors on iOS branches
 - qa-engineer — test plans, bug filing, ship sign-off
-- test-automation-engineer — test infrastructure, the device and state matrix, evidence bundles,
+- test-automation-engineer — test infrastructure, the device and state matrix, the gates' evidence records,
   flake detection (flagship, conditional)
 - verification-engineer — executes what everyone else asserts: sweeps constants against outside
   reference data, grades every guard rule, and must watch a rule fail before trusting it
@@ -55,7 +55,7 @@ Print the team in this order, each line as `<role> — <one-line charter>`:
   (flagship, conditional)
 - red-team-agent — attacks the product *and* the studio's own assumptions (flagship, conditional)
 - release-manager — version, signing, submission checklist, release notes (the founder uploads)
-- release-auditor — independently reviews the evidence bundle and the gate record, and can block the
+- release-auditor — independently reviews the gates' evidence records and the gate record, and can block the
   release. `release-manager` cannot satisfy it — separation of duties
 - incident-commander — owns coordination, containment, and resolution for an open sev1/sev2 incident
   (conditional, activates only while one is open)

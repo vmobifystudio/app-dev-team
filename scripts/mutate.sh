@@ -655,6 +655,8 @@ MS8V4-07@@scripts/spawn-prompt.mjs@@if (ITEM_RE.test(l)) { keepItem = hit(l);@@i
 MS8V4-08@@scripts/messages.mjs@@if (options.was === 'last') {@@if (false) {@@Sprint 8 V4: open --was last reads the recorded count: unfallen exits 1, answered exits 0 (CX-5)@@Sprint 8 V4
 MS8V4-09@@scripts/spawn-prompt.mjs@@  'release-auditor': ['house-conventions', 'board-doctor'],@@  'release-auditor': ['house-conventions', 'board-doctor', 'team-protocol'],@@Sprint 8 V4: release-auditor's budget does not count the conditional team-protocol (CX-11)@@Sprint 8 V4
 MS8L03@@hooks/contract-hooks.mjs@@  if (payload.tool_name === 'Bash' && runsRelease(input.command)) {@@  if (false) {@@Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)@@Sprint 8 lead
+MS8L04@@scripts/board.mjs@@flags.detail || (typeof flags.reason === 'string' ? flags.reason : '')@@flags.detail || ''@@Sprint 8 lead: a founder-gate block written with --reason keeps it and an IC cannot lift it (PR49P-1)@@Sprint 8 lead
+MS8L05@@scripts/run-ledger.mjs@@typeof flags.project !== 'string' || r.project === flags.project@@true@@Sprint 8 lead: run-ledger history --project returns that app's last run, not the studio's (PR49P-5)@@Sprint 8 lead
 CATALOGUE
 }
 

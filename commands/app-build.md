@@ -349,8 +349,8 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
      parameter and name the tier in the standup. A `rejected` verify-done retry does **not**
      escalate.
    - **Cap: 2 review cycles, enforced at write time** — the 3rd `changes` is refused and becomes
-     `blocked`. Spawn `tech-lead`: one `reopened` grants another cycle; then it takes over,
-     re-scopes or descopes (`build-loop-branches.md` §Step 4).
+     `blocked`. Spawn `tech-lead`: one `reopened` grants another cycle (or a takeover); then it
+     re-scopes or descopes, recorded `--by tech-manager` (`build-loop-branches.md` §Step 4).
 
    **Utility tier** → `build-loop-branches.md` §Step 4 — utility tier.
 
@@ -524,13 +524,14 @@ CANNOT EVALUATE, not an empty board.** Stop the round.
 - **Never merge a branch containing another ticket's files** — stop the round and check both branches.
 - Never spawn more than one agent for the same ticket simultaneously, or two agents into one slot.
 - Never auto-merge across a `REQUEST CHANGES`.
-- Never re-spawn a developer past the 2-cycle cap without user input.
+- Never re-spawn a developer past the 2-cycle cap without `tech-lead`'s `reopened` (step 4).
 - **Spawn budget:** at most 6 developer retries per ticket across the sprint (review cycles plus
-  rejected-DONE retries). Past that the ticket is `blocked` and goes to the user — a spec problem,
-  not an effort problem.
+  rejected-DONE retries). Past that the CLI forces `blocked` and it goes to `tech-lead`
+  (`build-loop-branches.md` §Step 4) — a spec problem, not an effort problem.
 - A developer returning `BLOCKED: APP-NNN` → append `board.mjs move APP-NNN blocked --by
-  <owner-role> --detail "<the blocker>"`; never invent an answer. `Need:` names `tech-lead`,
-  `ux-architect` or `product-manager` → spawn that role once with the question: it commits the spec
-  edit and sends an `answer` row naming it; then `unblocked` and re-compose (the prompt carries the
-  answer and the existing branch). Anyone else → surface it verbatim and stop that ticket.
+  <owner-role> --detail "<the blocker>"`; never invent an answer. `Need:` names a decider in
+  `docs/03-decision-rights.md` (`tech-lead`, `ux-architect`, `product-manager`, `cpo`, `cto`, `ceo`)
+  → spawn that role once with the question: it commits the spec edit and sends an `answer` row
+  naming it; then `unblocked` and re-compose (the prompt carries the answer and the existing
+  branch). Only a money or irreversible `Need:` is surfaced to the user.
 - **Never hand-edit `docs/31-board.md`.** It is generated.

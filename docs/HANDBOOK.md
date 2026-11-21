@@ -73,7 +73,7 @@ The system now has four cooperating planes:
    operations and paths; risk routing selects model tier,
    approvers, and evidence requirements.
 4. **Release and learning.** Ship gates, runtime gates, dependency/version/policy scanners, audit
-   anchors, governed memory, evaluation fixtures, and incident records provide
+   anchors, reviewed KB patches (`/app-learn`), evaluation fixtures, and incident records provide
    release evidence and preserve failures for later review.
 
 ### The normal lifecycle
@@ -319,11 +319,11 @@ silent error is most expensive.
 | `product-manager` | sonnet | Ticket clarification, backlog grooming, in-sprint scope calls |
 | `product-researcher` | sonnet | Independent evidence gathering, labelled fact/user/competitor/hypothesis/inference |
 | `web-developer` | sonnet | TypeScript/browser implementation — makes `web-app` staffed |
-| `test-automation-engineer` | sonnet | Test infrastructure, device and state matrix, evidence bundles, flake detection |
+| `test-automation-engineer` | sonnet | Test infrastructure, device and state matrix, the gates' evidence records, flake detection |
 | `privacy-reviewer` | opus | Data inventory, consent, retention, regional compliance (flagship) |
 | `reliability-engineer` | sonnet | Offline, retries, idempotency, sync conflict, restoration, recovery |
 | `red-team-agent` | opus | Attacks the product and the studio own assumptions |
-| `release-auditor` | opus | Independent review of the evidence bundle and gate record; can block the release |
+| `release-auditor` | opus | Independent review of the gates' evidence records and the gate record; can block the release |
 | `aso-specialist` | sonnet | Store listing, keywords, screenshots, readiness |
 | `data-analyst` | sonnet | Analytics schema, instrumentation check, KPIs |
 
@@ -560,7 +560,6 @@ say, not the other way around — fix the role file first if the two ever disagr
 | `/app-preflight` | Verify branch, ticket, dependency, policy, version, and source-of-truth context before work |
 | `/app-context` | Create or verify a deterministic context snapshot before review or irreversible work |
 | `/app-recover` | Recover an interrupted run without silently creating a competing attempt |
-| `/app-memory` | Propose and review governed memory with provenance and contradiction history |
 | `/app-schedule` | Compute dependency-ready work with fairness and bounded parallelism |
 | `/app-capabilities` | Check role operation and path permissions against an allowlist |
 | `/app-risk` | Route work by blast radius, model tier, approvals, and evidence |
@@ -1101,7 +1100,7 @@ with the same access, and nothing here claims to be.
   into an enumerated `status` field and the prose became free text nobody parses. **Prose is not
   checkable; a field is.** And the dirty-tree fix's own end-to-end test caught two further bugs that
   reading the diff had missed: a false "not a git repository" message emitted alongside the real one,
-  and a test using `$BD` ~340 lines above the line that assigns it. §4b's rule, applied to its author.
+  and a test using `$BD` ~340 lines above the line that assigns it. §4b's rule, applied to its author. *(Removed in Sprint 8: memory-curator, prompt-registry and review-pattern-scan were deleted; learnings now flow `LEARNING:` → `/app-learn` → `docs/kb-patch.diff`, and review blockers are inlined into later IC prompts.)*
 
 Everything below this marker is **historical review evidence**. It explains earlier gaps and the
 reasoning behind the controls; when it conflicts with the current-state inventory above, the
@@ -1294,7 +1293,7 @@ Every open item is specified with a reproduction: dry run 4 in
   `connectedAndroidTest` completion line (`Finished N tests on <device>`), so a genuinely green emulator run
   still scored `CANNOT EVALUATE`. Both fixes proven with a live `test.sh` fixture and a `mutate.sh` mutation
   that reverts each fix and expects red (`M80`/`M81`; `M77`/`M78`'s anchors widened after the new regex
-  alternative drifted them). Full suite: 1451 passed, 0 failed. Mutation run: 4/4 caught.
+  alternative drifted them). Full suite: 1451 passed, 0 failed. Mutation run: 4/4 caught. *(Removed in Sprint 8: memory-curator, prompt-registry and review-pattern-scan were deleted; learnings now flow `LEARNING:` → `/app-learn` → `docs/kb-patch.diff`, and review blockers are inlined into later IC prompts.)*
 
 ---
 

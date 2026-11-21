@@ -828,7 +828,7 @@ function validateTransition(tickets, candidate) {
       if (state.extraCycles >= 1) {
         return {
           ok: false,
-          reason: `${id} was already reopened once — tech-lead now takes it over (assigned), re-scopes it (corrected), or descopes it with a follow-up ticket`,
+          reason: `${id} was already reopened once — tech-lead now re-scopes it (corrected) or descopes it with a follow-up ticket; the orchestrator records either --by tech-manager`,
           legal: legal.filter((e) => e !== 'reopened'),
         };
       }
@@ -849,7 +849,7 @@ function validateTransition(tickets, candidate) {
       if (state.retries + 1 > MAX_TICKET_RETRIES) {
         return {
           ok: false,
-          reason: `${id} has been sent back ${state.retries} times (rework + rejected) — the spec, not the developer, is the likely problem. tech-lead decides: take it over, re-scope it (corrected), or "reopened" once`,
+          reason: `${id} has been sent back ${state.retries} times (rework + rejected) — the spec, not the developer, is the likely problem. tech-lead decides: "reopened" once (then assigned to tech-lead to take it over), or re-scope (corrected) / descope, recorded --by tech-manager`,
           legal: ['blocked'],
           force: { event: 'blocked', detail: `retry cap (${MAX_TICKET_RETRIES}) reached — tech-lead decides` },
         };

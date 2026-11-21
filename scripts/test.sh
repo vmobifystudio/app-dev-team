@@ -13978,6 +13978,22 @@ l8h "" "fastlane deliver --ipa x.ipa"; L8C=$?
 [ "$L8A" = 2 ] && [ "$L8B" = 0 ] && [ "$L8C" = 0 ] \
   && ok "Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)" \
   || bad "Sprint 8 lead: a subagent's store-upload command is refused; a mention and the main session are not (AU-9)" "a=$L8A b=$L8B c=$L8C"
+# PR49P-1: a `move … blocked --reason "needs-approval: …"` keeps its reason, so only the orchestrator lifts it.
+L8B="$TMP/s8lead-board"; rm -rf "$L8B"; mkdir -p "$L8B"
+( cd "$L8B" && git init -q -b main . && node "$HERE/board.mjs" add APP-001 --title "pay" --owner ios-developer \
+  && node "$HERE/board.mjs" move APP-001 blocked --by tech-manager --reason "needs-approval: founder-gate pricing" ) >/dev/null 2>&1
+( cd "$L8B" && node "$HERE/board.mjs" move APP-001 unblocked --by ios-developer ) >"$TMP/s8lb.txt" 2>&1; L8BR=$?
+grep -q 'needs-approval: founder-gate pricing' "$L8B/docs/31-board-events.jsonl" && [ "$L8BR" != 0 ] \
+  && ok "Sprint 8 lead: a founder-gate block written with --reason keeps it and an IC cannot lift it (PR49P-1)" \
+  || bad "Sprint 8 lead: a founder-gate block written with --reason keeps it and an IC cannot lift it (PR49P-1)" "rc=$L8BR $(head -c 300 "$TMP/s8lb.txt")"
+# PR49P-5: history --project reads one app's runs; the file spans every project.
+L8R="$TMP/s8lead-runs"; rm -rf "$L8R"; mkdir -p "$L8R"
+printf '%s\n' '{"schema":"runs-summary/v1","project":"app-a","stop":"shipped","first_pass_rate":1}' \
+  '{"schema":"runs-summary/v1","project":"app-b","stop":"blocked","first_pass_rate":0}' > "$L8R/runs-summary.jsonl"
+APP_TEAM_HOME="$L8R" node "$HERE/run-ledger.mjs" history --project app-a --last 1 >"$TMP/s8lr.txt" 2>&1
+grep -q '"project":"app-a"' "$TMP/s8lr.txt" && ! grep -q 'app-b' "$TMP/s8lr.txt" \
+  && ok "Sprint 8 lead: run-ledger history --project returns that app's last run, not the studio's (PR49P-5)" \
+  || bad "Sprint 8 lead: run-ledger history --project returns that app's last run, not the studio's (PR49P-5)" "$(head -c 300 "$TMP/s8lr.txt")"
 # FL-16: `trace --only gates` says what it checked, not "no break in the chain".
 L8T="$TMP/s8lead-trace"; rm -rf "$L8T"; mkdir -p "$L8T/docs/00-founder-intent"
 printf '# Brief\nA to-do list.\n' > "$L8T/docs/00-founder-intent/brief.md"

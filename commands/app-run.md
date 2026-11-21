@@ -17,7 +17,7 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 
 - **The team decides what is reversible and writes it down** (`docs/03-decision-rights.md` § Team
   decides): an ambiguity gets its decider's `[TD-NNN]` / `DECISION (auto): … — reason` line and the
-  work continues. Only money, irreversible actions and scope beyond the brief are the founder's.
+  work continues. Only money, credentials, irreversible actions, a new P0 the brief never named and the final store submission are the founder's.
 - All build agents invoke the `house-conventions` skill before working (House KB = `knowledge/`).
 - Honor the existing safety rails: 2-cycle review cap, no auto-merge across `REQUEST CHANGES`,
   one agent per ticket at a time, no destructive data actions.
@@ -156,7 +156,7 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      waiver of a failed or unavailable gate** — and no founder decision covers it. **It does not stop
      the loop.** Record it as an open founder question (question · default · needed-by) in the
      standup, move only the tickets whose files or feature it touches to `blocked` with
-     `--reason "needs-approval: founder-gate <trigger>"`, and keep building the rest. It clears with
+     `--detail "needs-approval: founder-gate <trigger>"`, and keep building the rest. It clears with
      one appended line in `docs/00-founder-intent/decisions.md` (then the orchestrator's `unblocked`);
      never an agent deciding the trigger was fine, and `--yolo` does not clear one. Exit 2 is
      CANNOT EVALUATE — almost always a missing `docs/00-founder-intent/` (`/app-init` step 0,
@@ -168,7 +168,7 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
      `product-validator` re-runs once, `board.mjs move <ID> corrected --acceptance` updates tickets
      in flight, and the gates above run.
    - **Escalate to the user only** for: a blocker the team can't resolve (a capped review goes to
-     `tech-lead`, not the user: one `reopened --by tech-lead`, then take over, re-scope or `descoped`),
+     `tech-lead`, not the user: one `reopened --by tech-lead`, then re-scope or `descoped`, recorded `--by tech-manager`),
      or the budget ceiling. A scope/architecture conflict goes to `ceo`, not the user; a fired
      founder gate is an open question, not a stop. Surface as question · proposed default ·
      reversible? · needed-by — after needed-by, a reversible default stands.
@@ -193,8 +193,8 @@ else streams as standup reports. Wrap this command in `/loop` for fully self-pac
 6. **GATE 2 — ship (human).** Hand off to `/app-ship`, which summarizes readiness and hands the
    founder a signed, submission-ready build and checklist. Nothing in the studio uploads or submits:
    that action is the founder's own. `/app-ship`'s last step
-   harvests the run's `LEARNING:` lines into `docs/92-learnings.md` and folds them into the House KB
-   via `/app-learn` — that is where an autonomous run pays its knowledge back.
+   harvests the run's `LEARNING:` lines into `docs/92-learnings.md` and `/app-learn` turns them into
+   `docs/kb-patch.diff`, a reviewed patch for the plugin repo, — that is where an autonomous run pays its knowledge back.
 
 ## Output
 

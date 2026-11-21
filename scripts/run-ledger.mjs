@@ -166,7 +166,7 @@ if (command === 'summary') {
     qa_failures: metrics.gateFires.qa_failed, rounds,
     fc_cited: fcCited, fc_cited_total: Object.values(fcCited).reduce((a, b) => a + b, 0), recurrences,
   };
-  const previous = readSummary().at(-1);
+  const previous = readSummary().filter((r) => r.project === line.project).at(-1); // PR49P-5: this project's last run
   mkdirSync(dirname(SUMMARY), { recursive: true });
   appendFileSync(SUMMARY, `${JSON.stringify(line)}\n`, 'utf8');
   process.stdout.write(`${JSON.stringify(line)}\n`);
@@ -178,7 +178,8 @@ if (command === 'summary') {
 }
 if (command === 'history') {
   const last = Math.max(1, Number(flags.last) || 5);
-  const runs = readSummary().slice(-last);
+  // PR49P-5: --project narrows to one app; the file spans every project on this machine.
+  const runs = readSummary().filter((r) => typeof flags.project !== 'string' || r.project === flags.project).slice(-last);
   if (!runs.length) { process.stdout.write(`HISTORY: no runs recorded yet in ${SUMMARY}\n`); process.exit(0); }
   for (const r of runs) process.stdout.write(`${JSON.stringify(r)}\n`);
   if (runs.length > 1) process.stdout.write(`TREND (${runs.length} runs): ${trend(runs[0], runs.at(-1))}\n`);

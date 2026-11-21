@@ -98,8 +98,8 @@ override the gate because a missing input "isn't written yet".
    counts, so append the `— vX.Y.Z` field to each `WAIVED:` line in `docs/60-releases.md` before
    this commit. Nothing else: `trace.mjs` ignores that trailing field, so the founder's one approval
    from step 1a still covers it, and `decisions.md` is never yours to write.
-3. **Do not tag.** The tag names the SHA that actually shipped, so the studio pushes it only after
-   the founder marks the upload done (below).
+3. **Do not tag.** `/app-ship` step 4 tags the candidate SHA once the audit passes; the next run
+   pushes it.
 
 ## Release notes
 
@@ -189,8 +189,8 @@ that remains, in the order the founder does them:
 ```
 
 Recommended, not a row: a staged rollout (iOS phased release, Play 5% → 20% → 50% → 100%) and the
-`release-health` check below before each widening. Once the founder marks the upload done, the
-studio tags the shipped SHA (`vX.Y.Z`; `vX.Y.Z+<versionCode>` on Android) — not a founder row.
+`release-health` check below before each widening. `/app-ship` step 4 tags the
+candidate SHA (`vX.Y.Z`; `vX.Y.Z+<versionCode>` on Android) locally and the next run pushes it — not a founder row.
 
 Fill in the export-compliance and age-rating answers yourself from the code and the PRD — they are
 yours to prepare, the founder's to submit. If the founder ramps, this is the script for the numbers

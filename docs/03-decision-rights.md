@@ -28,9 +28,8 @@ one place.
 | Incident command | release/production signal | product, security, platform leads | `release-manager` / `tech-manager` jointly today — moves to a conditional `incident-commander` role once one is open (see `docs/HANDBOOK.md` Part 12 / roadmap) | response owner (the IC that owns the affected surface) | `incident-ledger.mjs` |
 | Durable learning | any role, via a `LEARNING:` line → `/app-learn`'s reviewed `docs/kb-patch.diff` | — | plugin maintainer reviewing the PR | — | the patch |
 
-Two rows are marked **human gate** on purpose — they are the two the studio never automates
-(`docs/HANDBOOK.md` Part 7: "Two human gates, and only two: scope-lock ... and ship"). Every other
-row can run unattended; these two cannot, by design, regardless of confidence score.
+Two standing human gates — scope-lock and ship (`docs/HANDBOOK.md` Part 7) — plus the founder
+rows in § Team decides, which block only the tickets they touch. Every other row runs unattended.
 
 ## Team decides, founder decides
 
@@ -44,8 +43,9 @@ studio that asks instead is a question queue, not a team.
   `DECISION (auto): <decision> — <reason>` on the channel. `product-validator` reports TD lines as
   their own non-material class, listed once in the Gate 1 brief so the founder can veto any of them.
 - **The founder decides:** money (a price not already in their own words, paid infrastructure),
-  irreversible data actions (a destructive migration of user data), scope beyond the brief, and
-  waivers. These are the `trace.mjs --only gates` triggers plus Gate 1 and Gate 2. A founder question
+  credentials and accounts (signing keys, store/API accounts), irreversible data actions (a
+  destructive migration of user data), a new P0 the brief never named, gate waivers at ship, and
+  the final store submission. These are the `trace.mjs --only gates` triggers plus Gate 1 and Gate 2. A founder question
   never stops the loop: it is recorded as open with a default, and only the tickets it touches wait.
 
 ## Conflict resolution
@@ -56,7 +56,7 @@ Challengers disagree with each other):
 1. Name the decision, the competing positions, and the evidence each side has.
 2. Find the row above — the "Decides" column is authoritative. A challenge that isn't resolved by
    the named decider escalates one level up that role's own reporting chain (e.g. `tech-lead` →
-   `cto`; `code-reviewer` deadlock → `tech-lead`/`cto`: one `reopened` per ticket, then take over / `corrected` / `descoped`, never the
+   `cto`; `code-reviewer` deadlock → `tech-lead`/`cto`: one `reopened` per ticket (a takeover rides on it), then re-scope or drop — the orchestrator records `corrected`/`descoped` `--by tech-manager` — never the
    ticket's own owner and never the founder; `cpo` vs `cto` → `ceo`).
 3. Repeated disagreement with no new evidence is process churn, not a live dispute — the anti-ping-
    pong guard (`scripts/lib/messages.mjs:426`, `guard()`) already refuses it after one round.

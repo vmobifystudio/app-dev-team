@@ -363,8 +363,8 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      `docs/team/evidence/`), and a release whose critical journeys are `unverified` is a `FAIL`;
    - `release-manager` may correct a fact and the audit re-runs; it may never grade the verdict.
 
-   `RELEASE AUDIT: FAIL` → stop, print the audit's checklist verbatim, and do not ask the upload
-   question. Only a **human** may waive, and the waiver is recorded in `docs/60-releases.md` in the
+   `RELEASE AUDIT: FAIL` → stop, print the audit's checklist verbatim, and do not print the
+   submission checklist. Only a **human** may waive, and the waiver is recorded in `docs/60-releases.md` in the
    `WAIVED: <artifact> — <who> — <reason>` form with a real name.
 
 4. **If SHIP CANDIDATE and `RELEASE AUDIT` is not `FAIL`**: print release-manager's output, the audit
@@ -372,12 +372,14 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    done at this point — nobody here uploads or submits anything.** Tell the user plainly: the signed
    build is ready at the paths release-manager named; the checklist above is the founder's own
    action list for App Store Connect / Play Console. There is no confirmation question to ask,
-   because there is no upload command for the studio to run.
+   because there is no upload command for the studio to run. Tag the candidate SHA locally now
+   (`git tag vX.Y.Z`; `vX.Y.Z+<versionCode>` on Android); the next `/app-run` or `/app-ship` entry
+   pushes the tag — never a question to the founder.
 
 5. **If BLOCKED**: print the blocker list and the proposed unblock. Suggest the right command (`/app-build` for missing tickets, `/app-status` for context).
 
 6. **Harvest the learnings** — on every outcome: shipped, BLOCKED, or a run stopped by `/app-run`
-   (budget, kill switch, founder gate). Blocked runs are where most of the failures are. Every agent is
+   (budget, kill switch, or ship refused on an unwaived gate). Blocked runs are where most of the failures are. Every agent is
    told by `house-conventions` to write a `LEARNING:` line into its daily fragment when it discovers
    a reusable convention. Until this step existed, nothing ever read them and the "living knowledge
    base" never actually lived. Collect them into the inbox:
@@ -401,7 +403,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
    Then run `/app-learn` on this project: it writes `docs/kb-patch.diff`, a reviewed patch for
    the plugin repository — nothing is applied to the installed plugin. A conflict
-   is recorded `pending` for later review and the run does not wait on it.
+   is listed in the summary for the plugin maintainer; the run does not wait on it.
 
 ## Safety
 

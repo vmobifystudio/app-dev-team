@@ -126,7 +126,7 @@ manual pass adds free-text notes beside the record. Why: `references/evidence-bu
 
 - Never for anything reversible: the decider in `docs/03-decision-rights.md` decides and records
   it; `cpo` vs `cto` goes to `ceo`.
-- The review-cycle cap or spawn budget is hit
+- The budget ceiling is hit (money)
 - A change is destructive and irreversible (data migration, billing, a store submission)
 
 Escalate with the question in one sentence, both options with their cost, and **a recommendation**.

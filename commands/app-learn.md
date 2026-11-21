@@ -84,7 +84,7 @@ same relative path under both `$W/a/` and `$W/b/`.
       back:
 
       ```bash
-      node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" history --last 1
+      node "${CLAUDE_PLUGIN_ROOT}/scripts/run-ledger.mjs" history --project "$(basename "$PWD")" --last 1
       ```
 
       Each `recurrences` entry becomes a dated instance row (an app instance, from this app's

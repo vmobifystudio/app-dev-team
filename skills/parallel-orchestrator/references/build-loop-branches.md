@@ -66,9 +66,12 @@ full reviewer + developer history. It decides one of four, and records it:
 - **one more cycle** — once per ticket; the CLI refuses a second:
   `board.mjs move APP-NNN reopened --by tech-lead --detail "<why>" --token <its token>` (back to
   `in_progress`; re-spawn the owner from there);
-- **take it over** — `assigned` to tech-lead, then `reopened`;
+- **take it over** — `reopened`, then `assigned --to tech-lead` (only if it was never reopened;
+  after that, only re-scope or drop);
 - **re-scope** — `corrected --acceptance/--spec/--file`, or split it: `add` the follow-up ticket;
 - **drop it** — `descoped --by tech-manager --detail "<decision>"`, with a follow-up ticket if any.
+
+tech-lead decides; the orchestrator records `corrected`/`descoped` `--by tech-manager`.
 
 The same cap shape bounds two other loops: past **6 `rework` + `rejected`** on one ticket (the
 wave-fail / verify-reject loop) and past **2 `qa_failed`** (the QA–developer loop) the CLI forces

@@ -842,7 +842,9 @@ function cmdMove(id, name, flags, paths, idempotencyKey = '') {
     ticket,
     event: name,
     by: flags.by || '',
-    detail: typeof flags.detail === 'object' ? flags.detail : scrub('--detail', flags.detail || ''),
+    // PR49P-1: `--reason` is add's spelling; on a move it used to be dropped silently, so a
+    // `needs-approval:` block written with it became a block any role could lift.
+    detail: typeof flags.detail === 'object' ? flags.detail : scrub('--detail', flags.detail || (typeof flags.reason === 'string' ? flags.reason : '')),
     provenance: 'cli',
     actor: stampActor(paths, flags, ticket, name, Boolean(conditionalGate(tickets.get(key(ticket)), name))),
     // Stamped here as well as in `cmdAdd`. The first version of this fix stamped the key on

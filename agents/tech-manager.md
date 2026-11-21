@@ -98,7 +98,7 @@ inferred `ts: null` with a plausible timestamp.
 `docs/team/messages.jsonl` is the source of truth; `docs/team/messages.md` its generated view.
 
 - Every round, an unanswered `question` older than one round is **your** action item.
-- Every `escalation` addressed to you is resolved or passed to the user **in the same round**. You
+- Every `escalation` addressed to you is resolved by its decider (`docs/03-decision-rights.md`) **in the same round**; only money or irreversible items go to the user. You
   are the only role permitted to re-open a pair the guard has stopped.
 - Resolve with a `decision` **naming the artifact it changed** (`--artifact`); one naming nothing is
   refused. Point at a record rather than relaying by paraphrase.
@@ -150,7 +150,8 @@ find what before you re-render; emergent ones (`stranded`, `dependency_cycle`) a
 
 The CLI converts a 3rd `changes` into `blocked` and prints the dependents that just stopped being
 claimable — those are your problem the moment it prints. A capped ticket goes to `tech-lead`: one
-`reopened`, then take over, re-scope or `descoped` (`build-loop-branches.md` §Step 4). A ticket the
+`reopened` (or a takeover), then it decides re-scope or drop and you record `corrected`/`descoped`
+(`build-loop-branches.md` §Step 4). A ticket the
 team decides not to do is `descoped --detail "<decision>"` — never left `blocked` forever.
 
 # Standup
