@@ -316,7 +316,7 @@ MF24@@scripts/board.mjs@@if (state && isQaDocs(state)) {@@if (false) {@@F1: ...a
 MF25@@scripts/board.mjs@@const integration = integrationBase(gitAt(process.cwd()));@@const integration = 'main';@@F1: ...and the recorded base is develop's tip, not main's@@Sprint 3 track F1
 MF26@@scripts/verify-done.sh@@TOKFLAG=$(node "$EV" token-flag@@TOKFLAG=$(true "$EV" token-flag@@F1: verify-done prints the board command with the inline-mint --token under requireActorTokens (W2-10)@@Sprint 3 track F1
 MM01@@commands/app-init.md@@docs/53-reviews/ docs/54-evidence/@@docs/53-review/ docs/54-evidence/@@K3: every path /app-init gitignores is an operational path (C3W-12)@@Sprint 4 track K3
-MM02@@commands/app-ship.md@@waiver is the exception: android, ios and web drivers all ship.@@Drivers do not ship yet.@@K3: app-build and app-ship name the web driver and its setup (C3W-3)@@Sprint 4 track K3
+MM02@@commands/app-ship.md@@waiver is the exception: android, ios (with AXe) and web drivers all execute every step —@@Drivers do not ship yet.@@K3: app-build and app-ship name the web driver and its setup (C3W-3)@@Sprint 4 track K3
 MM03@@commands/app-build.md@@on every tier, except a wave made only of@@skip it on the utility tier and a wave made only of@@K3: the utility lane runs one QA- ticket per wave, like flagship (C3W-2)@@Sprint 4 track K3
 ML01@@hooks/contract-hooks.mjs@@if (script === 'spawn-prompt.mjs' && after.some((w) => w.v.text === 'compose'))@@if (false)@@spawn-prompt.mjs" compose --ticket APP-001 --role qa-engineer@@Sprint 4 track K2
 ML02@@hooks/contract-hooks.mjs@@if (dynamicMjs || dynamicScript) {@@if (false) {@@K2: guard exit 2 for Bash: node scripts/b?ard.mjs@@Sprint 4 track K2
@@ -596,6 +596,17 @@ MF47Q@@scripts/lib/evidence.mjs@@&& /^integration\/wave-/.test(String(rec.branch
 MF47R@@scripts/spawn-prompt.mjs@@row.status === 'qa' && !/^QA-/i.test(row.id)) return composeQaVerdict@@row.status === 'qa') return composeQaVerdict@@PR47 fixes: a QA- ticket at qa is composed as a verification@@PR47 fixes
 MF47S@@scripts/merge-reconcile.mjs@@corrected --by tech-manager --detail "<what went wrong>"@@corrected --detail "<what went wrong>"@@PR47 fixes: merge-reconcile prints the full corrected command, with --by@@PR47 fixes
 MF47T@@scripts/dispatch-preflight.mjs@@${inlineTokenFlag(resolve(String(flags.root)), 'tech-manager', flags.ticket)}@@@@PR47 fixes: dispatch-preflight's corrected command is absolute@@PR47 fixes
+MS8V3-01@@scripts/drivers/android.sh@@tr '>' '\n' < "$DUMP" | grep "resource-id=@@tr '>' '>\n' < "$DUMP" | grep "resource-id=@@Sprint 8 V3: android value_equals reads the TARGET node of a one-line dump@@Sprint 8 V3
+MS8V3-02@@scripts/drivers/android.sh@@[ "$GOT" = "$SCHK" ] ||@@true ||@@Sprint 8 V3: android taps the target's centre, and is_checked reads its checked state@@Sprint 8 V3
+MS8V3-03@@scripts/journey-gate.mjs@@(!step.id || typeof step.value !== 'boolean')@@(false)@@Sprint 8 V3: journey-gate refuses an is_checked whose value is not true/false@@Sprint 8 V3
+MS8V3-04@@scripts/journey-gate.mjs@@    if (!env[k]) env[k] = id;@@    if (false) env[k] = id;@@Sprint 8 V3: journey-gate passes runtime-gate's recorded package id@@Sprint 8 V3
+MS8V3-05@@scripts/runtime-gate.sh@@  echo "APP-ID: android $PKG"@@  :@@Sprint 8 V3: journey-gate passes runtime-gate's recorded package id@@Sprint 8 V3
+MS8V3-06@@scripts/drivers/ios.sh@@    case 'tap': tap(waitFor(s.id, 5)); break;@@    case 'tap': break;@@Sprint 8 V3: the iOS driver taps, reads back and PASSes@@Sprint 8 V3
+MS8V3-07@@scripts/drivers/ios.sh@@if (got + 0.5 < Number(s.dp)) fail(@@if (false) fail(@@Sprint 8 V3: the iOS driver FAILs a 24pt target@@Sprint 8 V3
+MS8V3-08@@scripts/journey-gate.mjs@@rc && rc.platform === 'web' && rc.commit === head@@false && rc.platform === 'web' && rc.commit === head@@Sprint 8 V3: journey-gate serves the release candidate bound at HEAD@@Sprint 8 V3
+MS8V3-09@@scripts/journey-gate.mjs@@  if (dir || scripts.start) {@@  if (false) {@@Sprint 8 V3: with no candidate, journey-gate starts the app itself@@Sprint 8 V3
+MS8V3-10@@scripts/drivers/web.sh@@[id=${q}]@@#${String(id)}@@Sprint 8 V3: journey-gate serves the release candidate bound at HEAD, not npm start on source (FL-5, QA-11)@@Sprint 8 V3
+MS8V3-11@@scripts/runtime-gate.sh@@  if [ -n "$RCDIR" ]; then@@  if false; then@@Sprint 8 V3: runtime-gate smokes the release candidate bound at HEAD@@Sprint 8 V3
 CATALOGUE
 }
 

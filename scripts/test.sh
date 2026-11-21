@@ -8388,34 +8388,6 @@ grep -q "working tree is DIRTY" "$TMP/opd-sg2.txt" \
   && ok "ship-gate: a modified source file still makes approval binding UNKNOWN" \
   || bad "ship-gate: a modified source file still makes approval binding UNKNOWN" "$(tail -5 "$TMP/opd-sg2.txt")"
 
-# --- I-09: a criterion names its own proof -----------------------------------------------------
-# verify-done runs the suite; qa_passed records that QA exercised the ticket. Neither says anything
-# about a SPECIFIC criterion, so a green suite can coexist with the one behaviour the founder asked
-# for never having been exercised.
-FCC2="$TMP/fc-criterion"; rm -rf "$FCC2"; mkdir -p "$FCC2/docs/team" "$FCC2/artifacts"
-printf 'screenshot bytes\n' > "$FCC2/artifacts/ac1.png"
-CH=$(node -e "const c=require('crypto'),f=require('fs');process.stdout.write(c.createHash('sha256').update(f.readFileSync('$FCC2/artifacts/ac1.png')).digest('hex'))")
-cat > "$FCC2/docs/team/criteria.json" <<CJ
-{"schema":"criteria/v1","criteria":[
- {"id":"AC-001","ticket":"T-001","text":"a saved reading survives a restart",
-  "evidence":[{"path":"artifacts/ac1.png","sha256":"$CH"}]}]}
-CJ
-assert_exit 0 "a criterion backed by matching evidence is proven" \
-  node "$HERE/criterion-check.mjs" --root "$FCC2"
-# Same path, same name, still non-empty — only the digest can tell it is a different artifact.
-printf "a DIFFERENT run\n" > "$FCC2/artifacts/ac1.png"
-assert_exit 1 "...and becomes UNPROVEN when its evidence is overwritten with different bytes" \
-  node "$HERE/criterion-check.mjs" --root "$FCC2"
-# A criterion with no evidence is UNPROVEN, not trivially satisfied.
-printf '{"schema":"criteria/v1","criteria":[{"id":"AC-002","ticket":"T-001","text":"reachable","evidence":[]}]}\n' \
-  > "$FCC2/docs/team/criteria.json"
-assert_exit 1 "a criterion naming no evidence is unproven, not trivially satisfied" \
-  node "$HERE/criterion-check.mjs" --root "$FCC2"
-# No registry at all is CANNOT EVALUATE, never CLEAR — an absent contract must not read as a passing one.
-FCC3="$TMP/fc-criterion-none"; rm -rf "$FCC3"; mkdir -p "$FCC3"
-assert_exit 2 "no criteria registry is CANNOT EVALUATE, never a pass" \
-  node "$HERE/criterion-check.mjs" --root "$FCC3"
-
 # --- F20: the sanctioned correction path (and why it had to ship WITH the hand-edit ban) --------
 # There was no legal way to fix a typo in a ticket field, so agents edited docs/31-board.md — the
 # behaviour the log-authoritative change made illegal. Closing an escape hatch without providing the
@@ -12647,10 +12619,9 @@ node -e 'const s=require(process.argv[1]).selection||{};process.exit(s.only==="h
 # ·· S7-13: the journey contract is printed at the plugin's path.
 U2N="$TMP/u2-nojr"; rm -rf "$U2N"; mkdir -p "$U2N"
 node "$HERE/journey-gate.mjs" --root "$U2N" >"$TMP/u2n.txt" 2>&1
-node "$HERE/criterion-check.mjs" --root "$U2N" >>"$TMP/u2n.txt" 2>&1
-[ "$(grep -c "$U2R/docs/team/journeys/README.md" "$TMP/u2n.txt")" = 2 ] && [ -f "$U2R/docs/team/journeys/README.md" ] \
-  && ok "U2: journey-gate and criterion-check name the plugin's journey README, which exists (S7-13)" \
-  || bad "U2: journey-gate and criterion-check name the plugin's journey README, which exists (S7-13)" "$(cat "$TMP/u2n.txt")"
+[ "$(grep -c "$U2R/docs/team/journeys/README.md" "$TMP/u2n.txt")" = 1 ] && [ -f "$U2R/docs/team/journeys/README.md" ] \
+  && ok "U2: journey-gate names the plugin's journey README, which exists (S7-13)" \
+  || bad "U2: journey-gate names the plugin's journey README, which exists (S7-13)" "$(cat "$TMP/u2n.txt")"
 
 # ·· S7-2 / S7-3: unblocking a needs-approval ticket and correcting a ticket are gates.
 U2A="$TMP/u2-gates"; rm -rf "$U2A"; mkdir -p "$U2A"
@@ -13576,6 +13547,130 @@ grep -qF "$HERE/board.mjs\" move APP-001 corrected --by tech-manager" "$TMP/p47d
   && ok "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" \
   || bad "PR47 fixes: dispatch-preflight's corrected command is absolute and carries --token under requireActorTokens" "$(grep -m3 'corrected\|token\|dispatch' "$TMP/p47dp.txt")"
 
+# --- Sprint 8 V3: journey drivers that drive, and the evidence they leave -------------------------
+# QA-1: android.sh read the LAST node of a one-line uiautomator dump, so it PASSed the exact defects
+# it exists to catch. QA-2: ios.sh could run no step but launch. QA-3: no command passed the app id.
+# FL-2/FL-5: the web gate needed a hand-started server and never served the bound artifact.
+# FL-15: no checked-state assert. QA-11: an id that is not a CSS identifier crashed web.sh.
+echo "Sprint 8 V3: journey drivers that drive, and the evidence they leave"
+V3="$TMP/s8v3"; rm -rf "$V3"; mkdir -p "$V3/bin"
+cat > "$V3/bin/adb" <<'EOF'
+#!/bin/sh
+case "$*" in
+  devices) printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  *pidof*) echo 4213 ;;
+  "shell pm list packages") echo "package:com.example.app" ;;
+  "shell wm density") echo "Physical density: 440" ;;
+  "pull "*) cp "$V3DUMP" "$3" ;;
+  *screencap*) printf 'png' ;;
+  "shell input tap"*) echo "$*" >> "$V3TAPS" ;;
+  *) exit 0 ;;
+esac
+EOF
+printf '#!/bin/sh\nprintf "package: name='"'"'com.example.app'"'"' versionCode='"'"'1'"'"'\\n"\n' > "$V3/bin/aapt2"
+chmod +x "$V3/bin/adb" "$V3/bin/aapt2"
+# One line, as uiautomator writes it: the target (24dp at 440dpi, no content-desc) and, after it, a
+# node carrying exactly the values the journey asserts.
+printf '<?xml version="1.0"?><hierarchy rotation="0"><node index="0" text="1999-01-02" resource-id="com.example.app:id/saved_date" class="android.widget.TextView" content-desc="" checkable="true" checked="false" bounds="[0,0][66,66]" /><node index="1" text="2001-02-03" resource-id="com.example.app:id/other" class="android.widget.TextView" content-desc="Saved" checkable="true" checked="true" bounds="[0,100][400,400]" /></hierarchy>' > "$V3/dump.xml"
+v3and() { # v3and <steps json> — android.sh on the stub device; prints its exit code
+  mkdir -p "$V3/a"; printf '{"schema":"journey/v1","id":"j","steps":[{"action":"launch"},%s]}\n' "$1" > "$V3/a/j.json"; : > "$V3/taps"
+  ( cd "$V3/a" && PATH="$V3/bin:$PATH" V3DUMP="$V3/dump.xml" V3TAPS="$V3/taps" STUDIO_ANDROID_PACKAGE=com.example.app \
+    sh "$HERE/drivers/android.sh" --journey j.json --evidence-dir ev >"$V3/a.out" 2>&1; echo $? )
+}
+[ "$(v3and '{"assert":"value_equals","id":"saved_date","value":"2001-02-03"}')" = 1 ] && grep -q 'reads \\"1999-01-02\\"' "$V3/a.out" \
+  && ok "Sprint 8 V3: android value_equals reads the TARGET node of a one-line dump, not the last node (QA-1)" \
+  || bad "Sprint 8 V3: android value_equals reads the TARGET node of a one-line dump, not the last node (QA-1)" "$(cat "$V3/a.out")"
+[ "$(v3and '{"assert":"min_touch_target","id":"saved_date","dp":48}')" = 1 ] && grep -q 'measures 24dp' "$V3/a.out" \
+  && ok "Sprint 8 V3: android min_touch_target measures the target, 24dp fails a 48dp spec (QA-1)" \
+  || bad "Sprint 8 V3: android min_touch_target measures the target, 24dp fails a 48dp spec (QA-1)" "$(cat "$V3/a.out")"
+[ "$(v3and '{"assert":"announces","id":"saved_date","value":"Saved"}')" = 1 ] \
+  && ok "Sprint 8 V3: android announces reads the target's empty content-desc (QA-1)" \
+  || bad "Sprint 8 V3: android announces reads the target's empty content-desc (QA-1)" "$(cat "$V3/a.out")"
+[ "$(v3and '{"action":"tap","id":"saved_date"},{"assert":"is_checked","id":"saved_date","value":true}')" = 1 ] && grep -q 'tap 33 33' "$V3/taps" \
+  && ok "Sprint 8 V3: android taps the target's centre, and is_checked reads its checked state (QA-1, FL-15)" \
+  || bad "Sprint 8 V3: android taps the target's centre, and is_checked reads its checked state (QA-1, FL-15)" "taps=$(cat "$V3/taps") $(cat "$V3/a.out")"
+printf '{"schema":"journey/v1","id":"k","steps":[{"action":"launch"},{"assert":"is_checked","id":"x","value":"yes"}]}\n' > "$V3/a/k.json"
+assert_exit 1 "Sprint 8 V3: journey-gate refuses an is_checked whose value is not true/false (FL-15)" \
+  node "$HERE/journey-gate.mjs" --root "$V3" --journeys "$V3/a" --list
+
+# QA-3, end to end: runtime-gate --record finds the package; journey-gate hands it to the driver.
+V3P="$V3/proj"; mkdir -p "$V3P/docs/team/journeys"; : > "$V3P/build.gradle"
+printf '#!/bin/sh\nmkdir -p app/build/outputs/apk/debug; : > app/build/outputs/apk/debug/app-debug.apk\n' > "$V3P/gradlew"; chmod +x "$V3P/gradlew"
+( cd "$V3P" && git init -q -b main . && git add -A && git -c user.name=t -c user.email=t@t commit -qm base ) >/dev/null 2>&1
+env PATH="$V3/bin:$PATH" sh "$HERE/runtime-gate.sh" --platform android --project-root "$V3P" --record >"$V3/rg.out" 2>&1
+printf '{"schema":"journey/v1","id":"saved","priority":"P0","steps":[{"action":"launch"},{"assert":"value_equals","id":"saved_date","value":"1999-01-02"}]}\n' > "$V3P/docs/team/journeys/saved.json"
+( cd "$V3P" && env -u STUDIO_ANDROID_PACKAGE PATH="$V3/bin:$PATH" V3DUMP="$V3/dump.xml" V3TAPS="$V3/taps" \
+  node "$HERE/journey-gate.mjs" --root . --driver "$HERE/drivers/android.sh" ) >"$V3/jg.out" 2>&1; V3RC=$?
+[ "$V3RC" = 0 ] && grep -q '^RESULT: PASS' "$V3/jg.out" \
+  && ok "Sprint 8 V3: journey-gate passes runtime-gate's recorded package id to the android driver — no env var (QA-3)" \
+  || bad "Sprint 8 V3: journey-gate passes runtime-gate's recorded package id to the android driver — no env var (QA-3)" "rc=$V3RC $(cat "$V3/jg.out") | $(tail -3 "$V3/rg.out")"
+
+# QA-2: the iOS driver executes steps through AXe on a booted simulator (stubs: xcrun, axe).
+cat > "$V3/bin/xcrun" <<'EOF'
+#!/bin/sh
+case "$*" in
+  "simctl list devices booted -j") printf '{"devices":{"iOS":[{"udid":"U1","state":"Booted"}]}}\n' ;;
+  "simctl get_app_container U1 com.example.app") echo /app ;;
+  "simctl launch"*) echo ok ;;
+  "simctl io U1 screenshot "*) printf png > "$5" ;;
+  *) exit 1 ;;
+esac
+EOF
+cat > "$V3/bin/axe" <<'EOF'
+#!/bin/sh
+case "$1" in --version) echo 1.6.0 ;; describe-ui) cat "$V3UI" ;; tap|type) echo "$*" >> "$V3TAPS" ;; esac
+EOF
+chmod +x "$V3/bin/xcrun" "$V3/bin/axe"
+printf '[{"AXLabel":"Root","children":[{"AXUniqueId":"saved_date","AXLabel":"1999-01-02","frame":{"x":0,"y":0,"width":24,"height":24}},{"AXUniqueId":"done","AXLabel":"Done","AXValue":"1","AXFrame":"{{10, 200}, {50, 50}}"}]}]\n' > "$V3/ui.json"
+v3ios() {
+  mkdir -p "$V3/i"; printf '{"schema":"journey/v1","id":"j","steps":[{"action":"launch"},%s]}\n' "$1" > "$V3/i/j.json"; : > "$V3/taps"
+  ( cd "$V3/i" && PATH="$V3/bin:$PATH" V3UI="$V3/ui.json" V3TAPS="$V3/taps" sh "$HERE/drivers/ios.sh" --journey j.json --bundle com.example.app --evidence-dir ev >"$V3/i.out" 2>&1; echo $? )
+}
+[ "$(v3ios '{"action":"tap","id":"done"},{"assert":"value_equals","id":"saved_date","value":"1999-01-02"},{"assert":"is_checked","id":"done","value":true}')" = 0 ] \
+  && grep -q 'tap -x 35 -y 225 --udid U1' "$V3/taps" && [ -s "$V3/i/ev/j.png" ] \
+  && ok "Sprint 8 V3: the iOS driver taps, reads back and PASSes with a screenshot — steps run, not CANNOT EVALUATE (QA-2)" \
+  || bad "Sprint 8 V3: the iOS driver taps, reads back and PASSes with a screenshot — steps run, not CANNOT EVALUATE (QA-2)" "taps=$(cat "$V3/taps") $(cat "$V3/i.out")"
+[ "$(v3ios '{"assert":"min_touch_target","id":"saved_date","dp":44}')" = 1 ] && grep -q 'measures 24pt' "$V3/i.out" \
+  && ok "Sprint 8 V3: the iOS driver FAILs a 24pt target against a 44pt spec (QA-2)" \
+  || bad "Sprint 8 V3: the iOS driver FAILs a 24pt target against a 44pt spec (QA-2)" "$(cat "$V3/i.out")"
+printf '#!/bin/sh\nexit 127\n' > "$V3/bin/axe"   # shadow any real AXe on this machine
+[ "$(v3ios '{"assert":"text_visible","value":"x"}')" = 2 ] && grep -q 'brew install cameroncooke/axe/axe' "$V3/i.out" \
+  && ok "Sprint 8 V3: without AXe the iOS driver is CANNOT EVALUATE naming the one install line (QA-2)" \
+  || bad "Sprint 8 V3: without AXe the iOS driver is CANNOT EVALUATE naming the one install line (QA-2)" "$(cat "$V3/i.out")"
+
+# FL-2 / FL-5 / QA-11: journey-gate serves the web app itself — the bound release artifact first.
+V3W="$V3/web"; mkdir -p "$V3W/docs/team/journeys" "$V3W/src" "$V3W/dist" "$V3W/node_modules/playwright"
+printf 'dist/\nnode_modules/\n' > "$V3W/.gitignore"
+printf '{"scripts":{"build":"node -e 0","start":"node src/serve.js"}}\n' > "$V3W/package.json"
+printf 'require("http").createServer((q, r) => r.end("<p id=\\"1st-item\\">SOURCE</p>")).listen(+process.env.PORT, "127.0.0.1");\n' > "$V3W/src/serve.js"
+printf '<p id="1st-item">BUILT</p>\n' > "$V3W/dist/index.html"
+cat > "$V3W/node_modules/playwright/index.js" <<'JS'
+// Real HTTP to the served URL; a selector Chromium would reject (`#1st-item`) throws as it does.
+let html = '';
+const loc = (sel) => { if (/#\d/.test(sel)) throw new Error(`invalid selector ${sel}`); return { first() { return this; }, async waitFor() {},
+  async evaluate() { return html.replace(/<[^>]*>/g, '').trim(); }, async innerText() { return html.replace(/<[^>]*>/g, ''); } }; };
+exports.chromium = { async launch() { return { async newPage() { return { async goto(u) { html = await (await fetch(u)).text(); }, locator: loc,
+  async screenshot({ path }) { require('fs').writeFileSync(path, 'png'); } }; }, async close() {} }; } };
+JS
+printf '{"schema":"journey/v1","id":"w","priority":"P0","steps":[{"action":"launch"},{"assert":"value_equals","id":"1st-item","value":"BUILT"}]}\n' > "$V3W/docs/team/journeys/w.json"
+( cd "$V3W" && git init -q -b main . && git add -A && git -c user.name=t -c user.email=t@t commit -qm base \
+  && node "$HERE/release-candidate.mjs" record --artifact dist --platform web --root . ) >/dev/null 2>&1
+( cd "$V3W" && STUDIO_WEB_URL= node "$HERE/journey-gate.mjs" --root . --driver "$HERE/drivers/web.sh" ) >"$V3/w1.out" 2>&1; V3RC=$?
+[ "$V3RC" = 0 ] && grep -q 'served: static dist' "$V3/w1.out" \
+  && ok "Sprint 8 V3: journey-gate serves the release candidate bound at HEAD, not npm start on source (FL-5, QA-11)" \
+  || bad "Sprint 8 V3: journey-gate serves the release candidate bound at HEAD, not npm start on source (FL-5, QA-11)" "rc=$V3RC $(cat "$V3/w1.out")"
+rm -f "$V3W/docs/team/release-candidates.jsonl"
+printf '{"schema":"journey/v1","id":"w","priority":"P0","steps":[{"action":"launch"},{"assert":"text_visible","value":"SOURCE"}]}\n' > "$V3W/docs/team/journeys/w.json"
+( cd "$V3W" && git add -A && git -c user.name=t -c user.email=t@t commit -qm src && STUDIO_WEB_URL= node "$HERE/journey-gate.mjs" --root . --driver "$HERE/drivers/web.sh" ) >"$V3/w2.out" 2>&1; V3RC=$?
+[ "$V3RC" = 0 ] && grep -q 'served: npm run start' "$V3/w2.out" \
+  && ok "Sprint 8 V3: with no candidate, journey-gate starts the app itself — no hand-exported STUDIO_WEB_URL (FL-2)" \
+  || bad "Sprint 8 V3: with no candidate, journey-gate starts the app itself — no hand-exported STUDIO_WEB_URL (FL-2)" "rc=$V3RC $(cat "$V3/w2.out")"
+
+( cd "$V3W" && node "$HERE/release-candidate.mjs" record --artifact dist --platform web --root . ) >/dev/null 2>&1
+sh "$HERE/runtime-gate.sh" --platform web --project-root "$V3W" >"$V3/rgw.out" 2>&1; V3RC=$?
+[ "$V3RC" = 0 ] && grep -q "served and smoked .*static $V3W/dist" "$V3/rgw.out" \
+  && ok "Sprint 8 V3: runtime-gate smokes the release candidate bound at HEAD, not npm start on source (FL-5)" \
+  || bad "Sprint 8 V3: runtime-gate smokes the release candidate bound at HEAD, not npm start on source (FL-5)" "rc=$V3RC $(cat "$V3/rgw.out")"
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

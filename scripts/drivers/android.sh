@@ -83,9 +83,12 @@ refresh() { # snapshot the view hierarchy; a dump that fails is CANNOT EVALUATE,
 }
 
 node_for() { # node_for <id> -> the matching <node ...> element, by resource-id then content-desc then text
-  tr '>' '>\n' < "$DUMP" | grep "resource-id=\"[^\"]*/$1\"" | head -1 && return 0
-  tr '>' '>\n' < "$DUMP" | grep "content-desc=\"$1\"" | head -1 && return 0
-  tr '>' '>\n' < "$DUMP" | grep "text=\"$1\"" | head -1
+  # QA-1: one node per line. `uiautomator dump` writes ONE line; `tr '>' '>\n'` maps a char to a char
+  # and split nothing, so every match was the whole dump and `attr` read the LAST node's attributes.
+  # `| grep .`: `head` exits 0 on empty input, so without it the first branch always "matched".
+  tr '>' '\n' < "$DUMP" | grep "resource-id=\"[^\"]*/$1\"" | head -1 | grep . && return 0
+  tr '>' '\n' < "$DUMP" | grep "content-desc=\"$1\"" | head -1 | grep . && return 0
+  tr '>' '\n' < "$DUMP" | grep "text=\"$1\"" | head -1
 }
 attr() { printf '%s' "$1" | sed -n "s/.*$2=\"\([^\"]*\)\".*/\1/p"; }
 
@@ -112,6 +115,7 @@ printf '%s\n' "$STEPS" | while IFS= read -r step; do
   SID=$(printf '%s' "$step" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
   SVAL=$(printf '%s' "$step" | sed -n 's/.*"value"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
   SDP=$(printf '%s' "$step" | sed -n 's/.*"dp"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p')
+  SCHK=$(printf '%s' "$step" | tr -d ' "' | sed -n 's/.*value:true.*/true/p; s/.*value:false.*/false/p')
 
   case "$ACTION" in
     launch)
@@ -181,6 +185,12 @@ printf '%s\n' "$STEPS" | while IFS= read -r step; do
       [ -n "$NODE" ] || fail "step $STEP_N: no element \"$SID\" to check for an announcement" "$STEP_N"
       SAID=$(attr "$NODE" content-desc)
       [ "$SAID" = "$SVAL" ] || fail "step $STEP_N: \"$SID\" announces \"$SAID\", expected \"$SVAL\"" "$STEP_N" ;;
+    is_checked) # FL-15: a checkbox/switch's state, not its label
+      refresh || cannot "step $STEP_N: uiautomator dump failed"
+      NODE=$(node_for "$SID")
+      [ -n "$NODE" ] || fail "step $STEP_N: no element \"$SID\" to check" "$STEP_N"
+      GOT=$(attr "$NODE" checked)
+      [ "$GOT" = "$SCHK" ] || fail "step $STEP_N: \"$SID\" checked=\"$GOT\", expected $SCHK" "$STEP_N" ;;
   esac
 done || exit $?
 

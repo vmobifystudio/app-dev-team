@@ -1,0 +1,8 @@
+#!/bin/sh
+case "$*" in
+  "simctl list devices booted -j") printf '{"devices":{"iOS":[{"udid":"SIM-1","state":"Booted"}]}}\n' ;;
+  "simctl get_app_container SIM-1 com.example.dates") echo /app ;;
+  "simctl launch"*) echo launched ;;
+  "simctl io SIM-1 screenshot "*) printf 'png' > "$5" ;;
+  *) exit 1 ;;
+esac

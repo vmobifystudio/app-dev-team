@@ -180,13 +180,13 @@
     },
     {
       "id": "qa-engineer",
-      "version": "1.0.15",
+      "version": "1.0.17",
       "owner": "qa-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-20",
+      "validated_on": "2026-11-21",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.14",
-      "content_hash": "5e39f49baaedddfd1baed23ed4f4997cfc36e2a1ee546c55c509f00c043bc4c4"
+      "rollback_version": "1.0.16",
+      "content_hash": "34a80ea1872874bf589e3670ead55e5092b58e731f3b864b4f8b29d0692924d0"
     },
     {
       "id": "red-team-agent",
@@ -260,13 +260,13 @@
     },
     {
       "id": "test-automation-engineer",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "owner": "test-automation-engineer",
       "eval_suite": "eval/manifest.json",
-      "validated_on": "2026-11-18",
+      "validated_on": "2026-11-21",
       "change_reason": "agent file content changed",
-      "rollback_version": "1.0.2",
-      "content_hash": "3b40311da6777deace21b9cdb73a460b88d7c9555918f535be55ebd873611086"
+      "rollback_version": "1.0.3",
+      "content_hash": "55462e8e60a0bb5938a81d5b786b4f93e9e0820748ce64ae6a8e27c59abc5830"
     },
     {
       "id": "ux-architect",

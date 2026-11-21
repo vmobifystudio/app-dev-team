@@ -218,7 +218,7 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
    # steps; this is the call.
    #
    #   android  ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh   drives adb + uiautomator; needs a device or emulator
-   #   ios      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/ios.sh       launches and screenshots; step execution needs XCUITest
+   #   ios      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/ios.sh       drives a booted simulator through AXe (brew install cameroncooke/axe/axe)
    #   web      ${CLAUDE_PLUGIN_ROOT}/scripts/drivers/web.sh       the project's Playwright against the served build (STUDIO_WEB_URL)
    #
    # With no device (web: no Playwright, Chromium or URL) a driver returns CANNOT EVALUATE naming the missing thing, which
@@ -227,10 +227,10 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or drivers/ios.sh, drivers/web.sh
    ```
 
-   **A `web-app`**: install the project's Playwright and Chromium, build the candidate, start it
-   (`npm run start`, or a static server on the build dir), and pass its URL as `STUDIO_WEB_URL` —
-   the exact commands are `build-loop-branches.md` §Step 5 — journey-gate drivers
-   (`${CLAUDE_PLUGIN_ROOT}/skills/parallel-orchestrator/references/`).
+   **A `web-app`**: install the project's Playwright and Chromium and build the candidate; the gate
+   serves it itself (FL-2) — the release candidate bound at this HEAD, else `npm run start`, else
+   `dist/`/`build/`/`out/` — unless `STUDIO_WEB_URL` names a running one. iOS/Android read the app id
+   from step 1b's `runtime-result.json`, so run the runtime gate first.
 
    Six dry runs measured the gates catching every process defect and **zero** product defects. An
    app that launches and sits there satisfies `runtime-gate.sh` exit `0` completely. This is the
@@ -253,7 +253,8 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
        the release summary and step 4's confirmation. `readiness` then reports the gate `WAIVED`
        (not blocking) and `orchestrator ship` relays the `WAIVED:` line — a malformed or
        wrong-version waiver leaves it `CANNOT_EVALUATE`.
-       A waiver is the exception: android, ios and web drivers all ship.
+       A waiver is the exception: android, ios (with AXe) and web drivers all execute every step —
+       except iOS `back`, which is refused by name (no universal Back: declare the control's id).
 
    **Product types the script cannot see are N/A, not waived — and not unchecked.** `runtime-gate.sh`
    detects iOS, Android and `web-app` (a `web-app` is gated like the others — never N/A, never a
@@ -324,11 +325,11 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
 
    ```bash
    sh "${CLAUDE_PLUGIN_ROOT}/scripts/runtime-gate.sh" --project-root . --record
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
-     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or ios.sh / web.sh, as in 1b
    node "${CLAUDE_PLUGIN_ROOT}/scripts/release-candidate.mjs" record \
      --artifact <the .ipa/.aab path, or the web build dir, release-manager named> --platform ios|android|web --variant release \
      --by release-manager
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
+     --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/android.sh"   # or ios.sh / web.sh, as in 1b
    node "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.mjs" ship
    ```
 
@@ -349,8 +350,8 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      other than artifacts it can read itself;
    - an artifact whose only witness is `release-manager` is a *claim*, and the auditor marks it
      `unverified`;
-   - **a test claim with no discoverable evidence bundle stays `unverified`** (`team-protocol`
-     §Evidence bundle), and a release whose critical journeys are `unverified` is a `FAIL`;
+   - **a test claim with no discoverable evidence bundle stays `unverified`** (the gates' own
+     records: `journey-result.json`, `docs/team/evidence/`), and a release whose critical journeys are `unverified` is a `FAIL`;
    - `release-manager` may correct a fact and the audit re-runs; it may never grade the verdict.
 
    `RELEASE AUDIT: FAIL` → stop, print the audit's checklist verbatim, and do not ask the upload

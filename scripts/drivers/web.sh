@@ -9,7 +9,8 @@
 #
 # Usage: web.sh --journey <path> [--root <dir>] [--url <served app>] [--evidence-dir <dir>]
 #   The URL is the running app (`npm start` / a preview server): --url, else STUDIO_WEB_URL.
-# Element ids resolve as [data-testid=ID], then #ID, then [aria-label=ID].
+# Element ids resolve as [data-testid=ID], then [id=ID], then [aria-label=ID] — attribute selectors, so
+# an id that is not a valid CSS identifier (`1st-item`) is still found, never a driver error (QA-11).
 
 set -u
 ROOT=.; JOURNEY=""; URL="${STUDIO_WEB_URL:-}"; EVIDENCE_DIR="docs/54-evidence/journeys"
@@ -57,7 +58,7 @@ catch { cannot('Playwright is not installed in this project — add playwright a
   try { browser = await pw.chromium.launch(); }
   catch (e) { cannot(`Playwright could not start Chromium (${String(e.message).split('\n')[0]}) — run: npx playwright install chromium`); }
   const page = await browser.newPage();
-  const el = (id) => page.locator(`[data-testid="${id}"], #${CSS_escape(id)}, [aria-label="${id}"]`).first();
+  const el = (id) => { const q = JSON.stringify(String(id)); return page.locator(`[data-testid=${q}], [id=${q}], [aria-label=${q}]`).first(); };
   const steps = Array.isArray(journey.steps) ? journey.steps : [];
   try {
     for (const [i, s] of steps.entries()) {
@@ -98,6 +99,12 @@ catch { cannot('Playwright is not installed in this project — add playwright a
           if (!name.includes(String(s.value))) failStep(`step ${n}: "${s.id}" announces "${name.trim()}", expected "${s.value}"`);
           break;
         }
+        case 'is_checked': { // FL-15: `.value` of a checkbox is "on" whatever its state
+          await wait(s.id);
+          const on = await el(s.id).evaluate((e) => (e.type === 'checkbox' || e.type === 'radio' ? e.checked : e.getAttribute('aria-checked') === 'true'));
+          if (on !== s.value) failStep(`step ${n}: "${s.id}" is ${on ? 'checked' : 'unchecked'}, expected ${s.value ? 'checked' : 'unchecked'}`);
+          break;
+        }
         default: cannot(`step ${n}: unknown assert "${s.assert}"`);
       }
     }
@@ -113,5 +120,4 @@ catch { cannot('Playwright is not installed in this project — add playwright a
     cannot(`driver error: ${e.message}`);
   }
 })();
-function CSS_escape(id) { return String(id).replace(/[^A-Za-z0-9_-]/g, (c) => `\\${c}`); }
 JS

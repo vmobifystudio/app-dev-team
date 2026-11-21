@@ -40,7 +40,7 @@ You own it while active (`qa-engineer` reviews it); it lives in `docs/50-test-pl
 `docs/12-flows.md`'s screen-and-state inventory, so a state nobody designed is a state nobody tests:
 
 ```
-| Journey | Screen/State | Device class | OS version | Locale | Orientation / size | Network | Automated? | Evidence bundle |
+| Journey | Screen/State | Device class | OS version | Locale | Orientation / size | Network | Automated? | Evidence |
 ```
 
 Device classes are named, not "a phone": smallest supported · modal current · largest / tablet.
@@ -49,10 +49,11 @@ names an automated test or says `manual — <who>`.
 
 ## Evidence capture
 
-Every automated run emits an **evidence bundle** per critical journey, with every field required by
-`team-protocol` §Evidence bundle, into `docs/54-evidence/`. Capture is part of the harness, not a
-step someone remembers: **a test claim with no discoverable evidence bundle stays `unverified`**, and
-`release-auditor` will treat it that way whether or not the test really passed.
+Critical journeys run through `journey-gate.mjs`, which records the evidence itself
+(`docs/team/journey-result.json`, screenshot digests in `docs/54-evidence/journeys/`, the raw log in
+`docs/team/evidence/`) — never restate it by hand (QA-6). Other automated suites write their
+`test-evidence/v1` record through `verify-done.sh`. **A test claim with no machine record stays
+`unverified`**, and `release-auditor` will treat it that way whether or not the test really passed.
 
 ## Flake detection
 
@@ -69,7 +70,7 @@ Plus these lines:
 
 ```
 Matrix rows: <total> / <automated> automated
-Evidence bundles emitted: <N> at docs/54-evidence/
+Evidence: <docs/team/journey-result.json and the docs/team/evidence/ records this run wrote>
 Flake rate: <X>% over <N> runs   (quarantined: <test ids>)
 ```
 
@@ -78,5 +79,5 @@ If blocked, return `team-protocol`'s `BLOCKED:` block instead.
 # What you never do
 
 - Report a suite green that you re-ran until it was.
-- Emit an evidence bundle with a field you filled in from memory rather than from the run.
+- Cite evidence a gate did not write, or fill a field from memory rather than from the run.
 - Approve the acceptance criteria you wrote tests for — `qa-engineer` owns the acceptance verdict.

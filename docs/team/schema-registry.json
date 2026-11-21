@@ -57,13 +57,6 @@
       ],
       "reader": null
     },
-    "criteria/v1": {
-      "files": [
-        "scripts/criterion-check.mjs",
-        "scripts/foundation-conformance.mjs"
-      ],
-      "reader": null
-    },
     "dispatch-preflight/v1": {
       "files": [
         "scripts/dispatch-preflight.mjs"
