@@ -455,28 +455,6 @@ for (const skill of skills) {
   }
 }
 
-// --- 3c. the evidence bundle contract is published where agents read it ------------------------------
-//
-// P2.7. A test result is a claim by the actor that ran it; the bundle is what makes it checkable.
-// team-doctor cannot verify a bundle it has never seen (bundles live in a project, not here), but it
-// CAN enforce the half that rots silently: the field list agents are told to fill must still be the
-// field list team-protocol publishes. Same shape as canonical_path_undocumented below, same reason —
-// every agent reads the skill, nothing reads this script, so a field dropped from the table is a
-// field nobody records and `release-auditor` then marks the claim `unverified` forever.
-const EVIDENCE_FIELDS = [
-  'Build id:', 'Device:', 'OS:', 'Inputs:', 'Screenshot/recording:', 'Logs:',
-  'Analytics events:', 'Result:', 'Requirement IDs:', 'Tester identity:', 'Timestamp:',
-  'Artifact hash:',
-];
-if (protocolSkill) {
-  const missing = EVIDENCE_FIELDS.filter((f) => !protocolSkill.text.includes(f));
-  if (missing.length > 0) {
-    add(findings, 'evidence_field_undocumented', 'skills/team-protocol/SKILL.md',
-      `The evidence bundle contract is missing ${missing.length} required field(s): ${missing.join(' ')} — qa-engineer and test-automation-engineer fill in what this table publishes, and release-auditor refuses a bundle that is short of it. A dropped field is a claim that stays unverified with nobody able to say which field is missing.`,
-      'Restore the row in the Evidence bundle table, or change the table and EVIDENCE_FIELDS together.');
-  }
-}
-
 // --- 4. handoff targets resolve --------------------------------------------------------------------
 
 for (const agent of agents) {

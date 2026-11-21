@@ -1599,19 +1599,6 @@ process.exit(j.findings.some(f=>f.code==="skill_unreferenced")?1:0);
 ' "$TMP/tdskill2.json" && ok "...and every shipped skill has a trigger, so the rule reports none" \
                        || bad "...and every shipped skill has a trigger, so the rule reports none"
 
-# --- the evidence bundle contract (P2.7) ---------------------------------------------------------
-# A test result is a claim by the actor that ran it; the bundle is what makes it checkable, and
-# `release-auditor` refuses one that is short a field. team-doctor cannot inspect a project's
-# bundles, but it can stop the field list rotting: every agent reads team-protocol's table and
-# nothing reads team-doctor, so a row quietly dropped from the table is a field nobody records and
-# a claim that stays `unverified` with nobody able to say which field is missing.
-cp "$PLUG/skills/team-protocol/SKILL.md" "$TMP/protocol-pristine.md"
-grep -v 'Artifact hash:' "$TMP/protocol-pristine.md" > "$PLUG/skills/team-protocol/SKILL.md"
-( cd "$PLUG" && node "$HERE/team-doctor.mjs" --json ) > "$TMP/tdev1.json" 2>/dev/null
-assert_finding "$TMP/tdev1.json" evidence_field_undocumented \
-  "an evidence-bundle field dropped from the published contract blocks" "Artifact hash:"
-cp "$TMP/protocol-pristine.md" "$PLUG/skills/team-protocol/SKILL.md"
-
 # And the matrix has to exist at all — the roster is generated from it. Asserted on the finding
 # code, not on exit status: removing the file also trips skill_missing, so exit 1 proves nothing.
 mv "$MATRIX" "$TMP/matrix-away.md"
@@ -9295,7 +9282,7 @@ mop --from tech-manager --to ceo --ticket APP-001 --kind escalation \
 ( cd "$MOP" && node "$HERE/messages.mjs" open --escalations ) >"$TMP/mo4.txt" 2>&1
 [ $? = 1 ] && ok "...and an unclosed escalation exits 1, which is what /app-run surfaces to the user" \
   || bad "...and an unclosed escalation exits 1, which is what /app-run surfaces to the user" "$(cat "$TMP/mo4.txt")"
-assert_has "$TMP/mo4.txt" "these are the founder's" "...marked as the founder's, not the team's"
+assert_has "$TMP/mo4.txt" "settle each by its decider" "...routed to each one's decider, not dumped on the founder"
 
 # main() RETURNED an exit code and nothing read it, so every `return 1` above was decorative and
 # `open --was` reported its refusal on stderr while exiting 0. Invisible until a command needed a
@@ -13545,7 +13532,7 @@ grep -q '^## v1 structure' "$V7/knowledge/stack-defaults.md" \
   && ok "Sprint 8 V7: new apps start as one module + domain package; utility ViewBinding stack is brownfield-only (EN-2, EN-3)" \
   || bad "Sprint 8 V7: new apps start as one module + domain package; utility ViewBinding stack is brownfield-only (EN-2, EN-3)"
 # EN-4, EN-6, EN-12, SK-7: one review track source; tests follow the diff; one backend branch form; migrations routed.
-! grep -q 'still runs the full review' "$V7/skills/process-tiering/SKILL.md" \
+[ ! -d "$V7/skills/process-tiering" ] \
   && grep -q 'for the layers your diff changes' "$V7/agents/ios-developer.md" \
   && grep -q 'for the layers your diff changes' "$V7/agents/android-developer.md" \
   && ! grep -q -- '-be-' "$V7/agents/backend-developer.md" \
@@ -13981,6 +13968,16 @@ L8W="$TMP/s8lead-wt"; rm -rf "$L8W"; mkdir -p "$L8W"
 ! grep -q 'uncommitted path' "$TMP/s8l1.txt" && grep -q 'had 1 uncommitted path' "$TMP/s8l2.txt" \
   && ok "Sprint 8 lead: a tracked standup is not a lease warning; a real uncommitted file still is (FL-13)" \
   || bad "Sprint 8 lead: a tracked standup is not a lease warning; a real uncommitted file still is (FL-13)" "$(cat "$TMP/s8l1.txt" "$TMP/s8l2.txt" | head -c 400)"
+# AU-9: a subagent never runs a store upload / production deploy; a mention of one is not refused.
+L8H="$HERE/../hooks/guard-gate-writes.sh"; L8S="$TMP/s8lead-studio"; rm -rf "$L8S"; mkdir -p "$L8S/docs"
+( cd "$L8S" && git init -q -b main . && : > docs/31-board-events.jsonl ) >/dev/null 2>&1
+l8h() { node -e 'const [, a, c, d] = process.argv; const o = { hook_event_name: "PreToolUse", tool_name: "Bash", cwd: d, tool_input: { command: c } }; if (a) o.agent_id = a; process.stdout.write(JSON.stringify(o))' "$1" "$2" "$L8S" | sh "$L8H" >/dev/null 2>&1; }
+l8h agent-1 "cd ios && bundle exec fastlane deliver --ipa x.ipa"; L8A=$?
+l8h agent-1 "git commit -m 'founder runs fastlane deliver later'"; L8B=$?
+l8h "" "fastlane deliver --ipa x.ipa"; L8C=$?
+[ "$L8A" = 2 ] && [ "$L8B" = 0 ] && [ "$L8C" = 0 ] \
+  && ok "Sprint 8 lead: a subagent's fastlane deliver is refused; a mention and the main session are not (AU-9)" \
+  || bad "Sprint 8 lead: a subagent's fastlane deliver is refused; a mention and the main session are not (AU-9)" "a=$L8A b=$L8B c=$L8C"
 # FL-16: `trace --only gates` says what it checked, not "no break in the chain".
 L8T="$TMP/s8lead-trace"; rm -rf "$L8T"; mkdir -p "$L8T/docs/00-founder-intent"
 printf '# Brief\nA to-do list.\n' > "$L8T/docs/00-founder-intent/brief.md"

@@ -613,7 +613,7 @@ function main() {
         process.stdout.write(`OPEN QUESTIONS: ${open.length}\n`);
         for (const m of open) process.stdout.write(`  ${m.id}  ${m.ticket}  ${m.from} -> ${toArray(m.to).join(',')}  ${m.summary}\n`);
         if (escalations.length) {
-          process.stdout.write(`\nUNCLOSED ESCALATIONS: ${escalations.length} — these are the founder's, not the team's\n`);
+          process.stdout.write(`\nUNCLOSED ESCALATIONS: ${escalations.length} — settle each by its decider (docs/03-decision-rights.md); only money or irreversible items go to the founder\n`);
           for (const m of escalations) process.stdout.write(`  ${m.id}  ${m.ticket}  ${m.from}: ${m.summary}\n`);
           process.stdout.write(
             '  team-protocol: an escalation is resolved or passed to the user IN THE SAME ROUND.\n' +

@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 3.1.0 (`main`) · **Date:** 2026-11-17
-**Scale:** 29 roles · 28 skills · 21 commands · 68 top-level scripts (+24 shared libs) · 9 knowledge packs · ASSERTS assertions
+**Scale:** 29 roles · 26 skills · 21 commands · 68 top-level scripts (+24 shared libs) · 9 knowledge packs · ASSERTS assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
 drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*

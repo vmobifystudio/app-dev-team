@@ -135,7 +135,7 @@ const MANDATORY_SKILLS = {
   'qa-engineer': ['agent-isolation', 'house-conventions', 'runtime-gate', 'defect-hunting'],
   'verification-engineer': ['agent-isolation', 'house-conventions', 'defect-hunting', 'mutation-testing'],
   'code-reviewer': ['defect-hunting', 'house-conventions', 'context-preflight'],
-  'tech-lead': ['house-conventions', 'process-tiering'],
+  'tech-lead': ['house-conventions'],
   'security-reviewer': ['house-conventions'],
   'release-auditor': ['house-conventions', 'board-doctor'],
   'design-qa': ['accessibility-gate', 'house-conventions'],

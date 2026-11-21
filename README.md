@@ -344,7 +344,7 @@ This repo is its own Claude Code **marketplace**, so installing is two commands.
 > 💡 **AI App Studio** is the friendly name for the **`app-dev-team`** plugin — that's the ID you
 > install and the command prefix (`/app-*`) you'll use.
 
-The plugin is enabled automatically — its 29 agents, 21 commands, and 28 skills are now available.
+The plugin is enabled automatically — its 29 agents, 21 commands, and 26 skills are now available.
 Run `/plugin` anytime to browse, enable/disable, or remove it. To update later, re-run
 `/plugin marketplace add vmobifystudio/app-dev-team` and reinstall.
 

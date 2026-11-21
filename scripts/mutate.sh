@@ -654,6 +654,7 @@ MS8V4-06@@scripts/spawn-prompt.mjs@@const rows = table.slice(head.length).filter
 MS8V4-07@@scripts/spawn-prompt.mjs@@if (ITEM_RE.test(l)) { keepItem = hit(l);@@if (ITEM_RE.test(l)) { keepItem = true;@@Sprint 8 V4: the spec excerpt keeps only the table rows and criteria naming this ticket (CX-8)@@Sprint 8 V4
 MS8V4-08@@scripts/messages.mjs@@if (options.was === 'last') {@@if (false) {@@Sprint 8 V4: open --was last reads the recorded count: unfallen exits 1, answered exits 0 (CX-5)@@Sprint 8 V4
 MS8V4-09@@scripts/spawn-prompt.mjs@@  'release-auditor': ['house-conventions', 'board-doctor'],@@  'release-auditor': ['house-conventions', 'board-doctor', 'team-protocol'],@@Sprint 8 V4: release-auditor's budget does not count the conditional team-protocol (CX-11)@@Sprint 8 V4
+MS8L03@@hooks/contract-hooks.mjs@@  if (payload.tool_name === 'Bash' && runsRelease(input.command)) {@@  if (false) {@@Sprint 8 lead: a subagent's fastlane deliver is refused; a mention and the main session are not (AU-9)@@Sprint 8 lead
 CATALOGUE
 }
 
