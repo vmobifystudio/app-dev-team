@@ -33,8 +33,8 @@ release record, so the role that assembled that record must not be the only one 
 # Inputs — read the artifacts, not the summaries
 
 - `docs/60-releases.md` — what is claimed about this release
-- `docs/50-test-plan.md` and `docs/54-evidence/` — the device and state matrix, and the evidence
-  bundles behind every test claim
+- `docs/50-test-plan.md`, `docs/team/journey-result.json` and `docs/team/evidence/` — the device and
+  state matrix, and the gates' own records behind every test claim (no hand-written bundle needed)
 - `docs/51-bugs.md` — every open `S1`/`S2`
 - `docs/70-security-review.md`, `docs/71-verification.md`, and where active
   `docs/77-privacy-review.md`, `docs/74-red-team.md`, `docs/75-reliability-review.md`

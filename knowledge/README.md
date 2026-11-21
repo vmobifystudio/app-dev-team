@@ -54,7 +54,7 @@ This KB improves after every run, shipped or stopped:
 ## Tiers
 
 Some packs distinguish two app archetypes the studio ships:
-- **Flagship** — content/AI/subscription apps: modern Compose/SwiftUI, multi-module, high test
+- **Flagship** — content/AI/subscription apps: modern Compose/SwiftUI, multi-module once a split trigger fires (`stack-defaults.md` §v1 structure), high test
   coverage, subscription-first.
 - **Utility** — single-purpose tools: leaner, ad-first monetization, faster to ship. The plugin
   defaults to **Flagship** rules unless a project declares itself a utility.

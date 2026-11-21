@@ -120,28 +120,26 @@ nothing is a skip wearing a label.
 
 ```
 android  drivers/android.sh   drives adb + uiautomator; needs a device or emulator
-ios      drivers/ios.sh       launches and screenshots; step execution needs XCUITest
+ios      drivers/ios.sh       drives a booted simulator through AXe (brew install cameroncooke/axe/axe)
 web      drivers/web.sh       drives Chromium through the PROJECT's Playwright; needs the app served
 ```
 
 **A `web-app` journey, end to end** — Playwright is the project's devDependency, never the
-plugin's. `22-impl-spec-web.md` (`tech-lead`) names the build and start scripts; `devops-engineer`
-(or the scaffolding `web-developer` ticket) writes them into `package.json`. **That same ticket
-commits `playwright` as a devDependency, with the lockfile**, before the first journey gate. The
+plugin's. `22-impl-spec-web.md` (`tech-lead`) names the build and start scripts; `devops-engineer` writes them into `package.json`
+at `/app-init` and **commits `playwright` as a devDependency, with the lockfile**, before any ticket. The
 orchestrator never runs `npm i -D playwright` on the integration tree: the dirty `package.json`
 makes `qa_passed` refuse and readiness read STALE. Missing at the gate → add a ticket for it.
 
 
 ```bash
-npm ci && npx playwright install chromium                  # browsers live outside the repo
-npm run build && (npm run start >/tmp/web.log 2>&1 &)      # or serve the build dir statically:
-#   (python3 -m http.server 4173 --directory dist >/tmp/web.log 2>&1 &)
-STUDIO_WEB_URL=http://localhost:3000 node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
+npm ci && npx playwright install chromium && npm run build   # browsers live outside the repo
+node "${CLAUDE_PLUGIN_ROOT}/scripts/journey-gate.mjs" --root . \
   --driver "${CLAUDE_PLUGIN_ROOT}/scripts/drivers/web.sh"
 ```
 
-Use the port the server printed. Stop the server after the gate. No Playwright, no Chromium, or no
-`STUDIO_WEB_URL` → CANNOT EVALUATE naming the exact fix; run it, do not waive it.
+The gate serves the app itself: the release candidate bound at HEAD, else `npm run start`, else the
+build dir (`STUDIO_WEB_URL` overrides). No Playwright or no Chromium → CANNOT EVALUATE naming the
+exact fix; run it, do not waive it.
 
 Always pass `--driver`: a gate invoked without one makes every declared journey CANNOT EVALUATE for a
 reason nobody can see. With no device attached either driver returns CANNOT EVALUATE naming the

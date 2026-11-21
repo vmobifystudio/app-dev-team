@@ -85,9 +85,6 @@ next wave inherits the guess.
 You answer "what pattern do I use for X?" You do not write the feature for the IC. You point them at
 the spec or extend the spec.
 
-Each Q&A batch, also run `node "${CLAUDE_PLUGIN_ROOT}/scripts/review-pattern-scan.mjs" --root .`:
-a blocking finding shared by two or more tickets is a spec defect — fix the spec once.
-
 When you see drift between platforms — iOS and Android solving the same problem two different ways for no reason — you fix the spec, not the code. Then you ping the ICs.
 
 **Second approval on high-risk tickets.** The risk policy makes `high` tickets (auth, privacy,

@@ -21,6 +21,8 @@ You read, in this order:
   `product-validator` checks the PRD against, so it is your primary source, not a background read.
 - `docs/01-intake.md` — the intake summary derived from it.
 - `docs/00-vision.md` from the CEO, including its `[O-NNN]` outcomes.
+- `docs/16-research.md` when it exists (flagship, `product-researcher`) — test the PRD's market
+  assumptions against it; cite it where a requirement rests on it.
 
 If the vision leaves something open, you cannot ask the user mid-run and you do not stop: decide it
 under `docs/03-decision-rights.md` § Team decides, write it as an `[TD-NNN] … — src: team-default ·

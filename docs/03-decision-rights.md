@@ -20,7 +20,7 @@ one place.
 | UX and design | `ux-architect`, `product-designer` | `product-validator`, design-qa gate | `cpo` / design authority | `product-designer` | `product-designer` → `docs/13-14-*.md` |
 | Product ambiguity (reversible, inside the brief) | `product-manager`, any IC | `product-validator` (at Gate 1) | `product-manager` (`cpo` if it changes a P0; `ceo` on utility) | owning IC | `[TD-NNN]` line in the doc it changed (§ Team decides) |
 | CPO vs CTO, scope vs architecture | `cpo`, `cto` | `tech-lead` | `ceo` | `cpo` / `cto` amend their doc | `decision` row on the channel |
-| Bug validity and severity | `qa-engineer` | implementing IC | `product-manager` (`cpo` for a P0) | assigned IC | `decision` row on the channel |
+| Bug validity and severity | `qa-engineer` | implementing IC | `product-manager` (`cpo` for a P0); after 2 `qa_failed`: fix (`tech-lead` `reopened`), accept as an S3 known issue, or `descoped` | assigned IC | `decision` row on the channel |
 | Ticket readiness | `product-manager`, `tech-lead` | `qa-engineer`, delivery owner | `tech-manager` | assigned IC | `tech-manager` → `board.mjs` event log |
 | Code acceptance | implementing IC (`done_reported`) | `code-reviewer`, `verification-engineer`, `qa-engineer` | `code-reviewer` (authorized reviewer) | implementing IC (addresses changes) / `tech-manager` (merges) | `code-reviewer` → `board.mjs approved` event, bound to commit + evidence when `requireApprovalBinding` is set |
 | Security / privacy exception | delivery or product owner | `security-reviewer`, `privacy-reviewer` | **explicit human authority — waiver** | designated owner | `security-reviewer` → `docs/60-releases.md` waiver record |
@@ -56,7 +56,7 @@ Challengers disagree with each other):
 1. Name the decision, the competing positions, and the evidence each side has.
 2. Find the row above — the "Decides" column is authoritative. A challenge that isn't resolved by
    the named decider escalates one level up that role's own reporting chain (e.g. `tech-lead` →
-   `cto`; `code-reviewer` deadlock → `tech-lead`, or `cto`, for one extra cycle, never the
+   `cto`; `code-reviewer` deadlock → `tech-lead`/`cto`: one `reopened` per ticket, then take over / `corrected` / `descoped`, never the
    ticket's own owner and never the founder; `cpo` vs `cto` → `ceo`).
 3. Repeated disagreement with no new evidence is process churn, not a live dispute — the anti-ping-
    pong guard (`scripts/lib/messages.mjs:426`, `guard()`) already refuses it after one round.

@@ -533,7 +533,9 @@ finish(findings.length > 0 ? 1 : unevaluable.length > 0 ? 2 : 0);
 function finish(code, headline) {
   const verdict = code === 0 ? 'TRACED' : code === 1 ? 'FINDINGS' : 'CANNOT EVALUATE';
   const line = headline || (code === 0
-    ? `TRACED — ${nodes.size} node(s), ${tickets.length} ticket(s), no break in the chain.`
+    ? (ONLY === 'conflicts' ? 'TRACED — no conflicts.'
+      : ONLY === 'gates' ? 'TRACED — no gate fired.'
+      : `TRACED — ${nodes.size} node(s), ${tickets.length} ticket(s), no break in the chain.`)
     : code === 1
       ? `FINDINGS — ${findings.length} break(s) in the intent chain${unevaluable.length ? `, and ${unevaluable.length} section(s) that could not be evaluated` : ''}.`
       : `CANNOT EVALUATE — ${unevaluable.length} section(s) had no input to read. This is not a pass.`);

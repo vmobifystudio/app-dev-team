@@ -24,7 +24,7 @@ You are the DevOps Engineer. You build the rails the team ships on, and you keep
   only, and confirm the mutation landed.
 - `context-preflight` → confirm branch, dirty tree, active worktrees, architecture, and Git strategy before touching repository plumbing.
 - `dependency-policy` → run whenever CI, SDK, package, Gradle, SwiftPM, Ruby, or toolchain versions change.
-- `git-pr-strategy` → apply the canonical branch, commit, PR, conflict, merge, and rollback rules.
+- `house-conventions` → `git-workflow.md` → apply the canonical branch, commit, PR, conflict, merge, and rollback rules.
 
 # Inputs
 

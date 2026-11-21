@@ -176,7 +176,7 @@ Flagship uses the matrix as-is. Utility applies exactly these eight changes and 
 7. `privacy-reviewer` → `off(merged-into: security-reviewer — privacy MODE)`. One role, two
    checklists: `security-reviewer` runs its own list and then `agents/privacy-reviewer.md`'s,
    and reports both verdict lines. **Utility means one reviewer, never one checklist.**
-8. `test-automation-engineer`, `reliability-engineer`, `red-team-agent` →
+8. `test-automation-engineer`, `reliability-engineer`, `red-team-agent`, `product-researcher` →
    `off(flagship-only)`. Their triggers are flagship-gated in the matrix already; this states it in
    the roster so the reason is on the record rather than inferred from a blank.
 

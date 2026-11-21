@@ -359,8 +359,8 @@ Version (optional, otherwise release-manager picks): $ARGUMENTS
      `unverified`;
    - a P0 journey's evidence is step 3b's `docs/team/journey-result.json`, bound to this HEAD by
      `evidence-check.mjs` and to the artifact by `release-candidate.mjs verify`; any other test
-     claim with no discoverable evidence in the gates' own records (`docs/team/evidence/`) is `unverified`, and a release whose critical journeys are
-     `unverified` is a `FAIL`;
+     claim with no discoverable evidence is `unverified` (the gates' own records live in
+     `docs/team/evidence/`), and a release whose critical journeys are `unverified` is a `FAIL`;
    - `release-manager` may correct a fact and the audit re-runs; it may never grade the verdict.
 
    `RELEASE AUDIT: FAIL` → stop, print the audit's checklist verbatim, and do not ask the upload

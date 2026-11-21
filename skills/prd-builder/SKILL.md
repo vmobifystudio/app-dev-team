@@ -41,7 +41,7 @@ Build `docs/10-prd.md` and `docs/11-backlog.md` from `docs/00-vision.md` and `do
 
 ## Backlog format
 
-`docs/11-backlog.md` — the same P0/P1/P2 items as a sequenced list with rough estimates (XS/S/M/L/XL, not hours; `process-tiering` reads them). Every backlog item carries both the implementation ticket ID and the PRD feature ID so the chain is traceable end-to-end:
+`docs/11-backlog.md` — the same P0/P1/P2 items as a sequenced list with rough estimates (XS/S/M/L/XL, not hours; the track table in `agents/code-reviewer.md` reads them). Every backlog item carries both the implementation ticket ID and the PRD feature ID so the chain is traceable end-to-end:
 
 ```
 # Backlog

@@ -13970,6 +13970,25 @@ grep -q 'supersede' "$TMP/s8f1.txt" && ! grep -q 'read docs/50-test-plan.md.s ex
   && ok "Sprint 8 V2: SM-9/SM-10 no stale DoD, no batched handoff, one S1 rule, sprint goal judged at exit" \
   || bad "Sprint 8 V2: SM-9/SM-10 no stale DoD, no batched handoff, one S1 rule, sprint goal judged at exit"
 
+# --- Sprint 8 lead: cross-track follow-ups ---
+echo "Sprint 8 lead: cross-track follow-ups"
+# FL-13: a lease note fires for real uncommitted work, never for the studio's own operational files.
+L8W="$TMP/s8lead-wt"; rm -rf "$L8W"; mkdir -p "$L8W"
+( cd "$L8W" && git init -q -b main . && git config user.email t@t && git config user.name t \
+  && echo x > a && git add a && git commit -qm base && mkdir -p docs/daily && echo s > docs/daily/2026-11-21.md ) >/dev/null 2>&1
+( cd "$L8W" && node "$HERE/worktree-slot.mjs" lease --owner web-developer --tickets APP-1 ) >"$TMP/s8l1.txt" 2>&1
+( cd "$L8W" && echo y > b.txt && node "$HERE/worktree-slot.mjs" lease --owner web-developer --tickets APP-2 ) >"$TMP/s8l2.txt" 2>&1
+! grep -q 'uncommitted path' "$TMP/s8l1.txt" && grep -q 'had 1 uncommitted path' "$TMP/s8l2.txt" \
+  && ok "Sprint 8 lead: a tracked standup is not a lease warning; a real uncommitted file still is (FL-13)" \
+  || bad "Sprint 8 lead: a tracked standup is not a lease warning; a real uncommitted file still is (FL-13)" "$(cat "$TMP/s8l1.txt" "$TMP/s8l2.txt" | head -c 400)"
+# FL-16: `trace --only gates` says what it checked, not "no break in the chain".
+L8T="$TMP/s8lead-trace"; rm -rf "$L8T"; mkdir -p "$L8T/docs/00-founder-intent"
+printf '# Brief\nA to-do list.\n' > "$L8T/docs/00-founder-intent/brief.md"
+node "$HERE/trace.mjs" --project-root "$L8T" --only gates >"$TMP/s8lt.txt" 2>&1; L8RC=$?
+[ "$L8RC" = 0 ] && grep -q 'no gate fired' "$TMP/s8lt.txt" && ! grep -q 'no break in the chain' "$TMP/s8lt.txt" \
+  && ok "Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)" \
+  || bad "Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)" "rc=$L8RC $(head -c 300 "$TMP/s8lt.txt")"
+
 echo "─────────────────────────────────────────"
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

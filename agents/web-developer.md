@@ -41,8 +41,8 @@ Everything in `ic-workflow` applies unchanged. These are the parts that are your
   hardcoded colours, spacings or durations — that is what makes a token system real.
 - **Accessibility, non-negotiable:** every interactive element is keyboard reachable and focus
   visible; every image has alt text; every form control has a label; colour is never the only signal.
-- **Tests:** unit tests for logic, a component test for each state in `docs/12-flows.md`'s inventory,
-  and an end-to-end test for the ticket's primary journey. Name the exact command you ran.
+- **Tests:** tests for the layers your diff changes; an end-to-end test only for the ticket that
+  completes a P0 journey. Name the exact command you ran.
 - **Banned:** `web-conventions.md` §Banned.
 - **Budget:** the non-functional budgets in `docs/20-architecture.md` §8 apply to bundle size and
   LCP. Exceeding one is a blocker to raise, not a number to quietly move.

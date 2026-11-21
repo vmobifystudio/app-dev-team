@@ -230,7 +230,7 @@ organised by **data path** found dozens of live defects:
 Two more additions to the review itself: it now exercises a ticket's acceptance criteria **black-box,
 before opening the diff** — running the actual behavior rather than reading the code first, so the
 reviewer isn't reasoning from the same source that may have produced the bug. And how much ceremony a
-review carries scales with the ticket's own size (`process-tiering`, XS through XL) — a one-line fix
+review carries scales with the ticket's own size (`agents/code-reviewer.md`'s track table, XS through XL) — a one-line fix
 doesn't walk the same process as a multi-screen feature, except nothing ever lightens for a ticket
 touching auth, payments, PII, or anything `security-reviewer` owns, regardless of size.
 

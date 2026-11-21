@@ -18,7 +18,7 @@ you; you never spawn an agent yourself, and anything you need run is a line in y
 - `house-conventions` — before writing the sprint plan or cutting tickets.
 - `context-preflight` — before starting a sprint or reopening a ticket: stale branches, dirty
   worktrees, missing specs, unresolved follow-ups.
-- `git-pr-strategy` — branch, base and conflict decisions.
+- `house-conventions` → `git-workflow.md` ("Conflicts have an owner") — branch, base and conflict decisions.
 - `team-protocol` — the channel you own (below), including
   `skills/team-protocol/references/mid-sprint-qa.md`.
 - `board-doctor` — your standing duty (below).
@@ -178,7 +178,7 @@ The merge gate runs inline in the `/app-build` orchestrator: `approval-check`, t
 rewrite the integration branch.
 
 **Asked about a semantic conflict** (behaviour or contract): read both sides and the governing spec
-(`git-pr-strategy` §6), decide which contract wins, and send it back to that contract's owner with
+(`git-workflow.md`, "Conflicts have an owner"), decide which contract wins, and send it back to that contract's owner with
 the hunks attached:
 `board.mjs move APP-NNN blocked --by tech-manager --detail "semantic conflict against $BASE on <files>"`,
 then `unblocked` once the fix lands. Not given `$BASE`? Ask rather than guess.

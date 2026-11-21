@@ -692,7 +692,6 @@ const CANONICAL_PATHS = [
   'docs/53-reviews/APP-NNN-cycle-N-verification.md',  // verification-engineer's per-ticket certification
   'docs/team/incidents.jsonl',               // the incident ledger (incident-ledger.mjs)
   'docs/team/ship-gate-verdict.json',        // ship-gate.sh --record's last verdict
-  'docs/team/memory.jsonl',                  // memory-curator.mjs's proposed/reviewed ledger
   'docs/team/journeys/README.md',            // the journey-declaration contract journey-gate reads
   'docs/team/journeys/<journey-id>.json',    // one declared P0 journey — qa-engineer writes, journey-gate reads
   // ADDED 2026-08-06 when the wiring pass discovered these were read by CODE but unknown to this

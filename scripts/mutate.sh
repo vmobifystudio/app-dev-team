@@ -644,6 +644,8 @@ M8V2P@@scripts/round-journal.mjs@@Math.max(DEFAULTS.agentSpawns, 2 * tickets)@@D
 M8V2Q@@scripts/round-journal.mjs@@  if (!all.length) {@@  if (false) {@@Sprint 8 V2: LN-5 an unjournaled loop is counted from the board log@@Sprint 8 V2
 M8V2R@@scripts/board.mjs@@if (typeof flags.title !== 'string' || !flags.title.trim()) die(1,@@if (false) die(1,@@Sprint 8 V2: EN-11 add refuses an empty title@@Sprint 8 V2
 M8V2S@@scripts/lib/events.mjs@@        if (Array.isArray(fields.dependsOn)) state.dependsOn = state.meta.dependsOn = fields.dependsOn.map(String);@@        ;@@Sprint 8 V2: FL-12 corrected --depends/--acceptance/--file re-plans a ticket@@Sprint 8 V2
+MS8L01@@scripts/worktree-slot.mjs@@':(exclude).agent-wt', ...opExcludes]@@':(exclude).agent-wt']@@Sprint 8 lead: a tracked standup is not a lease warning; a real uncommitted file still is (FL-13)@@Sprint 8 lead
+MS8L02@@scripts/trace.mjs@@: ONLY === 'gates' ? 'TRACED — no gate fired.'@@: false ? ''@@Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)@@Sprint 8 lead
 CATALOGUE
 }
 

@@ -25,7 +25,7 @@ something to work against.
 2a. **Activate the roster.** Invoke the `role-activation` skill. Both axes come from step 1's
    detection, not from a guess: the **product type** from its detection table (a tree that is
    neither iOS nor Android is a normal answer — read the package manifests), the **tier** from the
-   app's size and shape, naming the signal that decided it. Ambiguous → ask one question.
+   app's size and shape, naming the signal that decided it. Ambiguous → take the likelier reading, mark it `(ASSUMED)` with the signal, list it at Gate 1.
 
    Write `docs/02-team-roster.md` (copy `${CLAUDE_PLUGIN_ROOT}/docs/02-team-roster.md` and fill it
    in) — every role in the activation matrix, `active` / `conditional` / `off` with trigger or
@@ -41,7 +41,7 @@ something to work against.
      navigation, backend, CI, signing) and per-platform `docs/22-impl-spec-<platform>.md` snapshots.
    - `cpo` → `docs/10-prd.md` feature inventory derived from the navigation graph and screen files,
      and from that same inventory **`docs/11-backlog.md` and a minimal `docs/00-vision.md`**.
-     Ask the user only for product intent that cannot be read from code.
+     Record product intent that cannot be read from code as `ASSUMED` `[TD-NNN]` lines for Gate 1; do not ask.
 
      **Every already-shipped feature enters the backlog as a `done` / `baseline` row**, never as
      work to do — the backlog must be real but must not re-propose building what already exists.
