@@ -326,6 +326,8 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
 # Codex P1 on #50: a nested parse is another shell (or may not run) — its assignments bind nothing here.
 # ...and a cd inside it moves nothing out here: LASTCD is restored, so no outer && chain starts there.
 function nparse(s, dir,    sv) { sv = LASTCD; NEST++; parse(s, dir); NEST--; LASTCD = sv }
+# Codex round 7: a separate shell process sees none of the bindings made in this command.
+function xparse(s, dir,    k, SV) { for (k in VARS) { SV[k] = VARS[k]; delete VARS[k] }; nparse(s, dir); for (k in VARS) delete VARS[k]; for (k in SV) VARS[k] = SV[k] }
 function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   LASTCD = ""
   i = cmdat(W, nw)
@@ -334,7 +336,7 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
       x = substr(W[j], RLENGTH + 1); nd = substr(W[j], 1, RLENGTH - 1)
       if (unsure || NEST) delete VARS[nd]
       else if (x ~ /^\001MKTEMP\001/ && substr(x, 9) !~ /[$`*?\001\002]|(^|\/)\.\.(\/|$)/) VARS[nd] = "@TMP"
-      else if (x != "" && x !~ /[$`*?\001\002]/) VARS[nd] = x
+      else if (x != "" && x !~ /[$`*?\001\002]/ && x !~ /^~/) VARS[nd] = x
       else delete VARS[nd]
     }
     return dir
@@ -354,7 +356,7 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
     return (unsure || SHADOW || !enterable(nd)) ? union(nd, dir) : nd
   }
   if (cmd ~ /(^|\/)(ba|z|da|k)?sh$/) {
-    for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) { if (j < nw) nparse(W[j + 1], dir); break }
+    for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) { if (j < nw) xparse(W[j + 1], dir); break }
     return dir
   }
   if (cmd == "eval") { x = ""; for (j = i + 1; j <= nw; j++) x = x " " W[j]; nparse(x, dir); return dir }
@@ -406,7 +408,7 @@ function bodies(s, i, PD, PT, PS, np, dir,    k, e, n, line, body) {
       if (line == PD[k]) break
       body = body line "\n"
     }
-    if (PS[k]) nparse(body, dir)
+    if (PS[k]) xparse(body, dir)
   }
   return i
 }
