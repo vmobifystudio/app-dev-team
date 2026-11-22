@@ -3,6 +3,55 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.2.1] — 2026-11-22 (first real headless end-to-end run, PR #50)
+
+The first real `/app-run --yolo` run on 3.2.0 (a web to-do app) closed 15/15 board tickets — 8 product,
+6 QA passes, 1 bug fix — with 0 founder asks, in ~70 min for $34.77 and 41 agent spawns. QA filed
+BUG-001 (a delete test that could not catch a delete-first-match regression) and the loop fixed it
+unattended. An independent browser drive of the build passed add / complete / delete / reload /
+corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
+
+### Fixed
+
+- **E2E-1** guard-gate-writes refused `grep … dist/assets/*.js` as "a plugin script built at runtime";
+  only the command word counts now — except for an interpreter, which runs a `.mjs` wherever it sits
+  among its words (`node -r ./x.cjs ./scripts/$B.mjs`, Codex round 5).
+- **E2E-2** after an unknown `cd "$T"`, a sweep of `src` was refused as a sweep of `actor-tokens.jsonl`
+  — nothing lies under a file guard. Refusals under a runtime-built cwd now say so.
+- **E2E-3** block-shared-tree-destructive-git binds `NAME=literal` and `NAME=$(mktemp …)` and runs a
+  `cd X && …` chain in X: a reviewer's trial merge in a fresh temp worktree, and an IC's checkout in
+  a slot named by a variable, are no longer refused. Unknown, skippable (`||`), subshell (`|`) and
+  `..`-escaping cds still land on the main checkout. An assignment that may not run (`false && W=…`)
+  or runs in a nested shell (`(…)`, `$(…)`, heredoc, `sh -c`, `eval`) binds nothing, and a direct
+  `$(mktemp)` suffix gets the same `..` check (Codex P1/P2 on #50). A binding is trusted only when
+  its name occurs once in the command (so `export`, `read`, `for`, `+=` unbind it), a single-quoted or
+  escaped `$` is never a variable, and a `TMPDIR` the command names or that lies inside a repository
+  withdraws the temp-tree exemption (Codex round 2). A literal `@TMP` in the command is never the
+  sentinel, and a temp root that is missing or unwritable (an empty `$(mktemp)`) gets no exemption
+  (round 3); a `cd` inside `bash -c` / `$(…)` never starts an outer `&&` chain (round 4); a negated `! cd X` keeps the old directory a candidate (round 5); a literal `ln` withdraws the exemption, and the HANDBOOK states
+  the bound (a link made any other way is not seen — the hook reads the command, not the
+  filesystem; round 6). `sh -c` and a heredoc fed to a shell see no binding, and a value
+  starting with `~` is never bound (round 7); names the shell sets implicitly (`REPLY`, `OPTARG`, `PWD`, …) are never
+  bound, and a command naming `CDPATH`, or a hook environment carrying one, trusts no cd (rounds 8, 22); an unresolved cd (`cd -`, `cd "$X"`) ends a trusted chain, and so does a `popd`
+  (rounds 9–10); `eval`, `source`/`.` and a function defined in the command end it too
+  (they can cd in this shell); `pushd -n`, `pushd +N` and a bare `pushd` land somewhere unknown
+  (round 11); every list-ending separator ends a chain, even after a bare `( … )` (round 12); a cd behind a wrapper (`command -v cd`, `builtin cd`) is never
+  trusted and ends any chain (round 13); a cd target is normalised logically, as the shell does (`/a/link/..` is `/a`), and
+  `cd -P` lands somewhere unknown, and `set -P` / `set -o physical` / `bash -P` trust no cd (rounds 14–16, 29);
+  `--work-tree` keeps the current directory a candidate (the index stays there) and `--git-dir` is
+  unknown (round 17); only `~` and `~/…` mean home — `~+`, `~-`, `~user` are unknown, and a quoted `~` is never home, and a command naming `HOME` leaves home unknown (rounds 18–20); only a whole `$NAME` / `${NAME}` is a binding — `${T:+x}` and
+  other parameter operators are unknown (round 21); `git stash drop/clear`, `branch -D` and a force push keep their check in a temp
+  worktree — stash, branches and the remote are shared (rounds 23–24); `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` in the command or the hook's
+  environment leave git's target unknown (round 25); a `[…]` or `{…}` cd target is unknown (rounds 26–27); an unquoted `$W` whose value would word-split is unknown
+  (round 28). Mutations ME2E1–ME2E49 caught.
+- **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
+- **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
+
+### Docs
+
+- README: headless runs need `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` — `claude -p` otherwise stops
+  agents still running 10 min after the last turn (the run lost its ship verification pass that way).
+
 ## [3.2.0] — 2026-11-22 (Sprint 8: nine-lens studio audit, PR #49)
 
 ### Removed — Sprint 8 V6 (2026-11-21 studio audit: dead weight)

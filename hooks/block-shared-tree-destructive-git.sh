@@ -148,11 +148,39 @@ function enterable(list,    C, n, j) {
 }
 
 # A directory a segment runs in, or "?" when it cannot be known without running anything.
+# E2E-3: `$(mktemp …)` is a FRESH directory this command made — no other work in it, never the main
+# checkout — so it stands as "@TMP". `NAME=literal` / `NAME=$(mktemp …)` bind for the rest of the
+# command (VARS), so `cd "$W"` to a bound name is that path. Anything else assigned is unknown again.
+function once(nm,    t) { t = CMDALL; return gsub("(^|[^$A-Za-z0-9_{])" nm "([^A-Za-z0-9_]|$)", "", t) }
+function lit(t) { gsub(/[$~]/, "\002", t); return t }   # quoted/escaped: neither expands
+function sub_word(body) { return (body ~ /^[ \t]*mktemp([ \t]+-[A-Za-z]+)*[ \t]*$/) ? "\001MKTEMP\001" : "$(...)" }
+function expand(x,    nm, rest, unq) {
+  if (x ~ /^\003/) { unq = 1; x = substr(x, 2) }
+  if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
+  if (!match(x, /^(\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})/)) return x   # ${T:+x}, ${T%/*}: unknown
+  nm = substr(x, 2, RLENGTH - 1); gsub(/[{}]/, "", nm); rest = substr(x, RLENGTH + 1)
+  if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/ || once(nm) != 1) return x
+  if (unq && (CMDALL ~ /IFS/ || (VARS[nm] == "@TMP" ? ENVIRON["TMPDIR"] : VARS[nm]) ~ /[ \t\n]/)) return "?"   # it word-splits
+  if (VARS[nm] == "@TMP") return (rest ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
+  return VARS[nm] rest
+}
 function joindir1(cur, x) {
-  if (cur == "?" || x == "" || x == "-" || x ~ /[$`*?]/) return "?"
-  if (x ~ /^~/) { if (home == "") return "?"; x = home substr(x, 2) }
+  x = expand(x)
+  if (x ~ /\[/ || x ~ /\{[^}]*\}/) return "?"   # [ab], {a,b}, {a..z} expand: the literal path is not where it goes
+  if (x == "@TMP") return (cur == "?") ? "@TMP" : "@TMP"
+  if (cur == "@TMP" && x !~ /^[\/~]/ && x !~ /[$`*?\001\002]/ && x != "-" && x !~ /(^|\/)\.\.(\/|$)/) return "@TMP"
+  if (cur == "?" || cur == "@TMP" || x == "" || x == "-" || x ~ /[$`*?\001\002]/) return "?"
+  if (x ~ /^~/) { if (home == "" || x !~ /^~(\/|$)/) return "?"; x = home substr(x, 2) }   # ~+ ~- ~user ~N: unknown
   return (x ~ /^\//) ? x : cur "/" x
 }
+function lex1(p,    C, n, j, o, k, out) {
+  if (p !~ /^\// || p !~ /(^|\/)\.\.?(\/|$)/) return p
+  n = split(p, C, "/"); k = 0
+  for (j = 1; j <= n; j++) { if (C[j] == "" || C[j] == ".") continue; if (C[j] == "..") { if (k) k--; continue } o[++k] = C[j] }
+  out = ""; for (j = 1; j <= k; j++) out = out "/" o[j]
+  return out == "" ? "/" : out
+}
+function lexdir(d, P,    C, n, j, out) { n = split(d, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, (P && C[j] ~ /(^|\/)\.\.(\/|$)/) ? "?" : lex1(C[j])); return out }
 function joindir(cur, x,    C, n, j, out) { n = split(cur, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, joindir1(C[j], x)); return out }
 
 # A pathspec that names the whole tree.
@@ -244,7 +272,7 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
       if (plus || force || del || heads(src) != heads(dst)) emit("R", heads(dst), d, "push")
       if (plus) force = 1
     }
-    if (force) emit("D", "", d, "a force push rewrites published history others may have based work on")
+    if (force) emit("D", "S", d, "a force push rewrites published history others may have based work on")
   } else if (sc == "fetch") {
     for (j = 2; j <= np; j++) if (index(P[j], ":")) { dst = P[j]; sub(/^[^:]*:/, "", dst); emit("R", heads(dst), d, "fetch") }
   } else if (sc == "branch") {
@@ -252,7 +280,7 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
     for (j = 1; j <= na && A[j] != "--"; j++) if (A[j] == "-f" || A[j] == "--force" || A[j] == "-M" || A[j] == "-C") force = 1
     if (force) for (j = 1; j <= np; j++) emit("R", heads(P[j]), d, "branch")
     if (has(A, na, "-D") || (force && (has(A, na, "-d") || has(A, na, "--delete"))))
-      emit("D", "", d, "git branch -D deletes an unmerged branch and the commits only it referenced")
+      emit("D", "S", d, "git branch -D deletes an unmerged branch and the commits only it referenced")
   } else if (sc == "update-ref") {
     if (np >= 1 && P[1] ~ /^refs\/heads\//) emit("R", heads(P[1]), d, "update-ref")
   } else if (sc == "symbolic-ref") {
@@ -264,7 +292,7 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
     # worktree of this repo shares.
     x = (na ? A[1] : "")
     if (x == "drop" || x == "clear")
-      emit("D", "", d, "git stash drop/clear destroys stash entries, and every worktree of this repo shares that stack")
+      emit("D", "S", d, "git stash drop/clear destroys stash entries, and every worktree of this repo shares that stack")
     else if (x == "" || x == "push" || x == "save" || x ~ /^-/) {
       for (j = 1; j <= na && A[j] != "--"; j++) ;
       if (j > na) emit("D", sweep(sc, A, na), d, "git stash sweeps the whole tree, including work you did not write — this is the exact command that cost 22 files on 2026-07-29")
@@ -306,37 +334,69 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
 
 # One segment. Returns the directory later segments run in (a `cd` carries forward). `unsure`:
 # the cd may not run here (see SEGS above), so the old directory stays a candidate.
+# Codex P1 on #50: a nested parse is another shell (or may not run) — its assignments bind nothing here.
+# ...and a cd inside it moves nothing out here: LASTCD is restored, so no outer && chain starts there.
+function nparse(s, dir,    sv) { sv = LASTCD; NEST++; parse(s, dir); NEST--; LASTCD = sv }
+# Codex round 7: a separate shell process sees none of the bindings made in this command.
+function xparse(s, dir,    k, SV) { for (k in VARS) { SV[k] = VARS[k]; delete VARS[k] }; nparse(s, dir); for (k in VARS) delete VARS[k]; for (k in SV) VARS[k] = SV[k] }
 function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
+  LASTCD = ""
   i = cmdat(W, nw)
-  if (i > nw) return dir
+  if (i > nw) {
+    for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*=/)) {
+      x = substr(W[j], RLENGTH + 1); nd = substr(W[j], 1, RLENGTH - 1)
+      if (unsure || NEST) delete VARS[nd]
+      else if (x ~ /^\001MKTEMP\001/ && substr(x, 9) !~ /[$`*?\001\002]|(^|\/)\.\.(\/|$)/) VARS[nd] = "@TMP"
+      else if (x != "" && x !~ /[$`*?\001\002]/ && x !~ /^~/ && !(nd in IMPLICIT)) VARS[nd] = x
+      else delete VARS[nd]
+    }
+    return dir
+  }
   cmd = W[i]
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
-    if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1 }
+    if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }
     else {
       for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
       nd = joindir(dir, (j <= nw) ? W[j] : home)
+      for (x = i + 1; x < j; x++) if (W[x] ~ /^-[A-Za-z]*P/) break
+      nd = (x < j) ? "?" : lexdir(nd, 0)   # `cd -P` resolves symlinks first: where it lands is unknown here
+      # `pushd -n` / `pushd +N` / a bare `pushd` edit, rotate or swap the stack: where it lands is unknown
+      if (cmd == "pushd" && (j > i + 1 || j > nw || W[j] ~ /^[+-][0-9]/)) { nd = "?"; unsure = 1 }
       if (cmd == "pushd") PSTK[++PN] = dir
+      # `! cd X`: the `!` makes a FAILED cd the success path — what follows may run where we were
+      # ...and a cd behind a wrapper (`command -v cd`, `builtin cd`, `time cd`) may not move at all,
+      # or may: either way it is never trusted, and it ends any chain
+      for (j = 1; j < i && W[j] != "!" && (W[j] in SKIP || W[j] ~ /^[A-Za-z_][A-Za-z0-9_]*=/); j++) ;
+      if (j < i) { unsure = 1; LASTCD = "?" }
+      else if (!SHADOW) LASTCD = nd
     }
     return (unsure || SHADOW || !enterable(nd)) ? union(nd, dir) : nd
   }
   if (cmd ~ /(^|\/)(ba|z|da|k)?sh$/) {
-    for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) { if (j < nw) parse(W[j + 1], dir); break }
+    for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) { if (j < nw) xparse(W[j + 1], dir); break }
     return dir
   }
-  if (cmd == "eval") { x = ""; for (j = i + 1; j <= nw; j++) x = x " " W[j]; parse(x, dir); return dir }
+  if (cmd == "eval") { x = ""; for (j = i + 1; j <= nw; j++) x = x " " W[j]; nparse(x, dir); LASTCD = "?"; return union("?", dir) }
+  if (cmd == "source" || cmd == ".") { LASTCD = "?"; return union("?", dir) }
   if (cmd != "git" && cmd !~ /\/git$/) return dir
   # git global options: -C moves the tree, --work-tree names it, the rest are skipped.
   g = dir
   for (i++; i <= nw; i++) {
     x = W[i]
     if (x == "-C") { i++; g = joindir(g, (i <= nw) ? W[i] : ""); continue }
-    if (x == "--work-tree") { i++; g = joindir(g, (i <= nw) ? W[i] : ""); continue }
-    if (x ~ /^--work-tree=/) { g = joindir(g, substr(x, 13)); continue }
-    if (x == "-c" || x == "--git-dir" || x == "--namespace" || x == "--config-env" || x == "--super-prefix") { i++; continue }
+    # Codex round 17: --work-tree moves only the TREE — the index and repository stay where git
+    # finds them, so the current directory stays a candidate; --git-dir names a repository we
+    # cannot place, so it is unknown.
+    if (x == "--work-tree") { i++; g = union(joindir(g, (i <= nw) ? W[i] : ""), g); continue }
+    if (x ~ /^--work-tree=/) { g = union(joindir(g, substr(x, 13)), g); continue }
+    if (x == "--git-dir") { i++; g = union("?", g); continue }
+    if (x ~ /^--git-dir=/) { g = union("?", g); continue }
+    if (x == "-c" || x == "--namespace" || x == "--config-env" || x == "--super-prefix") { i++; continue }
     if (x ~ /^-/) continue
     break
   }
   if (i > nw) return dir
+  if (GITENV) g = union("?", g)   # GIT_DIR / GIT_WORK_TREE / …: git acts where they point, not where we stand
   na = 0; split("", A)
   for (j = i + 1; j <= nw; j++) A[++na] = W[j]
   classify(W[i], A, na, g)
@@ -372,7 +432,7 @@ function bodies(s, i, PD, PT, PS, np, dir,    k, e, n, line, body) {
       if (line == PD[k]) break
       body = body line "\n"
     }
-    if (PS[k]) parse(body, dir)
+    if (PS[k]) xparse(body, dir)
   }
   return i
 }
@@ -410,38 +470,49 @@ function dq(s, i, dir,    n, c, e, k, out) {
   n = length(s); out = ""
   for (; i <= n; i++) {
     c = substr(s, i, 1)
-    if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out c; continue }
+    if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out lit(c); continue }
     if (c == "\"") break
-    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); parse(substr(s, i + 2, e - i - 2), dir); out = out "$(...)"; i = e; continue }
-    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; parse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
-    out = out c
+    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
+    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
+    out = out (c == "~" ? "\002" : c)   # no tilde expansion inside double quotes
   }
   DQ = out
   return i
 }
 
-function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last, depth, j) {
+# E2E-3: in `cd X && a && b`, a and b run only if that cd SUCCEEDED, so they run in X — CHAIN, for
+# the rest of the && list. Whatever follows a `;`, `||`, `|` or newline is back to the union in dir.
+function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last, depth, j, chain, nd2, inchain) {
   n = length(s); nw = 0; w = ""; inw = 0; np = 0; split("", W); last = ""; depth = 0
   for (i = 1; i <= n + 1; i++) {
     c = (i <= n) ? substr(s, i, 1) : "\n"
-    if (c == "\\") { i++; if (i <= n && substr(s, i, 1) != "\n") { w = w substr(s, i, 1); inw = 1 } continue }
-    if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w substr(s, i + 1, k - 1); i += k; inw = 1; continue }
+    if (c == "\\") { i++; if (i <= n && substr(s, i, 1) != "\n") { w = w lit(substr(s, i, 1)); inw = 1 } continue }
+    if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w lit(substr(s, i + 1, k - 1)); i += k; inw = 1; continue }
     if (c == "\"") { i = dq(s, i + 1, dir); w = w DQ; inw = 1; continue }
-    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); parse(substr(s, i + 2, e - i - 2), dir); w = w "$(...)"; i = e; inw = 1; continue }
-    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; parse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
+    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
     if (c == "#" && !inw) { while (i <= n && substr(s, i, 1) != "\n") i++; i--; continue }
+    if (c == "$" && !inw && substr(s, i + 1, 1) ~ /[A-Za-z_{]/) { w = "\003$"; inw = 1; continue }
     if (c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<") {
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
       np++; PS[np] = (cmdat(W, nw) <= nw && W[cmdat(W, nw)] ~ /(^|\/)(ba|z|da|k)?sh$/)
       i = heredoc(s, i + 2, PD, PT, np); continue
     }
     if (c == " " || c == "\t") { if (inw) { W[++nw] = w; w = ""; inw = 0 } continue }
-    if (c == "(" && !inw) { e = matchclose(s, i + 1); parse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
+    if (c == "(" && !inw) { e = matchclose(s, i + 1); nparse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
     if (c == "\n" || c == ";" || c == "|" || c == ")" || (c == "&" && substr(s, i - 1, 1) !~ /[<>]/ && substr(s, i + 1, 1) != ">")) {
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
       op = c; if ((c == "&" || c == "|") && substr(s, i + 1, 1) == c) { op = c c; i++ }
       for (j = 1; j <= nw; j++) { if (W[j] in OPEN) depth++; else if (W[j] in CLOSE) { if (depth) depth-- } else if (!(W[j] in SKIP)) break }
-      if (nw) { dir = seg(W, nw, dir, depth > 0 || last == "&&" || last == "||" || last == "|" || op == "|" || op == "||" || op == "&"); nw = 0; split("", W) }
+      if (nw) {
+        inchain = (last == "&&" && chain != "")
+        nd2 = seg(W, nw, inchain ? chain : dir, depth > 0 || last == "&&" || last == "||" || last == "|" || op == "|" || op == "||" || op == "&")
+        # a chain starts only at a cd that surely ran: not after `||` (skippable) or `|` (a subshell)
+        if (op == "&&" && depth == 0 && LASTCD != "" && !index(SEP LASTCD SEP, SEP "?" SEP) && (inchain || (last != "||" && last != "|"))) chain = LASTCD
+        else if (LASTCD != "" || !(op == "&&" && inchain)) chain = ""   # a cd we cannot resolve ends it
+        dir = inchain ? union(nd2, dir) : nd2
+        nw = 0; split("", W)
+      } else if (op != "&&") chain = ""   # `( … );` has no words here, but the list still ends
       last = op
       if (c == "\n" && np) { i = bodies(s, i, PD, PT, PS, np, dir); np = 0 }
       continue
@@ -453,6 +524,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
 BEGIN {
   SEP = "\034"
   split("then do else elif if while until ! { }", t, " "); for (k in t) SKIP[t[k]] = 1
+  split("REPLY OPTARG OPTIND PWD OLDPWD HOME CDPATH IFS _ MAPFILE BASH_REMATCH COPROC TMPDIR PATH", t, " "); for (k in t) IMPLICIT[t[k]] = 1
   split("if while until for select case function {", t, " "); for (k in t) OPEN[t[k]] = 1
   split("fi done esac }", t, " "); for (k in t) CLOSE[t[k]] = 1
   # G7-8: the wrapper table is hooks/wrappers.txt, shared with contract-hooks.mjs — name, the
@@ -468,6 +540,14 @@ BEGIN {
 END {
   # A command that defines its own cd/pushd/popd: no cd in it can be trusted to have moved.
   SHADOW = (s ~ /(^|[^A-Za-z0-9_-])(cd|pushd|popd)[ \t]*\([ \t]*\)/ || s ~ /function[ \t]+(cd|pushd|popd)([^A-Za-z0-9_-]|$)/)
+  if (s ~ /[A-Za-z0-9_-][ \t]*\([ \t]*\)[ \t\n]*[{(]/ || s ~ /(^|[;&|( \t\n])function[ \t]/) SHADOW = 1
+  gsub(/[\001\002\003]/, "?", s); gsub(/@TMP/, "@TMP?", s)
+  if (s ~ /CDPATH/ || ENVIRON["CDPATH"] != "") SHADOW = 1
+  GITENV = (s ~ /GIT_(DIR|WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY)/ || ENVIRON["GIT_DIR"] ENVIRON["GIT_WORK_TREE"] ENVIRON["GIT_INDEX_FILE"] ENVIRON["GIT_COMMON_DIR"] != "")   # named here or inherited: a relative cd searches it
+  if (s ~ /(^|[^A-Za-z0-9_])HOME([^A-Za-z0-9_]|$)/) home = ""   # a command that touches HOME: a bare cd and ~ are unknown
+  # `set -P` / `set -o physical` make every later cd physical (symlinks first): no cd is trusted
+  if (s ~ /physical|SHELLOPTS/ || s ~ /(^|[;&|({ \t\n\/])(set|(ba|z|da|k)?sh)[ \t]+([^;&|\n]*[ \t])?[-+][A-Za-z]*P/) SHADOW = 1   # set -P, bash -P -c
+  CMDALL = s
   parse(s, base)
 }
 ')
@@ -510,6 +590,22 @@ fi
 TAB=$(printf '\t')
 while IFS="$TAB" read -r KIND REF DIR WHY; do
   [ -n "$KIND" ] || continue
+  # E2E-3: a tree this command just made under mktemp (a trial merge, a mutation probe) holds no one
+  # else's work and is never the integration checkout; a ref write still reaches the shared repo.
+  if [ "$DIR" = "@TMP" ]; then
+    # ponytail: only the literal `ln` is seen; a link made by tar, cp -s or an interpreter is not
+    # (HANDBOOK "the destructive-git hook reads the command, not the filesystem").
+    LNW=$(printf '%s\n' "$CMD" | grep -Ec '(^|[^A-Za-z0-9_.-])ln([[:space:]]|$)')
+    case $CMD in
+      *TMPDIR*) DIR="?" ;;
+      *) [ "$LNW" -gt 0 ] && DIR="?" ;;
+    esac
+    [ "$DIR" = "?" ] || case $CMD in
+      *) TD=${TMPDIR:-/tmp}
+         if [ ! -d "$TD" ] || [ ! -w "$TD" ] || git -C "$TD" rev-parse --git-dir >/dev/null 2>&1; then DIR="?"
+         else [ "$KIND" = "R" ] || [ "$REF" = "S" ] || continue; DIR="?"; fi ;;   # S: repo-wide (stash stack, branches, a force push) — every worktree shares it
+    esac
+  fi
   GDIR=$DIR
   [ "$GDIR" = "?" ] && GDIR=""
   ROOT=""

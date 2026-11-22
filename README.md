@@ -10,7 +10,7 @@ It takes your idea from **scope → design → code → review → store**, buil
 and fixing its own work, and stopping for you at only the two moments that matter:
 **what we're building** and **whether to ship**.
 
-[![version](https://img.shields.io/badge/version-3.2.0-blue)](./CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-3.2.1-blue)](./CHANGELOG.md)
 [![license](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-iOS%20%7C%20Android-lightgrey)]()
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A2BE2)]()
@@ -583,6 +583,9 @@ ios/   android/   backend/   (per scope)
 - **Roles are files** in `agents/` — edit, add (e.g. `ml-engineer`), or remove.
 - **Stack defaults** live in `knowledge/stack-defaults.md` — change them once, every project follows.
 - **Autonomy** — `/app-run --yolo` to skip scope-lock; `/loop /app-run …` for fully self-paced runs.
+- **Unattended (headless) runs** — `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 claude -p "/app-dev-team:app-run --yolo <idea>"`.
+  Without that variable, `claude -p` stops any agent still running 10 minutes after the orchestrator's last turn,
+  and the first real run lost its ship-time verification pass that way. `/app-ship` alone resumes a stopped run.
 
 ## Philosophy
 

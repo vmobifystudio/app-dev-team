@@ -126,6 +126,9 @@ T=$(mktemp -d) && git worktree add --detach "$T" "$(git rev-parse feat/APP-NNN-s
 git worktree remove --force "$T"      # always, pass or fail — it holds nothing but your scratch edits
 ```
 
+`$T` dies with the Bash call; later, spell its printed path literally — never
+`$(cat file)` (guards refuse unseen dirs).
+
 **Check you are allowed to review.** If the ticket's `Owner` in `docs/31-board.md` is your role:
 
 ```

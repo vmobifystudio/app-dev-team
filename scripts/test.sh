@@ -10676,7 +10676,7 @@ rm -f "$F2L/.studio-policy.json"
 
 # W2-20: orchestrator ship relays each failing sub-gate's own reasons
 ( cd "$F2L" && node "$HERE/orchestrator.mjs" ship ) >"$F2/os.txt" 2>&1
-grep -q '^      | .*LP-001' "$F2/os.txt" && ok "F2: orchestrator ship relays the sub-gate's own reason lines, not just its name (W2-20)" \
+grep '^      | .*LP-001' "$F2/os.txt" | grep -qv 'WAIVED' && ok "F2: orchestrator ship relays the sub-gate's own reason lines, not just its name (W2-20)" \
   || bad "F2: orchestrator ship relays the sub-gate's own reason lines, not just its name (W2-20)" "$(cat "$F2/os.txt")"
 
 # W2-14: a ticket that predates the risk policy is named, with the tier it would route to
@@ -14116,6 +14116,124 @@ node "$HERE/trace.mjs" --project-root "$L8T" --only gates >"$TMP/s8lt.txt" 2>&1;
 [ "$L8RC" = 0 ] && grep -q 'no gate fired' "$TMP/s8lt.txt" && ! grep -q 'no break in the chain' "$TMP/s8lt.txt" \
   && ok "Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)" \
   || bad "Sprint 8 lead: trace --only gates reports 'no gate fired' (FL-16)" "rc=$L8RC $(head -c 300 "$TMP/s8lt.txt")"
+
+# --- E2E run 1: false refusals a real run hit ---
+E1="$TMP/e2e1"; rm -rf "$E1"; mkdir -p "$E1/docs/team"
+( cd "$E1" && git init -q -b main . && git config user.email t@t && git config user.name t && git commit -q --allow-empty -m i ) >/dev/null 2>&1
+printf '{"ticket":"APP-001","event":"created","by":"tech-manager"}\n' > "$E1/docs/31-board-events.jsonl"
+e1g() { node -e 'process.stdout.write(JSON.stringify({agent_id:"e1",tool_name:"Bash",cwd:process.argv[1],tool_input:{command:process.argv[2]}}))' "$E1" "$1" \
+  | node "$HERE/../hooks/contract-hooks.mjs" guard-gate-writes >/dev/null 2>"$TMP/e1g.err"; echo $?; }
+touch "$E1/noop.cjs"
+[ "$(e1g 'grep -c fetch dist/assets/*.js')" = 0 ] && [ "$(e1g './scripts/$B.mjs actor mint')" = 2 ] \
+  && [ "$(e1g 'node -r ./noop.cjs ./scripts/$B.mjs')" = 2 ] && [ "$(e1g 'node -r ./noop.cjs ./scripts/build.mjs')" = 0 ] \
+  && ok "E2E run 1: grep over a *.js glob is not 'a plugin script built at runtime' (E2E-1)" \
+  || bad "E2E run 1: grep over a *.js glob is not 'a plugin script built at runtime' (E2E-1)" "$(cat "$TMP/e1g.err")"
+# E2E-2: nothing lies under a file guard; a dir guard and the file itself still refuse.
+E1A=$(e1g 'cd "$T" && mv src old'); E1B=$(e1g 'cd "$T" && rm -f actor-tokens.jsonl'); E1C=$(e1g 'cd "$T" && rm -rf evidence/x')
+[ "$E1B" = 2 ] && [ "$E1C" = 2 ] && grep -q 'built at runtime' "$TMP/e1g.err" \
+  && ok "E2E run 1: an unknown cd still refuses the token file and a guarded dir, and says the cd is why (E2E-2)" \
+  || bad "E2E run 1: an unknown cd still refuses the token file and a guarded dir, and says the cd is why (E2E-2)" "A=$E1A B=$E1B C=$E1C $(cat "$TMP/e1g.err")"
+E1D=$(node --input-type=module -e '
+const src = (await import("fs")).readFileSync(process.argv[1], "utf8");
+const m = src.match(/function segsRel[\s\S]*?\n}\n/)[0];
+const ANY = "\u0002"; const segMatch = (a, b) => a === b;
+const segsRel = new Function("ANY", "segMatch", m + "; return segsRel;")(ANY, segMatch);
+const g = ["p", "docs", "team", "actor-tokens.jsonl"];
+process.stdout.write([segsRel([ANY, "src"], g), segsRel([ANY], g), segsRel(["p", "docs"], g), segsRel([ANY, "x"], ["p", "docs", "team", "evidence"])].join(","));' "$HERE/../hooks/contract-hooks.mjs" 2>&1)
+[ "$E1D" = "false,true,true,true" ] && ok "E2E run 1: a sweep's tail cannot sit under a file guard, but can under a dir guard (E2E-2)" \
+  || bad "E2E run 1: a sweep's tail cannot sit under a file guard, but can under a dir guard (E2E-2)" "$E1D"
+# EN-13: the budget estimate counts the project's platform pack, not ios-conventions on a web project.
+mkdir -p "$E1/.agent-wt/s"; printf '{"platform":"web"}\n' > "$E1/docs/team/project-profile.json"
+( cd "$E1" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role code-reviewer --slot .agent-wt/s ) >/dev/null 2>"$TMP/e1b.err"
+( cd "$E1/docs" && node "$HERE/spawn-prompt.mjs" compose --project-root "$E1" --ticket APP-001 --role code-reviewer --slot .agent-wt/s ) >/dev/null 2>"$TMP/e1c.err"
+grep -q 'KB packs [0-9]* (web-conventions)' "$TMP/e1b.err" && grep -q 'KB packs [0-9]* (web-conventions)' "$TMP/e1c.err" \
+  && ok "E2E run 1: a web project's spawn budget counts web-conventions (EN-13)" \
+  || bad "E2E run 1: a web project's spawn budget counts web-conventions (EN-13)" "$(grep -m1 'KB packs\|spawn-prompt' "$TMP/e1b.err" "$TMP/e1c.err")"
+
+# E2E-3: the destructive-git hook binds `NAME=literal` and `NAME=$(mktemp …)`, and a `cd X && …`
+# chain runs in X — a trial merge in a fresh temp worktree and a checkout in a slot named by a variable
+# pass; an unknown, skippable, subshell or `..`-escaping cd still lands on the main checkout.
+git -C "$E1" worktree add -q -b e2e-wt2 "$E1/.agent-wt/web-developer-2" >/dev/null 2>&1; printf 'Integration branch: main\n' > "$E1/docs/23-git-strategy.md"
+e1d() { node -e 'process.stdout.write(JSON.stringify({agent_id:"e1",tool_name:"Bash",cwd:process.argv[1],tool_input:{command:process.argv[2]}}))' "$E1" "$1" \
+  | sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" >/dev/null 2>&1; echo $?; }
+E1BAD=""
+for c in 'T=$(mktemp -d) && git worktree add --detach "$T" HEAD && cd "$T" && git merge --no-edit feat/x' \
+  'S=$(mktemp -d)/trial && cd "$S" && git merge -q --no-edit feat/x' \
+  "W=\"$E1/.agent-wt/web-developer-2\"; cd \"\$W\" && git checkout -b feat/APP-9 main" \
+  'T=$(mktemp -d); cd "$T" && echo && git merge feat/x'; do
+  [ "$(e1d "$c")" = 0 ] || E1BAD="$E1BAD | wrongly refused: $c"
+done
+for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tmp/x); cd "$W" && git merge feat/x' \
+  "W=$E1; cd \"\$W\" && git merge feat/x" 'T=$(mktemp -d); cd "$T" && git branch -f main HEAD' \
+  'T=$(mktemp -d); cd "$T/.." && git merge feat/x' 'W=/x; W=$(cat f); cd "$W" && git merge feat/x' \
+  'true || cd "$(mktemp -d)" && git merge feat/x' 'T=$(mktemp -d); ls | cd "$T" && git merge feat/x' \
+  'T=$(mktemp -d); cd "$T" && echo; git merge feat/x' 'T=$(mktemp -d); cd "$T" || git merge feat/x' \
+  "W=$E1; false && W=$E1/.agent-wt/web-developer-2; cd \"\$W\" && git merge feat/x" \
+  "W=$E1; (W=$E1/.agent-wt/web-developer-2); cd \"\$W\" && git merge feat/x" \
+  "W=$E1; echo \$(W=$E1/.agent-wt/web-developer-2); cd \"\$W\" && git merge feat/x" \
+  "cd \"\$(mktemp -d)/../..$E1\" && git merge feat/x" \
+  "W=$E1/.agent-wt/web-developer-2; export W=$E1; cd \"\$W\" && git merge feat/x" \
+  "W=$E1/.agent-wt/web-developer-2; cd '\$W' && git merge feat/x" \
+  "TMPDIR=$E1; export TMPDIR; cd \"\$(mktemp -d)\" && git merge feat/x" 'cd @TMP && git merge feat/x' \
+  "bash -c 'cd $E1/.agent-wt/web-developer-2' && git merge feat/x" \
+  '! cd "$(mktemp -d)/missing" && git merge feat/x' "! cd $E1/.agent-wt/web-developer-2 && git merge feat/x" \
+  "Q=\$(mktemp -d); ln -s $E1 \"\$Q/l\"; cd \"\$Q/l\" && git merge feat/x" \
+  "W='~'; cd \"\$W\" && git merge feat/x" \
+  "REPLY=$E1/.agent-wt/web-developer-2; read <<< $E1; cd \"\$REPLY\" && git merge feat/x" \
+  "CDPATH=$E1; cd .agent-wt/web-developer-2 && git merge feat/x" \
+  "cd $E1/.agent-wt/web-developer-2 && cd - && git merge feat/x" \
+  "pushd $E1/.agent-wt/web-developer-2 && popd && git merge feat/x" \
+  "cd $E1/.agent-wt/web-developer-2 && eval 'cd $E1' && git merge feat/x" \
+  "cd $E1/.agent-wt/web-developer-2 && . ./x.sh && git merge feat/x" \
+  "f() { cd $E1; }; cd $E1/.agent-wt/web-developer-2 && f && git merge feat/x" \
+  'pushd -n "$(mktemp -d)" && git merge feat/x' \
+  "false && cd $E1/.agent-wt/web-developer-2 && (true); (true) && git merge feat/x" \
+  "true && command -v cd $E1/.agent-wt/web-developer-2 && git merge feat/x" \
+  "cd $E1/lnk/.. && git merge feat/x" \
+  "cd -P $E1/.agent-wt/web-developer-2 && git merge feat/x" \
+  "set -P; cd $E1/.agent-wt/web-developer-2 && git merge feat/x" \
+  "set -o physical; cd $E1/.agent-wt/web-developer-2 && git merge feat/x" \
+  "bash -P -c 'cd $E1/.agent-wt/web-developer-2 && git merge feat/x'" \
+  'git --work-tree "$(mktemp -d)" merge feat/x' 'git --git-dir=/x/.git merge feat/x' \
+  "GIT_DIR=$E1/.git GIT_WORK_TREE=$E1 git -C \"\$(mktemp -d)\" merge feat/x" \
+  "Q=\$(mktemp -d); cd \"\${Q:+$E1}\" && git merge feat/x"; do
+  [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
+done
+mkdir -p "$E1/tt"
+mkdir -p "$TMP/e1br/[x]"
+[ "$(e1d "true && cd $TMP/e1br/[x] && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a [..] cd target read as a literal path"
+mkdir -p "$TMP/e1br/{x..x}"
+E1BR="true && cd $TMP/e1br/{x..x} && git merge feat/x"   # a variable: bash 3.2 brace-expands inside "$(… "…")"
+[ "$(e1d "$E1BR")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a {..} sequence cd target read as a literal path"
+mkdir -p "$TMP/e1sp"; ln -sfn "$TMP/e1sp" "$E1 "
+[ "$(e1d "W='$E1 '; cd \$W && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: an unquoted \$W that word-splits"
+[ "$(e1d "W=\"$E1/.agent-wt/web-developer-2\"; cd \$W && git checkout -b feat/APP-8 main")" = 0 ] || E1BAD="$E1BAD | wrongly refused: an unquoted \$W with no whitespace"
+E1H="$TMP/e1home/h"; mkdir -p "$E1H+"
+[ "$(HOME="$E1H" e1d 'true && cd ~+ && git merge feat/x')" = 2 ] \
+  || E1BAD="$E1BAD | wrongly allowed: cd ~+ read as \$HOME+ (it is the current directory)"
+mkdir -p "$E1H/x"
+[ "$(HOME="$E1H" e1d "true && cd '~' && git merge feat/x")" = 2 ] && [ "$(HOME="$E1H" e1d 'true && cd "~" && git merge feat/x')" = 2 ] \
+  || E1BAD="$E1BAD | wrongly allowed: a quoted ~ read as HOME"
+[ "$(HOME="$E1H" e1d 'true && cd ~/x && git merge feat/x')" = 0 ] || E1BAD="$E1BAD | wrongly refused: cd ~/x outside any repository"
+[ "$(HOME="$E1H" e1d "HOME=$E1; true && cd && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a bare cd after HOME= is reassigned"
+[ "$(CDPATH="$E1" e1d "true && cd .agent-wt/web-developer-2 && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a relative cd under an inherited CDPATH"
+( cd "$E1" && echo s > stashme && git add stashme && git stash -q ) >/dev/null 2>&1
+[ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git stash clear')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: stash clear in a temp worktree (the stack is shared)"
+( cd "$E1" && git branch -q e2e-unmerged && git checkout -q e2e-unmerged && git commit -q --allow-empty -m u && git checkout -q main ) >/dev/null 2>&1
+[ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git branch -D e2e-unmerged')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: branch -D in a temp worktree (branches are shared)"
+ln -sfn "$E1/.agent-wt/web-developer-2/src" "$E1/lnk" 2>/dev/null; mkdir -p "$E1/.agent-wt/web-developer-2/src"
+# a heredoc fed to a shell is another process: an unexported binding made here is empty there
+[ "$(e1d "$(printf 'Q=$(mktemp -d); bash <<%sEOF%s\ncd "$Q" \046\046 git merge feat/x\nEOF' "'" "'")")" = 2 ] \
+  || E1BAD="$E1BAD | wrongly allowed: an unexported temp binding used inside a heredoc shell"
+[ "$(TMPDIR="$E1/tt" e1d 'T=$(mktemp -d) && git worktree add --detach "$T" HEAD && cd "$T" && git merge --no-edit feat/x')" = 2 ] \
+  || E1BAD="$E1BAD | wrongly allowed: a mktemp tree under a TMPDIR inside the repository"
+[ "$(TMPDIR="$E1/no-such-dir" e1d 'git -C "$(mktemp -d)" merge --no-edit feat/x')" = 2 ] \
+  || E1BAD="$E1BAD | wrongly allowed: a mktemp that cannot succeed (TMPDIR missing) leaves git in the checkout"
+[ -z "$E1BAD" ] && ok "E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)" \
+  || bad "E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)" "$E1BAD"
+grep -q 'never `$(cat file)` it back' "$HERE/spawn-prompt.mjs" && grep -q 'never$' "$HERE/../agents/code-reviewer.md" \
+  && ok "E2E run 1: the reviewer is told to spell its temp path literally across calls (E2E-4)" \
+  || bad "E2E run 1: the reviewer is told to spell its temp path literally across calls (E2E-4)" "guidance missing"
 
 # --- Sprint 8 V4: context and agent communication ---
 echo "Sprint 8 V4: context and agent communication"

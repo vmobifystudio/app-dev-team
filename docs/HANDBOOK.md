@@ -2,8 +2,8 @@
 
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
-**Version:** 3.2.0 (`main`) · **Date:** 2026-11-22
-**Scale:** 29 roles · 26 skills · 21 commands · 68 top-level scripts (+24 shared libs) · 9 knowledge packs · 2656 assertions
+**Version:** 3.2.1 (`main`) · **Date:** 2026-11-22
+**Scale:** 29 roles · 26 skills · 21 commands · 68 top-level scripts (+24 shared libs) · 9 knowledge packs · 2662 assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
 drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
@@ -761,6 +761,13 @@ with the same access, and nothing here claims to be.
   lists; a script written in an earlier call, a path computed at runtime, or a name built inside an
   interpreter gets past it (its header states the bound). It is a backstop; the
   board's own validation, tokens and re-derived evidence are the gate.
+- **The destructive-git hook reads the command, not the filesystem.** Its fresh-temp-directory
+  exemption (a trial merge in a `$(mktemp -d)` worktree) trusts that the same command does not
+  re-point that directory: a literal `ln` withdraws it, but a link planted by `tar`, `cp -s` or an
+  interpreter, or by an earlier call, is not seen. It stops accidents in a shared tree; it is not a
+  sandbox against a command built to evade it. It also assumes the shell starts in logical `cd`
+  mode: a profile that runs `set -P` is not visible in the command, and an inherited `CDPATH` is
+  seen only when the hook's own environment carries it.
 - **A TTY can be faked.** The founder mint asks for an interactive terminal and the ticket typed
   back; that proves a terminal, not a human — a pseudo-terminal satisfies it.
 - **A new checkout trusts a carried-over log once.** The board log is never committed: it and the
