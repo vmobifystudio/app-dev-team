@@ -14188,10 +14188,12 @@ for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tm
   "f() { cd $E1; }; cd $E1/.agent-wt/web-developer-2 && f && git merge feat/x" \
   'pushd -n "$(mktemp -d)" && git merge feat/x' \
   "false && cd $E1/.agent-wt/web-developer-2 && (true); (true) && git merge feat/x" \
-  "true && command -v cd $E1/.agent-wt/web-developer-2 && git merge feat/x"; do
+  "true && command -v cd $E1/.agent-wt/web-developer-2 && git merge feat/x" \
+  "cd $E1/lnk/.. && git merge feat/x"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
 mkdir -p "$E1/tt"
+ln -sfn "$E1/.agent-wt/web-developer-2/src" "$E1/lnk" 2>/dev/null; mkdir -p "$E1/.agent-wt/web-developer-2/src"
 # a heredoc fed to a shell is another process: an unexported binding made here is empty there
 [ "$(e1d "$(printf 'Q=$(mktemp -d); bash <<%sEOF%s\ncd "$Q" \046\046 git merge feat/x\nEOF' "'" "'")")" = 2 ] \
   || E1BAD="$E1BAD | wrongly allowed: an unexported temp binding used inside a heredoc shell"

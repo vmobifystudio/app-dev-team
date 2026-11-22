@@ -36,7 +36,8 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   (rounds 9–10); `eval`, `source`/`.` and a function defined in the command end it too
   (they can cd in this shell); `pushd -n`, `pushd +N` and a bare `pushd` land somewhere unknown
   (round 11); every list-ending separator ends a chain, even after a bare `( … )` (round 12); a cd behind a wrapper (`command -v cd`, `builtin cd`) is never
-  trusted and ends any chain (round 13). Mutations ME2E1–ME2E32 caught.
+  trusted and ends any chain (round 13); a cd target is normalised logically, as the shell does (`/a/link/..` is `/a`), and
+  `cd -P` with `..` is unknown (round 14). Mutations ME2E1–ME2E33 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 

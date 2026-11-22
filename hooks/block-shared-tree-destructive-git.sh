@@ -170,6 +170,14 @@ function joindir1(cur, x) {
   if (x ~ /^~/) { if (home == "") return "?"; x = home substr(x, 2) }
   return (x ~ /^\//) ? x : cur "/" x
 }
+function lex1(p,    C, n, j, o, k, out) {
+  if (p !~ /^\// || p !~ /(^|\/)\.\.?(\/|$)/) return p
+  n = split(p, C, "/"); k = 0
+  for (j = 1; j <= n; j++) { if (C[j] == "" || C[j] == ".") continue; if (C[j] == "..") { if (k) k--; continue } o[++k] = C[j] }
+  out = ""; for (j = 1; j <= k; j++) out = out "/" o[j]
+  return out == "" ? "/" : out
+}
+function lexdir(d, P,    C, n, j, out) { n = split(d, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, (P && C[j] ~ /(^|\/)\.\.(\/|$)/) ? "?" : lex1(C[j])); return out }
 function joindir(cur, x,    C, n, j, out) { n = split(cur, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, joindir1(C[j], x)); return out }
 
 # A pathspec that names the whole tree.
@@ -347,6 +355,8 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
     else {
       for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
       nd = joindir(dir, (j <= nw) ? W[j] : home)
+      for (x = i + 1; x < j; x++) if (W[x] ~ /^-[A-Za-z]*P/) break
+      nd = lexdir(nd, x < j)
       # `pushd -n` / `pushd +N` / a bare `pushd` edit, rotate or swap the stack: where it lands is unknown
       if (cmd == "pushd" && (j > i + 1 || j > nw || W[j] ~ /^[+-][0-9]/)) { nd = "?"; unsure = 1 }
       if (cmd == "pushd") PSTK[++PN] = dir
