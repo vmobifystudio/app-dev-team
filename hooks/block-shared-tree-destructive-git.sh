@@ -156,7 +156,7 @@ function lit(t) { gsub(/[$~]/, "\002", t); return t }   # quoted/escaped: neithe
 function sub_word(body) { return (body ~ /^[ \t]*mktemp([ \t]+-[A-Za-z]+)*[ \t]*$/) ? "\001MKTEMP\001" : "$(...)" }
 function expand(x,    nm, rest) {
   if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
-  if (!match(x, /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)) return x
+  if (!match(x, /^(\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})/)) return x   # ${T:+x}, ${T%/*}: unknown
   nm = substr(x, 2, RLENGTH - 1); gsub(/[{}]/, "", nm); rest = substr(x, RLENGTH + 1)
   if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/ || once(nm) != 1) return x
   if (VARS[nm] == "@TMP") return (rest ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"

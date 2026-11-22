@@ -705,6 +705,7 @@ ME2E37@@hooks/block-shared-tree-destructive-git.sh@@if (home == "" || x !~ /^~(\
 ME2E38@@hooks/block-shared-tree-destructive-git.sh@@    out = out (c == "~" ? "\002" : c)@@    out = out c@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E39@@hooks/block-shared-tree-destructive-git.sh@@function lit(t) { gsub(/[$~]/, "\002", t); return t }@@function lit(t) { return t }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E40@@hooks/block-shared-tree-destructive-git.sh@@HOME([^A-Za-z0-9_]|$)/) home = ""@@HOME_NEVER([^A-Za-z0-9_]|$)/) home = ""@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E41@@hooks/block-shared-tree-destructive-git.sh@@  if (!match(x, /^(\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})/)) return x@@  if (!match(x, /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)) return x@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 
