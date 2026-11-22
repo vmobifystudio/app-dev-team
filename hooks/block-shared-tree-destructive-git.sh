@@ -347,6 +347,8 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
     else {
       for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
       nd = joindir(dir, (j <= nw) ? W[j] : home)
+      # `pushd -n` / `pushd +N` / a bare `pushd` edit, rotate or swap the stack: where it lands is unknown
+      if (cmd == "pushd" && (j > i + 1 || j > nw || W[j] ~ /^[+-][0-9]/)) { nd = "?"; unsure = 1 }
       if (cmd == "pushd") PSTK[++PN] = dir
       # `! cd X`: the `!` makes a FAILED cd the success path — what follows may run where we were
       for (j = 1; j < i && W[j] != "!"; j++) ;

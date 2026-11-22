@@ -34,7 +34,8 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   starting with `~` is never bound (round 7); names the shell sets implicitly (`REPLY`, `OPTARG`, `PWD`, …) are never
   bound, and a command naming `CDPATH` trusts no cd (round 8); an unresolved cd (`cd -`, `cd "$X"`) ends a trusted chain, and so does a `popd`
   (rounds 9–10); `eval`, `source`/`.` and a function defined in the command end it too
-  (they can cd in this shell). Mutations ME2E1–ME2E29 caught.
+  (they can cd in this shell); `pushd -n`, `pushd +N` and a bare `pushd` land somewhere unknown
+  (round 11). Mutations ME2E1–ME2E30 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 
