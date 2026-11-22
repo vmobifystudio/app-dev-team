@@ -14178,7 +14178,7 @@ for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tm
   "bash -c 'cd $E1/.agent-wt/web-developer-2' && git merge feat/x" \
   '! cd "$(mktemp -d)/missing" && git merge feat/x' "! cd $E1/.agent-wt/web-developer-2 && git merge feat/x" \
   "Q=\$(mktemp -d); ln -s $E1 \"\$Q/l\"; cd \"\$Q/l\" && git merge feat/x" \
-  "W=$E1/.agent-wt/web-developer-2; bash -c 'git -C \"\$W\" merge feat/x'" \
+  "W=$E1/.agent-wt/web-developer-2; bash -c 'git -C \"\$W\" checkout -b feat/APP-9 main'" \
   "W='~'; cd \"\$W\" && git merge feat/x"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
