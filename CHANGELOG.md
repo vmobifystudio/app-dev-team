@@ -13,9 +13,9 @@ a second tab resurrecting deleted items). The gate did its job. Its false refusa
   once-only binding rule read the text `T=` as a second assignment (macOS temp paths, which
   contain `/T/`, tripped it the same way). A binding now dies only by an actual write, in order —
   `export`/`read`/`for`/`declare`/`unset`/`printf -v`/… on that name (a dynamic target such as `printf -v "$V"` clears every binding), `W+=`/`W[0]=` anywhere in the command, `printf -v` (its operand only), `%n`/`%ln`/`%hn` or a format it cannot read, `${W:=…}`
-  (and `source`/`.` leave the directory unknown); any declaration option or unreadable word (`declare -n/-i/-u/-l`, `declare "$O"`), arithmetic (`let`, `((`, `$[`, an array subscript, any `${…}` other than `${NAME}`), or `$((`/`$[`/`${` in an unquoted heredoc body disables binding. The spawn prompt now says to chain
+  (and `source`/`.` leave the directory unknown); any declaration option or unreadable word (`declare -n/-i/-u/-l`, `declare "$O"`), arithmetic (`let`, `((`, `$[`, `[[ … -eq … ]]`, an array subscript, any `${…}` other than `${NAME}`), or `$((`/`$[`/`${` in an unquoted heredoc body disables binding. The spawn prompt now says to chain
   `cd "$T" && git …` (a `;` after a failed cd runs git in the shared tree, which is refused).
-  Mutations ME2E50, ME2E51, ME2E53–ME2E61, ME2E63, ME2E64.
+  Mutations ME2E50, ME2E51, ME2E53–ME2E61, ME2E63–ME2E65.
 - **Leo's PR #50 round-5 review:** 3.2.1 said "ME2E1–ME2E49 caught", but ME2E33 was caught by a
   different case — its own symlink probe ran before the link existed. The link is now created
   before the refusal loop. Round 24's force-push tag (`REF=S`) had no probe; one is added with

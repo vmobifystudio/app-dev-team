@@ -359,6 +359,7 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   # namerefs alias names and arithmetic writes names it never spells as NAME= — read from the
   # command as the shell runs it (a `cat <<E` body of JavaScript is not arithmetic)
   if (cmd == "let") NOBIND = 1
+  if (cmd == "[[") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-(eq|ne|lt|le|gt|ge)$/) NOBIND = 1   # [[ W++ -eq 1 ]]: operands are arithmetic
   if (cmd == "declare" || cmd == "typeset" || cmd == "local" || cmd == "readonly" || cmd == "export") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^[-+]/ || W[j] ~ /[$`\001\002\003]/) NOBIND = 1   # -n -i -u -l …, or "$O"
   # printf writes only its `-v NAME` operand; the other writers, every name among their words
   if (cmd == "printf") { for (j = i + 1; j <= nw; j++) if (W[j] ~ /%[-+ #0-9.*$]*(hh|h|ll|l|j|z|t|L|q)?n/) NOBIND = 1   # %n / %ln / %hn write a count into a variable operand
