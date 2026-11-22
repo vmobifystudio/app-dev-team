@@ -727,7 +727,7 @@ ME2E60@@hooks/block-shared-tree-destructive-git.sh@@    if (j <= nw && W[j] ~ /[
 ME2E61@@hooks/block-shared-tree-destructive-git.sh@@ == "[") NOBIND = 1   # $[ … ] is arithmetic too (unquoted)@@ == "[") NOBIND = 0   # $[ … ] is arithmetic too (unquoted)@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E62@@hooks/block-shared-tree-destructive-git.sh@@    if (force) emit("D", "S", d, "a force push@@    if (force) emit("D", "", d, "a force push@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E63@@hooks/block-shared-tree-destructive-git.sh@@ if (body ~ /\$\(\(|\$\[|\$\{/) NOBIND = 1 }@@ if (0) NOBIND = 1 }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
-ME2E64@@hooks/block-shared-tree-destructive-git.sh@@"}")) ~ /\[/) NOBIND = 1   # ${A[W=2]} (unquoted)@@"}")) ~ /\[/) NOBIND = 0   # ${A[W=2]} (unquoted)@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E64@@hooks/block-shared-tree-destructive-git.sh@@ NOBIND = 1   # any ${…} but ${NAME}: offsets, subscripts, defaults are arithmetic or writes (unquoted)@@ NOBIND = 0   # any ${…} but ${NAME}: offsets, subscripts, defaults are arithmetic or writes (unquoted)@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 

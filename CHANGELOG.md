@@ -13,7 +13,7 @@ a second tab resurrecting deleted items). The gate did its job. Its false refusa
   once-only binding rule read the text `T=` as a second assignment (macOS temp paths, which
   contain `/T/`, tripped it the same way). A binding now dies only by an actual write, in order —
   `export`/`read`/`for`/`declare`/`unset`/`printf -v`/… on that name (a dynamic target such as `printf -v "$V"` clears every binding), `W+=`/`W[0]=` anywhere in the command, `printf -v` (its operand only), `%n`/`%ln`/`%hn` or a format it cannot read, `${W:=…}`
-  (and `source`/`.` leave the directory unknown); any declaration option or unreadable word (`declare -n/-i/-u/-l`, `declare "$O"`), arithmetic (`let`, `((`, `$[`, an array subscript, `${A[…]}`), or `$((`/`$[`/`${` in an unquoted heredoc body disables binding. The spawn prompt now says to chain
+  (and `source`/`.` leave the directory unknown); any declaration option or unreadable word (`declare -n/-i/-u/-l`, `declare "$O"`), arithmetic (`let`, `((`, `$[`, an array subscript, any `${…}` other than `${NAME}`), or `$((`/`$[`/`${` in an unquoted heredoc body disables binding. The spawn prompt now says to chain
   `cd "$T" && git …` (a `;` after a failed cd runs git in the shared tree, which is refused).
   Mutations ME2E50, ME2E51, ME2E53–ME2E61, ME2E63, ME2E64.
 - **Leo's PR #50 round-5 review:** 3.2.1 said "ME2E1–ME2E49 caught", but ME2E33 was caught by a
@@ -61,7 +61,7 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   other parameter operators are unknown (round 21); `git stash drop/clear`, `branch -D` and a force push keep their check in a temp
   worktree — stash, branches and the remote are shared (rounds 23–24); `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` in the command or the hook's
   environment leave git's target unknown (round 25); a `[…]` or `{…}` cd target is unknown (rounds 26–27); an unquoted `$W` whose value would word-split is unknown
-  (round 28). Mutations ME2E1–ME2E49 caught.
+  (round 28). Mutations ME2E1–ME2E49 (ME2E33's own probe did not bite at 3.2.1 — corrected in 3.2.2).
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 

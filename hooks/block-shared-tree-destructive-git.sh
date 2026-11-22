@@ -491,7 +491,7 @@ function dq(s, i, dir,    n, c, e, k, out) {
     if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out lit(c); continue }
     if (c == "\"") break
     if (c == "$" && substr(s, i + 1, 1) == "[") NOBIND = 1   # $[ … ] is arithmetic too
-    if (c == "$" && substr(s, i + 1, 1) == "{" && substr(s, i, index(substr(s, i), "}")) ~ /\[/) NOBIND = 1   # ${A[W=2]}
+    if (c == "$" && substr(s, i + 1, 1) == "{" && substr(s, i, index(substr(s, i), "}")) !~ /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/) NOBIND = 1   # any ${…} but ${NAME}: offsets, subscripts, defaults are arithmetic or writes
     if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
     out = out (c == "~" ? "\002" : c)   # no tilde expansion inside double quotes
@@ -510,7 +510,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
     if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w lit(substr(s, i + 1, k - 1)); i += k; inw = 1; continue }
     if (c == "\"") { i = dq(s, i + 1, dir); w = w DQ; inw = 1; continue }
     if (c == "$" && substr(s, i + 1, 1) == "[") NOBIND = 1   # $[ … ] is arithmetic too (unquoted)
-    if (c == "$" && substr(s, i + 1, 1) == "{" && substr(s, i, index(substr(s, i), "}")) ~ /\[/) NOBIND = 1   # ${A[W=2]} (unquoted)
+    if (c == "$" && substr(s, i + 1, 1) == "{" && substr(s, i, index(substr(s, i), "}")) !~ /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/) NOBIND = 1   # any ${…} but ${NAME}: offsets, subscripts, defaults are arithmetic or writes (unquoted)
     if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
     if (c == "#" && !inw) { while (i <= n && substr(s, i, 1) != "\n") i++; i--; continue }
