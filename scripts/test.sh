@@ -14143,9 +14143,36 @@ process.stdout.write([segsRel([ANY, "src"], g), segsRel([ANY], g), segsRel(["p",
 # EN-13: the budget estimate counts the project's platform pack, not ios-conventions on a web project.
 mkdir -p "$E1/.agent-wt/s"; printf '{"platform":"web"}\n' > "$E1/docs/team/project-profile.json"
 ( cd "$E1" && node "$HERE/spawn-prompt.mjs" compose --root . --ticket APP-001 --role code-reviewer --slot .agent-wt/s ) >/dev/null 2>"$TMP/e1b.err"
-grep -q 'KB packs [0-9]* (web-conventions)' "$TMP/e1b.err" \
+( cd "$E1/docs" && node "$HERE/spawn-prompt.mjs" compose --project-root "$E1" --ticket APP-001 --role code-reviewer --slot .agent-wt/s ) >/dev/null 2>"$TMP/e1c.err"
+grep -q 'KB packs [0-9]* (web-conventions)' "$TMP/e1b.err" && grep -q 'KB packs [0-9]* (web-conventions)' "$TMP/e1c.err" \
   && ok "E2E run 1: a web project's spawn budget counts web-conventions (EN-13)" \
-  || bad "E2E run 1: a web project's spawn budget counts web-conventions (EN-13)" "$(grep -m1 'KB packs\|spawn-prompt' "$TMP/e1b.err")"
+  || bad "E2E run 1: a web project's spawn budget counts web-conventions (EN-13)" "$(grep -m1 'KB packs\|spawn-prompt' "$TMP/e1b.err" "$TMP/e1c.err")"
+
+# E2E-3: the destructive-git hook binds `NAME=literal` and `NAME=$(mktemp …)`, and a `cd X && …`
+# chain runs in X — a trial merge in a fresh temp worktree and a checkout in a slot named by a variable
+# pass; an unknown, skippable, subshell or `..`-escaping cd still lands on the main checkout.
+git -C "$E1" worktree add -q -b e2e-wt2 "$E1/.agent-wt/web-developer-2" >/dev/null 2>&1; printf 'Integration branch: main\n' > "$E1/docs/23-git-strategy.md"
+e1d() { node -e 'process.stdout.write(JSON.stringify({agent_id:"e1",tool_name:"Bash",cwd:process.argv[1],tool_input:{command:process.argv[2]}}))' "$E1" "$1" \
+  | sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" >/dev/null 2>&1; echo $?; }
+E1BAD=""
+for c in 'T=$(mktemp -d) && git worktree add --detach "$T" HEAD && cd "$T" && git merge --no-edit feat/x' \
+  'S=$(mktemp -d)/trial && cd "$S" && git merge -q --no-edit feat/x' \
+  "W=\"$E1/.agent-wt/web-developer-2\"; cd \"\$W\" && git checkout -b feat/APP-9 main" \
+  'T=$(mktemp -d); cd "$T" && echo && git merge feat/x'; do
+  [ "$(e1d "$c")" = 0 ] || E1BAD="$E1BAD | wrongly refused: $c"
+done
+for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tmp/x); cd "$W" && git merge feat/x' \
+  "W=$E1; cd \"\$W\" && git merge feat/x" 'T=$(mktemp -d); cd "$T" && git branch -f main HEAD' \
+  'T=$(mktemp -d); cd "$T/.." && git merge feat/x' 'W=/x; W=$(cat f); cd "$W" && git merge feat/x' \
+  'true || cd "$(mktemp -d)" && git merge feat/x' 'T=$(mktemp -d); ls | cd "$T" && git merge feat/x' \
+  'T=$(mktemp -d); cd "$T" && echo; git merge feat/x' 'T=$(mktemp -d); cd "$T" || git merge feat/x'; do
+  [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
+done
+[ -z "$E1BAD" ] && ok "E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)" \
+  || bad "E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)" "$E1BAD"
+grep -q 'never `$(cat file)` it back' "$HERE/spawn-prompt.mjs" && grep -q 'never$' "$HERE/../agents/code-reviewer.md" \
+  && ok "E2E run 1: the reviewer is told to spell its temp path literally across calls (E2E-4)" \
+  || bad "E2E run 1: the reviewer is told to spell its temp path literally across calls (E2E-4)" "guidance missing"
 
 # --- Sprint 8 V4: context and agent communication ---
 echo "Sprint 8 V4: context and agent communication"

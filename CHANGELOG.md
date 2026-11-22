@@ -3,6 +3,32 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.2.1] — 2026-11-22 (first real headless end-to-end run, PR #50)
+
+The first real `/app-run --yolo` run on 3.2.0 (a web to-do app) closed 15/15 board tickets — 8 product,
+6 QA passes, 1 bug fix — with 0 founder asks, in ~70 min for $34.77 and 41 agent spawns. QA filed
+BUG-001 (a delete test that could not catch a delete-first-match regression) and the loop fixed it
+unattended. An independent browser drive of the build passed add / complete / delete / reload /
+corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
+
+### Fixed
+
+- **E2E-1** guard-gate-writes refused `grep … dist/assets/*.js` as "a plugin script built at runtime";
+  only the command word counts now.
+- **E2E-2** after an unknown `cd "$T"`, a sweep of `src` was refused as a sweep of `actor-tokens.jsonl`
+  — nothing lies under a file guard. Refusals under a runtime-built cwd now say so.
+- **E2E-3** block-shared-tree-destructive-git binds `NAME=literal` and `NAME=$(mktemp …)` and runs a
+  `cd X && …` chain in X: a reviewer's trial merge in a fresh temp worktree, and an IC's checkout in
+  a slot named by a variable, are no longer refused. Unknown, skippable (`||`), subshell (`|`) and
+  `..`-escaping cds still land on the main checkout.
+- **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
+- **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
+
+### Docs
+
+- README: headless runs need `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` — `claude -p` otherwise stops
+  agents still running 10 min after the last turn (the run lost its ship verification pass that way).
+
 ## [3.2.0] — 2026-11-22 (Sprint 8: nine-lens studio audit, PR #49)
 
 ### Removed — Sprint 8 V6 (2026-11-21 studio audit: dead weight)

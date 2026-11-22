@@ -4,7 +4,7 @@
 first and nothing else until you have.*
 
 **Last updated:** 2026-11-22 · **Branch:** `fix/sprint-8` → PR #49 (Sprint 8)
-**Suite:** 2656 passed, 0 failed · **Invariants:** 12/12 · **Version:** 3.2.0 · 29 roles · 26 skills · 21 commands
+**Suite:** 2662 passed, 0 failed · **Invariants:** 12/12 · **Version:** 3.2.1 · 29 roles · 26 skills · 21 commands
 
 ## 2026-11-21/22 — nine-lens studio audit and Sprint 8 (`fix/sprint-8`, PR #49)
 

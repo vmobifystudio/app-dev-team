@@ -251,7 +251,7 @@ function reportBudget(role, ticket, text, skillKey) {
   const skillWords = [...skills].reduce((n, s) => n + fileWords(resolve(HERE, '..', 'skills', s, 'SKILL.md')), 0);
   // EN-13: `platform` is the project profile's platform pack (web/android/ios); ios-conventions only when it names none.
   let plat = '';
-  try { plat = String(JSON.parse(readFileSync(resolve(typeof flags.root === 'string' ? flags.root : '.', 'docs/team/project-profile.json'), 'utf8')).platform || ''); } catch { /* no profile */ }
+  try { plat = String(JSON.parse(readFileSync(resolve(resolveRoot(), 'docs/team/project-profile.json'), 'utf8')).platform || ''); } catch { /* no profile */ }
   const platPack = /\bweb\b/i.test(plat) ? 'web-conventions' : /\bandroid\b/i.test(plat) && !/\bios\b/i.test(plat) ? 'android-conventions' : 'ios-conventions';
   const packs = skills.has('house-conventions') ? (KB_PACKS[role] || []).map((p) => (p === 'platform' ? platPack : p)) : [];
   const packWords = packs.reduce((n, p) => n + fileWords(resolve(HERE, '..', 'knowledge', `${p}.md`)), 0);
@@ -620,6 +620,8 @@ const scratchLines = (ROOT, tip) => [
   ...fence([`T=$(mktemp -d) && git worktree add --detach "$T" ${tip || '<the branch tip>'}`,
     '# ...run the tests, revert lines, reintroduce the defect — inside "$T" only...',
     'git worktree remove --force "$T"      # always, pass or fail'].join('\n')),
+  // E2E-4: a run's reviewers saved "$T" to a file and `cd "$(cat …)"`'d back — no guard can see where that points.
+  'Shell variables die with each Bash call: in a later call, spell the printed path of `$T` literally — never `$(cat file)` it back (the guards refuse a directory they cannot see).',
 ];
 
 function reviewSubject(ROOT, row, allIds, base) {

@@ -148,8 +148,23 @@ function enterable(list,    C, n, j) {
 }
 
 # A directory a segment runs in, or "?" when it cannot be known without running anything.
+# E2E-3: `$(mktemp …)` is a FRESH directory this command made — no other work in it, never the main
+# checkout — so it stands as "@TMP". `NAME=literal` / `NAME=$(mktemp …)` bind for the rest of the
+# command (VARS), so `cd "$W"` to a bound name is that path. Anything else assigned is unknown again.
+function sub_word(body) { return (body ~ /^[ \t]*mktemp([ \t]+-[A-Za-z]+)*[ \t]*$/) ? "\001MKTEMP\001" : "$(...)" }
+function expand(x,    nm, rest) {
+  if (x ~ /^\001MKTEMP\001/) return "@TMP"
+  if (!match(x, /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)) return x
+  nm = substr(x, 2, RLENGTH - 1); gsub(/[{}]/, "", nm); rest = substr(x, RLENGTH + 1)
+  if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/) return x
+  if (VARS[nm] == "@TMP") return (rest ~ /(^|\/)\.\.(\/|$)|[$`*?\001]/) ? "?" : "@TMP"
+  return VARS[nm] rest
+}
 function joindir1(cur, x) {
-  if (cur == "?" || x == "" || x == "-" || x ~ /[$`*?]/) return "?"
+  x = expand(x)
+  if (x == "@TMP") return (cur == "?") ? "@TMP" : "@TMP"
+  if (cur == "@TMP" && x !~ /^[\/~]/ && x !~ /[$`*?\001]/ && x != "-" && x !~ /(^|\/)\.\.(\/|$)/) return "@TMP"
+  if (cur == "?" || cur == "@TMP" || x == "" || x == "-" || x ~ /[$`*?\001]/) return "?"
   if (x ~ /^~/) { if (home == "") return "?"; x = home substr(x, 2) }
   return (x ~ /^\//) ? x : cur "/" x
 }
@@ -307,8 +322,17 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
 # One segment. Returns the directory later segments run in (a `cd` carries forward). `unsure`:
 # the cd may not run here (see SEGS above), so the old directory stays a candidate.
 function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
+  LASTCD = ""
   i = cmdat(W, nw)
-  if (i > nw) return dir
+  if (i > nw) {
+    for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*=/)) {
+      x = substr(W[j], RLENGTH + 1); nd = substr(W[j], 1, RLENGTH - 1)
+      if (x ~ /^\001MKTEMP\001/ && substr(x, 9) !~ /[$`*?\001]|(^|\/)\.\.(\/|$)/) VARS[nd] = "@TMP"
+      else if (x != "" && x !~ /[$`*?\001]/) VARS[nd] = x
+      else delete VARS[nd]
+    }
+    return dir
+  }
   cmd = W[i]
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
     if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1 }
@@ -316,6 +340,7 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
       for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
       nd = joindir(dir, (j <= nw) ? W[j] : home)
       if (cmd == "pushd") PSTK[++PN] = dir
+      if (!SHADOW) LASTCD = nd
     }
     return (unsure || SHADOW || !enterable(nd)) ? union(nd, dir) : nd
   }
@@ -412,7 +437,7 @@ function dq(s, i, dir,    n, c, e, k, out) {
     c = substr(s, i, 1)
     if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out c; continue }
     if (c == "\"") break
-    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); parse(substr(s, i + 2, e - i - 2), dir); out = out "$(...)"; i = e; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); parse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; parse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
     out = out c
   }
@@ -420,14 +445,16 @@ function dq(s, i, dir,    n, c, e, k, out) {
   return i
 }
 
-function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last, depth, j) {
+# E2E-3: in `cd X && a && b`, a and b run only if that cd SUCCEEDED, so they run in X — CHAIN, for
+# the rest of the && list. Whatever follows a `;`, `||`, `|` or newline is back to the union in dir.
+function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last, depth, j, chain, nd2, inchain) {
   n = length(s); nw = 0; w = ""; inw = 0; np = 0; split("", W); last = ""; depth = 0
   for (i = 1; i <= n + 1; i++) {
     c = (i <= n) ? substr(s, i, 1) : "\n"
     if (c == "\\") { i++; if (i <= n && substr(s, i, 1) != "\n") { w = w substr(s, i, 1); inw = 1 } continue }
     if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w substr(s, i + 1, k - 1); i += k; inw = 1; continue }
     if (c == "\"") { i = dq(s, i + 1, dir); w = w DQ; inw = 1; continue }
-    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); parse(substr(s, i + 2, e - i - 2), dir); w = w "$(...)"; i = e; inw = 1; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); parse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; parse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
     if (c == "#" && !inw) { while (i <= n && substr(s, i, 1) != "\n") i++; i--; continue }
     if (c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<") {
@@ -441,7 +468,15 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
       op = c; if ((c == "&" || c == "|") && substr(s, i + 1, 1) == c) { op = c c; i++ }
       for (j = 1; j <= nw; j++) { if (W[j] in OPEN) depth++; else if (W[j] in CLOSE) { if (depth) depth-- } else if (!(W[j] in SKIP)) break }
-      if (nw) { dir = seg(W, nw, dir, depth > 0 || last == "&&" || last == "||" || last == "|" || op == "|" || op == "||" || op == "&"); nw = 0; split("", W) }
+      if (nw) {
+        inchain = (last == "&&" && chain != "")
+        nd2 = seg(W, nw, inchain ? chain : dir, depth > 0 || last == "&&" || last == "||" || last == "|" || op == "|" || op == "||" || op == "&")
+        # a chain starts only at a cd that surely ran: not after `||` (skippable) or `|` (a subshell)
+        if (op == "&&" && depth == 0 && LASTCD != "" && !index(SEP LASTCD SEP, SEP "?" SEP) && (inchain || (last != "||" && last != "|"))) chain = LASTCD
+        else if (!(op == "&&" && inchain)) chain = ""
+        dir = inchain ? union(nd2, dir) : nd2
+        nw = 0; split("", W)
+      }
       last = op
       if (c == "\n" && np) { i = bodies(s, i, PD, PT, PS, np, dir); np = 0 }
       continue
@@ -510,6 +545,9 @@ fi
 TAB=$(printf '\t')
 while IFS="$TAB" read -r KIND REF DIR WHY; do
   [ -n "$KIND" ] || continue
+  # E2E-3: a tree this command just made under mktemp (a trial merge, a mutation probe) holds no one
+  # else's work and is never the integration checkout; a ref write still reaches the shared repo.
+  if [ "$DIR" = "@TMP" ]; then [ "$KIND" = "R" ] || continue; DIR="?"; fi
   GDIR=$DIR
   [ "$GDIR" = "?" ] && GDIR=""
   ROOT=""
