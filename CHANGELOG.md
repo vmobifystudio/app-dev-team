@@ -18,12 +18,12 @@ a second tab resurrecting deleted items). The gate did its job. Its false refusa
   touch the shell's variables, so it never matters. `trap`, `alias`, `enable` and `shopt` can
   also redefine what `cd` does, so they trust no cd either. Expansions that write are caught
   where they appear: `W+=`/`W[i]=`, any `${…}` other than a plain `${NAME}`, arithmetic (`((`,
-  `$((`, `$[`, `[[ … -eq … ]]`, a `-v` test, a `[[` split by its own `&&`/`||`), a leading redirection that hides the command, and `$((`/`$[`/`${` in an unquoted heredoc body. This replaced
+  `$((`, `$[`, any `[[ … ]]`, a `-v` test in `test`/`[`), a leading redirection that hides the command, and `$((`/`$[`/`${` in an unquoted heredoc body. This replaced
   eight Codex rounds of per-builtin modelling (`printf -v"W"`, `%ln`, `declare -u`, `declare
   "$O"`, `${A[W=2]}`, `${X:W=2}`, DEBUG traps, …) with one rule that covers the class. Cost: a
   command that logs with `printf` before a variable-named `cd` is refused — use `echo`. The
   spawn prompt also says to chain `cd "$T" && git …` (a `;` after a failed cd runs git in the
-  shared tree, which is refused). Mutations ME2E51, ME2E57, ME2E59, ME2E61, ME2E63–ME2E70.
+  shared tree, which is refused). Mutations ME2E51, ME2E57, ME2E59, ME2E61, ME2E63, ME2E64, ME2E66–ME2E69, ME2E71.
 - **Leo's PR #50 round-5 review:** 3.2.1 said "ME2E1–ME2E49 caught", but ME2E33 was caught by a
   different case — its own symlink probe ran before the link existed. The link is now created
   before the refusal loop. Round 24's force-push tag (`REF=S`) had no probe; one is added with

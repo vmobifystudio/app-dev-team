@@ -360,9 +360,8 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   # builtin trusts no binding; one that can also redefine what `cd` does trusts no cd either.
   if (cmd in UNSAFE) NOBIND = 1
   if (cmd in REDEFINE) { NOBIND = 1; SHADOW = 1 }
-  if (cmd == "[[") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-(eq|ne|lt|le|gt|ge)$/) NOBIND = 1   # [[ W++ -eq 1 ]]: operands are arithmetic
-  if (cmd == "[[" || cmd == "test" || cmd == "[") for (j = i + 1; j <= nw; j++) if (W[j] == "-v") NOBIND = 1   # -v evaluates a subscript
-  if (cmd == "[[" && W[nw] != "]]") NOBIND = 1   # [[ a && b ]] is split at its && — judge the whole conditional unknown
+  if (cmd == "[[") NOBIND = 1   # [[ … ]] evaluates arithmetic in too many forms (-eq, -v, ( ), &&): trust nothing after it
+  if (cmd == "test" || cmd == "[") for (j = i + 1; j <= nw; j++) if (W[j] == "-v") NOBIND = 1   # -v evaluates a subscript
   if (cmd ~ /^([0-9]*[<>]|&>)/) NOBIND = 1   # a leading redirection hides the real command (`>/dev/null printf -v W`)
   for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*(\+=|\[)/)) { x = W[j]; sub(/(\+=|\[).*/, "", x); delete VARS[x]; if (W[j] ~ /^[A-Za-z_][A-Za-z0-9_]*\[/) NOBIND = 1 }   # W+=x; A[i]=x — a subscript is arithmetic and may write any name
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
