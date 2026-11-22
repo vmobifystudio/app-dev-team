@@ -14209,6 +14209,8 @@ mkdir -p "$E1H/x"
 [ "$(CDPATH="$E1" e1d "true && cd .agent-wt/web-developer-2 && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a relative cd under an inherited CDPATH"
 ( cd "$E1" && echo s > stashme && git add stashme && git stash -q ) >/dev/null 2>&1
 [ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git stash clear')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: stash clear in a temp worktree (the stack is shared)"
+( cd "$E1" && git branch -q e2e-unmerged && git checkout -q e2e-unmerged && git commit -q --allow-empty -m u && git checkout -q main ) >/dev/null 2>&1
+[ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git branch -D e2e-unmerged')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: branch -D in a temp worktree (branches are shared)"
 ln -sfn "$E1/.agent-wt/web-developer-2/src" "$E1/lnk" 2>/dev/null; mkdir -p "$E1/.agent-wt/web-developer-2/src"
 # a heredoc fed to a shell is another process: an unexported binding made here is empty there
 [ "$(e1d "$(printf 'Q=$(mktemp -d); bash <<%sEOF%s\ncd "$Q" \046\046 git merge feat/x\nEOF' "'" "'")")" = 2 ] \

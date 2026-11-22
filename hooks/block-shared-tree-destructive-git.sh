@@ -269,7 +269,7 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
       if (plus || force || del || heads(src) != heads(dst)) emit("R", heads(dst), d, "push")
       if (plus) force = 1
     }
-    if (force) emit("D", "", d, "a force push rewrites published history others may have based work on")
+    if (force) emit("D", "S", d, "a force push rewrites published history others may have based work on")
   } else if (sc == "fetch") {
     for (j = 2; j <= np; j++) if (index(P[j], ":")) { dst = P[j]; sub(/^[^:]*:/, "", dst); emit("R", heads(dst), d, "fetch") }
   } else if (sc == "branch") {
@@ -277,7 +277,7 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
     for (j = 1; j <= na && A[j] != "--"; j++) if (A[j] == "-f" || A[j] == "--force" || A[j] == "-M" || A[j] == "-C") force = 1
     if (force) for (j = 1; j <= np; j++) emit("R", heads(P[j]), d, "branch")
     if (has(A, na, "-D") || (force && (has(A, na, "-d") || has(A, na, "--delete"))))
-      emit("D", "", d, "git branch -D deletes an unmerged branch and the commits only it referenced")
+      emit("D", "S", d, "git branch -D deletes an unmerged branch and the commits only it referenced")
   } else if (sc == "update-ref") {
     if (np >= 1 && P[1] ~ /^refs\/heads\//) emit("R", heads(P[1]), d, "update-ref")
   } else if (sc == "symbolic-ref") {
@@ -597,7 +597,7 @@ while IFS="$TAB" read -r KIND REF DIR WHY; do
     [ "$DIR" = "?" ] || case $CMD in
       *) TD=${TMPDIR:-/tmp}
          if [ ! -d "$TD" ] || [ ! -w "$TD" ] || git -C "$TD" rev-parse --git-dir >/dev/null 2>&1; then DIR="?"
-         else [ "$KIND" = "R" ] || [ "$REF" = "S" ] || continue; DIR="?"; fi ;;   # S: the shared stash stack
+         else [ "$KIND" = "R" ] || [ "$REF" = "S" ] || continue; DIR="?"; fi ;;   # S: repo-wide (stash stack, branches, a force push) — every worktree shares it
     esac
   fi
   GDIR=$DIR

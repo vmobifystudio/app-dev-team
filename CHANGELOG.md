@@ -40,8 +40,8 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   `cd -P` lands somewhere unknown, and `set -P` / `set -o physical` trust no cd (rounds 14–16);
   `--work-tree` keeps the current directory a candidate (the index stays there) and `--git-dir` is
   unknown (round 17); only `~` and `~/…` mean home — `~+`, `~-`, `~user` are unknown, and a quoted `~` is never home, and a command naming `HOME` leaves home unknown (rounds 18–20); only a whole `$NAME` / `${NAME}` is a binding — `${T:+x}` and
-  other parameter operators are unknown (round 21); `git stash drop/clear` keeps its check in a temp worktree — the stack is
-  shared (round 23). Mutations ME2E1–ME2E43 caught.
+  other parameter operators are unknown (round 21); `git stash drop/clear`, `branch -D` and a force push keep their check in a temp
+  worktree — stash, branches and the remote are shared (rounds 23–24). Mutations ME2E1–ME2E44 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 
