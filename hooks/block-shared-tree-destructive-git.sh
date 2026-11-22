@@ -351,8 +351,10 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
       if (cmd == "pushd" && (j > i + 1 || j > nw || W[j] ~ /^[+-][0-9]/)) { nd = "?"; unsure = 1 }
       if (cmd == "pushd") PSTK[++PN] = dir
       # `! cd X`: the `!` makes a FAILED cd the success path — what follows may run where we were
-      for (j = 1; j < i && W[j] != "!"; j++) ;
-      if (j < i) unsure = 1
+      # ...and a cd behind a wrapper (`command -v cd`, `builtin cd`, `time cd`) may not move at all,
+      # or may: either way it is never trusted, and it ends any chain
+      for (j = 1; j < i && W[j] != "!" && (W[j] in SKIP || W[j] ~ /^[A-Za-z_][A-Za-z0-9_]*=/); j++) ;
+      if (j < i) { unsure = 1; LASTCD = "?" }
       else if (!SHADOW) LASTCD = nd
     }
     return (unsure || SHADOW || !enterable(nd)) ? union(nd, dir) : nd
