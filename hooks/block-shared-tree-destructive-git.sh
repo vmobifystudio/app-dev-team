@@ -356,7 +356,7 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
       for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
       nd = joindir(dir, (j <= nw) ? W[j] : home)
       for (x = i + 1; x < j; x++) if (W[x] ~ /^-[A-Za-z]*P/) break
-      nd = lexdir(nd, x < j)
+      nd = (x < j) ? "?" : lexdir(nd, 0)   # `cd -P` resolves symlinks first: where it lands is unknown here
       # `pushd -n` / `pushd +N` / a bare `pushd` edit, rotate or swap the stack: where it lands is unknown
       if (cmd == "pushd" && (j > i + 1 || j > nw || W[j] ~ /^[+-][0-9]/)) { nd = "?"; unsure = 1 }
       if (cmd == "pushd") PSTK[++PN] = dir

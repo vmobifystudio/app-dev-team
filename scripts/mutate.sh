@@ -697,7 +697,8 @@ ME2E29@@hooks/block-shared-tree-destructive-git.sh@@  if (s ~ /[A-Za-z0-9_-][ \t
 ME2E30@@hooks/block-shared-tree-destructive-git.sh@@(j > i + 1 || j > nw || W[j] ~ /^[+-][0-9]/)) { nd = "?"; unsure = 1 }@@(0)) { nd = "?"; unsure = 1 }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E31@@hooks/block-shared-tree-destructive-git.sh@@      } else if (op != "&&") chain = ""@@      } else if (0) chain = ""@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E32@@hooks/block-shared-tree-destructive-git.sh@@W[j] != "!" && (W[j] in SKIP || W[j] ~ /^[A-Za-z_][A-Za-z0-9_]*=/); j++) ;@@W[j] != "!"; j++) ;@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
-ME2E33@@hooks/block-shared-tree-destructive-git.sh@@      nd = lexdir(nd, x < j)@@      nd = nd@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E33@@hooks/block-shared-tree-destructive-git.sh@@      nd = (x < j) ? "?" : lexdir(nd, 0)@@      nd = (x < j) ? "?" : nd@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E34@@hooks/block-shared-tree-destructive-git.sh@@      nd = (x < j) ? "?" : lexdir(nd, 0)@@      nd = lexdir(nd, 0)@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 
