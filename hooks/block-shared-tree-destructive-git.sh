@@ -484,7 +484,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
         nd2 = seg(W, nw, inchain ? chain : dir, depth > 0 || last == "&&" || last == "||" || last == "|" || op == "|" || op == "||" || op == "&")
         # a chain starts only at a cd that surely ran: not after `||` (skippable) or `|` (a subshell)
         if (op == "&&" && depth == 0 && LASTCD != "" && !index(SEP LASTCD SEP, SEP "?" SEP) && (inchain || (last != "||" && last != "|"))) chain = LASTCD
-        else if (!(op == "&&" && inchain)) chain = ""
+        else if (LASTCD != "" || !(op == "&&" && inchain)) chain = ""   # a cd we cannot resolve ends it
         dir = inchain ? union(nd2, dir) : nd2
         nw = 0; split("", W)
       }

@@ -32,7 +32,8 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   the bound (a link made any other way is not seen — the hook reads the command, not the
   filesystem; round 6). `sh -c` and a heredoc fed to a shell see no binding, and a value
   starting with `~` is never bound (round 7); names the shell sets implicitly (`REPLY`, `OPTARG`, `PWD`, …) are never
-  bound, and a command naming `CDPATH` trusts no cd (round 8). Mutations ME2E1–ME2E24 caught.
+  bound, and a command naming `CDPATH` trusts no cd (round 8); an unresolved cd (`cd -`, `cd "$X"`) ends a trusted chain (round 9).
+  Mutations ME2E1–ME2E25 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 
