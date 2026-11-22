@@ -152,7 +152,7 @@ function enterable(list,    C, n, j) {
 # checkout — so it stands as "@TMP". `NAME=literal` / `NAME=$(mktemp …)` bind for the rest of the
 # command (VARS), so `cd "$W"` to a bound name is that path. Anything else assigned is unknown again.
 function once(nm,    t) { t = CMDALL; return gsub("(^|[^$A-Za-z0-9_{])" nm "([^A-Za-z0-9_]|$)", "", t) }
-function lit(t) { gsub(/\$/, "\002", t); return t }
+function lit(t) { gsub(/[$~]/, "\002", t); return t }   # quoted/escaped: neither expands
 function sub_word(body) { return (body ~ /^[ \t]*mktemp([ \t]+-[A-Za-z]+)*[ \t]*$/) ? "\001MKTEMP\001" : "$(...)" }
 function expand(x,    nm, rest) {
   if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
@@ -470,7 +470,7 @@ function dq(s, i, dir,    n, c, e, k, out) {
     if (c == "\"") break
     if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
-    out = out c
+    out = out (c == "~" ? "\002" : c)   # no tilde expansion inside double quotes
   }
   DQ = out
   return i

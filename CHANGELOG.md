@@ -39,7 +39,7 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   trusted and ends any chain (round 13); a cd target is normalised logically, as the shell does (`/a/link/..` is `/a`), and
   `cd -P` lands somewhere unknown, and `set -P` / `set -o physical` trust no cd (rounds 14–16);
   `--work-tree` keeps the current directory a candidate (the index stays there) and `--git-dir` is
-  unknown (round 17); only `~` and `~/…` mean home — `~+`, `~-`, `~user` are unknown (round 18). Mutations ME2E1–ME2E37 caught.
+  unknown (round 17); only `~` and `~/…` mean home — `~+`, `~-`, `~user` are unknown, and a quoted `~` is never home (rounds 18–19). Mutations ME2E1–ME2E39 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 
