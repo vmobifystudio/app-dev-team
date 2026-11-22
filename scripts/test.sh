@@ -14181,7 +14181,11 @@ for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tm
   "W='~'; cd \"\$W\" && git merge feat/x" \
   "REPLY=$E1/.agent-wt/web-developer-2; read <<< $E1; cd \"\$REPLY\" && git merge feat/x" \
   "CDPATH=$E1; cd .agent-wt/web-developer-2 && git merge feat/x" \
-  "cd $E1/.agent-wt/web-developer-2 && cd - && git merge feat/x"; do
+  "cd $E1/.agent-wt/web-developer-2 && cd - && git merge feat/x" \
+  "pushd $E1/.agent-wt/web-developer-2 && popd && git merge feat/x" \
+  "cd $E1/.agent-wt/web-developer-2 && eval 'cd $E1' && git merge feat/x" \
+  "cd $E1/.agent-wt/web-developer-2 && . ./x.sh && git merge feat/x" \
+  "f() { cd $E1; }; cd $E1/.agent-wt/web-developer-2 && f && git merge feat/x"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
 mkdir -p "$E1/tt"

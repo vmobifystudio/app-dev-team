@@ -343,7 +343,7 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   }
   cmd = W[i]
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
-    if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1 }
+    if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }
     else {
       for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
       nd = joindir(dir, (j <= nw) ? W[j] : home)
@@ -359,7 +359,8 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
     for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) { if (j < nw) xparse(W[j + 1], dir); break }
     return dir
   }
-  if (cmd == "eval") { x = ""; for (j = i + 1; j <= nw; j++) x = x " " W[j]; nparse(x, dir); return dir }
+  if (cmd == "eval") { x = ""; for (j = i + 1; j <= nw; j++) x = x " " W[j]; nparse(x, dir); LASTCD = "?"; return union("?", dir) }
+  if (cmd == "source" || cmd == ".") { LASTCD = "?"; return union("?", dir) }
   if (cmd != "git" && cmd !~ /\/git$/) return dir
   # git global options: -C moves the tree, --work-tree names it, the rest are skipped.
   g = dir
@@ -515,6 +516,7 @@ BEGIN {
 END {
   # A command that defines its own cd/pushd/popd: no cd in it can be trusted to have moved.
   SHADOW = (s ~ /(^|[^A-Za-z0-9_-])(cd|pushd|popd)[ \t]*\([ \t]*\)/ || s ~ /function[ \t]+(cd|pushd|popd)([^A-Za-z0-9_-]|$)/)
+  if (s ~ /[A-Za-z0-9_-][ \t]*\([ \t]*\)[ \t\n]*[{(]/ || s ~ /(^|[;&|( \t\n])function[ \t]/) SHADOW = 1
   gsub(/[\001\002]/, "?", s); gsub(/@TMP/, "@TMP?", s)
   if (s ~ /CDPATH/) SHADOW = 1
   CMDALL = s
