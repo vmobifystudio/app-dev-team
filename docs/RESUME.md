@@ -3,8 +3,21 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-11-22 · **Branch:** `fix/sprint-8` → PR #49 (Sprint 8)
+**Last updated:** 2026-11-22 · **Branch:** `main` (3.2.1, PR #50 merged as 5564fcd)
 **Suite:** 2662 passed, 0 failed · **Invariants:** 12/12 · **Version:** 3.2.1 · 29 roles · 26 skills · 21 commands
+
+## 2026-11-22 — first real e2e run, 3.2.1 (PR #50)
+
+The first headless `/app-run --yolo` (a web to-do app, plugin 3.2.0) closed 15/15 tickets with 0
+founder asks for $34.77 and 41 spawns; the app passed an independent drive. Its false refusals
+(E2E-1..4, EN-13) are fixed in 3.2.1. Codex then ran 29 review rounds on the destructive-git hook's
+new temp-directory/variable trust and found a bypass in nearly every one; each is fixed with an
+assertion and a mutation (ME2E1–ME2E49), and the general bound is stated in HANDBOOK ("the
+destructive-git hook reads the command, not the filesystem"). Register:
+`docs/reviews/2026-11-18-sprint-2.md` § 2026-11-22. External review (T1–T22) was triaged; its
+housekeeping items landed after #50.
+Next: restart Claude Code on 3.2.1, resume `/app-ship` on the e2e project and audit its verdict, then
+E2E run 2 — a real Mobify app, Android-first, to a submission-ready build.
 
 ## 2026-11-21/22 — nine-lens studio audit and Sprint 8 (`fix/sprint-8`, PR #49)
 
@@ -16,7 +29,7 @@ tokens without changing outcomes. Sprint 8 (eight tracks, `docs/reviews/sprint8-
 everything reversible decided by its named role and recorded; tech-lead settles review deadlocks;
 `descoped`; per-sprint budgets; Android/iOS journey drivers fixed; learning writes a reviewed patch
 and measures every run in `~/.app-dev-team/`; 1 role, 6 skills, 6 commands, 8 scripts deleted.
-Next: reinstall the plugin from main and do a real agent-spawned run.
+Done 2026-11-22: reinstalled from main and ran the real agent-spawned run (above).
 
 ## 2026-11-19/20 — fresh audit on main and Sprint 7 (`fix/sprint-7`)
 

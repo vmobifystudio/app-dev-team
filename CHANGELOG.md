@@ -56,6 +56,9 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
 
 ### Removed — Sprint 8 V6 (2026-11-21 studio audit: dead weight)
 
+*The arrows below count V6's own deletions only. With the other Sprint 8 tracks, 3.2.0 ships
+29 roles, 26 skills, 21 commands and 68 top-level scripts.*
+
 - **Five commands** no flow invoked: `/app-impact`, `/app-manager-failover`, `/app-manager-harness`,
   `/app-run-status` (duplicate of `/app-recover`), `/app-eval` (`eval-lab.mjs` stays; CI runs it).
   27 → 22 commands. Script diagnostics: `node scripts/<name>.mjs --help`.

@@ -519,6 +519,7 @@ Every build agent reads the relevant pack first:
 | `stack-defaults.md` | Default languages, versions, libraries, SDK targets |
 | `ios-conventions.md` | Layering, Display DTOs, Swift 6 concurrency rules, DI, tokens, a11y |
 | `android-conventions.md` | Clean Architecture modules, the 5 ViewModel patterns, Room/DataStore |
+| `web-conventions.md` | Web stack default, `package.json` gate scripts, hosting/headers/secrets, consent, a11y, performance budgets |
 | `monetization.md` | Two-door paywall gateway, StoreKit/Play Billing, AdGate, consent |
 | `analytics.md` | Consent-gated events, PII rules, funnels, retention |
 | `aso.md` | Screenshot automation, Play Data Safety, store-readiness gate |

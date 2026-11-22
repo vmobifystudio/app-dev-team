@@ -24,7 +24,7 @@ docs/                        Design specs and plugin docs
 
 Almost everything here is Markdown, and it should stay that way. A script is justified only when
 **an agent checking its own work is the thing being fixed** — a correctness gate whose whole value
-is that it cannot be talked out of a verdict. Today `scripts/` holds 74 top-level scripts and 18
+is that it cannot be talked out of a verdict. Today `scripts/` holds 68 top-level scripts and 27
 shared libs — among them `scripts/test.sh`, the suite that proves the rest, and `scripts/mutate.sh`,
 which proves the suite. The ones the loop leans on hardest:
 
