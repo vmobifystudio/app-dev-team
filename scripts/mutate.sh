@@ -675,6 +675,10 @@ ME2E7@@hooks/block-shared-tree-destructive-git.sh@@        dir = inchain ? union
 ME2E8@@hooks/block-shared-tree-destructive-git.sh@@  if (VARS[nm] == "@TMP") return (rest ~ /(^|\/)\.\.(\/|$)|[$`*?\001]/) ? "?" : "@TMP"@@  if (VARS[nm] == "@TMP") return "@TMP"@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E9@@hooks/block-shared-tree-destructive-git.sh@@      if (unsure || NEST) delete VARS[nd]@@      if (0) delete VARS[nd]@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E10@@hooks/block-shared-tree-destructive-git.sh@@  if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~@@  if (x ~ /^\001MKTEMP\001/) return (0 && substr(x, 9) ~@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E11@@hooks/block-shared-tree-destructive-git.sh@@|| once(nm) != 1) return x@@) return x@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E12@@hooks/block-shared-tree-destructive-git.sh@@function lit(t) { gsub(/\$/, "\002", t); return t }@@function lit(t) { return t }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E13@@hooks/block-shared-tree-destructive-git.sh@@      *TMPDIR*) DIR="?" ;;@@      *TMPDIR_NEVER*) DIR="?" ;;@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E14@@hooks/block-shared-tree-destructive-git.sh@@if git -C "${TMPDIR:-/tmp}" rev-parse --git-dir >/dev/null 2>&1; then DIR="?"@@if false; then DIR="?"@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 

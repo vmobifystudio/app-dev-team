@@ -14169,9 +14169,15 @@ for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tm
   "W=$E1; false && W=$E1/.agent-wt/web-developer-2; cd \"\$W\" && git merge feat/x" \
   "W=$E1; (W=$E1/.agent-wt/web-developer-2); cd \"\$W\" && git merge feat/x" \
   "W=$E1; echo \$(W=$E1/.agent-wt/web-developer-2); cd \"\$W\" && git merge feat/x" \
-  "cd \"\$(mktemp -d)/../..$E1\" && git merge feat/x"; do
+  "cd \"\$(mktemp -d)/../..$E1\" && git merge feat/x" \
+  "W=$E1/.agent-wt/web-developer-2; export W=$E1; cd \"\$W\" && git merge feat/x" \
+  "W=$E1/.agent-wt/web-developer-2; cd '\$W' && git merge feat/x" \
+  "TMPDIR=$E1; export TMPDIR; cd \"\$(mktemp -d)\" && git merge feat/x"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
+mkdir -p "$E1/tt"
+[ "$(TMPDIR="$E1/tt" e1d 'T=$(mktemp -d) && git worktree add --detach "$T" HEAD && cd "$T" && git merge --no-edit feat/x')" = 2 ] \
+  || E1BAD="$E1BAD | wrongly allowed: a mktemp tree under a TMPDIR inside the repository"
 [ -z "$E1BAD" ] && ok "E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)" \
   || bad "E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)" "$E1BAD"
 grep -q 'never `$(cat file)` it back' "$HERE/spawn-prompt.mjs" && grep -q 'never$' "$HERE/../agents/code-reviewer.md" \

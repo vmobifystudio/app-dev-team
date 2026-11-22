@@ -22,7 +22,10 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   a slot named by a variable, are no longer refused. Unknown, skippable (`||`), subshell (`|`) and
   `..`-escaping cds still land on the main checkout. An assignment that may not run (`false && W=…`)
   or runs in a nested shell (`(…)`, `$(…)`, heredoc, `sh -c`, `eval`) binds nothing, and a direct
-  `$(mktemp)` suffix gets the same `..` check (Codex P1/P2 on #50). Mutations ME2E1–ME2E10 caught.
+  `$(mktemp)` suffix gets the same `..` check (Codex P1/P2 on #50). A binding is trusted only when
+  its name occurs once in the command (so `export`, `read`, `for`, `+=` unbind it), a single-quoted or
+  escaped `$` is never a variable, and a `TMPDIR` the command names or that lies inside a repository
+  withdraws the temp-tree exemption (Codex round 2). Mutations ME2E1–ME2E14 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 

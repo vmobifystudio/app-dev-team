@@ -151,20 +151,22 @@ function enterable(list,    C, n, j) {
 # E2E-3: `$(mktemp …)` is a FRESH directory this command made — no other work in it, never the main
 # checkout — so it stands as "@TMP". `NAME=literal` / `NAME=$(mktemp …)` bind for the rest of the
 # command (VARS), so `cd "$W"` to a bound name is that path. Anything else assigned is unknown again.
+function once(nm,    t) { t = CMDALL; return gsub("(^|[^$A-Za-z0-9_{])" nm "([^A-Za-z0-9_]|$)", "", t) }
+function lit(t) { gsub(/\$/, "\002", t); return t }
 function sub_word(body) { return (body ~ /^[ \t]*mktemp([ \t]+-[A-Za-z]+)*[ \t]*$/) ? "\001MKTEMP\001" : "$(...)" }
 function expand(x,    nm, rest) {
-  if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~ /(^|\/)\.\.(\/|$)|[$`*?\001]/) ? "?" : "@TMP"
+  if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
   if (!match(x, /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)) return x
   nm = substr(x, 2, RLENGTH - 1); gsub(/[{}]/, "", nm); rest = substr(x, RLENGTH + 1)
-  if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/) return x
-  if (VARS[nm] == "@TMP") return (rest ~ /(^|\/)\.\.(\/|$)|[$`*?\001]/) ? "?" : "@TMP"
+  if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/ || once(nm) != 1) return x
+  if (VARS[nm] == "@TMP") return (rest ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
   return VARS[nm] rest
 }
 function joindir1(cur, x) {
   x = expand(x)
   if (x == "@TMP") return (cur == "?") ? "@TMP" : "@TMP"
-  if (cur == "@TMP" && x !~ /^[\/~]/ && x !~ /[$`*?\001]/ && x != "-" && x !~ /(^|\/)\.\.(\/|$)/) return "@TMP"
-  if (cur == "?" || cur == "@TMP" || x == "" || x == "-" || x ~ /[$`*?\001]/) return "?"
+  if (cur == "@TMP" && x !~ /^[\/~]/ && x !~ /[$`*?\001\002]/ && x != "-" && x !~ /(^|\/)\.\.(\/|$)/) return "@TMP"
+  if (cur == "?" || cur == "@TMP" || x == "" || x == "-" || x ~ /[$`*?\001\002]/) return "?"
   if (x ~ /^~/) { if (home == "") return "?"; x = home substr(x, 2) }
   return (x ~ /^\//) ? x : cur "/" x
 }
@@ -330,8 +332,8 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
     for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*=/)) {
       x = substr(W[j], RLENGTH + 1); nd = substr(W[j], 1, RLENGTH - 1)
       if (unsure || NEST) delete VARS[nd]
-      else if (x ~ /^\001MKTEMP\001/ && substr(x, 9) !~ /[$`*?\001]|(^|\/)\.\.(\/|$)/) VARS[nd] = "@TMP"
-      else if (x != "" && x !~ /[$`*?\001]/) VARS[nd] = x
+      else if (x ~ /^\001MKTEMP\001/ && substr(x, 9) !~ /[$`*?\001\002]|(^|\/)\.\.(\/|$)/) VARS[nd] = "@TMP"
+      else if (x != "" && x !~ /[$`*?\001\002]/) VARS[nd] = x
       else delete VARS[nd]
     }
     return dir
@@ -438,7 +440,7 @@ function dq(s, i, dir,    n, c, e, k, out) {
   n = length(s); out = ""
   for (; i <= n; i++) {
     c = substr(s, i, 1)
-    if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out c; continue }
+    if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out lit(c); continue }
     if (c == "\"") break
     if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
@@ -454,8 +456,8 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
   n = length(s); nw = 0; w = ""; inw = 0; np = 0; split("", W); last = ""; depth = 0
   for (i = 1; i <= n + 1; i++) {
     c = (i <= n) ? substr(s, i, 1) : "\n"
-    if (c == "\\") { i++; if (i <= n && substr(s, i, 1) != "\n") { w = w substr(s, i, 1); inw = 1 } continue }
-    if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w substr(s, i + 1, k - 1); i += k; inw = 1; continue }
+    if (c == "\\") { i++; if (i <= n && substr(s, i, 1) != "\n") { w = w lit(substr(s, i, 1)); inw = 1 } continue }
+    if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w lit(substr(s, i + 1, k - 1)); i += k; inw = 1; continue }
     if (c == "\"") { i = dq(s, i + 1, dir); w = w DQ; inw = 1; continue }
     if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
@@ -506,6 +508,7 @@ BEGIN {
 END {
   # A command that defines its own cd/pushd/popd: no cd in it can be trusted to have moved.
   SHADOW = (s ~ /(^|[^A-Za-z0-9_-])(cd|pushd|popd)[ \t]*\([ \t]*\)/ || s ~ /function[ \t]+(cd|pushd|popd)([^A-Za-z0-9_-]|$)/)
+  CMDALL = s
   parse(s, base)
 }
 ')
@@ -550,7 +553,13 @@ while IFS="$TAB" read -r KIND REF DIR WHY; do
   [ -n "$KIND" ] || continue
   # E2E-3: a tree this command just made under mktemp (a trial merge, a mutation probe) holds no one
   # else's work and is never the integration checkout; a ref write still reaches the shared repo.
-  if [ "$DIR" = "@TMP" ]; then [ "$KIND" = "R" ] || continue; DIR="?"; fi
+  if [ "$DIR" = "@TMP" ]; then
+    case $CMD in
+      *TMPDIR*) DIR="?" ;;
+      *) if git -C "${TMPDIR:-/tmp}" rev-parse --git-dir >/dev/null 2>&1; then DIR="?"
+         else [ "$KIND" = "R" ] || continue; DIR="?"; fi ;;
+    esac
+  fi
   GDIR=$DIR
   [ "$GDIR" = "?" ] && GDIR=""
   ROOT=""
