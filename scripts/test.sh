@@ -14223,6 +14223,7 @@ for c in "$E1W; read W < /dev/null; cd \"\$W\" && git merge feat/x" "$E1W; for W
   "O=-n; declare \"\$O\" R=W; $E1W; cd \"\$W\" && git merge feat/x" "$E1W; A=(x); : \${A[W=1]}; cd \"\$W\" && git merge feat/x" "$E1W; X=abc; : \${X:W=1}; cd \"\$W\" && git merge feat/x" "$E1W; [[ W++ -eq 1 ]]; cd \"\$W\" && git merge feat/x" \
   "$E1W; printf -v\"W\" %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; trap 'W=$E1' DEBUG; cd \"\$W\" && git merge feat/x" \
   "shopt -s cdable_vars; W=$E1; cd W && git merge feat/x" \
+  "$E1W; >/dev/null printf -v W %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; X='A[W=1]'; [[ -v \$X ]]; cd \"\$W\" && git merge feat/x" \
   "$(printf '%s; : <<EOF\n$((W=1))\nEOF\ncd "$W" \046\046 git merge feat/x' "$E1W")"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done

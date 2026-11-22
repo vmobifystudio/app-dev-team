@@ -361,6 +361,8 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   if (cmd in UNSAFE) NOBIND = 1
   if (cmd in REDEFINE) { NOBIND = 1; SHADOW = 1 }
   if (cmd == "[[") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-(eq|ne|lt|le|gt|ge)$/) NOBIND = 1   # [[ W++ -eq 1 ]]: operands are arithmetic
+  if (cmd == "[[" || cmd == "test" || cmd == "[") for (j = i + 1; j <= nw; j++) if (W[j] == "-v") NOBIND = 1   # -v evaluates a subscript
+  if (cmd ~ /^([0-9]*[<>]|&>)/) NOBIND = 1   # a leading redirection hides the real command (`>/dev/null printf -v W`)
   for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*(\+=|\[)/)) { x = W[j]; sub(/(\+=|\[).*/, "", x); delete VARS[x]; if (W[j] ~ /^[A-Za-z_][A-Za-z0-9_]*\[/) NOBIND = 1 }   # W+=x; A[i]=x — a subscript is arithmetic and may write any name
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
     if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }
