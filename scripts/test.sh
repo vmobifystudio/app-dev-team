@@ -14177,7 +14177,7 @@ for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tm
   "TMPDIR=$E1; export TMPDIR; cd \"\$(mktemp -d)\" && git merge feat/x" 'cd @TMP && git merge feat/x' \
   "bash -c 'cd $E1/.agent-wt/web-developer-2' && git merge feat/x" \
   '! cd "$(mktemp -d)/missing" && git merge feat/x' "! cd $E1/.agent-wt/web-developer-2 && git merge feat/x" \
-  "T=\$(mktemp -d); ln -s $E1 \"\$T/l\"; cd \"\$T/l\" && git merge feat/x"; do
+  "Q=\$(mktemp -d); ln -s $E1 \"\$Q/l\"; cd \"\$Q/l\" && git merge feat/x"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
 mkdir -p "$E1/tt"
