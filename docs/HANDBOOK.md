@@ -761,6 +761,11 @@ with the same access, and nothing here claims to be.
   lists; a script written in an earlier call, a path computed at runtime, or a name built inside an
   interpreter gets past it (its header states the bound). It is a backstop; the
   board's own validation, tokens and re-derived evidence are the gate.
+- **The destructive-git hook reads the command, not the filesystem.** Its fresh-temp-directory
+  exemption (a trial merge in a `$(mktemp -d)` worktree) trusts that the same command does not
+  re-point that directory: a literal `ln` withdraws it, but a link planted by `tar`, `cp -s` or an
+  interpreter, or by an earlier call, is not seen. It stops accidents in a shared tree; it is not a
+  sandbox against a command built to evade it.
 - **A TTY can be faked.** The founder mint asks for an interactive terminal and the ticket typed
   back; that proves a terminal, not a human — a pseudo-terminal satisfies it.
 - **A new checkout trusts a carried-over log once.** The board log is never committed: it and the

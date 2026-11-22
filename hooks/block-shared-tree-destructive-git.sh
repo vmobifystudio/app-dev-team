@@ -559,8 +559,14 @@ while IFS="$TAB" read -r KIND REF DIR WHY; do
   # E2E-3: a tree this command just made under mktemp (a trial merge, a mutation probe) holds no one
   # else's work and is never the integration checkout; a ref write still reaches the shared repo.
   if [ "$DIR" = "@TMP" ]; then
+    # ponytail: only the literal `ln` is seen; a link made by tar, cp -s or an interpreter is not
+    # (HANDBOOK "the destructive-git hook reads the command, not the filesystem").
+    LNW=$(printf '%s\n' "$CMD" | grep -Ec '(^|[^A-Za-z0-9_.-])ln([[:space:]]|$)')
     case $CMD in
       *TMPDIR*) DIR="?" ;;
+      *) [ "$LNW" -gt 0 ] && DIR="?" ;;
+    esac
+    [ "$DIR" = "?" ] || case $CMD in
       *) TD=${TMPDIR:-/tmp}
          if [ ! -d "$TD" ] || [ ! -w "$TD" ] || git -C "$TD" rev-parse --git-dir >/dev/null 2>&1; then DIR="?"
          else [ "$KIND" = "R" ] || continue; DIR="?"; fi ;;
