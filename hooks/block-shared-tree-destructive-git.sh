@@ -361,12 +361,13 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   if (cmd == "let") NOBIND = 1
   if (cmd == "declare" || cmd == "typeset" || cmd == "local") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*[ni]/) NOBIND = 1
   # printf writes only its `-v NAME` operand; the other writers, every name among their words
-  if (cmd == "printf") { for (j = i + 1; j < nw; j++) if (W[j] == "-v") { if (W[j + 1] ~ /[$`\001\002\003]/) { for (x in VARS) delete VARS[x] } else delete VARS[W[j + 1]] } }
+  if (cmd == "printf") { for (j = i + 1; j <= nw; j++) if (W[j] ~ /%[^a-zA-Z%]*n/) NOBIND = 1   # %n writes a count into a variable operand
+    for (j = i + 1; j < nw; j++) if (W[j] == "-v") { if (W[j + 1] ~ /[$`\001\002\003]/) { for (x in VARS) delete VARS[x] } else delete VARS[W[j + 1]] } }
   else if (cmd in WRITERS) for (j = i + 1; j <= nw; j++) {
     if (W[j] ~ /[$`\001\002\003]/) { for (x in VARS) delete VARS[x]; break }   # `read "$V"`: a target we cannot name
     if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*/)) delete VARS[substr(W[j], 1, RLENGTH)]
   }
-  for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*(\+=|\[)/)) { x = W[j]; sub(/(\+=|\[).*/, "", x); delete VARS[x] }   # W+=x, W[0]=x, anywhere
+  for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*(\+=|\[)/)) { x = W[j]; sub(/(\+=|\[).*/, "", x); delete VARS[x]; if (W[j] ~ /^[A-Za-z_][A-Za-z0-9_]*\[/) NOBIND = 1 }   # W+=x; A[i]=x — a subscript is arithmetic and may write any name
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
     if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }
     else {
