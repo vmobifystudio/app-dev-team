@@ -11,11 +11,19 @@ a second tab resurrecting deleted items). The gate did its job. Its false refusa
 
 - **E2E-5** a VE mutation probe that echoed its temp path (`echo "T=$T"`) was refused: the
   once-only binding rule read the text `T=` as a second assignment (macOS temp paths, which
-  contain `/T/`, tripped it the same way). A binding now dies only by an actual write, in order —
-  `export`/`read`/`for`/`declare`/`unset`/`printf -v`/… on that name (a dynamic target such as `printf -v "$V"` clears every binding), `W+=`/`W[0]=` anywhere in the command, `printf -v` (its operand only), `%n`/`%ln`/`%hn` or a format it cannot read, `${W:=…}`
-  (and `source`/`.` leave the directory unknown); any declaration option or unreadable word (`declare -n/-i/-u/-l`, `declare "$O"`), arithmetic (`let`, `((`, `$[`, `[[ … -eq … ]]`, an array subscript, any `${…}` other than `${NAME}`), or `$((`/`$[`/`${` in an unquoted heredoc body disables binding. The spawn prompt now says to chain
-  `cd "$T" && git …` (a `;` after a failed cd runs git in the shared tree, which is refused).
-  Mutations ME2E50, ME2E51, ME2E53–ME2E61, ME2E63–ME2E65.
+  contain `/T/`, tripped it the same way). Text no longer unbinds anything. Instead, a binding
+  holds only while the command runs **no builtin that can write a variable or run code** —
+  `export`, `read`, `printf`, the `declare` family, `unset`, `let`, `getopts`, `mapfile`, `for`,
+  `select`, `coproc`, `wait`, `eval`, `source`/`.` and the like; an external command cannot
+  touch the shell's variables, so it never matters. `trap`, `alias`, `enable` and `shopt` can
+  also redefine what `cd` does, so they trust no cd either. Expansions that write are caught
+  where they appear: `W+=`/`W[i]=`, any `${…}` other than a plain `${NAME}`, arithmetic (`((`,
+  `$((`, `$[`, `[[ … -eq … ]]`), and `$((`/`$[`/`${` in an unquoted heredoc body. This replaced
+  eight Codex rounds of per-builtin modelling (`printf -v"W"`, `%ln`, `declare -u`, `declare
+  "$O"`, `${A[W=2]}`, `${X:W=2}`, DEBUG traps, …) with one rule that covers the class. Cost: a
+  command that logs with `printf` before a variable-named `cd` is refused — use `echo`. The
+  spawn prompt also says to chain `cd "$T" && git …` (a `;` after a failed cd runs git in the
+  shared tree, which is refused). Mutations ME2E51, ME2E57, ME2E59, ME2E61, ME2E63–ME2E67.
 - **Leo's PR #50 round-5 review:** 3.2.1 said "ME2E1–ME2E49 caught", but ME2E33 was caught by a
   different case — its own symlink probe ran before the link existed. The link is now created
   before the refusal loop. Round 24's force-push tag (`REF=S`) had no probe; one is added with

@@ -354,22 +354,13 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
     return dir
   }
   cmd = W[i]
-  # a builtin that writes variables unbinds every name among its words; `W+=x` appends
-  # (source / . already leave the directory unknown, below)
-  # namerefs alias names and arithmetic writes names it never spells as NAME= — read from the
-  # command as the shell runs it (a `cat <<E` body of JavaScript is not arithmetic)
-  if (cmd == "let") NOBIND = 1
+  # Codex rounds 1-8 on #52: there is no end to the ways a BUILTIN can write a variable (`printf -v"W"`,
+  # `read -a`, `%ln`, `declare -u`, a DEBUG trap…). Only builtins can — an external command cannot
+  # touch the variables of this shell — so a command that runs any variable-writing or code-running
+  # builtin trusts no binding; one that can also redefine what `cd` does trusts no cd either.
+  if (cmd in UNSAFE) NOBIND = 1
+  if (cmd in REDEFINE) { NOBIND = 1; SHADOW = 1 }
   if (cmd == "[[") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-(eq|ne|lt|le|gt|ge)$/) NOBIND = 1   # [[ W++ -eq 1 ]]: operands are arithmetic
-  if (cmd == "declare" || cmd == "typeset" || cmd == "local" || cmd == "readonly" || cmd == "export") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^[-+]/ || W[j] ~ /[$`\001\002\003]/) NOBIND = 1   # -n -i -u -l …, or "$O"
-  # printf writes only its `-v NAME` operand; the other writers, every name among their words
-  if (cmd == "printf") { for (j = i + 1; j <= nw; j++) if (W[j] ~ /%[-+ #0-9.*$]*(hh|h|ll|l|j|z|t|L|q)?n/) NOBIND = 1   # %n / %ln / %hn write a count into a variable operand
-    for (j = i + 1; j <= nw && W[j] ~ /^-/; j += (W[j] == "-v") ? 2 : 1) ;   # the format: past -v NAME and --
-    if (j <= nw && W[j] ~ /[$`\001\002\003]/) NOBIND = 1                     # a format we cannot read may hold %n
-    for (j = i + 1; j < nw; j++) if (W[j] == "-v") { if (W[j + 1] ~ /[$`\001\002\003]/) { for (x in VARS) delete VARS[x] } else delete VARS[W[j + 1]] } }
-  else if (cmd in WRITERS) for (j = i + 1; j <= nw; j++) {
-    if (W[j] ~ /[$`\001\002\003]/) { for (x in VARS) delete VARS[x]; break }   # `read "$V"`: a target we cannot name
-    if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*/)) delete VARS[substr(W[j], 1, RLENGTH)]
-  }
   for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*(\+=|\[)/)) { x = W[j]; sub(/(\+=|\[).*/, "", x); delete VARS[x]; if (W[j] ~ /^[A-Za-z_][A-Za-z0-9_]*\[/) NOBIND = 1 }   # W+=x; A[i]=x — a subscript is arithmetic and may write any name
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
     if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }
@@ -548,7 +539,8 @@ BEGIN {
   SEP = "\034"
   split("then do else elif if while until ! { }", t, " "); for (k in t) SKIP[t[k]] = 1
   split("REPLY OPTARG OPTIND PWD OLDPWD HOME CDPATH IFS _ MAPFILE BASH_REMATCH COPROC TMPDIR PATH", t, " "); for (k in t) IMPLICIT[t[k]] = 1
-  split("export declare typeset local readonly read getopts mapfile readarray unset let printf for select coproc wait", t, " "); for (k in t) WRITERS[t[k]] = 1
+  split("export declare typeset local readonly read getopts mapfile readarray unset let printf for select coproc wait eval source . fc bind caller compgen complete compopt", t, " "); for (k in t) UNSAFE[t[k]] = 1
+  split("trap alias unalias enable shopt", t, " "); for (k in t) REDEFINE[t[k]] = 1
   split("if while until for select case function {", t, " "); for (k in t) OPEN[t[k]] = 1
   split("fi done esac }", t, " "); for (k in t) CLOSE[t[k]] = 1
   # G7-8: the wrapper table is hooks/wrappers.txt, shared with contract-hooks.mjs — name, the
