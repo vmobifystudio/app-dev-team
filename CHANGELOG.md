@@ -32,7 +32,7 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   the bound (a link made any other way is not seen — the hook reads the command, not the
   filesystem; round 6). `sh -c` and a heredoc fed to a shell see no binding, and a value
   starting with `~` is never bound (round 7); names the shell sets implicitly (`REPLY`, `OPTARG`, `PWD`, …) are never
-  bound, and a command naming `CDPATH` trusts no cd (round 8); an unresolved cd (`cd -`, `cd "$X"`) ends a trusted chain, and so does a `popd`
+  bound, and a command naming `CDPATH`, or a hook environment carrying one, trusts no cd (rounds 8, 22); an unresolved cd (`cd -`, `cd "$X"`) ends a trusted chain, and so does a `popd`
   (rounds 9–10); `eval`, `source`/`.` and a function defined in the command end it too
   (they can cd in this shell); `pushd -n`, `pushd +N` and a bare `pushd` land somewhere unknown
   (round 11); every list-ending separator ends a chain, even after a bare `( … )` (round 12); a cd behind a wrapper (`command -v cd`, `builtin cd`) is never
@@ -40,7 +40,7 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   `cd -P` lands somewhere unknown, and `set -P` / `set -o physical` trust no cd (rounds 14–16);
   `--work-tree` keeps the current directory a candidate (the index stays there) and `--git-dir` is
   unknown (round 17); only `~` and `~/…` mean home — `~+`, `~-`, `~user` are unknown, and a quoted `~` is never home, and a command naming `HOME` leaves home unknown (rounds 18–20); only a whole `$NAME` / `${NAME}` is a binding — `${T:+x}` and
-  other parameter operators are unknown (round 21). Mutations ME2E1–ME2E41 caught.
+  other parameter operators are unknown (round 21). Mutations ME2E1–ME2E42 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 

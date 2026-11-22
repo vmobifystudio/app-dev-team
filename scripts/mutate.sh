@@ -688,7 +688,7 @@ ME2E20@@hooks/block-shared-tree-destructive-git.sh@@      *) [ "$LNW" -gt 0 ] &&
 ME2E21@@hooks/block-shared-tree-destructive-git.sh@@    if (PS[k]) xparse(body, dir)@@    if (PS[k]) nparse(body, dir)@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E22@@hooks/block-shared-tree-destructive-git.sh@@ && x !~ /^~/ && !(nd@@ && !(nd@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E23@@hooks/block-shared-tree-destructive-git.sh@@ && !(nd in IMPLICIT)) VARS[nd] = x@@) VARS[nd] = x@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
-ME2E24@@hooks/block-shared-tree-destructive-git.sh@@  if (s ~ /CDPATH/) SHADOW = 1@@  if (s ~ /CDPATH_NEVER/) SHADOW = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E24@@hooks/block-shared-tree-destructive-git.sh@@  if (s ~ /CDPATH/ || ENVIRON["CDPATH"] != "") SHADOW = 1@@  if (s ~ /CDPATH_NEVER/ || ENVIRON["CDPATH"] != "") SHADOW = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E25@@hooks/block-shared-tree-destructive-git.sh@@else if (LASTCD != "" || !(op == "&&" && inchain)) chain = ""@@else if (!(op == "&&" && inchain)) chain = ""@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E26@@hooks/block-shared-tree-destructive-git.sh@@PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }@@PSTK[PN--] : "?"; unsure = 1 }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E27@@hooks/block-shared-tree-destructive-git.sh@@nparse(x, dir); LASTCD = "?"; return union("?", dir) }@@nparse(x, dir); return dir }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
@@ -706,6 +706,7 @@ ME2E38@@hooks/block-shared-tree-destructive-git.sh@@    out = out (c == "~" ? "\
 ME2E39@@hooks/block-shared-tree-destructive-git.sh@@function lit(t) { gsub(/[$~]/, "\002", t); return t }@@function lit(t) { return t }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E40@@hooks/block-shared-tree-destructive-git.sh@@HOME([^A-Za-z0-9_]|$)/) home = ""@@HOME_NEVER([^A-Za-z0-9_]|$)/) home = ""@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E41@@hooks/block-shared-tree-destructive-git.sh@@  if (!match(x, /^(\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})/)) return x@@  if (!match(x, /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)) return x@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E42@@hooks/block-shared-tree-destructive-git.sh@@ || ENVIRON["CDPATH"] != "") SHADOW = 1@@ || 0) SHADOW = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 

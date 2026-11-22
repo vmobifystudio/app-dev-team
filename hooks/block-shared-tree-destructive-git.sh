@@ -537,7 +537,7 @@ END {
   SHADOW = (s ~ /(^|[^A-Za-z0-9_-])(cd|pushd|popd)[ \t]*\([ \t]*\)/ || s ~ /function[ \t]+(cd|pushd|popd)([^A-Za-z0-9_-]|$)/)
   if (s ~ /[A-Za-z0-9_-][ \t]*\([ \t]*\)[ \t\n]*[{(]/ || s ~ /(^|[;&|( \t\n])function[ \t]/) SHADOW = 1
   gsub(/[\001\002]/, "?", s); gsub(/@TMP/, "@TMP?", s)
-  if (s ~ /CDPATH/) SHADOW = 1
+  if (s ~ /CDPATH/ || ENVIRON["CDPATH"] != "") SHADOW = 1   # named here or inherited: a relative cd searches it
   if (s ~ /(^|[^A-Za-z0-9_])HOME([^A-Za-z0-9_]|$)/) home = ""   # a command that touches HOME: a bare cd and ~ are unknown
   # `set -P` / `set -o physical` make every later cd physical (symlinks first): no cd is trusted
   if (s ~ /physical|SHELLOPTS/ || s ~ /(^|[;&|({ \t\n])set[ \t]+([^;&|\n]*[ \t])?[-+][A-Za-z]*P/) SHADOW = 1
