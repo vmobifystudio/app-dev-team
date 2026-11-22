@@ -33,7 +33,10 @@ a second tab resurrecting deleted items). The gate did its job. Its false refusa
   the data-analyst owns, so the gate classification decides; MT15's probe calls the non-QA
   classifier, where the case fold matters. MK02 (a re-freeze role check the capability matrix
   already enforces) and MS8V8-6 (a `--help` block `parseArgs` already answers) guarded dead code —
-  both deleted with their rows.
+  both deleted with their rows. A second sample at `02e0b12` surfaced two more: MT16 (the manifest pattern's
+  case flag, which only the non-QA classifier exercises — now probed) and ME2E41 (the strict
+  `$NAME`/`${NAME}` match in `expand`, now fully subsumed by "any `${…}` but `${NAME}`
+  disables binding" — row retired).
 
 ## [3.2.1] — 2026-11-22 (first real headless end-to-end run, PR #50)
 

@@ -12041,7 +12041,7 @@ printf '%s' "$_mtr" | grep -q 'REDACTED:studio-actor-token' && ! printf '%s' "$_
 node --input-type=module -e "
 import { docFile } from '$HERE/lib/evidence.mjs';
 const qa = docFile(false, { qa: true }), nq = docFile(false);
-process.exit(!nq('docs/Team/risk-policy.json') && !qa('docs/Team/risk-policy.json') && !qa('DOCS/TEAM/project-profile.json') && !qa('docs/PACKAGE.JSON') && !qa('docs/cmakelists.txt')
+process.exit(!nq('docs/Team/risk-policy.json') && !nq('docs/PACKAGE.JSON') && !qa('docs/Team/risk-policy.json') && !qa('DOCS/TEAM/project-profile.json') && !qa('docs/PACKAGE.JSON') && !qa('docs/cmakelists.txt')
   && qa('docs/team/journeys/j.json') && qa('docs/50-test-plan.md') ? 0 : 1);" \
   && ok "MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json and a PACKAGE.JSON (C5G-5)" \
   || bad "MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json and a PACKAGE.JSON (C5G-5)"
