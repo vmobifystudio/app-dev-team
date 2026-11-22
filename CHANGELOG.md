@@ -28,6 +28,12 @@ a second tab resurrecting deleted items). The gate did its job. Its false refusa
   different case — its own symlink probe ran before the link existed. The link is now created
   before the refusal loop. Round 24's force-push tag (`REF=S`) had no probe; one is added with
   ME2E62. The dead `lexdir` flag and a constant ternary in `joindir1` are removed.
+- **`mutation-full` survivors** (5 of a 60-row sample at `1fa2ad3`, all older than this release):
+  MS01's probe gained `actor list`, which only its check refuses; ME08's prompt names the ticket
+  the data-analyst owns, so the gate classification decides; MT15's probe calls the non-QA
+  classifier, where the case fold matters. MK02 (a re-freeze role check the capability matrix
+  already enforces) and MS8V8-6 (a `--help` block `parseArgs` already answers) guarded dead code —
+  both deleted with their rows.
 
 ## [3.2.1] — 2026-11-22 (first real headless end-to-end run, PR #50)
 
