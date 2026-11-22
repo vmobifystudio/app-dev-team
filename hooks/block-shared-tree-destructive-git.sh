@@ -324,7 +324,8 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
 # One segment. Returns the directory later segments run in (a `cd` carries forward). `unsure`:
 # the cd may not run here (see SEGS above), so the old directory stays a candidate.
 # Codex P1 on #50: a nested parse is another shell (or may not run) — its assignments bind nothing here.
-function nparse(s, dir) { NEST++; parse(s, dir); NEST-- }
+# ...and a cd inside it moves nothing out here: LASTCD is restored, so no outer && chain starts there.
+function nparse(s, dir,    sv) { sv = LASTCD; NEST++; parse(s, dir); NEST--; LASTCD = sv }
 function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   LASTCD = ""
   i = cmdat(W, nw)

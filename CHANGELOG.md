@@ -27,7 +27,8 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   escaped `$` is never a variable, and a `TMPDIR` the command names or that lies inside a repository
   withdraws the temp-tree exemption (Codex round 2). A literal `@TMP` in the command is never the
   sentinel, and a temp root that is missing or unwritable (an empty `$(mktemp)`) gets no exemption
-  (round 3). Mutations ME2E1–ME2E16 caught.
+  (round 3); a `cd` inside `bash -c` / `$(…)` never starts an outer `&&` chain (round 4).
+  Mutations ME2E1–ME2E17 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 
