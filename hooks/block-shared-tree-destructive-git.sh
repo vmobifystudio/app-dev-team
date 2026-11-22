@@ -154,11 +154,13 @@ function enterable(list,    C, n, j) {
 function once(nm,    t) { t = CMDALL; return gsub("(^|[^$A-Za-z0-9_{])" nm "([^A-Za-z0-9_]|$)", "", t) }
 function lit(t) { gsub(/[$~]/, "\002", t); return t }   # quoted/escaped: neither expands
 function sub_word(body) { return (body ~ /^[ \t]*mktemp([ \t]+-[A-Za-z]+)*[ \t]*$/) ? "\001MKTEMP\001" : "$(...)" }
-function expand(x,    nm, rest) {
+function expand(x,    nm, rest, unq) {
+  if (x ~ /^\003/) { unq = 1; x = substr(x, 2) }
   if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
   if (!match(x, /^(\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})/)) return x   # ${T:+x}, ${T%/*}: unknown
   nm = substr(x, 2, RLENGTH - 1); gsub(/[{}]/, "", nm); rest = substr(x, RLENGTH + 1)
   if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/ || once(nm) != 1) return x
+  if (unq && (CMDALL ~ /IFS/ || (VARS[nm] == "@TMP" ? ENVIRON["TMPDIR"] : VARS[nm]) ~ /[ \t\n]/)) return "?"   # it word-splits
   if (VARS[nm] == "@TMP") return (rest ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
   return VARS[nm] rest
 }
@@ -490,6 +492,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
     if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
     if (c == "#" && !inw) { while (i <= n && substr(s, i, 1) != "\n") i++; i--; continue }
+    if (c == "$" && !inw && substr(s, i + 1, 1) ~ /[A-Za-z_{]/) { w = "\003$"; inw = 1; continue }
     if (c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<") {
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
       np++; PS[np] = (cmdat(W, nw) <= nw && W[cmdat(W, nw)] ~ /(^|\/)(ba|z|da|k)?sh$/)
@@ -538,7 +541,7 @@ END {
   # A command that defines its own cd/pushd/popd: no cd in it can be trusted to have moved.
   SHADOW = (s ~ /(^|[^A-Za-z0-9_-])(cd|pushd|popd)[ \t]*\([ \t]*\)/ || s ~ /function[ \t]+(cd|pushd|popd)([^A-Za-z0-9_-]|$)/)
   if (s ~ /[A-Za-z0-9_-][ \t]*\([ \t]*\)[ \t\n]*[{(]/ || s ~ /(^|[;&|( \t\n])function[ \t]/) SHADOW = 1
-  gsub(/[\001\002]/, "?", s); gsub(/@TMP/, "@TMP?", s)
+  gsub(/[\001\002\003]/, "?", s); gsub(/@TMP/, "@TMP?", s)
   if (s ~ /CDPATH/ || ENVIRON["CDPATH"] != "") SHADOW = 1
   GITENV = (s ~ /GIT_(DIR|WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY)/ || ENVIRON["GIT_DIR"] ENVIRON["GIT_WORK_TREE"] ENVIRON["GIT_INDEX_FILE"] ENVIRON["GIT_COMMON_DIR"] != "")   # named here or inherited: a relative cd searches it
   if (s ~ /(^|[^A-Za-z0-9_])HOME([^A-Za-z0-9_]|$)/) home = ""   # a command that touches HOME: a bare cd and ~ are unknown
