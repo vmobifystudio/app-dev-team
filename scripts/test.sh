@@ -10358,8 +10358,9 @@ node "$HERE/spawn-prompt.mjs" compose --root "$SL" --ticket SL-1 --role code-rev
 SLG="$HERE/../hooks/guard-gate-writes.sh"
 slg() { node -e 'const [, t, a, k, v, c] = process.argv; const o = { hook_event_name: "PreToolUse", tool_name: t, cwd: c, tool_input: { [k]: v } };
   if (a) o.agent_id = a; process.stdout.write(JSON.stringify(o))' "$1" "$2" "$3" "$4" "$SL" | sh "$SLG" >/dev/null 2>&1; }
-slg Bash agent-1 command "node scripts/board.mjs actor mint --role code-reviewer --ticket SL-1"
-[ $? = 2 ] && ok "S2: guard-gate-writes refuses a subagent minting an actor token" || bad "S2: guard-gate-writes refuses a subagent minting an actor token"
+slg Bash agent-1 command "node scripts/board.mjs actor mint --role code-reviewer --ticket SL-1"; SLM=$?
+slg Bash agent-1 command "node scripts/board.mjs actor list"; SLL=$?   # MS01: only the any-subcommand check sees list
+[ $SLM = 2 ] && [ $SLL = 2 ] && ok "S2: guard-gate-writes refuses a subagent minting an actor token" || bad "S2: guard-gate-writes refuses a subagent minting an actor token"
 slg Bash "" command "node scripts/board.mjs actor mint --role code-reviewer --ticket SL-1"
 [ $? = 0 ] && ok "S2: ...the main session (the orchestrator) may mint" || bad "S2: ...the main session (the orchestrator) may mint"
 slg Write agent-1 file_path "$SL/docs/team/evidence/test-x.json"
@@ -10817,7 +10818,7 @@ head -1 "$TMP/te-dq.txt" | grep -q '^Design QA ticket APP-001\.' && te_spawn app
   || bad "S3E: a composed design-QA prompt (ux-architect) is ALLOWED by the pre-spawn hook"
 te_compose --ticket APP-001 --role product-designer --mode design-qa >/dev/null 2>&1
 [ $? = 2 ] && ok "S3E: ...and product-designer may not design-QA (its own design)" || bad "S3E: ...and product-designer may not design-QA (its own design)"
-printf 'Run the analytics gate on APP-001 and return one line: ANALYTICS: PASS | FAIL | CANNOT EVALUATE.\n' > "$TMP/te-an.txt"
+printf 'Run the analytics gate on APP-001-analytics and return one line: ANALYTICS: PASS | FAIL | CANNOT EVALUATE.\n' > "$TMP/te-an.txt"
 te_spawn app-dev-team:data-analyst "$TMP/te-an.txt" >/dev/null 2>&1
 [ $? = 0 ] && ok "S3E: a data-analyst ANALYTICS gate prompt is a gate spawn, not an un-contracted IC spawn" \
   || bad "S3E: a data-analyst ANALYTICS gate prompt is a gate spawn, not an un-contracted IC spawn"
@@ -12039,8 +12040,8 @@ printf '%s' "$_mtr" | grep -q 'REDACTED:studio-actor-token' && ! printf '%s' "$_
 # C5G-5 — the QA- docs-only classifier folds case.
 node --input-type=module -e "
 import { docFile } from '$HERE/lib/evidence.mjs';
-const qa = docFile(false, { qa: true });
-process.exit(!qa('docs/Team/risk-policy.json') && !qa('DOCS/TEAM/project-profile.json') && !qa('docs/PACKAGE.JSON') && !qa('docs/cmakelists.txt')
+const qa = docFile(false, { qa: true }), nq = docFile(false);
+process.exit(!nq('docs/Team/risk-policy.json') && !qa('docs/Team/risk-policy.json') && !qa('DOCS/TEAM/project-profile.json') && !qa('docs/PACKAGE.JSON') && !qa('docs/cmakelists.txt')
   && qa('docs/team/journeys/j.json') && qa('docs/50-test-plan.md') ? 0 : 1);" \
   && ok "MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json and a PACKAGE.JSON (C5G-5)" \
   || bad "MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json and a PACKAGE.JSON (C5G-5)"

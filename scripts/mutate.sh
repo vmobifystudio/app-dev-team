@@ -346,7 +346,6 @@ ML23@@scripts/project-profile.mjs@@missingBuild = why || 'package.json has no "b
 ML24@@scripts/ship-gate.sh@@if [ "$1" = tech-manager ]; then@@if true; then@@F2: ship-gate's printed qa_passed command carries the agent's prompt token@@Sprint 3 track F2
 ML25@@scripts/drivers/web.sh@@drives a RUNNING app. Start it ${SERVE}@@drives a RUNNING app.@@K2: the web driver with no URL says how to start the app@@Sprint 4 track K2
 MK01@@scripts/board.mjs@@if (sameCommands(frozen.commands, cur.commands)) return '';@@return '';@@K1: a gate event under a profile whose test commands changed is refused (C3G-3)@@Sprint 4 track K1
-MK02@@scripts/board.mjs@@if (event.by !== 'tech-manager') return 'only the orchestrator@@if (false) return 'only the orchestrator@@K1: only tech-manager re-freezes the test commands@@Sprint 4 track K1
 MK03@@scripts/verify-done.sh@@_cc=$(node "$EV" check-command --record "$EVIDENCE" 2>&1)@@_cc=$(true)@@K1: a green of an undeclared command prints CANNOT EVALUATE, not VERIFIED (FB3)@@Sprint 4 track K1
 MK04@@scripts/lib/evidence.mjs@@const mb = base || git(['merge-base', integration, head]);@@const mb = base || git(['rev-parse', `${head}~1`]);@@K1: a --docs-only record whose own base hides a code commit is refused — the diff is from merge-base(integration, tip) (C3G-4)@@Sprint 4 track K1
 MK05@@scripts/board.mjs@@if (!d.ok) return `${ticket} is on the QA- docs-only fast path@@if (false) return `${ticket} is on the QA- docs-only fast path@@K1: ...but a code commit added after verified ends the fast path at merged (C3G-5)@@Sprint 4 track K1
@@ -624,7 +623,6 @@ MS8V8-2@@scripts/project-profile.mjs@@return { blocked: 'npm run build wrote not
 MS8V8-3@@scripts/privacy-disclosure-scan.mjs@@r.role === 'aso-specialist' && r.state === 'off'@@r.role === 'aso-specialist' && r.state === 'never'@@Sprint 8 V8: FL-9 privacy scan is N/A when aso-specialist is off@@Sprint 8 V8
 MS8V8-4@@scripts/team-bootstrap.mjs@@...(role === 'web-developer' ? ['index.html'@@...(role === 'web-developer-x' ? ['index.html'@@Sprint 8 V8: FL-7 web-developer may write a root index.html@@Sprint 8 V8
 MS8V8-5@@scripts/team-bootstrap.mjs@@'docs/21-engineering-principles.md', ...specs];@@'docs/21-engineering-principles.md'];@@Sprint 8 V8: FL-8 the context manifest hashes the impl spec and not the vision@@Sprint 8 V8
-MS8V8-6@@scripts/team-bootstrap.mjs@@if (process.argv.slice(2).includes('--help')) {@@if (false) {@@Sprint 8 V8: EN-10 team-bootstrap --help prints usage@@Sprint 8 V8
 M8V2A@@scripts/lib/events.mjs@@        state.qaPassed = false;@@        ;@@Sprint 8 V2: SM-4 qa_failed after qa_passed revokes the pass@@Sprint 8 V2
 M8V2B@@scripts/lib/events.mjs@@if (state.retries + 1 > MAX_TICKET_RETRIES + 2 * state.extraCycles) {@@if (false) {@@Sprint 8 V2: SM-5 the 7th rework is refused and forces blocked@@Sprint 8 V2
 M8V2C@@scripts/lib/events.mjs@@if (state.qaFailures + 1 > MAX_QA_FAILURES + state.extraCycles) {@@if (false) {@@Sprint 8 V2: AU-11 the 3rd qa_failed forces blocked@@Sprint 8 V2

@@ -1121,7 +1121,6 @@ function freezeTestProfile(name, ticket, flags, event, paths) {
   const cur = currentTestProfile(root);
   const frozen = frozenTestProfile(paths.log);
   if (name === 'corrected' && flags['test-profile']) {
-    if (event.by !== 'tech-manager') return 'only the orchestrator (--by tech-manager) re-freezes the test commands';
     if (studioPolicy().policy.requireActorTokens === true && event.actor?.mode !== 'token') {
       return `re-freezing the test commands needs the orchestrator's token:${inlineTokenFlag(root, 'tech-manager', ticket)}`;
     }

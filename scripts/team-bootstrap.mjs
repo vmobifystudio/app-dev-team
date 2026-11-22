@@ -63,12 +63,7 @@ import { parseArgs } from './lib/args.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const die = (code, message) => { process.stderr.write(`team-bootstrap: ${message}\n`); process.exit(code); };
-// EN-10: `--help` used to run the real action and write four manifests into the cwd.
-if (process.argv.slice(2).includes('--help')) {
-  const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
-  process.stdout.write(`${src.slice(src.indexOf(' * Usage:'), src.indexOf('*/')).replace(/^ \* ?/gm, '').trim()}\n`);
-  process.exit(0);
-}
+// EN-10: `--help` used to run the real action; parseArgs (lib/args.mjs) now answers it with the header.
 const { flags } = parseArgs(process.argv.slice(2), { valueFlags: new Set(['root']), die });
 
 const ROOT = resolve(String(flags.root || '.'));
