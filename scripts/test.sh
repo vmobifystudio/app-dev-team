@@ -14194,6 +14194,7 @@ for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tm
   "set -P; cd $E1/.agent-wt/web-developer-2 && git merge feat/x" \
   "set -o physical; cd $E1/.agent-wt/web-developer-2 && git merge feat/x" \
   'git --work-tree "$(mktemp -d)" merge feat/x' 'git --git-dir=/x/.git merge feat/x' \
+  "GIT_DIR=$E1/.git GIT_WORK_TREE=$E1 git -C \"\$(mktemp -d)\" merge feat/x" \
   "Q=\$(mktemp -d); cd \"\${Q:+$E1}\" && git merge feat/x"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done

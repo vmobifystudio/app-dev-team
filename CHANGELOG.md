@@ -41,7 +41,8 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   `--work-tree` keeps the current directory a candidate (the index stays there) and `--git-dir` is
   unknown (round 17); only `~` and `~/…` mean home — `~+`, `~-`, `~user` are unknown, and a quoted `~` is never home, and a command naming `HOME` leaves home unknown (rounds 18–20); only a whole `$NAME` / `${NAME}` is a binding — `${T:+x}` and
   other parameter operators are unknown (round 21); `git stash drop/clear`, `branch -D` and a force push keep their check in a temp
-  worktree — stash, branches and the remote are shared (rounds 23–24). Mutations ME2E1–ME2E44 caught.
+  worktree — stash, branches and the remote are shared (rounds 23–24); `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` in the command or the hook's
+  environment leave git's target unknown (round 25). Mutations ME2E1–ME2E45 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 
