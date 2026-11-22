@@ -37,13 +37,13 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   (they can cd in this shell); `pushd -n`, `pushd +N` and a bare `pushd` land somewhere unknown
   (round 11); every list-ending separator ends a chain, even after a bare `( … )` (round 12); a cd behind a wrapper (`command -v cd`, `builtin cd`) is never
   trusted and ends any chain (round 13); a cd target is normalised logically, as the shell does (`/a/link/..` is `/a`), and
-  `cd -P` lands somewhere unknown, and `set -P` / `set -o physical` trust no cd (rounds 14–16);
+  `cd -P` lands somewhere unknown, and `set -P` / `set -o physical` / `bash -P` trust no cd (rounds 14–16, 29);
   `--work-tree` keeps the current directory a candidate (the index stays there) and `--git-dir` is
   unknown (round 17); only `~` and `~/…` mean home — `~+`, `~-`, `~user` are unknown, and a quoted `~` is never home, and a command naming `HOME` leaves home unknown (rounds 18–20); only a whole `$NAME` / `${NAME}` is a binding — `${T:+x}` and
   other parameter operators are unknown (round 21); `git stash drop/clear`, `branch -D` and a force push keep their check in a temp
   worktree — stash, branches and the remote are shared (rounds 23–24); `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` in the command or the hook's
   environment leave git's target unknown (round 25); a `[…]` or `{…}` cd target is unknown (rounds 26–27); an unquoted `$W` whose value would word-split is unknown
-  (round 28). Mutations ME2E1–ME2E48 caught.
+  (round 28). Mutations ME2E1–ME2E49 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 

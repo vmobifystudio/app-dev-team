@@ -546,7 +546,7 @@ END {
   GITENV = (s ~ /GIT_(DIR|WORK_TREE|INDEX_FILE|COMMON_DIR|OBJECT_DIRECTORY)/ || ENVIRON["GIT_DIR"] ENVIRON["GIT_WORK_TREE"] ENVIRON["GIT_INDEX_FILE"] ENVIRON["GIT_COMMON_DIR"] != "")   # named here or inherited: a relative cd searches it
   if (s ~ /(^|[^A-Za-z0-9_])HOME([^A-Za-z0-9_]|$)/) home = ""   # a command that touches HOME: a bare cd and ~ are unknown
   # `set -P` / `set -o physical` make every later cd physical (symlinks first): no cd is trusted
-  if (s ~ /physical|SHELLOPTS/ || s ~ /(^|[;&|({ \t\n])set[ \t]+([^;&|\n]*[ \t])?[-+][A-Za-z]*P/) SHADOW = 1
+  if (s ~ /physical|SHELLOPTS/ || s ~ /(^|[;&|({ \t\n\/])(set|(ba|z|da|k)?sh)[ \t]+([^;&|\n]*[ \t])?[-+][A-Za-z]*P/) SHADOW = 1   # set -P, bash -P -c
   CMDALL = s
   parse(s, base)
 }

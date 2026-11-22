@@ -713,6 +713,7 @@ ME2E45@@hooks/block-shared-tree-destructive-git.sh@@  if (GITENV) g = union("?",
 ME2E46@@hooks/block-shared-tree-destructive-git.sh@@  if (x ~ /\[/ || x ~ /\{[^}]*\}/) return "?"@@  if (0) return "?"@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E47@@hooks/block-shared-tree-destructive-git.sh@@ || x ~ /\{[^}]*\}/) return "?"@@) return "?"@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E48@@hooks/block-shared-tree-destructive-git.sh@@  if (unq && (CMDALL ~ /IFS/ ||@@  if (0 && (CMDALL ~ /IFS/ ||@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E49@@hooks/block-shared-tree-destructive-git.sh@@(set|(ba|z|da|k)?sh)[ \t]+([^;&|\n]*[ \t])?[-+][A-Za-z]*P/) SHADOW = 1@@(set)[ \t]+([^;&|\n]*[ \t])?[-+][A-Za-z]*P/) SHADOW = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 
