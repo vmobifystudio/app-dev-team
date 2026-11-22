@@ -695,6 +695,7 @@ ME2E27@@hooks/block-shared-tree-destructive-git.sh@@nparse(x, dir); LASTCD = "?"
 ME2E28@@hooks/block-shared-tree-destructive-git.sh@@  if (cmd == "source" || cmd == ".") { LASTCD = "?"; return union("?", dir) }@@  if (0) { LASTCD = "?"; return union("?", dir) }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E29@@hooks/block-shared-tree-destructive-git.sh@@  if (s ~ /[A-Za-z0-9_-][ \t]*\([ \t]*\)[ \t\n]*[{(]/ || s ~ /(^|[;&|( \t\n])function[ \t]/) SHADOW = 1@@  if (0) SHADOW = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E30@@hooks/block-shared-tree-destructive-git.sh@@(j > i + 1 || j > nw || W[j] ~ /^[+-][0-9]/)) { nd = "?"; unsure = 1 }@@(0)) { nd = "?"; unsure = 1 }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E31@@hooks/block-shared-tree-destructive-git.sh@@      } else if (op != "&&") chain = ""@@      } else if (0) chain = ""@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 

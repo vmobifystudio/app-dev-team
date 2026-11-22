@@ -490,7 +490,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
         else if (LASTCD != "" || !(op == "&&" && inchain)) chain = ""   # a cd we cannot resolve ends it
         dir = inchain ? union(nd2, dir) : nd2
         nw = 0; split("", W)
-      }
+      } else if (op != "&&") chain = ""   # `( … );` has no words here, but the list still ends
       last = op
       if (c == "\n" && np) { i = bodies(s, i, PD, PT, PS, np, dir); np = 0 }
       continue
