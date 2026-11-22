@@ -14210,7 +14210,8 @@ E1BR="true && cd $TMP/e1br/{x..x} && git merge feat/x"   # a variable: bash 3.2 
 E1W="W=$E1/.agent-wt/web-developer-2"
 for c in "$E1W; read W < /dev/null; cd \"\$W\" && git merge feat/x" "$E1W; for W in $E1; do :; done; cd \"\$W\" && git merge feat/x" \
   "$E1W; W+=/..; cd \"\$W\" && git merge feat/x" "$E1W; : \"\${W:=$E1}\"; cd \"\$W\" && git merge feat/x" \
-  "declare -n R=W; $E1W; R=$E1; cd \"\$W\" && git merge feat/x" "$E1W; . ./x.sh; cd \"\$W\" && git merge feat/x"; do
+  "declare -n R=W; $E1W; R=$E1; cd \"\$W\" && git merge feat/x" "$E1W; . ./x.sh; cd \"\$W\" && git merge feat/x" \
+  "$E1W; W[0]=$E1; cd \"\$W\" && git merge feat/x" "$E1W; V=W; printf -v \"\$V\" %s $E1; cd \"\$W\" && git merge feat/x"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
 mkdir -p "$TMP/e1sp"; ln -sfn "$TMP/e1sp" "$E1 "

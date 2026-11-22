@@ -356,8 +356,11 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   cmd = W[i]
   # a builtin that writes variables unbinds every name among its words; `W+=x` appends
   # (source / . already leave the directory unknown, below)
-  if (cmd in WRITERS) for (j = i + 1; j <= nw; j++) { if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*/)) delete VARS[substr(W[j], 1, RLENGTH)] }
-  if (match(cmd, /^[A-Za-z_][A-Za-z0-9_]*\+=/)) delete VARS[substr(cmd, 1, RLENGTH - 2)]
+  if (cmd in WRITERS) for (j = i + 1; j <= nw; j++) {
+    if (W[j] ~ /[$`\001\002\003]/) { for (x in VARS) delete VARS[x]; break }   # `printf -v "$V"`: a target we cannot name
+    if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*/)) delete VARS[substr(W[j], 1, RLENGTH)]
+  }
+  if (match(cmd, /^[A-Za-z_][A-Za-z0-9_]*(\+=|\[)/)) { x = cmd; sub(/(\+=|\[).*/, "", x); delete VARS[x] }   # W+=x, W[0]=x
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
     if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }
     else {
