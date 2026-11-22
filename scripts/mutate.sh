@@ -716,7 +716,6 @@ ME2E48@@hooks/block-shared-tree-destructive-git.sh@@  if (unq && (CMDALL ~ /IFS/
 ME2E49@@hooks/block-shared-tree-destructive-git.sh@@(set|(ba|z|da|k)?sh)[ \t]+([^;&|\n]*[ \t])?[-+][A-Za-z]*P/) SHADOW = 1@@(set)[ \t]+([^;&|\n]*[ \t])?[-+][A-Za-z]*P/) SHADOW = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E50@@hooks/block-shared-tree-destructive-git.sh@@  if (cmd in WRITERS) for@@  if (0) for@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E51@@hooks/block-shared-tree-destructive-git.sh@@  if (match(cmd, /^[A-Za-z_][A-Za-z0-9_]*\+=/)) delete@@  if (0) delete@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
-ME2E52@@hooks/block-shared-tree-destructive-git.sh@@  if (cmd == "source" || cmd == ".") for (x in VARS) delete VARS[x]@@  if (0) for (x in VARS) delete VARS[x]@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E53@@hooks/block-shared-tree-destructive-git.sh@@  NOBIND = (s ~ /@@  NOBIND = 0 && (s ~ /@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }

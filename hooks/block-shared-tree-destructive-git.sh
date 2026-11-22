@@ -354,11 +354,10 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
     return dir
   }
   cmd = W[i]
-  # a builtin that writes variables unbinds every name among its words; `W+=x` appends;
-  # source / . may set anything
+  # a builtin that writes variables unbinds every name among its words; `W+=x` appends
+  # (source / . already leave the directory unknown, below)
   if (cmd in WRITERS) for (j = i + 1; j <= nw; j++) { if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*/)) delete VARS[substr(W[j], 1, RLENGTH)] }
   if (match(cmd, /^[A-Za-z_][A-Za-z0-9_]*\+=/)) delete VARS[substr(cmd, 1, RLENGTH - 2)]
-  if (cmd == "source" || cmd == ".") for (x in VARS) delete VARS[x]
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
     if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }
     else {
