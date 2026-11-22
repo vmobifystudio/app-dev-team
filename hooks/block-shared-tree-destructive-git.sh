@@ -508,6 +508,7 @@ BEGIN {
 END {
   # A command that defines its own cd/pushd/popd: no cd in it can be trusted to have moved.
   SHADOW = (s ~ /(^|[^A-Za-z0-9_-])(cd|pushd|popd)[ \t]*\([ \t]*\)/ || s ~ /function[ \t]+(cd|pushd|popd)([^A-Za-z0-9_-]|$)/)
+  gsub(/[\001\002]/, "?", s); gsub(/@TMP/, "@TMP?", s)
   CMDALL = s
   parse(s, base)
 }
@@ -556,7 +557,8 @@ while IFS="$TAB" read -r KIND REF DIR WHY; do
   if [ "$DIR" = "@TMP" ]; then
     case $CMD in
       *TMPDIR*) DIR="?" ;;
-      *) if git -C "${TMPDIR:-/tmp}" rev-parse --git-dir >/dev/null 2>&1; then DIR="?"
+      *) TD=${TMPDIR:-/tmp}
+         if [ ! -d "$TD" ] || [ ! -w "$TD" ] || git -C "$TD" rev-parse --git-dir >/dev/null 2>&1; then DIR="?"
          else [ "$KIND" = "R" ] || continue; DIR="?"; fi ;;
     esac
   fi

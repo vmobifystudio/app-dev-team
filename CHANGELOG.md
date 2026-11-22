@@ -25,7 +25,9 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   `$(mktemp)` suffix gets the same `..` check (Codex P1/P2 on #50). A binding is trusted only when
   its name occurs once in the command (so `export`, `read`, `for`, `+=` unbind it), a single-quoted or
   escaped `$` is never a variable, and a `TMPDIR` the command names or that lies inside a repository
-  withdraws the temp-tree exemption (Codex round 2). Mutations ME2E1–ME2E14 caught.
+  withdraws the temp-tree exemption (Codex round 2). A literal `@TMP` in the command is never the
+  sentinel, and a temp root that is missing or unwritable (an empty `$(mktemp)`) gets no exemption
+  (round 3). Mutations ME2E1–ME2E16 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 
