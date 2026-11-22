@@ -14220,7 +14220,7 @@ for c in "$E1W; read W < /dev/null; cd \"\$W\" && git merge feat/x" "$E1W; for W
   "$E1W; printf '%s%n' x W; cd \"\$W\" && git merge feat/x" "$E1W; A[W=1]=0; cd \"\$W\" && git merge feat/x" \
   "$E1W; F=x; printf \"\$F\" x W; cd \"\$W\" && git merge feat/x" "$E1W; : \$[W=1]; cd \"\$W\" && git merge feat/x" \
   "$E1W; printf '%2s%ln' x W; cd \"\$W\" && git merge feat/x" "declare -u W; $E1W; cd \"\$W\" && git merge feat/x" \
-  "O=-n; declare \"\$O\" R=W; $E1W; cd \"\$W\" && git merge feat/x" "$E1W; A=(x); : \"\${A[W=1]}\"; cd \"\$W\" && git merge feat/x" \
+  "O=-n; declare \"\$O\" R=W; $E1W; cd \"\$W\" && git merge feat/x" "$E1W; A=(x); : \${A[W=1]}; cd \"\$W\" && git merge feat/x" \
   "$(printf '%s; : <<EOF\n$((W=1))\nEOF\ncd "$W" \046\046 git merge feat/x' "$E1W")"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
