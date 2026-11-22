@@ -151,7 +151,8 @@ function enterable(list,    C, n, j) {
 # E2E-3: `$(mktemp …)` is a FRESH directory this command made — no other work in it, never the main
 # checkout — so it stands as "@TMP". `NAME=literal` / `NAME=$(mktemp …)` bind for the rest of the
 # command (VARS), so `cd "$W"` to a bound name is that path. Anything else assigned is unknown again.
-function once(nm,    t) { t = CMDALL; return gsub("(^|[^$A-Za-z0-9_{])" nm "([^A-Za-z0-9_]|$)", "", t) }
+# E2E-5: a binding is killed by a WRITE, not by its name appearing in text (`echo "T=$T"`): see unbind()
+function rebound(nm) { return NOBIND || index(CMDALL, "${" nm "=") || index(CMDALL, "${" nm ":=") }
 function lit(t) { gsub(/[$~]/, "\002", t); return t }   # quoted/escaped: neither expands
 function sub_word(body) { return (body ~ /^[ \t]*mktemp([ \t]+-[A-Za-z]+)*[ \t]*$/) ? "\001MKTEMP\001" : "$(...)" }
 function expand(x,    nm, rest, unq) {
@@ -159,7 +160,7 @@ function expand(x,    nm, rest, unq) {
   if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
   if (!match(x, /^(\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})/)) return x   # ${T:+x}, ${T%/*}: unknown
   nm = substr(x, 2, RLENGTH - 1); gsub(/[{}]/, "", nm); rest = substr(x, RLENGTH + 1)
-  if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/ || once(nm) != 1) return x
+  if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/ || rebound(nm)) return x
   if (unq && (CMDALL ~ /IFS/ || (VARS[nm] == "@TMP" ? ENVIRON["TMPDIR"] : VARS[nm]) ~ /[ \t\n]/)) return "?"   # it word-splits
   if (VARS[nm] == "@TMP") return (rest ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
   return VARS[nm] rest
@@ -353,6 +354,11 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
     return dir
   }
   cmd = W[i]
+  # a builtin that writes variables unbinds every name among its words; `W+=x` appends;
+  # source / . may set anything
+  if (cmd in WRITERS) for (j = i + 1; j <= nw; j++) { if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*/)) delete VARS[substr(W[j], 1, RLENGTH)] }
+  if (match(cmd, /^[A-Za-z_][A-Za-z0-9_]*\+=/)) delete VARS[substr(cmd, 1, RLENGTH - 2)]
+  if (cmd == "source" || cmd == ".") for (x in VARS) delete VARS[x]
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
     if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }
     else {
@@ -525,6 +531,7 @@ BEGIN {
   SEP = "\034"
   split("then do else elif if while until ! { }", t, " "); for (k in t) SKIP[t[k]] = 1
   split("REPLY OPTARG OPTIND PWD OLDPWD HOME CDPATH IFS _ MAPFILE BASH_REMATCH COPROC TMPDIR PATH", t, " "); for (k in t) IMPLICIT[t[k]] = 1
+  split("export declare typeset local readonly read getopts mapfile readarray unset let printf for select coproc wait", t, " "); for (k in t) WRITERS[t[k]] = 1
   split("if while until for select case function {", t, " "); for (k in t) OPEN[t[k]] = 1
   split("fi done esac }", t, " "); for (k in t) CLOSE[t[k]] = 1
   # G7-8: the wrapper table is hooks/wrappers.txt, shared with contract-hooks.mjs — name, the
@@ -548,6 +555,7 @@ END {
   # `set -P` / `set -o physical` make every later cd physical (symlinks first): no cd is trusted
   if (s ~ /physical|SHELLOPTS/ || s ~ /(^|[;&|({ \t\n\/])(set|(ba|z|da|k)?sh)[ \t]+([^;&|\n]*[ \t])?[-+][A-Za-z]*P/) SHADOW = 1   # set -P, bash -P -c
   CMDALL = s
+  NOBIND = (s ~ /(declare|typeset|local)[ \t]+(-[A-Za-z]*[ \t]+)*-[A-Za-z]*n/)
   parse(s, base)
 }
 ')

@@ -14205,6 +14205,14 @@ mkdir -p "$TMP/e1br/[x]"
 mkdir -p "$TMP/e1br/{x..x}"
 E1BR="true && cd $TMP/e1br/{x..x} && git merge feat/x"   # a variable: bash 3.2 brace-expands inside "$(… "…")"
 [ "$(e1d "$E1BR")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a {..} sequence cd target read as a literal path"
+# E2E-5: a VE probe echoes its temp path; that is not a second binding
+[ "$(e1d 'Q=$(mktemp -d); echo "Q=$Q"; cd "$Q" && git merge feat/x')" = 0 ] || E1BAD="$E1BAD | wrongly refused: echo \"Q=\$Q\" read as a rebinding (E2E-5)"
+E1W="W=$E1/.agent-wt/web-developer-2"
+for c in "$E1W; read W < /dev/null; cd \"\$W\" && git merge feat/x" "$E1W; for W in $E1; do :; done; cd \"\$W\" && git merge feat/x" \
+  "$E1W; W+=/..; cd \"\$W\" && git merge feat/x" "$E1W; : \"\${W:=$E1}\"; cd \"\$W\" && git merge feat/x" \
+  "declare -n R=W; $E1W; R=$E1; cd \"\$W\" && git merge feat/x" "$E1W; . ./x.sh; cd \"\$W\" && git merge feat/x"; do
+  [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
+done
 mkdir -p "$TMP/e1sp"; ln -sfn "$TMP/e1sp" "$E1 "
 [ "$(e1d "W='$E1 '; cd \$W && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: an unquoted \$W that word-splits"
 [ "$(e1d "W=\"$E1/.agent-wt/web-developer-2\"; cd \$W && git checkout -b feat/APP-8 main")" = 0 ] || E1BAD="$E1BAD | wrongly refused: an unquoted \$W with no whitespace"
@@ -14231,7 +14239,7 @@ ln -sfn "$E1/.agent-wt/web-developer-2/src" "$E1/lnk" 2>/dev/null; mkdir -p "$E1
   || E1BAD="$E1BAD | wrongly allowed: a mktemp that cannot succeed (TMPDIR missing) leaves git in the checkout"
 [ -z "$E1BAD" ] && ok "E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)" \
   || bad "E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)" "$E1BAD"
-grep -q 'never `$(cat file)` it back' "$HERE/spawn-prompt.mjs" && grep -q 'never$' "$HERE/../agents/code-reviewer.md" \
+grep -q 'never `$(cat file)` it back' "$HERE/spawn-prompt.mjs" && grep -q 'never `cd "$T"; git' "$HERE/spawn-prompt.mjs" && grep -q 'never$' "$HERE/../agents/code-reviewer.md" \
   && ok "E2E run 1: the reviewer is told to spell its temp path literally across calls (E2E-4)" \
   || bad "E2E run 1: the reviewer is told to spell its temp path literally across calls (E2E-4)" "guidance missing"
 

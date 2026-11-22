@@ -3,6 +3,20 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.2.2] — 2026-11-22
+
+First real `/app-ship` run (the e2e to-do app, on 3.2.1): the studio refused to cut v0.1.0 —
+verification FAIL, 11 undecided findings including two real data-loss bugs (double-click delete,
+a second tab resurrecting deleted items). The gate did its job. Its false refusal:
+
+- **E2E-5** a VE mutation probe that echoed its temp path (`echo "T=$T"`) was refused: the
+  once-only binding rule read the text `T=` as a second assignment (macOS temp paths, which
+  contain `/T/`, tripped it the same way). A binding now dies only by an actual write, in order —
+  `export`/`read`/`for`/`declare`/`unset`/`printf -v`/… on that name, `W+=`, `${W:=…}`,
+  `source`/`.`; a nameref (`declare -n`) disables binding. The spawn prompt now says to chain
+  `cd "$T" && git …` (a `;` after a failed cd runs git in the shared tree, which is refused).
+  Mutations ME2E50–ME2E53.
+
 ## [3.2.1] — 2026-11-22 (first real headless end-to-end run, PR #50)
 
 The first real `/app-run --yolo` run on 3.2.0 (a web to-do app) closed 15/15 board tickets — 8 product,

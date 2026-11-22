@@ -621,7 +621,7 @@ const scratchLines = (ROOT, tip) => [
     '# ...run the tests, revert lines, reintroduce the defect — inside "$T" only...',
     'git worktree remove --force "$T"      # always, pass or fail'].join('\n')),
   // E2E-4: a run's reviewers saved "$T" to a file and `cd "$(cat …)"`'d back — no guard can see where that points.
-  'Shell variables die with each Bash call: in a later call, spell the printed path of `$T` literally — never `$(cat file)` it back (the guards refuse a directory they cannot see).',
+  'Shell variables die with each Bash call: in a later call, spell the printed path of `$T` literally — never `$(cat file)` it back (the guards refuse a directory they cannot see). Chain `cd "$T" && git …`, never `cd "$T"; git …`: if that cd fails, a `;` runs the git command in the shared tree, so the guard refuses it.',
 ];
 
 function reviewSubject(ROOT, row, allIds, base) {
