@@ -356,11 +356,17 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   cmd = W[i]
   # a builtin that writes variables unbinds every name among its words; `W+=x` appends
   # (source / . already leave the directory unknown, below)
-  if (cmd in WRITERS) for (j = i + 1; j <= nw; j++) {
-    if (W[j] ~ /[$`\001\002\003]/) { for (x in VARS) delete VARS[x]; break }   # `printf -v "$V"`: a target we cannot name
+  # namerefs alias names and arithmetic writes names it never spells as NAME= — read from the
+  # command as the shell runs it (a `cat <<E` body of JavaScript is not arithmetic)
+  if (cmd == "let") NOBIND = 1
+  if (cmd == "declare" || cmd == "typeset" || cmd == "local") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*[ni]/) NOBIND = 1
+  # printf writes only its `-v NAME` operand; the other writers, every name among their words
+  if (cmd == "printf") { for (j = i + 1; j < nw; j++) if (W[j] == "-v") { if (W[j + 1] ~ /[$`\001\002\003]/) { for (x in VARS) delete VARS[x] } else delete VARS[W[j + 1]] } }
+  else if (cmd in WRITERS) for (j = i + 1; j <= nw; j++) {
+    if (W[j] ~ /[$`\001\002\003]/) { for (x in VARS) delete VARS[x]; break }   # `read "$V"`: a target we cannot name
     if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*/)) delete VARS[substr(W[j], 1, RLENGTH)]
   }
-  if (match(cmd, /^[A-Za-z_][A-Za-z0-9_]*(\+=|\[)/)) { x = cmd; sub(/(\+=|\[).*/, "", x); delete VARS[x] }   # W+=x, W[0]=x
+  for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*(\+=|\[)/)) { x = W[j]; sub(/(\+=|\[).*/, "", x); delete VARS[x] }   # W+=x, W[0]=x, anywhere
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
     if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }
     else {
@@ -480,7 +486,7 @@ function dq(s, i, dir,    n, c, e, k, out) {
     c = substr(s, i, 1)
     if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out lit(c); continue }
     if (c == "\"") break
-    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
     out = out (c == "~" ? "\002" : c)   # no tilde expansion inside double quotes
   }
@@ -497,7 +503,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
     if (c == "\\") { i++; if (i <= n && substr(s, i, 1) != "\n") { w = w lit(substr(s, i, 1)); inw = 1 } continue }
     if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w lit(substr(s, i + 1, k - 1)); i += k; inw = 1; continue }
     if (c == "\"") { i = dq(s, i + 1, dir); w = w DQ; inw = 1; continue }
-    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
     if (c == "#" && !inw) { while (i <= n && substr(s, i, 1) != "\n") i++; i--; continue }
     if (c == "$" && !inw && substr(s, i + 1, 1) ~ /[A-Za-z_{]/) { w = "\003$"; inw = 1; continue }
@@ -507,7 +513,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
       i = heredoc(s, i + 2, PD, PT, np); continue
     }
     if (c == " " || c == "\t") { if (inw) { W[++nw] = w; w = ""; inw = 0 } continue }
-    if (c == "(" && !inw) { e = matchclose(s, i + 1); nparse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
+    if (c == "(" && !inw) { if (substr(s, i + 1, 1) == "(") NOBIND = 1; e = matchclose(s, i + 1); nparse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
     if (c == "\n" || c == ";" || c == "|" || c == ")" || (c == "&" && substr(s, i - 1, 1) !~ /[<>]/ && substr(s, i + 1, 1) != ">")) {
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
       op = c; if ((c == "&" || c == "|") && substr(s, i + 1, 1) == c) { op = c c; i++ }
@@ -557,7 +563,6 @@ END {
   # `set -P` / `set -o physical` make every later cd physical (symlinks first): no cd is trusted
   if (s ~ /physical|SHELLOPTS/ || s ~ /(^|[;&|({ \t\n\/])(set|(ba|z|da|k)?sh)[ \t]+([^;&|\n]*[ \t])?[-+][A-Za-z]*P/) SHADOW = 1   # set -P, bash -P -c
   CMDALL = s
-  NOBIND = (s ~ /(declare|typeset|local)[ \t]+(-[A-Za-z]*[ \t]+)*-[A-Za-z]*n/)
   parse(s, base)
 }
 ')

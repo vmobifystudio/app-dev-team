@@ -14206,12 +14206,15 @@ mkdir -p "$TMP/e1br/{x..x}"
 E1BR="true && cd $TMP/e1br/{x..x} && git merge feat/x"   # a variable: bash 3.2 brace-expands inside "$(… "…")"
 [ "$(e1d "$E1BR")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a {..} sequence cd target read as a literal path"
 # E2E-5: a VE probe echoes its temp path; that is not a second binding
+[ "$(e1d 'Q=$(mktemp -d); printf "%s\n" "$Q"; cd "$Q" && git merge feat/x')" = 0 ] || E1BAD="$E1BAD | wrongly refused: printf of the temp path read as a write"
 [ "$(e1d 'Q=$(mktemp -d); echo "Q=$Q"; cd "$Q" && git merge feat/x')" = 0 ] || E1BAD="$E1BAD | wrongly refused: echo \"Q=\$Q\" read as a rebinding (E2E-5)"
 E1W="W=$E1/.agent-wt/web-developer-2"
 for c in "$E1W; read W < /dev/null; cd \"\$W\" && git merge feat/x" "$E1W; for W in $E1; do :; done; cd \"\$W\" && git merge feat/x" \
   "$E1W; W+=/..; cd \"\$W\" && git merge feat/x" "$E1W; : \"\${W:=$E1}\"; cd \"\$W\" && git merge feat/x" \
   "declare -n R=W; $E1W; R=$E1; cd \"\$W\" && git merge feat/x" "$E1W; . ./x.sh; cd \"\$W\" && git merge feat/x" \
-  "$E1W; W[0]=$E1; cd \"\$W\" && git merge feat/x" "$E1W; V=W; printf -v \"\$V\" %s $E1; cd \"\$W\" && git merge feat/x"; do
+  "$E1W; W[0]=$E1; cd \"\$W\" && git merge feat/x" "$E1W; V=W; printf -v \"\$V\" %s $E1; cd \"\$W\" && git merge feat/x" \
+  "$E1W; X+=a W+=/../..; cd \"\$W\" && git merge feat/x" "$E1W; let ++W; cd \"\$W\" && git merge feat/x" \
+  "$E1W; (( W=1 )); cd \"\$W\" && git merge feat/x"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
 mkdir -p "$TMP/e1sp"; ln -sfn "$TMP/e1sp" "$E1 "
