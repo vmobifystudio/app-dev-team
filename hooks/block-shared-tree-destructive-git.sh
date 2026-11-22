@@ -359,9 +359,9 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   # namerefs alias names and arithmetic writes names it never spells as NAME= — read from the
   # command as the shell runs it (a `cat <<E` body of JavaScript is not arithmetic)
   if (cmd == "let") NOBIND = 1
-  if (cmd == "declare" || cmd == "typeset" || cmd == "local") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*[ni]/) NOBIND = 1
+  if (cmd == "declare" || cmd == "typeset" || cmd == "local" || cmd == "readonly" || cmd == "export") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^[-+]/ || W[j] ~ /[$`\001\002\003]/) NOBIND = 1   # -n -i -u -l …, or "$O"
   # printf writes only its `-v NAME` operand; the other writers, every name among their words
-  if (cmd == "printf") { for (j = i + 1; j <= nw; j++) if (W[j] ~ /%[^a-zA-Z%]*n/) NOBIND = 1   # %n writes a count into a variable operand
+  if (cmd == "printf") { for (j = i + 1; j <= nw; j++) if (W[j] ~ /%[-+ #0-9.*$]*(hh|h|ll|l|j|z|t|L|q)?n/) NOBIND = 1   # %n / %ln / %hn write a count into a variable operand
     for (j = i + 1; j <= nw && W[j] ~ /^-/; j += (W[j] == "-v") ? 2 : 1) ;   # the format: past -v NAME and --
     if (j <= nw && W[j] ~ /[$`\001\002\003]/) NOBIND = 1                     # a format we cannot read may hold %n
     for (j = i + 1; j < nw; j++) if (W[j] == "-v") { if (W[j + 1] ~ /[$`\001\002\003]/) { for (x in VARS) delete VARS[x] } else delete VARS[W[j + 1]] } }
@@ -422,14 +422,14 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
 
 # <<DELIM at s[i]: records the delimiter, returns the index of its last character.
 function heredoc(s, i, PD, PT, k,    c, d) {
-  PT[k] = 0
+  PT[k] = 0; HQLAST = 0
   if (substr(s, i, 1) == "-") { PT[k] = 1; i++ }
   while (substr(s, i, 1) == " " || substr(s, i, 1) == "\t") i++
   d = ""
   for (; i <= length(s); i++) {
     c = substr(s, i, 1)
     if (c ~ /[ \t\n;&|<>()]/) break
-    if (c != "\047" && c != "\"" && c != "\\") d = d c
+    if (c != "\047" && c != "\"" && c != "\\") d = d c; else HQLAST = 1
   }
   PD[k] = d
   return i - 1
@@ -449,7 +449,8 @@ function bodies(s, i, PD, PT, PS, np, dir,    k, e, n, line, body) {
       if (line == PD[k]) break
       body = body line "\n"
     }
-    if (PS[k]) xparse(body, dir)
+    if (PS[k] == 2) { if (body ~ /\$\(\(|\$\[|\$\{/) NOBIND = 1 }   # <<E body to cat or :: expanded, not run
+    else if (PS[k]) xparse(body, dir)
   }
   return i
 }
@@ -490,6 +491,7 @@ function dq(s, i, dir,    n, c, e, k, out) {
     if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out lit(c); continue }
     if (c == "\"") break
     if (c == "$" && substr(s, i + 1, 1) == "[") NOBIND = 1   # $[ … ] is arithmetic too
+    if (c == "$" && substr(s, i + 1, 1) == "{" && substr(s, i, index(substr(s, i), "}")) ~ /\[/) NOBIND = 1   # ${A[W=2]}
     if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
     out = out (c == "~" ? "\002" : c)   # no tilde expansion inside double quotes
@@ -508,6 +510,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
     if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w lit(substr(s, i + 1, k - 1)); i += k; inw = 1; continue }
     if (c == "\"") { i = dq(s, i + 1, dir); w = w DQ; inw = 1; continue }
     if (c == "$" && substr(s, i + 1, 1) == "[") NOBIND = 1   # $[ … ] is arithmetic too (unquoted)
+    if (c == "$" && substr(s, i + 1, 1) == "{" && substr(s, i, index(substr(s, i), "}")) ~ /\[/) NOBIND = 1   # ${A[W=2]} (unquoted)
     if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
     if (c == "#" && !inw) { while (i <= n && substr(s, i, 1) != "\n") i++; i--; continue }
@@ -515,7 +518,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
     if (c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<") {
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
       np++; PS[np] = (cmdat(W, nw) <= nw && W[cmdat(W, nw)] ~ /(^|\/)(ba|z|da|k)?sh$/)
-      i = heredoc(s, i + 2, PD, PT, np); continue
+      i = heredoc(s, i + 2, PD, PT, np); if (!PS[np] && !HQLAST) PS[np] = 2; continue
     }
     if (c == " " || c == "\t") { if (inw) { W[++nw] = w; w = ""; inw = 0 } continue }
     if (c == "(" && !inw) { if (substr(s, i + 1, 1) == "(") NOBIND = 1; e = matchclose(s, i + 1); nparse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
