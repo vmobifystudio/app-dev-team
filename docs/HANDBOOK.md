@@ -3,7 +3,7 @@
 *What this is, what it believes, how it actually works, and where it is honest about not working.*
 
 **Version:** 3.2.1 (`main`) · **Date:** 2026-11-22
-**Scale:** 29 roles · 26 skills · 21 commands · 68 top-level scripts (+24 shared libs) · 9 knowledge packs · 2662 assertions
+**Scale:** 29 roles · 26 skills · 21 commands · 68 top-level scripts (+24 shared libs) · 10 knowledge packs · 2662 assertions
 
 *The script and lib counts are checked against the tree by `scripts/metadata-check.mjs` and cannot
 drift again. They had: this line read 52 and 9 while the tree held 57 and 14.*
@@ -351,7 +351,7 @@ rather than a mode of either. Stands down the moment the incident is `resolved`.
 
 ### Who may own a ticket
 
-Ten roles can own an implementation ticket: the four developers, plus `devops-engineer`,
+Thirteen roles can own an implementation ticket: the four developers, plus `devops-engineer`,
 `ux-architect`, `product-designer`, `product-manager`, `product-researcher`, `qa-engineer`,
 `data-analyst`, `aso-specialist`, `verification-engineer`.
 
