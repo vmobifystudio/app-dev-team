@@ -14199,6 +14199,8 @@ for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tm
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
 mkdir -p "$E1/tt"
+mkdir -p "$TMP/e1br/[x]"
+[ "$(e1d "true && cd $TMP/e1br/[x] && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a [..] cd target read as a literal path"
 E1H="$TMP/e1home/h"; mkdir -p "$E1H+"
 [ "$(HOME="$E1H" e1d 'true && cd ~+ && git merge feat/x')" = 2 ] \
   || E1BAD="$E1BAD | wrongly allowed: cd ~+ read as \$HOME+ (it is the current directory)"
