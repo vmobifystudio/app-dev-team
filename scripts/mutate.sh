@@ -723,6 +723,8 @@ ME2E56@@hooks/block-shared-tree-destructive-git.sh@@ if (W[j] ~ /^-[A-Za-z]*[ni]
 ME2E57@@hooks/block-shared-tree-destructive-git.sh@@    if (c == "(" && !inw) { if (substr(s, i + 1, 1) == "(") NOBIND = 1;@@    if (c == "(" && !inw) { if (0) NOBIND = 1;@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E58@@hooks/block-shared-tree-destructive-git.sh@@if (W[j] ~ /%[^a-zA-Z%]*n/) NOBIND = 1@@if (0) NOBIND = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E59@@hooks/block-shared-tree-destructive-git.sh@@ if (W[j] ~ /^[A-Za-z_][A-Za-z0-9_]*\[/) NOBIND = 1 }@@ if (0) NOBIND = 1 }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E60@@hooks/block-shared-tree-destructive-git.sh@@    if (j <= nw && W[j] ~ /[$`\001\002\003]/) NOBIND = 1@@    if (0) NOBIND = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E61@@hooks/block-shared-tree-destructive-git.sh@@ == "[") NOBIND = 1   # $[ … ] is arithmetic too (unquoted)@@ == "[") NOBIND = 0   # $[ … ] is arithmetic too (unquoted)@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 
