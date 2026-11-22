@@ -14197,6 +14197,9 @@ for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tm
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
 mkdir -p "$E1/tt"
+E1H="$TMP/e1home/h"; mkdir -p "$E1H+"
+[ "$(HOME="$E1H" e1d 'true && cd ~+ && git merge feat/x')" = 2 ] \
+  || E1BAD="$E1BAD | wrongly allowed: cd ~+ read as \$HOME+ (it is the current directory)"
 ln -sfn "$E1/.agent-wt/web-developer-2/src" "$E1/lnk" 2>/dev/null; mkdir -p "$E1/.agent-wt/web-developer-2/src"
 # a heredoc fed to a shell is another process: an unexported binding made here is empty there
 [ "$(e1d "$(printf 'Q=$(mktemp -d); bash <<%sEOF%s\ncd "$Q" \046\046 git merge feat/x\nEOF' "'" "'")")" = 2 ] \

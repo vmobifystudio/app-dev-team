@@ -167,7 +167,7 @@ function joindir1(cur, x) {
   if (x == "@TMP") return (cur == "?") ? "@TMP" : "@TMP"
   if (cur == "@TMP" && x !~ /^[\/~]/ && x !~ /[$`*?\001\002]/ && x != "-" && x !~ /(^|\/)\.\.(\/|$)/) return "@TMP"
   if (cur == "?" || cur == "@TMP" || x == "" || x == "-" || x ~ /[$`*?\001\002]/) return "?"
-  if (x ~ /^~/) { if (home == "") return "?"; x = home substr(x, 2) }
+  if (x ~ /^~/) { if (home == "" || x !~ /^~(\/|$)/) return "?"; x = home substr(x, 2) }   # ~+ ~- ~user ~N: unknown
   return (x ~ /^\//) ? x : cur "/" x
 }
 function lex1(p,    C, n, j, o, k, out) {
