@@ -10676,7 +10676,7 @@ rm -f "$F2L/.studio-policy.json"
 
 # W2-20: orchestrator ship relays each failing sub-gate's own reasons
 ( cd "$F2L" && node "$HERE/orchestrator.mjs" ship ) >"$F2/os.txt" 2>&1
-grep -q '^      | .*LP-001' "$F2/os.txt" && ok "F2: orchestrator ship relays the sub-gate's own reason lines, not just its name (W2-20)" \
+grep '^      | .*LP-001' "$F2/os.txt" | grep -qv 'WAIVED' && ok "F2: orchestrator ship relays the sub-gate's own reason lines, not just its name (W2-20)" \
   || bad "F2: orchestrator ship relays the sub-gate's own reason lines, not just its name (W2-20)" "$(cat "$F2/os.txt")"
 
 # W2-14: a ticket that predates the risk policy is named, with the tier it would route to
