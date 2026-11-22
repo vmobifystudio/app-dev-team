@@ -937,7 +937,9 @@ function guardGateWrites() {
       if (!['echo', 'printf'].includes(name) && texts.some((t, i) => t === 'actor' && /^(mint|revoke)$/.test(texts[i + 1] || ''))) refuse('mint, revoke or list actor tokens (any `board.mjs actor` subcommand)');
       // C3G-2: a script whose FILE NAME is built at runtime (`scripts/$B.mjs`, `b?ard.mjs`), or an interpreter's script that is one.
       // E2E-1: only the COMMAND word — `grep fetch dist/assets/*.js` reads a glob of files, it runs none of them.
-      const dynamicMjs = /\.m?js$/.test(texts[0]) && nameWild(cmdWords[0]);
+      // …but an INTERPRETER runs a script wherever it sits among its words (`node -r ./x.cjs ./scripts/$B.mjs`).
+      const dynamicMjs = (/\.m?js$/.test(texts[0]) && nameWild(cmdWords[0]))
+        || (INTERPRETERS.test(name) && cmdWords.some((w) => /\.m?js$/.test(w.v.text) && nameWild(w)));
       const interp = INTERPRETERS.test(name) ? rest.find((w) => !w.v.text.startsWith('-')) : null;
       const dynamicScript = interp && /^(node|deno|bun|tsx|ts-node)$/.test(name) && (pure(interp) || nameWild(interp));
       if (dynamicMjs || dynamicScript) {

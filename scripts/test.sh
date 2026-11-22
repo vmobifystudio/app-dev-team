@@ -14123,7 +14123,9 @@ E1="$TMP/e2e1"; rm -rf "$E1"; mkdir -p "$E1/docs/team"
 printf '{"ticket":"APP-001","event":"created","by":"tech-manager"}\n' > "$E1/docs/31-board-events.jsonl"
 e1g() { node -e 'process.stdout.write(JSON.stringify({agent_id:"e1",tool_name:"Bash",cwd:process.argv[1],tool_input:{command:process.argv[2]}}))' "$E1" "$1" \
   | node "$HERE/../hooks/contract-hooks.mjs" guard-gate-writes >/dev/null 2>"$TMP/e1g.err"; echo $?; }
+touch "$E1/noop.cjs"
 [ "$(e1g 'grep -c fetch dist/assets/*.js')" = 0 ] && [ "$(e1g './scripts/$B.mjs actor mint')" = 2 ] \
+  && [ "$(e1g 'node -r ./noop.cjs ./scripts/$B.mjs')" = 2 ] && [ "$(e1g 'node -r ./noop.cjs ./scripts/build.mjs')" = 0 ] \
   && ok "E2E run 1: grep over a *.js glob is not 'a plugin script built at runtime' (E2E-1)" \
   || bad "E2E run 1: grep over a *.js glob is not 'a plugin script built at runtime' (E2E-1)" "$(cat "$TMP/e1g.err")"
 # E2E-2: nothing lies under a file guard; a dir guard and the file itself still refuse.
@@ -14173,7 +14175,8 @@ for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tm
   "W=$E1/.agent-wt/web-developer-2; export W=$E1; cd \"\$W\" && git merge feat/x" \
   "W=$E1/.agent-wt/web-developer-2; cd '\$W' && git merge feat/x" \
   "TMPDIR=$E1; export TMPDIR; cd \"\$(mktemp -d)\" && git merge feat/x" 'cd @TMP && git merge feat/x' \
-  "bash -c 'cd $E1/.agent-wt/web-developer-2' && git merge feat/x"; do
+  "bash -c 'cd $E1/.agent-wt/web-developer-2' && git merge feat/x" \
+  '! cd "$(mktemp -d)/missing" && git merge feat/x' "! cd $E1/.agent-wt/web-developer-2 && git merge feat/x"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
 mkdir -p "$E1/tt"

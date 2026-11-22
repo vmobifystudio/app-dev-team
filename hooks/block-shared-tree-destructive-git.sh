@@ -346,7 +346,10 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
       for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
       nd = joindir(dir, (j <= nw) ? W[j] : home)
       if (cmd == "pushd") PSTK[++PN] = dir
-      if (!SHADOW) LASTCD = nd
+      # `! cd X`: the `!` makes a FAILED cd the success path — what follows may run where we were
+      for (j = 1; j < i && W[j] != "!"; j++) ;
+      if (j < i) unsure = 1
+      else if (!SHADOW) LASTCD = nd
     }
     return (unsure || SHADOW || !enterable(nd)) ? union(nd, dir) : nd
   }

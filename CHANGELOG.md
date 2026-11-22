@@ -14,7 +14,8 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
 ### Fixed
 
 - **E2E-1** guard-gate-writes refused `grep … dist/assets/*.js` as "a plugin script built at runtime";
-  only the command word counts now.
+  only the command word counts now — except for an interpreter, which runs a `.mjs` wherever it sits
+  among its words (`node -r ./x.cjs ./scripts/$B.mjs`, Codex round 5).
 - **E2E-2** after an unknown `cd "$T"`, a sweep of `src` was refused as a sweep of `actor-tokens.jsonl`
   — nothing lies under a file guard. Refusals under a runtime-built cwd now say so.
 - **E2E-3** block-shared-tree-destructive-git binds `NAME=literal` and `NAME=$(mktemp …)` and runs a
@@ -27,8 +28,8 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   escaped `$` is never a variable, and a `TMPDIR` the command names or that lies inside a repository
   withdraws the temp-tree exemption (Codex round 2). A literal `@TMP` in the command is never the
   sentinel, and a temp root that is missing or unwritable (an empty `$(mktemp)`) gets no exemption
-  (round 3); a `cd` inside `bash -c` / `$(…)` never starts an outer `&&` chain (round 4).
-  Mutations ME2E1–ME2E17 caught.
+  (round 3); a `cd` inside `bash -c` / `$(…)` never starts an outer `&&` chain (round 4); a negated `! cd X` keeps the old directory a candidate (round 5).
+  Mutations ME2E1–ME2E19 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 
