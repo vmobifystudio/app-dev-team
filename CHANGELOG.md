@@ -20,7 +20,9 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
 - **E2E-3** block-shared-tree-destructive-git binds `NAME=literal` and `NAME=$(mktemp …)` and runs a
   `cd X && …` chain in X: a reviewer's trial merge in a fresh temp worktree, and an IC's checkout in
   a slot named by a variable, are no longer refused. Unknown, skippable (`||`), subshell (`|`) and
-  `..`-escaping cds still land on the main checkout.
+  `..`-escaping cds still land on the main checkout. An assignment that may not run (`false && W=…`)
+  or runs in a nested shell (`(…)`, `$(…)`, heredoc, `sh -c`, `eval`) binds nothing, and a direct
+  `$(mktemp)` suffix gets the same `..` check (Codex P1/P2 on #50). Mutations ME2E1–ME2E10 caught.
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 

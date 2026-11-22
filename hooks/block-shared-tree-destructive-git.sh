@@ -153,7 +153,7 @@ function enterable(list,    C, n, j) {
 # command (VARS), so `cd "$W"` to a bound name is that path. Anything else assigned is unknown again.
 function sub_word(body) { return (body ~ /^[ \t]*mktemp([ \t]+-[A-Za-z]+)*[ \t]*$/) ? "\001MKTEMP\001" : "$(...)" }
 function expand(x,    nm, rest) {
-  if (x ~ /^\001MKTEMP\001/) return "@TMP"
+  if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~ /(^|\/)\.\.(\/|$)|[$`*?\001]/) ? "?" : "@TMP"
   if (!match(x, /^\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)) return x
   nm = substr(x, 2, RLENGTH - 1); gsub(/[{}]/, "", nm); rest = substr(x, RLENGTH + 1)
   if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/) return x
@@ -321,13 +321,16 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
 
 # One segment. Returns the directory later segments run in (a `cd` carries forward). `unsure`:
 # the cd may not run here (see SEGS above), so the old directory stays a candidate.
+# Codex P1 on #50: a nested parse is another shell (or may not run) — its assignments bind nothing here.
+function nparse(s, dir) { NEST++; parse(s, dir); NEST-- }
 function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   LASTCD = ""
   i = cmdat(W, nw)
   if (i > nw) {
     for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*=/)) {
       x = substr(W[j], RLENGTH + 1); nd = substr(W[j], 1, RLENGTH - 1)
-      if (x ~ /^\001MKTEMP\001/ && substr(x, 9) !~ /[$`*?\001]|(^|\/)\.\.(\/|$)/) VARS[nd] = "@TMP"
+      if (unsure || NEST) delete VARS[nd]
+      else if (x ~ /^\001MKTEMP\001/ && substr(x, 9) !~ /[$`*?\001]|(^|\/)\.\.(\/|$)/) VARS[nd] = "@TMP"
       else if (x != "" && x !~ /[$`*?\001]/) VARS[nd] = x
       else delete VARS[nd]
     }
@@ -345,10 +348,10 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
     return (unsure || SHADOW || !enterable(nd)) ? union(nd, dir) : nd
   }
   if (cmd ~ /(^|\/)(ba|z|da|k)?sh$/) {
-    for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) { if (j < nw) parse(W[j + 1], dir); break }
+    for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*c[A-Za-z]*$/) { if (j < nw) nparse(W[j + 1], dir); break }
     return dir
   }
-  if (cmd == "eval") { x = ""; for (j = i + 1; j <= nw; j++) x = x " " W[j]; parse(x, dir); return dir }
+  if (cmd == "eval") { x = ""; for (j = i + 1; j <= nw; j++) x = x " " W[j]; nparse(x, dir); return dir }
   if (cmd != "git" && cmd !~ /\/git$/) return dir
   # git global options: -C moves the tree, --work-tree names it, the rest are skipped.
   g = dir
@@ -397,7 +400,7 @@ function bodies(s, i, PD, PT, PS, np, dir,    k, e, n, line, body) {
       if (line == PD[k]) break
       body = body line "\n"
     }
-    if (PS[k]) parse(body, dir)
+    if (PS[k]) nparse(body, dir)
   }
   return i
 }
@@ -437,8 +440,8 @@ function dq(s, i, dir,    n, c, e, k, out) {
     c = substr(s, i, 1)
     if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out c; continue }
     if (c == "\"") break
-    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); parse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
-    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; parse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
+    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
     out = out c
   }
   DQ = out
@@ -454,8 +457,8 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
     if (c == "\\") { i++; if (i <= n && substr(s, i, 1) != "\n") { w = w substr(s, i, 1); inw = 1 } continue }
     if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w substr(s, i + 1, k - 1); i += k; inw = 1; continue }
     if (c == "\"") { i = dq(s, i + 1, dir); w = w DQ; inw = 1; continue }
-    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); parse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
-    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; parse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
+    if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
     if (c == "#" && !inw) { while (i <= n && substr(s, i, 1) != "\n") i++; i--; continue }
     if (c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<") {
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
@@ -463,7 +466,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
       i = heredoc(s, i + 2, PD, PT, np); continue
     }
     if (c == " " || c == "\t") { if (inw) { W[++nw] = w; w = ""; inw = 0 } continue }
-    if (c == "(" && !inw) { e = matchclose(s, i + 1); parse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
+    if (c == "(" && !inw) { e = matchclose(s, i + 1); nparse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
     if (c == "\n" || c == ";" || c == "|" || c == ")" || (c == "&" && substr(s, i - 1, 1) !~ /[<>]/ && substr(s, i + 1, 1) != ">")) {
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
       op = c; if ((c == "&" || c == "|") && substr(s, i + 1, 1) == c) { op = c c; i++ }

@@ -673,6 +673,8 @@ ME2E5@@hooks/block-shared-tree-destructive-git.sh@@  if [ "$DIR" = "@TMP" ]; the
 ME2E6@@hooks/block-shared-tree-destructive-git.sh@@!index(SEP LASTCD SEP, SEP "?" SEP) && (inchain || (last != "||" && last != "|"))@@(inchain || 1)@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E7@@hooks/block-shared-tree-destructive-git.sh@@        dir = inchain ? union(nd2, dir) : nd2@@        dir = nd2@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E8@@hooks/block-shared-tree-destructive-git.sh@@  if (VARS[nm] == "@TMP") return (rest ~ /(^|\/)\.\.(\/|$)|[$`*?\001]/) ? "?" : "@TMP"@@  if (VARS[nm] == "@TMP") return "@TMP"@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E9@@hooks/block-shared-tree-destructive-git.sh@@      if (unsure || NEST) delete VARS[nd]@@      if (0) delete VARS[nd]@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E10@@hooks/block-shared-tree-destructive-git.sh@@  if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~@@  if (x ~ /^\001MKTEMP\001/) return (0 && substr(x, 9) ~@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 
