@@ -336,7 +336,7 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
       x = substr(W[j], RLENGTH + 1); nd = substr(W[j], 1, RLENGTH - 1)
       if (unsure || NEST) delete VARS[nd]
       else if (x ~ /^\001MKTEMP\001/ && substr(x, 9) !~ /[$`*?\001\002]|(^|\/)\.\.(\/|$)/) VARS[nd] = "@TMP"
-      else if (x != "" && x !~ /[$`*?\001\002]/ && x !~ /^~/) VARS[nd] = x
+      else if (x != "" && x !~ /[$`*?\001\002]/ && x !~ /^~/ && !(nd in IMPLICIT)) VARS[nd] = x
       else delete VARS[nd]
     }
     return dir
@@ -499,6 +499,7 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
 BEGIN {
   SEP = "\034"
   split("then do else elif if while until ! { }", t, " "); for (k in t) SKIP[t[k]] = 1
+  split("REPLY OPTARG OPTIND PWD OLDPWD HOME CDPATH IFS _ MAPFILE BASH_REMATCH COPROC TMPDIR PATH", t, " "); for (k in t) IMPLICIT[t[k]] = 1
   split("if while until for select case function {", t, " "); for (k in t) OPEN[t[k]] = 1
   split("fi done esac }", t, " "); for (k in t) CLOSE[t[k]] = 1
   # G7-8: the wrapper table is hooks/wrappers.txt, shared with contract-hooks.mjs — name, the
@@ -515,6 +516,7 @@ END {
   # A command that defines its own cd/pushd/popd: no cd in it can be trusted to have moved.
   SHADOW = (s ~ /(^|[^A-Za-z0-9_-])(cd|pushd|popd)[ \t]*\([ \t]*\)/ || s ~ /function[ \t]+(cd|pushd|popd)([^A-Za-z0-9_-]|$)/)
   gsub(/[\001\002]/, "?", s); gsub(/@TMP/, "@TMP?", s)
+  if (s ~ /CDPATH/) SHADOW = 1
   CMDALL = s
   parse(s, base)
 }
