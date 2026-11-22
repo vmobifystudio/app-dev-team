@@ -289,7 +289,7 @@ function classify(sc, A, na, d,    P, np, j, r, src, dst, plus, force, del, all,
     # worktree of this repo shares.
     x = (na ? A[1] : "")
     if (x == "drop" || x == "clear")
-      emit("D", "", d, "git stash drop/clear destroys stash entries, and every worktree of this repo shares that stack")
+      emit("D", "S", d, "git stash drop/clear destroys stash entries, and every worktree of this repo shares that stack")
     else if (x == "" || x == "push" || x == "save" || x ~ /^-/) {
       for (j = 1; j <= na && A[j] != "--"; j++) ;
       if (j > na) emit("D", sweep(sc, A, na), d, "git stash sweeps the whole tree, including work you did not write — this is the exact command that cost 22 files on 2026-07-29")
@@ -597,7 +597,7 @@ while IFS="$TAB" read -r KIND REF DIR WHY; do
     [ "$DIR" = "?" ] || case $CMD in
       *) TD=${TMPDIR:-/tmp}
          if [ ! -d "$TD" ] || [ ! -w "$TD" ] || git -C "$TD" rev-parse --git-dir >/dev/null 2>&1; then DIR="?"
-         else [ "$KIND" = "R" ] || continue; DIR="?"; fi ;;
+         else [ "$KIND" = "R" ] || [ "$REF" = "S" ] || continue; DIR="?"; fi ;;   # S: the shared stash stack
     esac
   fi
   GDIR=$DIR
