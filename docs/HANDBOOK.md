@@ -765,7 +765,8 @@ with the same access, and nothing here claims to be.
   exemption (a trial merge in a `$(mktemp -d)` worktree) trusts that the same command does not
   re-point that directory: a literal `ln` withdraws it, but a link planted by `tar`, `cp -s` or an
   interpreter, or by an earlier call, is not seen. It stops accidents in a shared tree; it is not a
-  sandbox against a command built to evade it.
+  sandbox against a command built to evade it. It also assumes the shell starts in logical `cd`
+  mode: a profile that runs `set -P` is not visible in the command.
 - **A TTY can be faked.** The founder mint asks for an interactive terminal and the ticket typed
   back; that proves a terminal, not a human — a pseudo-terminal satisfies it.
 - **A new checkout trusts a carried-over log once.** The board log is never committed: it and the
