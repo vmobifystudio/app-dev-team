@@ -14178,11 +14178,13 @@ for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tm
   "bash -c 'cd $E1/.agent-wt/web-developer-2' && git merge feat/x" \
   '! cd "$(mktemp -d)/missing" && git merge feat/x' "! cd $E1/.agent-wt/web-developer-2 && git merge feat/x" \
   "Q=\$(mktemp -d); ln -s $E1 \"\$Q/l\"; cd \"\$Q/l\" && git merge feat/x" \
-  'Q=$(mktemp -d); bash -c '"'"'cd "$Q" && git merge feat/x'"'"'' \
   "W='~'; cd \"\$W\" && git merge feat/x"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
 mkdir -p "$E1/tt"
+# a heredoc fed to a shell is another process: an unexported binding made here is empty there
+[ "$(e1d "$(printf 'Q=$(mktemp -d); bash <<%sEOF%s\ncd "$Q" \046\046 git merge feat/x\nEOF' "'" "'")")" = 2 ] \
+  || E1BAD="$E1BAD | wrongly allowed: an unexported temp binding used inside a heredoc shell"
 [ "$(TMPDIR="$E1/tt" e1d 'T=$(mktemp -d) && git worktree add --detach "$T" HEAD && cd "$T" && git merge --no-edit feat/x')" = 2 ] \
   || E1BAD="$E1BAD | wrongly allowed: a mktemp tree under a TMPDIR inside the repository"
 [ "$(TMPDIR="$E1/no-such-dir" e1d 'git -C "$(mktemp -d)" merge --no-edit feat/x')" = 2 ] \

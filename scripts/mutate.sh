@@ -685,7 +685,7 @@ ME2E17@@hooks/block-shared-tree-destructive-git.sh@@NEST--; LASTCD = sv }@@NEST-
 ME2E18@@hooks/block-shared-tree-destructive-git.sh@@      if (j < i) unsure = 1@@      if (0) unsure = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E19@@hooks/contract-hooks.mjs@@        || (INTERPRETERS.test(name) && cmdWords.some((w) => /\.m?js$/.test(w.v.text) && nameWild(w)));@@        || false;@@E2E run 1: grep over a *.js glob is not 'a plugin script built at runtime' (E2E-1)@@E2E run 1
 ME2E20@@hooks/block-shared-tree-destructive-git.sh@@      *) [ "$LNW" -gt 0 ] && DIR="?" ;;@@      *) [ "$LNW" -gt 9 ] && DIR="?" ;;@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
-ME2E21@@hooks/block-shared-tree-destructive-git.sh@@{ if (j < nw) xparse(W[j + 1], dir); break }@@{ if (j < nw) nparse(W[j + 1], dir); break }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E21@@hooks/block-shared-tree-destructive-git.sh@@    if (PS[k]) xparse(body, dir)@@    if (PS[k]) nparse(body, dir)@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E22@@hooks/block-shared-tree-destructive-git.sh@@ && x !~ /^~/) VARS[nd] = x@@) VARS[nd] = x@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
