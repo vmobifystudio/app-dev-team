@@ -381,9 +381,14 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   for (i++; i <= nw; i++) {
     x = W[i]
     if (x == "-C") { i++; g = joindir(g, (i <= nw) ? W[i] : ""); continue }
-    if (x == "--work-tree") { i++; g = joindir(g, (i <= nw) ? W[i] : ""); continue }
-    if (x ~ /^--work-tree=/) { g = joindir(g, substr(x, 13)); continue }
-    if (x == "-c" || x == "--git-dir" || x == "--namespace" || x == "--config-env" || x == "--super-prefix") { i++; continue }
+    # Codex round 17: --work-tree moves only the TREE — the index and repository stay where git
+    # finds them, so the current directory stays a candidate; --git-dir names a repository we
+    # cannot place, so it is unknown.
+    if (x == "--work-tree") { i++; g = union(joindir(g, (i <= nw) ? W[i] : ""), g); continue }
+    if (x ~ /^--work-tree=/) { g = union(joindir(g, substr(x, 13)), g); continue }
+    if (x == "--git-dir") { i++; g = union("?", g); continue }
+    if (x ~ /^--git-dir=/) { g = union("?", g); continue }
+    if (x == "-c" || x == "--namespace" || x == "--config-env" || x == "--super-prefix") { i++; continue }
     if (x ~ /^-/) continue
     break
   }

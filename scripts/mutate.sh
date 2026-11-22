@@ -700,6 +700,7 @@ ME2E32@@hooks/block-shared-tree-destructive-git.sh@@W[j] != "!" && (W[j] in SKIP
 ME2E33@@hooks/block-shared-tree-destructive-git.sh@@      nd = (x < j) ? "?" : lexdir(nd, 0)@@      nd = (x < j) ? "?" : nd@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E34@@hooks/block-shared-tree-destructive-git.sh@@      nd = (x < j) ? "?" : lexdir(nd, 0)@@      nd = lexdir(nd, 0)@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E35@@hooks/block-shared-tree-destructive-git.sh@@  if (s ~ /physical|SHELLOPTS/ || s ~ /(^|@@  if (0 || s ~ /(^|@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E36@@hooks/block-shared-tree-destructive-git.sh@@    if (x == "--work-tree") { i++; g = union(joindir(g, (i <= nw) ? W[i] : ""), g); continue }@@    if (x == "--work-tree") { i++; g = joindir(g, (i <= nw) ? W[i] : ""); continue }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 
