@@ -724,6 +724,7 @@ ME2E67@@hooks/block-shared-tree-destructive-git.sh@@  if (cmd in REDEFINE) { NOB
 ME2E68@@hooks/block-shared-tree-destructive-git.sh@@ if (W[j] == "-v") NOBIND = 1@@ if (0) NOBIND = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E69@@hooks/block-shared-tree-destructive-git.sh@@  if (cmd ~ /^([0-9]*[<>]|&>)/) NOBIND = 1@@  if (0) NOBIND = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E71@@hooks/block-shared-tree-destructive-git.sh@@  if (cmd == "[[") NOBIND = 1@@  if (0) NOBIND = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E72@@hooks/block-shared-tree-destructive-git.sh@@  for (j = 1; j < i; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*=/)) delete VARS[substr(W[j], 1, RLENGTH - 1)]@@  for (j = 1; j < i; j++) if (0) delete VARS[substr(W[j], 1, RLENGTH - 1)]@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 

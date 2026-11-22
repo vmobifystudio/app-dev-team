@@ -359,6 +359,9 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   # touch the variables of this shell — so a command that runs any variable-writing or code-running
   # builtin trusts no binding; one that can also redefine what `cd` does trusts no cd either.
   if (cmd in UNSAFE) NOBIND = 1
+  # `W=x cmd`: a prefix assignment persists in POSIX mode (set -o posix, or bash run as sh) when cmd
+  # is a special builtin — whatever the mode, that name is no longer trusted
+  for (j = 1; j < i; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*=/)) delete VARS[substr(W[j], 1, RLENGTH - 1)]
   if (cmd in REDEFINE) { NOBIND = 1; SHADOW = 1 }
   if (cmd == "[[") NOBIND = 1   # [[ … ]] evaluates arithmetic in too many forms (-eq, -v, ( ), &&): trust nothing after it
   if (cmd == "test" || cmd == "[") for (j = i + 1; j <= nw; j++) if (W[j] == "-v") NOBIND = 1   # -v evaluates a subscript
