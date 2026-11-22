@@ -14201,6 +14201,9 @@ done
 mkdir -p "$E1/tt"
 mkdir -p "$TMP/e1br/[x]"
 [ "$(e1d "true && cd $TMP/e1br/[x] && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a [..] cd target read as a literal path"
+mkdir -p "$TMP/e1br/{x..x}"
+E1BR="true && cd $TMP/e1br/{x..x} && git merge feat/x"   # a variable: bash 3.2 brace-expands inside "$(… "…")"
+[ "$(e1d "$E1BR")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a {..} sequence cd target read as a literal path"
 E1H="$TMP/e1home/h"; mkdir -p "$E1H+"
 [ "$(HOME="$E1H" e1d 'true && cd ~+ && git merge feat/x')" = 2 ] \
   || E1BAD="$E1BAD | wrongly allowed: cd ~+ read as \$HOME+ (it is the current directory)"

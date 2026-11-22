@@ -164,7 +164,7 @@ function expand(x,    nm, rest) {
 }
 function joindir1(cur, x) {
   x = expand(x)
-  if (x ~ /\[/ || x ~ /\{[^}]*,[^}]*\}/) return "?"   # [ab] and {a,b} expand: the literal path is not where it goes
+  if (x ~ /\[/ || x ~ /\{[^}]*\}/) return "?"   # [ab], {a,b}, {a..z} expand: the literal path is not where it goes
   if (x == "@TMP") return (cur == "?") ? "@TMP" : "@TMP"
   if (cur == "@TMP" && x !~ /^[\/~]/ && x !~ /[$`*?\001\002]/ && x != "-" && x !~ /(^|\/)\.\.(\/|$)/) return "@TMP"
   if (cur == "?" || cur == "@TMP" || x == "" || x == "-" || x ~ /[$`*?\001\002]/) return "?"
