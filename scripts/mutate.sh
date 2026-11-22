@@ -724,6 +724,7 @@ ME2E66@@hooks/block-shared-tree-destructive-git.sh@@  if (cmd in UNSAFE) NOBIND 
 ME2E67@@hooks/block-shared-tree-destructive-git.sh@@  if (cmd in REDEFINE) { NOBIND = 1; SHADOW = 1 }@@  if (0) { NOBIND = 1; SHADOW = 1 }@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E68@@hooks/block-shared-tree-destructive-git.sh@@ if (W[j] == "-v") NOBIND = 1@@ if (0) NOBIND = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E69@@hooks/block-shared-tree-destructive-git.sh@@  if (cmd ~ /^([0-9]*[<>]|&>)/) NOBIND = 1@@  if (0) NOBIND = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E70@@hooks/block-shared-tree-destructive-git.sh@@  if (cmd == "[[" && W[nw] != "]]") NOBIND = 1@@  if (0) NOBIND = 1@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 CATALOGUE
 }
 
