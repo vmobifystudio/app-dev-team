@@ -14163,6 +14163,8 @@ for c in 'T=$(mktemp -d) && git worktree add --detach "$T" HEAD && cd "$T" && gi
   'T=$(mktemp -d); cd "$T" && echo && git merge feat/x'; do
   [ "$(e1d "$c")" = 0 ] || E1BAD="$E1BAD | wrongly refused: $c"
 done
+# Leo PR50-r5 §1: the `cd $E1/lnk/..` case below needs the link and its target to exist already
+mkdir -p "$E1/.agent-wt/web-developer-2/src"; ln -sfn "$E1/.agent-wt/web-developer-2/src" "$E1/lnk"
 for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tmp/x); cd "$W" && git merge feat/x' \
   "W=$E1; cd \"\$W\" && git merge feat/x" 'T=$(mktemp -d); cd "$T" && git branch -f main HEAD' \
   'T=$(mktemp -d); cd "$T/.." && git merge feat/x' 'W=/x; W=$(cat f); cd "$W" && git merge feat/x' \
@@ -14235,7 +14237,7 @@ mkdir -p "$E1H/x"
 [ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git stash clear')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: stash clear in a temp worktree (the stack is shared)"
 ( cd "$E1" && git branch -q e2e-unmerged && git checkout -q e2e-unmerged && git commit -q --allow-empty -m u && git checkout -q main ) >/dev/null 2>&1
 [ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git branch -D e2e-unmerged')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: branch -D in a temp worktree (branches are shared)"
-ln -sfn "$E1/.agent-wt/web-developer-2/src" "$E1/lnk" 2>/dev/null; mkdir -p "$E1/.agent-wt/web-developer-2/src"
+[ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git push --force origin HEAD:main')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a force push from a temp worktree (the remote is shared)"
 # a heredoc fed to a shell is another process: an unexported binding made here is empty there
 [ "$(e1d "$(printf 'Q=$(mktemp -d); bash <<%sEOF%s\ncd "$Q" \046\046 git merge feat/x\nEOF' "'" "'")")" = 2 ] \
   || E1BAD="$E1BAD | wrongly allowed: an unexported temp binding used inside a heredoc shell"

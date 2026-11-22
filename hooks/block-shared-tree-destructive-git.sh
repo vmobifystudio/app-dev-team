@@ -168,7 +168,7 @@ function expand(x,    nm, rest, unq) {
 function joindir1(cur, x) {
   x = expand(x)
   if (x ~ /\[/ || x ~ /\{[^}]*\}/) return "?"   # [ab], {a,b}, {a..z} expand: the literal path is not where it goes
-  if (x == "@TMP") return (cur == "?") ? "@TMP" : "@TMP"
+  if (x == "@TMP") return "@TMP"
   if (cur == "@TMP" && x !~ /^[\/~]/ && x !~ /[$`*?\001\002]/ && x != "-" && x !~ /(^|\/)\.\.(\/|$)/) return "@TMP"
   if (cur == "?" || cur == "@TMP" || x == "" || x == "-" || x ~ /[$`*?\001\002]/) return "?"
   if (x ~ /^~/) { if (home == "" || x !~ /^~(\/|$)/) return "?"; x = home substr(x, 2) }   # ~+ ~- ~user ~N: unknown
@@ -181,7 +181,7 @@ function lex1(p,    C, n, j, o, k, out) {
   out = ""; for (j = 1; j <= k; j++) out = out "/" o[j]
   return out == "" ? "/" : out
 }
-function lexdir(d, P,    C, n, j, out) { n = split(d, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, (P && C[j] ~ /(^|\/)\.\.(\/|$)/) ? "?" : lex1(C[j])); return out }
+function lexdir(d,    C, n, j, out) { n = split(d, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, lex1(C[j])); return out }
 function joindir(cur, x,    C, n, j, out) { n = split(cur, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, joindir1(C[j], x)); return out }
 
 # A pathspec that names the whole tree.
@@ -376,7 +376,7 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
       for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
       nd = joindir(dir, (j <= nw) ? W[j] : home)
       for (x = i + 1; x < j; x++) if (W[x] ~ /^-[A-Za-z]*P/) break
-      nd = (x < j) ? "?" : lexdir(nd, 0)   # `cd -P` resolves symlinks first: where it lands is unknown here
+      nd = (x < j) ? "?" : lexdir(nd)   # `cd -P` resolves symlinks first: where it lands is unknown here
       # `pushd -n` / `pushd +N` / a bare `pushd` edit, rotate or swap the stack: where it lands is unknown
       if (cmd == "pushd" && (j > i + 1 || j > nw || W[j] ~ /^[+-][0-9]/)) { nd = "?"; unsure = 1 }
       if (cmd == "pushd") PSTK[++PN] = dir
