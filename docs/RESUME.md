@@ -4,7 +4,7 @@
 first and nothing else until you have.*
 
 **Last updated:** 2026-11-22 · **Branch:** `main` (3.2.2)
-**Suite:** 2662 passed, 0 failed · **Invariants:** 12/12 · **Version:** 3.2.2 · 29 roles · 26 skills · 21 commands
+**Suite:** 2662 passed on macOS, 0 failed (Linux CI runs 2657: 4 assertions are macOS-only, 1 more Linux-skip not yet identified) · **Invariants:** 12/12 · **Version:** 3.2.2 · 29 roles · 26 skills · 21 commands
 
 ## 2026-11-22 — first real `/app-ship` run, 3.2.2
 

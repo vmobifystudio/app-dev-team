@@ -14237,7 +14237,7 @@ mkdir -p "$E1H/x"
 [ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git stash clear')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: stash clear in a temp worktree (the stack is shared)"
 ( cd "$E1" && git branch -q e2e-unmerged && git checkout -q e2e-unmerged && git commit -q --allow-empty -m u && git checkout -q main ) >/dev/null 2>&1
 [ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git branch -D e2e-unmerged')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: branch -D in a temp worktree (branches are shared)"
-[ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git push --force origin HEAD:main')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a force push from a temp worktree (the remote is shared)"
+[ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git push --force origin HEAD:feat/e2e-scratch')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a force push from a temp worktree (the remote is shared)"
 # a heredoc fed to a shell is another process: an unexported binding made here is empty there
 [ "$(e1d "$(printf 'Q=$(mktemp -d); bash <<%sEOF%s\ncd "$Q" \046\046 git merge feat/x\nEOF' "'" "'")")" = 2 ] \
   || E1BAD="$E1BAD | wrongly allowed: an unexported temp binding used inside a heredoc shell"

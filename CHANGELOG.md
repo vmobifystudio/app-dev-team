@@ -16,6 +16,10 @@ a second tab resurrecting deleted items). The gate did its job. Its false refusa
   (and `source`/`.` leave the directory unknown); a nameref or arithmetic (`declare -n/-i`, `let`, `((`, `$[`, an array subscript) disables binding. The spawn prompt now says to chain
   `cd "$T" && git …` (a `;` after a failed cd runs git in the shared tree, which is refused).
   Mutations ME2E50, ME2E51, ME2E53–ME2E61.
+- **Leo's PR #50 round-5 review:** 3.2.1 said "ME2E1–ME2E49 caught", but ME2E33 was caught by a
+  different case — its own symlink probe ran before the link existed. The link is now created
+  before the refusal loop. Round 24's force-push tag (`REF=S`) had no probe; one is added with
+  ME2E62. The dead `lexdir` flag and a constant ternary in `joindir1` are removed.
 
 ## [3.2.1] — 2026-11-22 (first real headless end-to-end run, PR #50)
 
