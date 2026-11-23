@@ -46,6 +46,13 @@ a second tab resurrecting deleted items). The gate did its job. Its false refusa
   any HOME mention clears it), ME09 (`hits()` already resolves symlinks on literal paths), MP03 (the
   `if (qa)` return above it). ME2E73–77 (Leo's note) give the dq `$[`/`${…}`/`$((`, parse `$((` and
   heredoc `PS=2` lines their own rows, with quoted and unquoted arithmetic probes.
+- **Keyword mode (Codex round 13).** Under `set -k` an assignment after the command name persists
+  (`: W=10`), so a `set` turning on `-k`/`keyword` (or with a dynamic argument) and an inherited
+  `SHELLOPTS=keyword` disable binding; `set -e`/`-euo pipefail` still bind (ME2E78, ME2E79).
+  **Fail-open fixed:** under an inherited `SHELLOPTS=keyword`, every `awk -v x=y` in
+  `block-shared-tree-destructive-git`, `block-cross-worktree-write` and `require-review-verdict` became an
+  environment assignment, the awk program failed, and the hook exited 0. Each now turns keyword
+  mode off before anything else (ME2E80, MKW1, MKW2).
 
 ## [3.2.1] — 2026-11-22 (first real headless end-to-end run, PR #50)
 
