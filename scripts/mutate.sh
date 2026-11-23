@@ -240,7 +240,7 @@ M110@@scripts/lib/actor.mjs@@if (rec.role !== role) return@@if (false) return@@T
 M111@@scripts/lib/actor.mjs@@if (rec.ticket !== String(ticket).toUpperCase()) return@@if (false) return@@TC: a token minted for another ticket is refused@@Sprint 2 track C
 M112@@scripts/lib/actor.mjs@@if (r.records.some((x) => x.kind === 'revoke' && x.token_id === rec.token_id)) return@@if (false) return@@TC: a revoked token is refused@@Sprint 2 track C
 M113@@scripts/lib/events.mjs@@const prior = (state?.events || []).find((e) => e.actor?.token_id === tokenId && e.event !== candidate.event);@@const prior = null;@@TC: the token that verified a ticket may not also approve it@@Sprint 2 track C
-M114@@scripts/board.mjs@@if (gate && tokenModeWasRequired(paths.log)) {@@if (false) {@@TC: dropping requireActorTokens after the board used it is refused (the ratchet)@@Sprint 2 track C
+M114@@scripts/board.mjs@@if (gate && tokenModeWasRequired(paths.log)) {@@if (false) {@@TC: a pre-policy_floor board that used tokens keeps the ratchet (M114)@@Sprint 2 track C
 M115@@scripts/board.mjs@@const escalated = Boolean(diff && RANK[diff.risk] > plannedRank);@@const escalated = false;@@TC: a ticket planned without risk whose diff touches auth/ cannot merge on medium approvals@@Sprint 2 track C
 M116@@scripts/board.mjs@@!(EVIDENCE_CHECKS[k] && EVIDENCE_CHECKS[k](state))@@!(!EVIDENCE_CHECKS[k] || EVIDENCE_CHECKS[k](state))@@TC: a required_evidence kind with no checker fails closed at merged@@Sprint 2 track C
 M117@@scripts/board.mjs@@: to !== bound.detail.commit@@: false@@TC: a bound approval whose verdict Scope is not the bound candidate is refused@@Sprint 2 track C
@@ -324,7 +324,7 @@ ML02@@hooks/contract-hooks.mjs@@if (dynamicMjs || dynamicScript) {@@if (false) {
 ML03@@hooks/contract-hooks.mjs@@if (hitsH(w.v.pat, G[key], tree)) {@@if (false) {@@K2: guard exit 2 for Bash: cp x docs/team/risk-policy.json@@Sprint 4 track K2
 ML04@@hooks/contract-hooks.mjs@@if (a.v.text === '-t' || a.v.text === '--target-directory')@@if (false)@@K2: guard exit 2 for Bash: cp -t docs/team/evidence x.json@@Sprint 4 track K2
 ML05@@hooks/contract-hooks.mjs@@if (name === 'dd')@@if (false)@@K2: guard exit 2 for Bash: dd if=x.json@@Sprint 4 track K2
-ML06@@hooks/contract-hooks.mjs@@if (s === '' || s === '.') continue;@@if (s === '') continue;@@K2: guard exit 2 for Bash: echo {} > docs/team/./evidence@@Sprint 4 track K2
+ML06@@hooks/contract-hooks.mjs@@if (s === '' || s === '.') continue;@@if (s === '') continue;@@K2: guard exit 2 for Bash: cp x.json docs/team/./evidenc?/@@Sprint 4 track K2
 ML07@@hooks/contract-hooks.mjs@@if (name === 'cd' || name === 'pushd') {@@if (false) {@@K2: guard exit 2 for Bash: cd docs/team && cp x.json evidence/@@Sprint 4 track K2
 ML08@@hooks/contract-hooks.mjs@@pat += s.replace(/\[[^\]/]*\]/g, ONE).replace(/\*/g, STAR).replace(/\?/g, ONE);@@pat += s.replace(/\*/g, STAR);@@K2: guard exit 2 for Bash: cp x.json docs/team/evidenc?/@@Sprint 4 track K2
 ML09@@hooks/contract-hooks.mjs@@    if (c === '"') {@@    if (false) {@@K2: guard exit 0 for Bash: node scripts/board.mjs move APP-001 blocked --by ios-developer --detail "the actor field is wrong"@@Sprint 4 track K2

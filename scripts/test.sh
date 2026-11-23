@@ -14225,7 +14225,7 @@ for c in "$E1W; read W < /dev/null; cd \"\$W\" && git merge feat/x" "$E1W; for W
   "$E1W; (( ++W )); cd \"\$W\" && git merge feat/x" \
   "$E1W; printf '%s%n' x W; cd \"\$W\" && git merge feat/x" "$E1W; A[W=1]=0; cd \"\$W\" && git merge feat/x" \
   "$E1W; F=x; printf \"\$F\" x W; cd \"\$W\" && git merge feat/x" "$E1W; : \$[W=1]; cd \"\$W\" && git merge feat/x" "$E1W; : \"\$[W=1]\"; cd \"\$W\" && git merge feat/x" \
-  "$E1W; A=(x); : \"\${A[W=1]}\"; cd \"\$W\" && git merge feat/x" "$E1W; : \"\$((W=1))\"; cd \"\$W\" && git merge feat/x" "$E1W; : \$((W=1)); cd \"\$W\" && git merge feat/x" \
+  "$E1W; A=(x); : \"\${A[W=1]}\"; cd \"\$W\" && git merge feat/x" "$E1W; : \"\$((++W))\"; cd \"\$W\" && git merge feat/x" "$E1W; : \$((++W)); cd \"\$W\" && git merge feat/x" \
   "$E1W; printf '%2s%ln' x W; cd \"\$W\" && git merge feat/x" "declare -u W; $E1W; cd \"\$W\" && git merge feat/x" \
   "O=-n; declare \"\$O\" R=W; $E1W; cd \"\$W\" && git merge feat/x" "$E1W; A=(x); : \${A[W=1]}; cd \"\$W\" && git merge feat/x" "$E1W; X=abc; : \${X:W=1}; cd \"\$W\" && git merge feat/x" "$E1W; [[ W++ -eq 1 ]]; cd \"\$W\" && git merge feat/x" \
   "$E1W; printf -v\"W\" %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; trap 'W=$E1' DEBUG; cd \"\$W\" && git merge feat/x" \

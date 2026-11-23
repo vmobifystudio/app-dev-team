@@ -37,6 +37,15 @@ a second tab resurrecting deleted items). The gate did its job. Its false refusa
   case flag, which only the non-QA classifier exercises — now probed) and ME2E41 (the strict
   `$NAME`/`${NAME}` match in `expand`, now fully subsumed by "any `${…}` but `${NAME}`
   disables binding" — row retired).
+- **Full local catalogue at `20fbf46`** (every row, not a sample): 8 survivors. Probes that could
+  not bite are fixed: ME2E23 (an assigned `OLDPWD`, which `cd` overwrites), M122 (a studio `$PWD` with
+  an unrelated payload cwd, so only `projectRoot` keeps the stop hook out), M114 (a legacy board with
+  no `policy_floor` keeps the token-mode ratchet), ML06 (a wildcard path skips `realish`, so only the
+  segment loop drops `.`), M8V2E (the second `reopened` follows a CAP block). Three guarded dead code,
+  deleted with their rows: ME2E22 (`joindir1` already tilde-expands a bound `~` with the same HOME, and
+  any HOME mention clears it), ME09 (`hits()` already resolves symlinks on literal paths), MP03 (the
+  `if (qa)` return above it). ME2E73–77 (Leo's note) give the dq `$[`/`${…}`/`$((`, parse `$((` and
+  heredoc `PS=2` lines their own rows, with quoted and unquoted arithmetic probes.
 
 ## [3.2.1] — 2026-11-22 (first real headless end-to-end run, PR #50)
 
