@@ -348,7 +348,7 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
       x = substr(W[j], RLENGTH + 1); nd = substr(W[j], 1, RLENGTH - 1)
       if (unsure || NEST) delete VARS[nd]
       else if (x ~ /^\001MKTEMP\001/ && substr(x, 9) !~ /[$`*?\001\002]|(^|\/)\.\.(\/|$)/) VARS[nd] = "@TMP"
-      else if (x != "" && x !~ /[$`*?\001\002]/ && x !~ /^~/ && !(nd in IMPLICIT)) VARS[nd] = x
+      else if (x != "" && x !~ /[$`*?\001\002]/ && !(nd in IMPLICIT)) VARS[nd] = x
       else delete VARS[nd]
     }
     return dir
@@ -487,8 +487,8 @@ function dq(s, i, dir,    n, c, e, k, out) {
     c = substr(s, i, 1)
     if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out lit(c); continue }
     if (c == "\"") break
-    if (c == "$" && substr(s, i + 1, 1) == "[") NOBIND = 1   # $[ … ] is arithmetic too
-    if (c == "$" && substr(s, i + 1, 1) == "{" && substr(s, i, index(substr(s, i), "}")) !~ /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/) NOBIND = 1   # any ${…} but ${NAME}: offsets, subscripts, defaults are arithmetic or writes
+    if (c == "$" && substr(s, i + 1, 1) == "[") NOBIND = 1   # $[ … ] is arithmetic too (quoted)
+    if (c == "$" && substr(s, i + 1, 1) == "{" && substr(s, i, index(substr(s, i), "}")) !~ /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/) NOBIND = 1   # any ${…} but ${NAME}: offsets, subscripts, defaults are arithmetic or writes (quoted)
     if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
     out = out (c == "~" ? "\002" : c)   # no tilde expansion inside double quotes

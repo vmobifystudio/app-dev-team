@@ -9906,7 +9906,7 @@ s2b_stop app-dev-team:ux-architect a6 "Flows written." "$S2B" >/dev/null 2>&1
   || bad "C6: a stop naming no ticket is persisted under the role name and not blocked"
 s2b_stop app-dev-team:code-reviewer a7 "$S2BPART" "$S2B" >/dev/null 2>&1
 [ $? = 0 ] && ok "C10: the report hook leaves code-reviewer to its own hook" || bad "C10: the report hook leaves code-reviewer to its own hook"
-s2b_stop app-dev-team:ios-developer a8 "$S2BPART" "$S2BNO" >/dev/null 2>&1
+( cd "$S2B" && s2b_stop app-dev-team:ios-developer a8 "$S2BPART" "$S2BNO" ) >/dev/null 2>&1   # M122: $PWD is a studio project
 [ $? = 0 ] && [ ! -e "$S2BNO/docs" ] && ok "C10: the report hook is a no-op in an unrelated repo and writes nothing there" \
   || bad "C10: the report hook is a no-op in an unrelated repo and writes nothing there"
 ( cd "$S2B" && git worktree add -q .agent-wt/ios-developer -b wt-ios ) >/dev/null 2>&1
@@ -10167,6 +10167,11 @@ assert_exit 0 "TC: a different spawn's code-reviewer token approves" tcm "$K" mo
 printf '{}\n' > "$K/.studio-policy.json"
 assert_exit 2 "TC: dropping requireActorTokens after the board used it is refused (the ratchet)" tcm "$K" move TC-1 merged --by tech-manager
 assert_has "$TMP/err" "Restore \"requireActorTokens\": true" "TC: ...naming the downgrade"
+# M114: a board written before policy_floor existed (no floor, no hash chain, no anchor) keeps the older ratchet
+TL="$TMP/tc-legacy"; rm -rf "$TL"; cp -R "$K" "$TL"; rm -rf "$TL/.git/studio"
+node -e 'const fs = require("fs"), f = process.argv[1]; fs.writeFileSync(f, fs.readFileSync(f, "utf8").split("\n").map((l) => { if (!l.trim()) return l; const e = JSON.parse(l); delete e.hash; delete e.anchored; if (e.actor) delete e.actor.policy_floor; return JSON.stringify(e); }).join("\n"))' "$TL/docs/31-board-events.jsonl"
+assert_exit 2 "TC: a pre-policy_floor board that used tokens keeps the ratchet (M114)" tcm "$TL" move TC-1 merged --by tech-manager
+assert_has "$TMP/err" "recorded gate events under requireActorTokens" "TC: ...by the token-mode check"
 printf '{"requireActorTokens": true}\n' > "$K/.studio-policy.json"
 BT="$TMP/tc-boot"; rm -rf "$BT"; mkdir -p "$BT"; printf '{"owner":"founder"}\n' > "$BT/.studio-policy.json"
 node "$HERE/team-bootstrap.mjs" --root "$BT" >/dev/null 2>&1
@@ -11270,6 +11275,7 @@ k2g 2 Bash command 'perl -pi -e s/a/b/ docs/team/evidence/test-1.json'
 k2g 2 Bash command 'echo {} > docs//team/evidence/test-1.json'
 k2g 2 Bash command 'echo {} > docs/team/./evidence/test-1.json'
 k2g 2 Bash command 'cp x.json docs/team/evidenc?/'
+k2g 2 Bash command 'cp x.json docs/team/./evidenc?/'   # ML06: a wildcard path is not realish-normalised
 k2g 2 Bash command 'cd docs/team && cp x.json evidence/'
 k2g 2 Bash command 'bash -c "cp x docs/team/evidence/"'
 
@@ -13861,7 +13867,7 @@ bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "BUG-003 again" >/dev/nu
 # AU-3: tech-lead, not the founder, grants the extra cycle — once
 assert_exit 1 "Sprint 8 V2: AU-3 reopened --by founder is refused (the cap goes to tech-lead/cto)" bm "$S8" move APP-1 reopened --by founder
 assert_exit 0 "Sprint 8 V2: AU-3 reopened --by tech-lead is accepted" bm "$S8" move APP-1 reopened --by tech-lead --detail "spec fixed"
-bm "$S8" move APP-1 blocked --by tech-manager --detail "again" >/dev/null 2>&1
+bm "$S8" move APP-1 blocked --by tech-manager --detail "qa-failure cap (2) reached: again" >/dev/null 2>&1   # a CAP block: only the once rule refuses
 assert_exit 1 "Sprint 8 V2: AU-3 ...once per ticket" bm "$S8" move APP-1 reopened --by tech-lead
 # SM-2: descoped is terminal, out of flight, and re-plans its dependents
 assert_exit 1 "Sprint 8 V2: SM-2 descoped needs a reason" bm "$S8" move APP-1 descoped --by tech-manager
@@ -14218,12 +14224,13 @@ for c in "$E1W; read W < /dev/null; cd \"\$W\" && git merge feat/x" "$E1W; for W
   "$E1W; X+=a W+=/../..; cd \"\$W\" && git merge feat/x" "$E1W; let ++W; cd \"\$W\" && git merge feat/x" \
   "$E1W; (( ++W )); cd \"\$W\" && git merge feat/x" \
   "$E1W; printf '%s%n' x W; cd \"\$W\" && git merge feat/x" "$E1W; A[W=1]=0; cd \"\$W\" && git merge feat/x" \
-  "$E1W; F=x; printf \"\$F\" x W; cd \"\$W\" && git merge feat/x" "$E1W; : \$[W=1]; cd \"\$W\" && git merge feat/x" \
+  "$E1W; F=x; printf \"\$F\" x W; cd \"\$W\" && git merge feat/x" "$E1W; : \$[W=1]; cd \"\$W\" && git merge feat/x" "$E1W; : \"\$[W=1]\"; cd \"\$W\" && git merge feat/x" \
+  "$E1W; A=(x); : \"\${A[W=1]}\"; cd \"\$W\" && git merge feat/x" "$E1W; : \"\$((W=1))\"; cd \"\$W\" && git merge feat/x" "$E1W; : \$((W=1)); cd \"\$W\" && git merge feat/x" \
   "$E1W; printf '%2s%ln' x W; cd \"\$W\" && git merge feat/x" "declare -u W; $E1W; cd \"\$W\" && git merge feat/x" \
   "O=-n; declare \"\$O\" R=W; $E1W; cd \"\$W\" && git merge feat/x" "$E1W; A=(x); : \${A[W=1]}; cd \"\$W\" && git merge feat/x" "$E1W; X=abc; : \${X:W=1}; cd \"\$W\" && git merge feat/x" "$E1W; [[ W++ -eq 1 ]]; cd \"\$W\" && git merge feat/x" \
   "$E1W; printf -v\"W\" %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; trap 'W=$E1' DEBUG; cd \"\$W\" && git merge feat/x" \
   "shopt -s cdable_vars; W=$E1; cd W && git merge feat/x" \
-  "$E1W; >/dev/null printf -v W %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; X='A[W=1]'; [[ -v \$X ]]; cd \"\$W\" && git merge feat/x" "$E1W; [[ x && W++ -eq 1 ]]; cd \"\$W\" && git merge feat/x" "$E1W; [[ ( W++ -eq 1 ) ]]; cd \"\$W\" && git merge feat/x" "set -o posix; $E1W; W=$E1 :; cd \"\$W\" && git merge feat/x" "$E1W; X='A[W=1]'; test -v \"\$X\"; cd \"\$W\" && git merge feat/x" \
+  "$E1W; >/dev/null printf -v W %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; X='A[W=1]'; [[ -v \$X ]]; cd \"\$W\" && git merge feat/x" "$E1W; [[ x && W++ -eq 1 ]]; cd \"\$W\" && git merge feat/x" "$E1W; [[ ( W++ -eq 1 ) ]]; cd \"\$W\" && git merge feat/x" "set -o posix; $E1W; W=$E1 :; cd \"\$W\" && git merge feat/x" "OLDPWD=$E1/.agent-wt/web-developer-2; cd $E1/.agent-wt/web-developer-2 && cd \"\$OLDPWD\" && git merge feat/x" "$E1W; X='A[W=1]'; test -v \"\$X\"; cd \"\$W\" && git merge feat/x" \
   "$(printf '%s; : <<EOF\n$((W=1))\nEOF\ncd "$W" \046\046 git merge feat/x' "$E1W")"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done

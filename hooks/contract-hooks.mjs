@@ -1026,8 +1026,7 @@ function guardGateWrites() {
   if (!candidates.length) allow();
   const asPat = (p) => {
     const abs = p.startsWith('~') ? homedir() + p.slice(1) : isAbsolute(p) ? p : resolve(cwd, p);
-    const real = /[*?[]/.test(abs) ? abs : realish(abs);
-    return real.replace(/\[[^\]/]*\]/g, ONE).replace(/\*/g, STAR).replace(/\?/g, ONE);
+    return abs.replace(/\[[^\]/]*\]/g, ONE).replace(/\*/g, STAR).replace(/\?/g, ONE);
   };
   for (const c of candidates) if (hits(asPat(c), [], G.transcripts)) refuse('read Claude Code session transcripts under ~/.claude/projects');
   // A recursive search FROM an ancestor (`Grep path: ~/.claude`) walks into the transcripts too.
