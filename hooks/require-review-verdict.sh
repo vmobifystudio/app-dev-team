@@ -62,6 +62,7 @@
 # misfires.
 
 set -u
+case $- in *k*) set +k ;; esac   # Codex round 13: an inherited SHELLOPTS=keyword turns every awk -v x=y below into an env assignment, and the hook fails open
 
 PAYLOAD=$(cat 2>/dev/null || true)
 [ -n "$PAYLOAD" ] || exit 0

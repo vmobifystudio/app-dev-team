@@ -239,7 +239,7 @@ export const docFile = (served, { qa = false } = {}) => (f) => {
   if (lf === BOARD_LOG) return false;
   if (qa) return QA_DOCS.test(f);
   if (f.startsWith('docs/')) return served ? PROSE_IN_DOCS.test(f) : true;
-  return !qa && PROSE_ANYWHERE.test(f);
+  return PROSE_ANYWHERE.test(f);
 };
 function docsIsServedSite(git, head) {
   const listed = git(['ls-tree', '--name-only', `${head}:docs`]);

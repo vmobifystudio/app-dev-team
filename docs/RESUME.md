@@ -3,8 +3,17 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-11-22 · **Branch:** `main` (3.2.1, PR #50 merged as 5564fcd)
-**Suite:** 2662 passed, 0 failed · **Invariants:** 12/12 · **Version:** 3.2.1 · 29 roles · 26 skills · 21 commands
+**Last updated:** 2026-11-22 · **Branch:** `main` (3.2.2)
+**Suite:** 2667 passed on macOS, 0 failed (Linux CI runs 2662: 4 assertions are macOS-only, 1 more Linux-skip not yet identified) · **Invariants:** 12/12 · **Version:** 3.2.2 · 29 roles · 26 skills · 21 commands
+
+## 2026-11-22 — first real `/app-ship` run, 3.2.2
+
+`/app-ship` on the e2e to-do app (headless, 3.2.1, $10.72, 40 min) refused to cut v0.1.0:
+verification FAIL and 11 undecided findings, two of them real data-loss bugs (double-click delete
+removes two items; a stale second tab resurrects deleted ones) plus tests that cannot catch loss
+(VER-001..004). Security/privacy PASS WITH NOTES. No upload, tag or waiver — the founder gate held.
+Its one false refusal (E2E-5, an echoed temp path read as a rebinding) is fixed in 3.2.2.
+Next: E2E run 2 on a real Mobify app, Android-first, to a submission-ready build (review T5/T6).
 
 ## 2026-11-22 — first real e2e run, 3.2.1 (PR #50)
 
@@ -16,8 +25,7 @@ assertion and a mutation (ME2E1–ME2E49), and the general bound is stated in HA
 destructive-git hook reads the command, not the filesystem"). Register:
 `docs/reviews/2026-11-18-sprint-2.md` § 2026-11-22. External review (T1–T22) was triaged; its
 housekeeping items landed after #50.
-Next: restart Claude Code on 3.2.1, resume `/app-ship` on the e2e project and audit its verdict, then
-E2E run 2 — a real Mobify app, Android-first, to a submission-ready build.
+Done: `/app-ship` resumed and audited (above).
 
 ## 2026-11-21/22 — nine-lens studio audit and Sprint 8 (`fix/sprint-8`, PR #49)
 

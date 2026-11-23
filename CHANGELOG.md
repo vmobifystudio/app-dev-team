@@ -3,6 +3,57 @@
 All notable changes to this plugin are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.2.2] — 2026-11-22
+
+First real `/app-ship` run (the e2e to-do app, on 3.2.1): the studio refused to cut v0.1.0 —
+verification FAIL, 11 undecided findings including two real data-loss bugs (double-click delete,
+a second tab resurrecting deleted items). The gate did its job. Its false refusal:
+
+- **E2E-5** a VE mutation probe that echoed its temp path (`echo "T=$T"`) was refused: the
+  once-only binding rule read the text `T=` as a second assignment (macOS temp paths, which
+  contain `/T/`, tripped it the same way). Text no longer unbinds anything. Instead, a binding
+  holds only while the command runs **no builtin that can write a variable or run code** —
+  `export`, `read`, `printf`, the `declare` family, `unset`, `let`, `getopts`, `mapfile`, `for`,
+  `select`, `coproc`, `wait`, `eval`, `source`/`.` and the like; an external command cannot
+  touch the shell's variables, so it never matters. `trap`, `alias`, `enable` and `shopt` can
+  also redefine what `cd` does, so they trust no cd either. Expansions that write are caught
+  where they appear: `W+=`/`W[i]=`, a prefix assignment `W=x cmd` (it persists in POSIX mode), any `${…}` other than a plain `${NAME}`, arithmetic (`((`,
+  `$((`, `$[`, any `[[ … ]]`, a `-v` test in `test`/`[`), a leading redirection that hides the command, and `$((`/`$[`/`${` in an unquoted heredoc body. This replaced
+  eight Codex rounds of per-builtin modelling (`printf -v"W"`, `%ln`, `declare -u`, `declare
+  "$O"`, `${A[W=2]}`, `${X:W=2}`, DEBUG traps, …) with one rule that covers the class. Cost: a
+  command that logs with `printf` before a variable-named `cd` is refused — use `echo`. The
+  spawn prompt also says to chain `cd "$T" && git …` (a `;` after a failed cd runs git in the
+  shared tree, which is refused). Mutations ME2E51, ME2E57, ME2E59, ME2E61, ME2E63, ME2E64, ME2E66–ME2E69, ME2E71, ME2E72.
+- **Leo's PR #50 round-5 review:** 3.2.1 said "ME2E1–ME2E49 caught", but ME2E33 was caught by a
+  different case — its own symlink probe ran before the link existed. The link is now created
+  before the refusal loop. Round 24's force-push tag (`REF=S`) had no probe; one is added with
+  ME2E62. The dead `lexdir` flag and a constant ternary in `joindir1` are removed.
+- **`mutation-full` survivors** (5 of a 60-row sample at `1fa2ad3`, all older than this release):
+  MS01's probe gained `actor list`, which only its check refuses; ME08's prompt names the ticket
+  the data-analyst owns, so the gate classification decides; MT15's probe calls the non-QA
+  classifier, where the case fold matters. MK02 (a re-freeze role check the capability matrix
+  already enforces) and MS8V8-6 (a `--help` block `parseArgs` already answers) guarded dead code —
+  both deleted with their rows. A second sample at `02e0b12` surfaced two more: MT16 (the manifest pattern's
+  case flag, which only the non-QA classifier exercises — now probed) and ME2E41 (the strict
+  `$NAME`/`${NAME}` match in `expand`, now fully subsumed by "any `${…}` but `${NAME}`
+  disables binding" — row retired).
+- **Full local catalogue at `20fbf46`** (every row, not a sample): 8 survivors. Probes that could
+  not bite are fixed: ME2E23 (an assigned `OLDPWD`, which `cd` overwrites), M122 (a studio `$PWD` with
+  an unrelated payload cwd, so only `projectRoot` keeps the stop hook out), M114 (a legacy board with
+  no `policy_floor` keeps the token-mode ratchet), ML06 (a wildcard path skips `realish`, so only the
+  segment loop drops `.`), M8V2E (the second `reopened` follows a CAP block). Three guarded dead code,
+  deleted with their rows: ME2E22 (`joindir1` already tilde-expands a bound `~` with the same HOME, and
+  any HOME mention clears it), ME09 (`hits()` already resolves symlinks on literal paths), MP03 (the
+  `if (qa)` return above it). ME2E73–77 (Leo's note) give the dq `$[`/`${…}`/`$((`, parse `$((` and
+  heredoc `PS=2` lines their own rows, with quoted and unquoted arithmetic probes.
+- **Keyword mode (Codex round 13).** Under `set -k` an assignment after the command name persists
+  (`: W=10`), so a `set` turning on `-k`/`keyword` (or with a dynamic argument) and an inherited
+  `SHELLOPTS=keyword` disable binding; `set -e`/`-euo pipefail` still bind (ME2E78, ME2E79).
+  **Fail-open fixed:** under an inherited `SHELLOPTS=keyword`, every `awk -v x=y` in
+  `block-shared-tree-destructive-git`, `block-cross-worktree-write` and `require-review-verdict` became an
+  environment assignment, the awk program failed, and the hook exited 0. Each now turns keyword
+  mode off before anything else (ME2E80, MKW1, MKW2).
+
 ## [3.2.1] — 2026-11-22 (first real headless end-to-end run, PR #50)
 
 The first real `/app-run --yolo` run on 3.2.0 (a web to-do app) closed 15/15 board tickets — 8 product,
@@ -43,7 +94,7 @@ corrupt-storage / 320 px. The fixes below are the false refusals that run hit.
   other parameter operators are unknown (round 21); `git stash drop/clear`, `branch -D` and a force push keep their check in a temp
   worktree — stash, branches and the remote are shared (rounds 23–24); `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` in the command or the hook's
   environment leave git's target unknown (round 25); a `[…]` or `{…}` cd target is unknown (rounds 26–27); an unquoted `$W` whose value would word-split is unknown
-  (round 28). Mutations ME2E1–ME2E49 caught.
+  (round 28). Mutations ME2E1–ME2E49 (ME2E33's own probe did not bite at 3.2.1 — corrected in 3.2.2).
 - **E2E-4** reviewers are told to spell a temp path literally across Bash calls, never `$(cat file)` it.
 - **EN-13** the spawn budget counts the project's platform KB pack (web → web-conventions).
 

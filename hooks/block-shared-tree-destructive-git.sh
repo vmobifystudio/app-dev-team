@@ -81,6 +81,8 @@
 # string assembled at runtime are out of reach — closing those means not being a static hook.
 
 set -u
+case ${SHELLOPTS:-} in *keyword*) KW=1 ;; *) KW=0 ;; esac   # the agent shell inherits it too: see the parser
+case $- in *k*) set +k ;; esac   # Codex round 13: an inherited SHELLOPTS=keyword turns every awk -v x=y below into an env assignment, and the hook fails open
 
 PAYLOAD=$(cat 2>/dev/null || true)
 [ -n "$PAYLOAD" ] || exit 0
@@ -133,7 +135,7 @@ PLUGIN=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)
 # (after && / ||, in a pipeline or behind &, inside if/while/case/a function body, popd, a cd the
 # command redefines, a directory it cannot enter) keeps the old one as a candidate. Candidates are
 # joined by \034; every verdict line is printed once per candidate.
-SEGS=$(printf '%s\n' "$CMD" | awk -v base="$BASE" -v home="${HOME:-}" -v wrapfile="$PLUGIN/hooks/wrappers.txt" '
+SEGS=$(printf '%s\n' "$CMD" | awk -v kw="$KW" -v base="$BASE" -v home="${HOME:-}" -v wrapfile="$PLUGIN/hooks/wrappers.txt" '
 function emit(kind, ref, dir, why,    C, n, j) {
   n = split(dir, C, SEP)
   for (j = 1; j <= n; j++) printf "%s\t%s\t%s\t%s\n", kind, (ref == "" ? "-" : ref), C[j], why
@@ -151,7 +153,8 @@ function enterable(list,    C, n, j) {
 # E2E-3: `$(mktemp …)` is a FRESH directory this command made — no other work in it, never the main
 # checkout — so it stands as "@TMP". `NAME=literal` / `NAME=$(mktemp …)` bind for the rest of the
 # command (VARS), so `cd "$W"` to a bound name is that path. Anything else assigned is unknown again.
-function once(nm,    t) { t = CMDALL; return gsub("(^|[^$A-Za-z0-9_{])" nm "([^A-Za-z0-9_]|$)", "", t) }
+# E2E-5: a binding is killed by a WRITE, not by its name appearing in text (`echo "T=$T"`): see unbind()
+function rebound(nm) { return NOBIND || index(CMDALL, "${" nm "=") || index(CMDALL, "${" nm ":=") }
 function lit(t) { gsub(/[$~]/, "\002", t); return t }   # quoted/escaped: neither expands
 function sub_word(body) { return (body ~ /^[ \t]*mktemp([ \t]+-[A-Za-z]+)*[ \t]*$/) ? "\001MKTEMP\001" : "$(...)" }
 function expand(x,    nm, rest, unq) {
@@ -159,7 +162,7 @@ function expand(x,    nm, rest, unq) {
   if (x ~ /^\001MKTEMP\001/) return (substr(x, 9) ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
   if (!match(x, /^(\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})/)) return x   # ${T:+x}, ${T%/*}: unknown
   nm = substr(x, 2, RLENGTH - 1); gsub(/[{}]/, "", nm); rest = substr(x, RLENGTH + 1)
-  if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/ || once(nm) != 1) return x
+  if (!(nm in VARS) || rest ~ /^[A-Za-z0-9_]/ || rebound(nm)) return x
   if (unq && (CMDALL ~ /IFS/ || (VARS[nm] == "@TMP" ? ENVIRON["TMPDIR"] : VARS[nm]) ~ /[ \t\n]/)) return "?"   # it word-splits
   if (VARS[nm] == "@TMP") return (rest ~ /(^|\/)\.\.(\/|$)|[$`*?\001\002]/) ? "?" : "@TMP"
   return VARS[nm] rest
@@ -167,7 +170,7 @@ function expand(x,    nm, rest, unq) {
 function joindir1(cur, x) {
   x = expand(x)
   if (x ~ /\[/ || x ~ /\{[^}]*\}/) return "?"   # [ab], {a,b}, {a..z} expand: the literal path is not where it goes
-  if (x == "@TMP") return (cur == "?") ? "@TMP" : "@TMP"
+  if (x == "@TMP") return "@TMP"
   if (cur == "@TMP" && x !~ /^[\/~]/ && x !~ /[$`*?\001\002]/ && x != "-" && x !~ /(^|\/)\.\.(\/|$)/) return "@TMP"
   if (cur == "?" || cur == "@TMP" || x == "" || x == "-" || x ~ /[$`*?\001\002]/) return "?"
   if (x ~ /^~/) { if (home == "" || x !~ /^~(\/|$)/) return "?"; x = home substr(x, 2) }   # ~+ ~- ~user ~N: unknown
@@ -180,7 +183,7 @@ function lex1(p,    C, n, j, o, k, out) {
   out = ""; for (j = 1; j <= k; j++) out = out "/" o[j]
   return out == "" ? "/" : out
 }
-function lexdir(d, P,    C, n, j, out) { n = split(d, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, (P && C[j] ~ /(^|\/)\.\.(\/|$)/) ? "?" : lex1(C[j])); return out }
+function lexdir(d,    C, n, j, out) { n = split(d, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, lex1(C[j])); return out }
 function joindir(cur, x,    C, n, j, out) { n = split(cur, C, SEP); out = ""; for (j = 1; j <= n; j++) out = addc(out, joindir1(C[j], x)); return out }
 
 # A pathspec that names the whole tree.
@@ -347,19 +350,35 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
       x = substr(W[j], RLENGTH + 1); nd = substr(W[j], 1, RLENGTH - 1)
       if (unsure || NEST) delete VARS[nd]
       else if (x ~ /^\001MKTEMP\001/ && substr(x, 9) !~ /[$`*?\001\002]|(^|\/)\.\.(\/|$)/) VARS[nd] = "@TMP"
-      else if (x != "" && x !~ /[$`*?\001\002]/ && x !~ /^~/ && !(nd in IMPLICIT)) VARS[nd] = x
+      else if (x != "" && x !~ /[$`*?\001\002]/ && !(nd in IMPLICIT)) VARS[nd] = x
       else delete VARS[nd]
     }
     return dir
   }
   cmd = W[i]
+  # Codex rounds 1-8 on #52: there is no end to the ways a BUILTIN can write a variable (`printf -v"W"`,
+  # `read -a`, `%ln`, `declare -u`, a DEBUG trap…). Only builtins can — an external command cannot
+  # touch the variables of this shell — so a command that runs any variable-writing or code-running
+  # builtin trusts no binding; one that can also redefine what `cd` does trusts no cd either.
+  if (cmd in UNSAFE) NOBIND = 1
+  # `W=x cmd`: a prefix assignment persists in POSIX mode (set -o posix, or bash run as sh) when cmd
+  # is a special builtin — whatever the mode, that name is no longer trusted
+  for (j = 1; j < i; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*=/)) delete VARS[substr(W[j], 1, RLENGTH - 1)]
+  if (cmd in REDEFINE) { NOBIND = 1; SHADOW = 1 }
+  # Codex round 13 on #52: in keyword mode (set -k, set -o keyword) an assignment AFTER the command name
+  # persists too, and a dynamic set argument may turn it on: trust no binding after either
+  if (cmd == "set") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*k/ || W[j] == "keyword" || W[j] ~ /[$`\001\002\003]/) NOBIND = 1
+  if (cmd == "[[") NOBIND = 1   # [[ … ]] evaluates arithmetic in too many forms (-eq, -v, ( ), &&): trust nothing after it
+  if (cmd == "test" || cmd == "[") for (j = i + 1; j <= nw; j++) if (W[j] == "-v") NOBIND = 1   # -v evaluates a subscript
+  if (cmd ~ /^([0-9]*[<>]|&>)/) NOBIND = 1   # a leading redirection hides the real command (`>/dev/null printf -v W`)
+  for (j = 1; j <= nw; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*(\+=|\[)/)) { x = W[j]; sub(/(\+=|\[).*/, "", x); delete VARS[x]; if (W[j] ~ /^[A-Za-z_][A-Za-z0-9_]*\[/) NOBIND = 1 }   # W+=x; A[i]=x — a subscript is arithmetic and may write any name
   if (cmd == "cd" || cmd == "pushd" || cmd == "popd") {
     if (cmd == "popd") { nd = (PN > 0) ? PSTK[PN--] : "?"; unsure = 1; LASTCD = "?" }
     else {
       for (j = i + 1; j <= nw && W[j] ~ /^-./; j++) ;
       nd = joindir(dir, (j <= nw) ? W[j] : home)
       for (x = i + 1; x < j; x++) if (W[x] ~ /^-[A-Za-z]*P/) break
-      nd = (x < j) ? "?" : lexdir(nd, 0)   # `cd -P` resolves symlinks first: where it lands is unknown here
+      nd = (x < j) ? "?" : lexdir(nd)   # `cd -P` resolves symlinks first: where it lands is unknown here
       # `pushd -n` / `pushd +N` / a bare `pushd` edit, rotate or swap the stack: where it lands is unknown
       if (cmd == "pushd" && (j > i + 1 || j > nw || W[j] ~ /^[+-][0-9]/)) { nd = "?"; unsure = 1 }
       if (cmd == "pushd") PSTK[++PN] = dir
@@ -405,14 +424,14 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
 
 # <<DELIM at s[i]: records the delimiter, returns the index of its last character.
 function heredoc(s, i, PD, PT, k,    c, d) {
-  PT[k] = 0
+  PT[k] = 0; HQLAST = 0
   if (substr(s, i, 1) == "-") { PT[k] = 1; i++ }
   while (substr(s, i, 1) == " " || substr(s, i, 1) == "\t") i++
   d = ""
   for (; i <= length(s); i++) {
     c = substr(s, i, 1)
     if (c ~ /[ \t\n;&|<>()]/) break
-    if (c != "\047" && c != "\"" && c != "\\") d = d c
+    if (c != "\047" && c != "\"" && c != "\\") d = d c; else HQLAST = 1
   }
   PD[k] = d
   return i - 1
@@ -432,7 +451,8 @@ function bodies(s, i, PD, PT, PS, np, dir,    k, e, n, line, body) {
       if (line == PD[k]) break
       body = body line "\n"
     }
-    if (PS[k]) xparse(body, dir)
+    if (PS[k] == 2) { if (body ~ /\$\(\(|\$\[|\$\{/) NOBIND = 1 }   # <<E body to cat or :: expanded, not run
+    else if (PS[k]) xparse(body, dir)
   }
   return i
 }
@@ -472,7 +492,9 @@ function dq(s, i, dir,    n, c, e, k, out) {
     c = substr(s, i, 1)
     if (c == "\\") { i++; c = substr(s, i, 1); if (c !~ /[$`"\\\n]/) out = out "\\"; out = out lit(c); continue }
     if (c == "\"") break
-    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "[") NOBIND = 1   # $[ … ] is arithmetic too (quoted)
+    if (c == "$" && substr(s, i + 1, 1) == "{" && substr(s, i, index(substr(s, i), "}")) !~ /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/) NOBIND = 1   # any ${…} but ${NAME}: offsets, subscripts, defaults are arithmetic or writes (quoted)
+    if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out sub_word(substr(s, i + 2, e - i - 2)); i = e; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); out = out "$(...)"; i += k; continue }
     out = out (c == "~" ? "\002" : c)   # no tilde expansion inside double quotes
   }
@@ -489,17 +511,19 @@ function parse(s, dir,    n, i, c, w, inw, W, nw, PD, PT, PS, np, e, k, op, last
     if (c == "\\") { i++; if (i <= n && substr(s, i, 1) != "\n") { w = w lit(substr(s, i, 1)); inw = 1 } continue }
     if (c == "\047") { k = index(substr(s, i + 1), "\047"); if (!k) k = n - i + 1; w = w lit(substr(s, i + 1, k - 1)); i += k; inw = 1; continue }
     if (c == "\"") { i = dq(s, i + 1, dir); w = w DQ; inw = 1; continue }
-    if (c == "$" && substr(s, i + 1, 1) == "(") { e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "[") NOBIND = 1   # $[ … ] is arithmetic too (unquoted)
+    if (c == "$" && substr(s, i + 1, 1) == "{" && substr(s, i, index(substr(s, i), "}")) !~ /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/) NOBIND = 1   # any ${…} but ${NAME}: offsets, subscripts, defaults are arithmetic or writes (unquoted)
+    if (c == "$" && substr(s, i + 1, 1) == "(") { if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w sub_word(substr(s, i + 2, e - i - 2)); i = e; inw = 1; continue }
     if (c == "`") { k = index(substr(s, i + 1), "`"); if (!k) k = n - i + 1; nparse(substr(s, i + 1, k - 1), dir); w = w "$(...)"; i += k; inw = 1; continue }
     if (c == "#" && !inw) { while (i <= n && substr(s, i, 1) != "\n") i++; i--; continue }
     if (c == "$" && !inw && substr(s, i + 1, 1) ~ /[A-Za-z_{]/) { w = "\003$"; inw = 1; continue }
     if (c == "<" && substr(s, i + 1, 1) == "<" && substr(s, i + 2, 1) != "<") {
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
       np++; PS[np] = (cmdat(W, nw) <= nw && W[cmdat(W, nw)] ~ /(^|\/)(ba|z|da|k)?sh$/)
-      i = heredoc(s, i + 2, PD, PT, np); continue
+      i = heredoc(s, i + 2, PD, PT, np); if (!PS[np] && !HQLAST) PS[np] = 2; continue
     }
     if (c == " " || c == "\t") { if (inw) { W[++nw] = w; w = ""; inw = 0 } continue }
-    if (c == "(" && !inw) { e = matchclose(s, i + 1); nparse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
+    if (c == "(" && !inw) { if (substr(s, i + 1, 1) == "(") NOBIND = 1; e = matchclose(s, i + 1); nparse(substr(s, i + 1, e - i - 1), dir); i = e; continue }
     if (c == "\n" || c == ";" || c == "|" || c == ")" || (c == "&" && substr(s, i - 1, 1) !~ /[<>]/ && substr(s, i + 1, 1) != ">")) {
       if (inw) { W[++nw] = w; w = ""; inw = 0 }
       op = c; if ((c == "&" || c == "|") && substr(s, i + 1, 1) == c) { op = c c; i++ }
@@ -525,6 +549,9 @@ BEGIN {
   SEP = "\034"
   split("then do else elif if while until ! { }", t, " "); for (k in t) SKIP[t[k]] = 1
   split("REPLY OPTARG OPTIND PWD OLDPWD HOME CDPATH IFS _ MAPFILE BASH_REMATCH COPROC TMPDIR PATH", t, " "); for (k in t) IMPLICIT[t[k]] = 1
+  if (kw) NOBIND = 1   # inherited keyword mode: an assignment after the command name persists (Codex round 13)
+  split("export declare typeset local readonly read getopts mapfile readarray unset let printf for select coproc wait eval source . fc bind caller compgen complete compopt", t, " "); for (k in t) UNSAFE[t[k]] = 1
+  split("trap alias unalias enable shopt", t, " "); for (k in t) REDEFINE[t[k]] = 1
   split("if while until for select case function {", t, " "); for (k in t) OPEN[t[k]] = 1
   split("fi done esac }", t, " "); for (k in t) CLOSE[t[k]] = 1
   # G7-8: the wrapper table is hooks/wrappers.txt, shared with contract-hooks.mjs — name, the

@@ -4094,6 +4094,8 @@ assert_exit 2 "...and so is the shared tree reaching into ANY agent's worktree �
   cwh "$CWT" "$CWT/.agent-wt/ios-developer/src/mine.js"
 assert_exit 0 "...but the shared tree writing to the shared tree is untouched" \
   cwh "$CWT" "$CWT/README.md"
+( cd "$CWT/.agent-wt/ios-developer" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"x"}}' "$CWT/.agent-wt/android-developer/src/other.js" | env SHELLOPTS=keyword sh "$CWH" ) >/dev/null 2>&1
+[ $? = 2 ] && ok "...and under an inherited SHELLOPTS=keyword too (the hook does not fail open)" || bad "...and under an inherited SHELLOPTS=keyword too (the hook does not fail open)"
 assert_exit 0 "a relative path resolves against the caller's own cwd, not misjudged as outside it" \
   cwh "$CWT/.agent-wt/ios-developer" "src/newfile.js"
 # THE macOS SYMLINK TRAP, CAUGHT BY TESTING IT: `/tmp` is itself a symlink to `/private/tmp` on
@@ -4156,7 +4158,9 @@ rv_log() { printf '%s\n' "$1" > "$RVT/docs/31-board-events.jsonl"; }  # one real
 printf '{"role":"user","content":"write your verdict to docs/53-reviews/APP-001-cycle-0.md, then run board.mjs move APP-001 approved --by code-reviewer --verdict <that file>."}\n{"role":"assistant","content":"Let me start reading the diff for APP-001."}\n' > "$RVT/exploit.jsonl"
 rv_log ''
 rv_payload "$RVT/exploit.jsonl" "Let me start reading the diff for APP-001." | sh "$RVH" >"$TMP/rv-exploit.txt" 2>&1
-[ $? = 2 ] && ok "MENTIONING the command in the transcript, with no real board event, is still BLOCKED (the v1 exploit, closed)" \
+RVX=$?; rv_payload "$RVT/exploit.jsonl" "Let me start reading the diff for APP-001." | env SHELLOPTS=keyword sh "$RVH" >/dev/null 2>&1
+[ $? = 2 ] && ok "...still BLOCKED under an inherited SHELLOPTS=keyword (the hook does not fail open)" || bad "...still BLOCKED under an inherited SHELLOPTS=keyword (the hook does not fail open)"
+[ $RVX = 2 ] && ok "MENTIONING the command in the transcript, with no real board event, is still BLOCKED (the v1 exploit, closed)" \
            || bad "MENTIONING the command in the transcript, with no real board event, is still BLOCKED (the v1 exploit, closed)" "$(cat "$TMP/rv-exploit.txt")"
 assert_has "$TMP/rv-exploit.txt" "Mentioning the command is not the same as running it" "the refusal names why prose doesn't satisfy it"
 
@@ -9906,7 +9910,7 @@ s2b_stop app-dev-team:ux-architect a6 "Flows written." "$S2B" >/dev/null 2>&1
   || bad "C6: a stop naming no ticket is persisted under the role name and not blocked"
 s2b_stop app-dev-team:code-reviewer a7 "$S2BPART" "$S2B" >/dev/null 2>&1
 [ $? = 0 ] && ok "C10: the report hook leaves code-reviewer to its own hook" || bad "C10: the report hook leaves code-reviewer to its own hook"
-s2b_stop app-dev-team:ios-developer a8 "$S2BPART" "$S2BNO" >/dev/null 2>&1
+( cd "$S2B" && s2b_stop app-dev-team:ios-developer a8 "$S2BPART" "$S2BNO" ) >/dev/null 2>&1   # M122: $PWD is a studio project
 [ $? = 0 ] && [ ! -e "$S2BNO/docs" ] && ok "C10: the report hook is a no-op in an unrelated repo and writes nothing there" \
   || bad "C10: the report hook is a no-op in an unrelated repo and writes nothing there"
 ( cd "$S2B" && git worktree add -q .agent-wt/ios-developer -b wt-ios ) >/dev/null 2>&1
@@ -10167,6 +10171,11 @@ assert_exit 0 "TC: a different spawn's code-reviewer token approves" tcm "$K" mo
 printf '{}\n' > "$K/.studio-policy.json"
 assert_exit 2 "TC: dropping requireActorTokens after the board used it is refused (the ratchet)" tcm "$K" move TC-1 merged --by tech-manager
 assert_has "$TMP/err" "Restore \"requireActorTokens\": true" "TC: ...naming the downgrade"
+# M114: a board written before policy_floor existed (no floor, no hash chain, no anchor) keeps the older ratchet
+TL="$TMP/tc-legacy"; rm -rf "$TL"; cp -R "$K" "$TL"; rm -rf "$TL/.git/studio"
+node -e 'const fs = require("fs"), f = process.argv[1]; fs.writeFileSync(f, fs.readFileSync(f, "utf8").split("\n").map((l) => { if (!l.trim()) return l; const e = JSON.parse(l); delete e.hash; delete e.anchored; if (e.actor) delete e.actor.policy_floor; return JSON.stringify(e); }).join("\n"))' "$TL/docs/31-board-events.jsonl"
+assert_exit 2 "TC: a pre-policy_floor board that used tokens keeps the ratchet (M114)" tcm "$TL" move TC-1 merged --by tech-manager
+assert_has "$TMP/err" "recorded gate events under requireActorTokens" "TC: ...by the token-mode check"
 printf '{"requireActorTokens": true}\n' > "$K/.studio-policy.json"
 BT="$TMP/tc-boot"; rm -rf "$BT"; mkdir -p "$BT"; printf '{"owner":"founder"}\n' > "$BT/.studio-policy.json"
 node "$HERE/team-bootstrap.mjs" --root "$BT" >/dev/null 2>&1
@@ -10358,8 +10367,9 @@ node "$HERE/spawn-prompt.mjs" compose --root "$SL" --ticket SL-1 --role code-rev
 SLG="$HERE/../hooks/guard-gate-writes.sh"
 slg() { node -e 'const [, t, a, k, v, c] = process.argv; const o = { hook_event_name: "PreToolUse", tool_name: t, cwd: c, tool_input: { [k]: v } };
   if (a) o.agent_id = a; process.stdout.write(JSON.stringify(o))' "$1" "$2" "$3" "$4" "$SL" | sh "$SLG" >/dev/null 2>&1; }
-slg Bash agent-1 command "node scripts/board.mjs actor mint --role code-reviewer --ticket SL-1"
-[ $? = 2 ] && ok "S2: guard-gate-writes refuses a subagent minting an actor token" || bad "S2: guard-gate-writes refuses a subagent minting an actor token"
+slg Bash agent-1 command "node scripts/board.mjs actor mint --role code-reviewer --ticket SL-1"; SLM=$?
+slg Bash agent-1 command "node scripts/board.mjs actor list"; SLL=$?   # MS01: only the any-subcommand check sees list
+[ $SLM = 2 ] && [ $SLL = 2 ] && ok "S2: guard-gate-writes refuses a subagent minting an actor token" || bad "S2: guard-gate-writes refuses a subagent minting an actor token"
 slg Bash "" command "node scripts/board.mjs actor mint --role code-reviewer --ticket SL-1"
 [ $? = 0 ] && ok "S2: ...the main session (the orchestrator) may mint" || bad "S2: ...the main session (the orchestrator) may mint"
 slg Write agent-1 file_path "$SL/docs/team/evidence/test-x.json"
@@ -10817,7 +10827,7 @@ head -1 "$TMP/te-dq.txt" | grep -q '^Design QA ticket APP-001\.' && te_spawn app
   || bad "S3E: a composed design-QA prompt (ux-architect) is ALLOWED by the pre-spawn hook"
 te_compose --ticket APP-001 --role product-designer --mode design-qa >/dev/null 2>&1
 [ $? = 2 ] && ok "S3E: ...and product-designer may not design-QA (its own design)" || bad "S3E: ...and product-designer may not design-QA (its own design)"
-printf 'Run the analytics gate on APP-001 and return one line: ANALYTICS: PASS | FAIL | CANNOT EVALUATE.\n' > "$TMP/te-an.txt"
+printf 'Run the analytics gate on APP-001-analytics and return one line: ANALYTICS: PASS | FAIL | CANNOT EVALUATE.\n' > "$TMP/te-an.txt"
 te_spawn app-dev-team:data-analyst "$TMP/te-an.txt" >/dev/null 2>&1
 [ $? = 0 ] && ok "S3E: a data-analyst ANALYTICS gate prompt is a gate spawn, not an un-contracted IC spawn" \
   || bad "S3E: a data-analyst ANALYTICS gate prompt is a gate spawn, not an un-contracted IC spawn"
@@ -11269,6 +11279,7 @@ k2g 2 Bash command 'perl -pi -e s/a/b/ docs/team/evidence/test-1.json'
 k2g 2 Bash command 'echo {} > docs//team/evidence/test-1.json'
 k2g 2 Bash command 'echo {} > docs/team/./evidence/test-1.json'
 k2g 2 Bash command 'cp x.json docs/team/evidenc?/'
+k2g 2 Bash command 'cp x.json docs/team/./evidenc?/'   # ML06: a wildcard path is not realish-normalised
 k2g 2 Bash command 'cd docs/team && cp x.json evidence/'
 k2g 2 Bash command 'bash -c "cp x docs/team/evidence/"'
 
@@ -12039,8 +12050,8 @@ printf '%s' "$_mtr" | grep -q 'REDACTED:studio-actor-token' && ! printf '%s' "$_
 # C5G-5 — the QA- docs-only classifier folds case.
 node --input-type=module -e "
 import { docFile } from '$HERE/lib/evidence.mjs';
-const qa = docFile(false, { qa: true });
-process.exit(!qa('docs/Team/risk-policy.json') && !qa('DOCS/TEAM/project-profile.json') && !qa('docs/PACKAGE.JSON') && !qa('docs/cmakelists.txt')
+const qa = docFile(false, { qa: true }), nq = docFile(false);
+process.exit(!nq('docs/Team/risk-policy.json') && !nq('docs/PACKAGE.JSON') && !qa('docs/Team/risk-policy.json') && !qa('DOCS/TEAM/project-profile.json') && !qa('docs/PACKAGE.JSON') && !qa('docs/cmakelists.txt')
   && qa('docs/team/journeys/j.json') && qa('docs/50-test-plan.md') ? 0 : 1);" \
   && ok "MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json and a PACKAGE.JSON (C5G-5)" \
   || bad "MT: the QA- docs-only classifier refuses docs/Team/risk-policy.json and a PACKAGE.JSON (C5G-5)"
@@ -13860,7 +13871,7 @@ bm "$S8" move APP-1 qa_failed --by qa-engineer --detail "BUG-003 again" >/dev/nu
 # AU-3: tech-lead, not the founder, grants the extra cycle — once
 assert_exit 1 "Sprint 8 V2: AU-3 reopened --by founder is refused (the cap goes to tech-lead/cto)" bm "$S8" move APP-1 reopened --by founder
 assert_exit 0 "Sprint 8 V2: AU-3 reopened --by tech-lead is accepted" bm "$S8" move APP-1 reopened --by tech-lead --detail "spec fixed"
-bm "$S8" move APP-1 blocked --by tech-manager --detail "again" >/dev/null 2>&1
+bm "$S8" move APP-1 blocked --by tech-manager --detail "qa-failure cap (2) reached: again" >/dev/null 2>&1   # a CAP block: only the once rule refuses
 assert_exit 1 "Sprint 8 V2: AU-3 ...once per ticket" bm "$S8" move APP-1 reopened --by tech-lead
 # SM-2: descoped is terminal, out of flight, and re-plans its dependents
 assert_exit 1 "Sprint 8 V2: SM-2 descoped needs a reason" bm "$S8" move APP-1 descoped --by tech-manager
@@ -14163,6 +14174,8 @@ for c in 'T=$(mktemp -d) && git worktree add --detach "$T" HEAD && cd "$T" && gi
   'T=$(mktemp -d); cd "$T" && echo && git merge feat/x'; do
   [ "$(e1d "$c")" = 0 ] || E1BAD="$E1BAD | wrongly refused: $c"
 done
+# Leo PR50-r5 §1: the `cd $E1/lnk/..` case below needs the link and its target to exist already
+mkdir -p "$E1/.agent-wt/web-developer-2/src"; ln -sfn "$E1/.agent-wt/web-developer-2/src" "$E1/lnk"
 for c in 'git merge --no-edit feat/x' 'cd "$X" && git merge feat/x' 'W=$(cat /tmp/x); cd "$W" && git merge feat/x' \
   "W=$E1; cd \"\$W\" && git merge feat/x" 'T=$(mktemp -d); cd "$T" && git branch -f main HEAD' \
   'T=$(mktemp -d); cd "$T/.." && git merge feat/x' 'W=/x; W=$(cat f); cd "$W" && git merge feat/x' \
@@ -14205,6 +14218,27 @@ mkdir -p "$TMP/e1br/[x]"
 mkdir -p "$TMP/e1br/{x..x}"
 E1BR="true && cd $TMP/e1br/{x..x} && git merge feat/x"   # a variable: bash 3.2 brace-expands inside "$(… "…")"
 [ "$(e1d "$E1BR")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a {..} sequence cd target read as a literal path"
+# E2E-5: a VE probe echoes its temp path; that is not a second binding
+[ "$(e1d 'set -euo pipefail; Q=$(mktemp -d); cd "$Q" && git merge feat/x')" = 0 ] || E1BAD="$E1BAD | wrongly refused: set -euo pipefail read as keyword mode (Codex round 13)"
+[ "$(e1d 'Q=$(mktemp -d); echo "Q=$Q"; cd "$Q" && git merge feat/x')" = 0 ] || E1BAD="$E1BAD | wrongly refused: echo \"Q=\$Q\" read as a rebinding (E2E-5)"
+E1W="W=$E1/.agent-wt/web-developer-2"
+for c in "$E1W; read W < /dev/null; cd \"\$W\" && git merge feat/x" "$E1W; for W in $E1; do :; done; cd \"\$W\" && git merge feat/x" \
+  "$E1W; W+=/..; cd \"\$W\" && git merge feat/x" "$E1W; : \"\${W:=$E1}\"; cd \"\$W\" && git merge feat/x" \
+  "declare -n R=W; $E1W; R=$E1; cd \"\$W\" && git merge feat/x" "$E1W; . ./x.sh; cd \"\$W\" && git merge feat/x" \
+  "$E1W; W[0]=$E1; cd \"\$W\" && git merge feat/x" "$E1W; V=W; printf -v \"\$V\" %s $E1; cd \"\$W\" && git merge feat/x" \
+  "$E1W; X+=a W+=/../..; cd \"\$W\" && git merge feat/x" "$E1W; let ++W; cd \"\$W\" && git merge feat/x" \
+  "$E1W; (( ++W )); cd \"\$W\" && git merge feat/x" \
+  "$E1W; printf '%s%n' x W; cd \"\$W\" && git merge feat/x" "$E1W; A[W=1]=0; cd \"\$W\" && git merge feat/x" \
+  "$E1W; F=x; printf \"\$F\" x W; cd \"\$W\" && git merge feat/x" "$E1W; : \$[W=1]; cd \"\$W\" && git merge feat/x" "$E1W; : \"\$[W=1]\"; cd \"\$W\" && git merge feat/x" \
+  "$E1W; A=(x); : \"\${A[W=1]}\"; cd \"\$W\" && git merge feat/x" "$E1W; : \"\$((++W))\"; cd \"\$W\" && git merge feat/x" "$E1W; : \$((++W)); cd \"\$W\" && git merge feat/x" \
+  "$E1W; printf '%2s%ln' x W; cd \"\$W\" && git merge feat/x" "declare -u W; $E1W; cd \"\$W\" && git merge feat/x" \
+  "O=-n; declare \"\$O\" R=W; $E1W; cd \"\$W\" && git merge feat/x" "$E1W; A=(x); : \${A[W=1]}; cd \"\$W\" && git merge feat/x" "$E1W; X=abc; : \${X:W=1}; cd \"\$W\" && git merge feat/x" "$E1W; [[ W++ -eq 1 ]]; cd \"\$W\" && git merge feat/x" \
+  "$E1W; printf -v\"W\" %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; trap 'W=$E1' DEBUG; cd \"\$W\" && git merge feat/x" \
+  "shopt -s cdable_vars; W=$E1; cd W && git merge feat/x" \
+  "$E1W; >/dev/null printf -v W %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; X='A[W=1]'; [[ -v \$X ]]; cd \"\$W\" && git merge feat/x" "$E1W; [[ x && W++ -eq 1 ]]; cd \"\$W\" && git merge feat/x" "$E1W; [[ ( W++ -eq 1 ) ]]; cd \"\$W\" && git merge feat/x" "set -o posix; $E1W; W=$E1 :; cd \"\$W\" && git merge feat/x" "set -o posix -k; $E1W; : W=$E1; cd \"\$W\" && git merge feat/x" "set -o posix -o keyword; $E1W; : W=$E1; cd \"\$W\" && git merge feat/x" "OLDPWD=$E1/.agent-wt/web-developer-2; cd $E1/.agent-wt/web-developer-2 && cd \"\$OLDPWD\" && git merge feat/x" "$E1W; X='A[W=1]'; test -v \"\$X\"; cd \"\$W\" && git merge feat/x" \
+  "$(printf '%s; : <<EOF\n$((W=1))\nEOF\ncd "$W" \046\046 git merge feat/x' "$E1W")"; do
+  [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
+done
 mkdir -p "$TMP/e1sp"; ln -sfn "$TMP/e1sp" "$E1 "
 [ "$(e1d "W='$E1 '; cd \$W && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: an unquoted \$W that word-splits"
 [ "$(e1d "W=\"$E1/.agent-wt/web-developer-2\"; cd \$W && git checkout -b feat/APP-8 main")" = 0 ] || E1BAD="$E1BAD | wrongly refused: an unquoted \$W with no whitespace"
@@ -14216,12 +14250,14 @@ mkdir -p "$E1H/x"
   || E1BAD="$E1BAD | wrongly allowed: a quoted ~ read as HOME"
 [ "$(HOME="$E1H" e1d 'true && cd ~/x && git merge feat/x')" = 0 ] || E1BAD="$E1BAD | wrongly refused: cd ~/x outside any repository"
 [ "$(HOME="$E1H" e1d "HOME=$E1; true && cd && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a bare cd after HOME= is reassigned"
+E1K="W=$E1/.agent-wt/web-developer-2; : W=$E1; cd \"\$W\" && git merge feat/x"   # SHELLOPTS is readonly in this bash: pass it with env
+[ "$(node -e 'process.stdout.write(JSON.stringify({agent_id:"e1",tool_name:"Bash",cwd:process.argv[1],tool_input:{command:process.argv[2]}}))' "$E1" "$E1K" | env SHELLOPTS=keyword sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" >/dev/null 2>&1; echo $?)" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a post-command assignment under an inherited SHELLOPTS=keyword"
 [ "$(CDPATH="$E1" e1d "true && cd .agent-wt/web-developer-2 && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a relative cd under an inherited CDPATH"
 ( cd "$E1" && echo s > stashme && git add stashme && git stash -q ) >/dev/null 2>&1
 [ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git stash clear')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: stash clear in a temp worktree (the stack is shared)"
 ( cd "$E1" && git branch -q e2e-unmerged && git checkout -q e2e-unmerged && git commit -q --allow-empty -m u && git checkout -q main ) >/dev/null 2>&1
 [ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git branch -D e2e-unmerged')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: branch -D in a temp worktree (branches are shared)"
-ln -sfn "$E1/.agent-wt/web-developer-2/src" "$E1/lnk" 2>/dev/null; mkdir -p "$E1/.agent-wt/web-developer-2/src"
+[ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git push --force origin HEAD:feat/e2e-scratch')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a force push from a temp worktree (the remote is shared)"
 # a heredoc fed to a shell is another process: an unexported binding made here is empty there
 [ "$(e1d "$(printf 'Q=$(mktemp -d); bash <<%sEOF%s\ncd "$Q" \046\046 git merge feat/x\nEOF' "'" "'")")" = 2 ] \
   || E1BAD="$E1BAD | wrongly allowed: an unexported temp binding used inside a heredoc shell"
@@ -14231,7 +14267,7 @@ ln -sfn "$E1/.agent-wt/web-developer-2/src" "$E1/lnk" 2>/dev/null; mkdir -p "$E1
   || E1BAD="$E1BAD | wrongly allowed: a mktemp that cannot succeed (TMPDIR missing) leaves git in the checkout"
 [ -z "$E1BAD" ] && ok "E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)" \
   || bad "E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)" "$E1BAD"
-grep -q 'never `$(cat file)` it back' "$HERE/spawn-prompt.mjs" && grep -q 'never$' "$HERE/../agents/code-reviewer.md" \
+grep -q 'never `$(cat file)` it back' "$HERE/spawn-prompt.mjs" && grep -q 'never `cd "$T"; git' "$HERE/spawn-prompt.mjs" && grep -q 'never$' "$HERE/../agents/code-reviewer.md" \
   && ok "E2E run 1: the reviewer is told to spell its temp path literally across calls (E2E-4)" \
   || bad "E2E run 1: the reviewer is told to spell its temp path literally across calls (E2E-4)" "guidance missing"
 
