@@ -726,6 +726,11 @@ ME2E74@@hooks/block-shared-tree-destructive-git.sh@@NOBIND = 1   # any ${…} bu
 ME2E75@@hooks/block-shared-tree-destructive-git.sh@@if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out@@if (substr(s, i + 2, 1) == "(") NOBIND = NOBIND; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); out = out@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E76@@hooks/block-shared-tree-destructive-git.sh@@if (substr(s, i + 2, 1) == "(") NOBIND = 1; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w@@if (substr(s, i + 2, 1) == "(") NOBIND = NOBIND; e = matchclose(s, i + 2); nparse(substr(s, i + 2, e - i - 2), dir); w = w@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
 ME2E77@@hooks/block-shared-tree-destructive-git.sh@@if (!PS[np] && !HQLAST) PS[np] = 2@@if (0) PS[np] = 2@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E78@@hooks/block-shared-tree-destructive-git.sh@@W[j] ~ /^-[A-Za-z]*k/ || W[j] == "keyword" || @@0 || @@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E79@@hooks/block-shared-tree-destructive-git.sh@@if (kw) NOBIND = 1   # inherited@@if (0) NOBIND = 1   # inherited@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+ME2E80@@hooks/block-shared-tree-destructive-git.sh@@case $- in *k*) set +k ;; esac@@:@@E2E run 1: trial merges in a mktemp tree and a slot named by a variable pass; unknown cds still refuse (E2E-3)@@E2E run 1
+MKW1@@hooks/block-cross-worktree-write.sh@@case $- in *k*) set +k ;; esac@@:@@...and under an inherited SHELLOPTS=keyword too (the hook does not fail open)@@cross-worktree-write hook
+MKW2@@hooks/require-review-verdict.sh@@case $- in *k*) set +k ;; esac@@:@@...still BLOCKED under an inherited SHELLOPTS=keyword (the hook does not fail open)@@require-review-verdict hook
 CATALOGUE
 }
 

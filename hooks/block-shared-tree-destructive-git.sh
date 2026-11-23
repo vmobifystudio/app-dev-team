@@ -81,6 +81,8 @@
 # string assembled at runtime are out of reach — closing those means not being a static hook.
 
 set -u
+case ${SHELLOPTS:-} in *keyword*) KW=1 ;; *) KW=0 ;; esac   # the agent shell inherits it too: see the parser
+case $- in *k*) set +k ;; esac   # Codex round 13: an inherited SHELLOPTS=keyword turns every awk -v x=y below into an env assignment, and the hook fails open
 
 PAYLOAD=$(cat 2>/dev/null || true)
 [ -n "$PAYLOAD" ] || exit 0
@@ -133,7 +135,7 @@ PLUGIN=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)
 # (after && / ||, in a pipeline or behind &, inside if/while/case/a function body, popd, a cd the
 # command redefines, a directory it cannot enter) keeps the old one as a candidate. Candidates are
 # joined by \034; every verdict line is printed once per candidate.
-SEGS=$(printf '%s\n' "$CMD" | awk -v base="$BASE" -v home="${HOME:-}" -v wrapfile="$PLUGIN/hooks/wrappers.txt" '
+SEGS=$(printf '%s\n' "$CMD" | awk -v kw="$KW" -v base="$BASE" -v home="${HOME:-}" -v wrapfile="$PLUGIN/hooks/wrappers.txt" '
 function emit(kind, ref, dir, why,    C, n, j) {
   n = split(dir, C, SEP)
   for (j = 1; j <= n; j++) printf "%s\t%s\t%s\t%s\n", kind, (ref == "" ? "-" : ref), C[j], why
@@ -363,6 +365,9 @@ function seg(W, nw, dir, unsure,    i, j, cmd, g, A, na, x, nd) {
   # is a special builtin — whatever the mode, that name is no longer trusted
   for (j = 1; j < i; j++) if (match(W[j], /^[A-Za-z_][A-Za-z0-9_]*=/)) delete VARS[substr(W[j], 1, RLENGTH - 1)]
   if (cmd in REDEFINE) { NOBIND = 1; SHADOW = 1 }
+  # Codex round 13 on #52: in keyword mode (set -k, set -o keyword) an assignment AFTER the command name
+  # persists too, and a dynamic set argument may turn it on: trust no binding after either
+  if (cmd == "set") for (j = i + 1; j <= nw; j++) if (W[j] ~ /^-[A-Za-z]*k/ || W[j] == "keyword" || W[j] ~ /[$`\001\002\003]/) NOBIND = 1
   if (cmd == "[[") NOBIND = 1   # [[ … ]] evaluates arithmetic in too many forms (-eq, -v, ( ), &&): trust nothing after it
   if (cmd == "test" || cmd == "[") for (j = i + 1; j <= nw; j++) if (W[j] == "-v") NOBIND = 1   # -v evaluates a subscript
   if (cmd ~ /^([0-9]*[<>]|&>)/) NOBIND = 1   # a leading redirection hides the real command (`>/dev/null printf -v W`)
@@ -544,6 +549,7 @@ BEGIN {
   SEP = "\034"
   split("then do else elif if while until ! { }", t, " "); for (k in t) SKIP[t[k]] = 1
   split("REPLY OPTARG OPTIND PWD OLDPWD HOME CDPATH IFS _ MAPFILE BASH_REMATCH COPROC TMPDIR PATH", t, " "); for (k in t) IMPLICIT[t[k]] = 1
+  if (kw) NOBIND = 1   # inherited keyword mode: an assignment after the command name persists (Codex round 13)
   split("export declare typeset local readonly read getopts mapfile readarray unset let printf for select coproc wait eval source . fc bind caller compgen complete compopt", t, " "); for (k in t) UNSAFE[t[k]] = 1
   split("trap alias unalias enable shopt", t, " "); for (k in t) REDEFINE[t[k]] = 1
   split("if while until for select case function {", t, " "); for (k in t) OPEN[t[k]] = 1

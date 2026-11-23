@@ -4094,6 +4094,8 @@ assert_exit 2 "...and so is the shared tree reaching into ANY agent's worktree �
   cwh "$CWT" "$CWT/.agent-wt/ios-developer/src/mine.js"
 assert_exit 0 "...but the shared tree writing to the shared tree is untouched" \
   cwh "$CWT" "$CWT/README.md"
+( cd "$CWT/.agent-wt/ios-developer" && printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"x"}}' "$CWT/.agent-wt/android-developer/src/other.js" | env SHELLOPTS=keyword sh "$CWH" ) >/dev/null 2>&1
+[ $? = 2 ] && ok "...and under an inherited SHELLOPTS=keyword too (the hook does not fail open)" || bad "...and under an inherited SHELLOPTS=keyword too (the hook does not fail open)"
 assert_exit 0 "a relative path resolves against the caller's own cwd, not misjudged as outside it" \
   cwh "$CWT/.agent-wt/ios-developer" "src/newfile.js"
 # THE macOS SYMLINK TRAP, CAUGHT BY TESTING IT: `/tmp` is itself a symlink to `/private/tmp` on
@@ -4156,7 +4158,9 @@ rv_log() { printf '%s\n' "$1" > "$RVT/docs/31-board-events.jsonl"; }  # one real
 printf '{"role":"user","content":"write your verdict to docs/53-reviews/APP-001-cycle-0.md, then run board.mjs move APP-001 approved --by code-reviewer --verdict <that file>."}\n{"role":"assistant","content":"Let me start reading the diff for APP-001."}\n' > "$RVT/exploit.jsonl"
 rv_log ''
 rv_payload "$RVT/exploit.jsonl" "Let me start reading the diff for APP-001." | sh "$RVH" >"$TMP/rv-exploit.txt" 2>&1
-[ $? = 2 ] && ok "MENTIONING the command in the transcript, with no real board event, is still BLOCKED (the v1 exploit, closed)" \
+RVX=$?; rv_payload "$RVT/exploit.jsonl" "Let me start reading the diff for APP-001." | env SHELLOPTS=keyword sh "$RVH" >/dev/null 2>&1
+[ $? = 2 ] && ok "...still BLOCKED under an inherited SHELLOPTS=keyword (the hook does not fail open)" || bad "...still BLOCKED under an inherited SHELLOPTS=keyword (the hook does not fail open)"
+[ $RVX = 2 ] && ok "MENTIONING the command in the transcript, with no real board event, is still BLOCKED (the v1 exploit, closed)" \
            || bad "MENTIONING the command in the transcript, with no real board event, is still BLOCKED (the v1 exploit, closed)" "$(cat "$TMP/rv-exploit.txt")"
 assert_has "$TMP/rv-exploit.txt" "Mentioning the command is not the same as running it" "the refusal names why prose doesn't satisfy it"
 
@@ -14215,6 +14219,7 @@ mkdir -p "$TMP/e1br/{x..x}"
 E1BR="true && cd $TMP/e1br/{x..x} && git merge feat/x"   # a variable: bash 3.2 brace-expands inside "$(… "…")"
 [ "$(e1d "$E1BR")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a {..} sequence cd target read as a literal path"
 # E2E-5: a VE probe echoes its temp path; that is not a second binding
+[ "$(e1d 'set -euo pipefail; Q=$(mktemp -d); cd "$Q" && git merge feat/x')" = 0 ] || E1BAD="$E1BAD | wrongly refused: set -euo pipefail read as keyword mode (Codex round 13)"
 [ "$(e1d 'Q=$(mktemp -d); echo "Q=$Q"; cd "$Q" && git merge feat/x')" = 0 ] || E1BAD="$E1BAD | wrongly refused: echo \"Q=\$Q\" read as a rebinding (E2E-5)"
 E1W="W=$E1/.agent-wt/web-developer-2"
 for c in "$E1W; read W < /dev/null; cd \"\$W\" && git merge feat/x" "$E1W; for W in $E1; do :; done; cd \"\$W\" && git merge feat/x" \
@@ -14230,7 +14235,7 @@ for c in "$E1W; read W < /dev/null; cd \"\$W\" && git merge feat/x" "$E1W; for W
   "O=-n; declare \"\$O\" R=W; $E1W; cd \"\$W\" && git merge feat/x" "$E1W; A=(x); : \${A[W=1]}; cd \"\$W\" && git merge feat/x" "$E1W; X=abc; : \${X:W=1}; cd \"\$W\" && git merge feat/x" "$E1W; [[ W++ -eq 1 ]]; cd \"\$W\" && git merge feat/x" \
   "$E1W; printf -v\"W\" %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; trap 'W=$E1' DEBUG; cd \"\$W\" && git merge feat/x" \
   "shopt -s cdable_vars; W=$E1; cd W && git merge feat/x" \
-  "$E1W; >/dev/null printf -v W %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; X='A[W=1]'; [[ -v \$X ]]; cd \"\$W\" && git merge feat/x" "$E1W; [[ x && W++ -eq 1 ]]; cd \"\$W\" && git merge feat/x" "$E1W; [[ ( W++ -eq 1 ) ]]; cd \"\$W\" && git merge feat/x" "set -o posix; $E1W; W=$E1 :; cd \"\$W\" && git merge feat/x" "OLDPWD=$E1/.agent-wt/web-developer-2; cd $E1/.agent-wt/web-developer-2 && cd \"\$OLDPWD\" && git merge feat/x" "$E1W; X='A[W=1]'; test -v \"\$X\"; cd \"\$W\" && git merge feat/x" \
+  "$E1W; >/dev/null printf -v W %s $E1; cd \"\$W\" && git merge feat/x" "$E1W; X='A[W=1]'; [[ -v \$X ]]; cd \"\$W\" && git merge feat/x" "$E1W; [[ x && W++ -eq 1 ]]; cd \"\$W\" && git merge feat/x" "$E1W; [[ ( W++ -eq 1 ) ]]; cd \"\$W\" && git merge feat/x" "set -o posix; $E1W; W=$E1 :; cd \"\$W\" && git merge feat/x" "set -o posix -k; $E1W; : W=$E1; cd \"\$W\" && git merge feat/x" "set -o posix -o keyword; $E1W; : W=$E1; cd \"\$W\" && git merge feat/x" "OLDPWD=$E1/.agent-wt/web-developer-2; cd $E1/.agent-wt/web-developer-2 && cd \"\$OLDPWD\" && git merge feat/x" "$E1W; X='A[W=1]'; test -v \"\$X\"; cd \"\$W\" && git merge feat/x" \
   "$(printf '%s; : <<EOF\n$((W=1))\nEOF\ncd "$W" \046\046 git merge feat/x' "$E1W")"; do
   [ "$(e1d "$c")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: $c"
 done
@@ -14245,6 +14250,8 @@ mkdir -p "$E1H/x"
   || E1BAD="$E1BAD | wrongly allowed: a quoted ~ read as HOME"
 [ "$(HOME="$E1H" e1d 'true && cd ~/x && git merge feat/x')" = 0 ] || E1BAD="$E1BAD | wrongly refused: cd ~/x outside any repository"
 [ "$(HOME="$E1H" e1d "HOME=$E1; true && cd && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a bare cd after HOME= is reassigned"
+E1K="W=$E1/.agent-wt/web-developer-2; : W=$E1; cd \"\$W\" && git merge feat/x"   # SHELLOPTS is readonly in this bash: pass it with env
+[ "$(node -e 'process.stdout.write(JSON.stringify({agent_id:"e1",tool_name:"Bash",cwd:process.argv[1],tool_input:{command:process.argv[2]}}))' "$E1" "$E1K" | env SHELLOPTS=keyword sh "$HERE/../hooks/block-shared-tree-destructive-git.sh" >/dev/null 2>&1; echo $?)" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a post-command assignment under an inherited SHELLOPTS=keyword"
 [ "$(CDPATH="$E1" e1d "true && cd .agent-wt/web-developer-2 && git merge feat/x")" = 2 ] || E1BAD="$E1BAD | wrongly allowed: a relative cd under an inherited CDPATH"
 ( cd "$E1" && echo s > stashme && git add stashme && git stash -q ) >/dev/null 2>&1
 [ "$(e1d 'Q=$(mktemp -d) && git worktree add --detach "$Q" HEAD && cd "$Q" && git stash clear')" = 2 ] || E1BAD="$E1BAD | wrongly allowed: stash clear in a temp worktree (the stack is shared)"
