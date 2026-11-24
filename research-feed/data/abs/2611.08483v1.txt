@@ -1,0 +1,14 @@
+SNAPSHOT of https://arxiv.org/abs/2611.08483 fetched 2026-11-10 (metadata and license block only; abstract removed).
+arXiv:2611.08483 (cs)
+[Submitted on 5 Nov 2026]
+Title: SwarmEvolve: Latent Agent Swarms for Evolutionary Discovery and Optimization
+Authors: Qile Jiang, George Em Karniadakis
+Subjects: Artificial Intelligence (cs.AI); Neural and Evolutionary Computing (cs.NE)
+Cite as: arXiv:2611.08483 [cs.AI] (or arXiv:2611.08483v1 [cs.AI] for this version)
+Submission history
+[v1] Thu, 5 Nov 2026 18:59:29 UTC (1,952 KB)
+Access Paper:
+- View PDF (https://arxiv.org/pdf/2611.08483)
+- HTML (experimental) (https://arxiv.org/html/2611.08483v1)
+- TeX Source (https://arxiv.org/src/2611.08483)
+[license icon](https://arxiv.org/icons/licenses/by-nc-nd-4.0.png) [view license](http://creativecommons.org/licenses/by-nc-nd/4.0/ "Rights to this article")

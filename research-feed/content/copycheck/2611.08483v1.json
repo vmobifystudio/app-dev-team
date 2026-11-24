@@ -1,0 +1,13 @@
+{
+ "status": "pass",
+ "n": 6,
+ "tier": "IDEAS_ONLY",
+ "story_text_sha256": "063ec63b8acecfb19ed81a88a60538f2c28c53b454761774a9d9114f7bbbe673",
+ "shared_ngrams": [],
+ "shared_count": 0,
+ "longest_shared_run_words": 0,
+ "quotes_verified": [],
+ "source_sha256": "da97db510295d69fbf44501960481fa8a77f24f5962c2f9fb16ef3d658468368",
+ "recorded_at": "2026-11-10T13:37:33.828Z",
+ "note": "Recorded verdict. The paper text itself is not stored in this repo."
+}

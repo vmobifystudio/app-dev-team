@@ -1,0 +1,15 @@
+SNAPSHOT of https://arxiv.org/abs/2603.27130v2 fetched 2026-11-10 (metadata and license block only; abstract removed).
+arXiv:2603.27130v2 (cs)
+[Submitted on 28 Mar 2026 ([v1](https://arxiv.org/abs/2603.27130v1)), revised 3 Apr 2026 (this version, v2), latest version 1 Jul 2026 ([v3](https://arxiv.org/abs/2603.27130v3))]
+Title: A Large-Scale Empirical Study of AI-Generated Code in Real-World Repositories
+Authors: Tianhao Mao, Dongfang Zhao, Haixu Tang, Xiaofeng Wang, Hang Zhang
+Subjects: Software Engineering (cs.SE)
+Submission history
+[v1] Sat, 28 Mar 2026 04:40:44 UTC (601 KB)
+[v2] Fri, 3 Apr 2026 07:17:25 UTC (601 KB)
+[v3] Wed, 1 Jul 2026 21:11:33 UTC (935 KB)
+Access Paper:
+- View PDF (https://arxiv.org/pdf/2603.27130v2)
+- HTML (experimental) (https://arxiv.org/html/2603.27130v2)
+- TeX Source (https://arxiv.org/src/2603.27130v2)
+[license icon](https://arxiv.org/icons/licenses/by-4.0.png) [view license](http://creativecommons.org/licenses/by/4.0/ "Rights to this article")

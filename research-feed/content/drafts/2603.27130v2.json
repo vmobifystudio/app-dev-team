@@ -1,0 +1,164 @@
+{
+  "schema": "vizmaya-story/1",
+  "title": "AI now writes real code. Here is what it looks like.",
+  "deck": "Researchers looked at AI-written code in real projects. It runs longer, flags more high-risk spots, and gets rewritten more.",
+  "slug": "ai-written-code-in-the-wild",
+  "editor_notes": [
+    "The 88 of 100 hand check is read as: of 100 sampled positives, 88 were truly AI code (paper says TP=88/100). Confirm wording against the paper.",
+    "'Changed again within 90 days' reads the Table 17 row 'Line churned 90 days' as the average per commit. Confirm.",
+    "Paper has a v3 (1 Jul 2026). This story is based on v2 and carries the 'based on v2' flag until a human reads v3."
+  ],
+  "reuse": [
+    { "kind": "quote", "text": "The increased size of AI-generated code is not driven by additional comments, but by expanded code structures", "locator": "Sec. 4.3", "license": "CC BY 4.0" }
+  ],
+  "claims": {
+    "intro":   { "kind": "quote", "display": "mainstream", "numbers": [], "locator": "Front matter", "note": "Intro says AI-assisted programming is becoming mainstream." },
+    "prior":   { "kind": "quote", "display": "small tests", "numbers": [], "locator": "Front matter", "note": "Earlier studies used small, controlled settings." },
+    "real":    { "kind": "quote", "display": "real projects", "numbers": [], "locator": "Sec. 3.1" },
+    "commits": { "kind": "quote", "display": "12,749", "numbers": ["12749"], "locator": "Sec. 3.1" },
+    "files":   { "kind": "quote", "display": "19,816", "numbers": ["19816"], "locator": "Sec. 3.1" },
+    "hand":    { "kind": "quote", "display": "88 of 100", "numbers": ["88", "100"], "locator": "Sec. 3.1" },
+    "humans":  { "kind": "quote", "display": "36,467", "numbers": ["36467"], "locator": "Sec. 3.1" },
+    "match":   { "kind": "quote", "display": "matched", "numbers": [], "locator": "Sec. 3.1" },
+    "ploc":    { "kind": "quote", "display": "256.57 and 192.68", "numbers": ["256.57", "192.68"], "locator": "Table 2", "row": "PLOC", "cols": [0, 1] },
+    "plocpct": { "kind": "computed", "display": "33", "formula": "(a-b)/b*100", "decimals": 0,
+                 "inputs": { "a": { "value": "256.57", "locator": "Table 2", "row": "PLOC" }, "b": { "value": "192.68", "locator": "Table 2", "row": "PLOC" } } },
+    "cmt":     { "kind": "quote", "display": "18.01 and 17.96", "numbers": ["18.01", "17.96"], "locator": "Table 2", "row": "Comment ratio", "cols": [0, 1] },
+    "blank":   { "kind": "quote", "display": "15.15 and 13.46", "numbers": ["15.15", "13.46"], "locator": "Table 2", "row": "Blank ratio", "cols": [0, 1] },
+    "quote":   { "kind": "quote", "display": "verbatim quote", "numbers": [], "locator": "Sec. 4.3" },
+    "scanner": { "kind": "quote", "display": "CodeQL scanner", "numbers": [], "locator": "Table 13" },
+    "total":   { "kind": "quote", "display": "12.81 and 11.58", "numbers": ["12.81", "11.58"], "locator": "Table 13", "row": "Total Alerts", "cols": [0, 1] },
+    "crit":    { "kind": "quote", "display": "0.042 and 0.052", "numbers": ["0.042", "0.052"], "locator": "Table 13", "row": "Critical Security Alerts", "cols": [0, 1] },
+    "high":    { "kind": "quote", "display": "0.934 and 0.464", "numbers": ["0.934", "0.464"], "locator": "Table 13", "row": "High Security Alerts", "cols": [0, 1] },
+    "med":     { "kind": "quote", "display": "0.282 and 0.182", "numbers": ["0.282", "0.182"], "locator": "Table 13", "row": "Medium Security Alerts", "cols": [0, 1] },
+    "highx":   { "kind": "computed", "display": "2.01", "formula": "a/b", "decimals": 2,
+                 "inputs": { "a": { "value": "0.934", "locator": "Table 13", "row": "High Security Alerts" }, "b": { "value": "0.464", "locator": "Table 13", "row": "High Security Alerts" } } },
+    "js":      { "kind": "quote", "display": "4.02 and 1.14", "numbers": ["4.02", "1.14"], "locator": "Table 15", "row": "Javascript", "cols": [2, 3] },
+    "ts":      { "kind": "quote", "display": "0.078 and 0.794", "numbers": ["0.078", "0.794"], "locator": "Table 15", "row": "Typescript", "cols": [2, 3] },
+    "lang":    { "kind": "quote", "display": "language-dependent", "numbers": [], "locator": "Sec. 4.5" },
+    "lines":   { "kind": "quote", "display": "24.70 and 152.02", "numbers": ["24.70", "152.02"], "locator": "Table 17", "row": "Lines churned in commit", "cols": [0, 2] },
+    "window":  { "kind": "quote", "display": "90", "numbers": ["90"], "locator": "Sec. 3.3" },
+    "again":   { "kind": "quote", "display": "3.19 and 0.275", "numbers": ["3.19", "0.275"], "locator": "Table 17", "row": "Line churned 90 days", "cols": [0, 2] },
+    "againx":  { "kind": "computed", "display": "11.6", "formula": "a/b", "decimals": 1,
+                 "inputs": { "a": { "value": "3.19", "locator": "Table 17", "row": "Line churned 90 days" }, "b": { "value": "0.275", "locator": "Table 17", "row": "Line churned 90 days" } } },
+    "key":     { "kind": "quote", "display": "0.194 and 0.098", "numbers": ["0.194", "0.098"], "locator": "Table 16", "row": "API key or token", "cols": [0, 1] },
+    "pw":      { "kind": "quote", "display": "0.703 and 1.02", "numbers": ["0.703", "1.02"], "locator": "Table 16", "row": "Hardcode Password", "cols": [0, 1] },
+    "keyx":    { "kind": "computed", "display": "1.98", "formula": "a/b", "decimals": 2,
+                 "inputs": { "a": { "value": "0.194", "locator": "Table 16", "row": "API key or token" }, "b": { "value": "0.098", "locator": "Table 16", "row": "API key or token" } } }
+  },
+  "cards": [
+    { "id": "k1", "type": "hook", "headline": "AI writes code now. Is it any good?",
+      "sentences": [
+        { "t": "Programmers now let AI write parts of the apps you use.", "factual": true, "claims": ["intro"] },
+        { "t": "So here is a fair question.", "factual": false },
+        { "t": "Does AI code look different from code written by people?", "factual": false }
+      ] },
+    { "id": "k2", "type": "question", "headline": "Where do you look for the answer?",
+      "sentences": [
+        { "t": "Earlier studies used small tests built in a lab.", "factual": true, "claims": ["prior"] },
+        { "t": "This team went to real projects on GitHub instead.", "factual": true, "claims": ["real"] },
+        { "t": "GitHub is a site where programmers share and save their code.", "factual": false }
+      ] },
+    { "id": "k3", "type": "point", "headline": "First, find the AI fingerprints",
+      "sentences": [
+        { "t": "They found 12,749 saves of code where AI helped.", "factual": true, "claims": ["commits"] },
+        { "t": "A save point, called a commit, comes with a short note from the programmer.", "factual": false },
+        { "t": "Those saves touched 19,816 files.", "factual": true, "claims": ["files"] },
+        { "t": "In a hand check of 100 samples, 88 were truly AI code.", "factual": true, "claims": ["hand"] }
+      ] },
+    { "id": "k4", "type": "point", "headline": "A fair test needs fair partners",
+      "sentences": [
+        { "t": "They also gathered 36,467 files written by people.", "factual": true, "claims": ["humans"] },
+        { "t": "Those human files were matched to the AI files to cancel out project quirks.", "factual": true, "claims": ["match"] }
+      ] },
+    { "id": "k5", "type": "chart", "headline": "AI files run longer",
+      "sentences": [
+        { "t": "The average AI file has 256.57 lines. The average human file has 192.68.", "factual": true, "claims": ["ploc"] },
+        { "t": "That is 33% longer.", "factual": true, "claims": ["plocpct"] }
+      ],
+      "visual": { "kind": "bars", "title": "Lines per file, average", "series": ["AI code", "Human code"],
+        "items": [ { "label": "Lines per file", "claim": "ploc", "values": ["256.57", "192.68"] } ],
+        "alt": "Two bars. The AI bar, 256.57 lines, is longer than the human bar, 192.68 lines.",
+        "caption": "Rebuilt from the paper's numbers. Not a copy of any paper figure." } },
+    { "id": "k6", "type": "point", "headline": "Longer, but not from comments",
+      "sentences": [
+        { "t": "Comments make up 18.01% of AI code and 17.96% of human code.", "factual": true, "claims": ["cmt"] },
+        { "t": "Blank lines are 15.15% of AI code and 13.46% of human code.", "factual": true, "claims": ["blank"] },
+        { "t": "So the extra length is plain code, not extra notes.", "factual": true, "claims": ["quote"] }
+      ],
+      "quote": { "text": "The increased size of AI-generated code is not driven by additional comments, but by expanded code structures", "claim": "quote" } },
+    { "id": "k7", "type": "question", "headline": "Longer is not worse. But is it safer?",
+      "sentences": [
+        { "t": "A long file can still be a good file.", "factual": false },
+        { "t": "So the team ran a code scanner over everything.", "factual": true, "claims": ["scanner"] },
+        { "t": "A scanner flags spots that might hide a bug or a security hole.", "factual": false }
+      ] },
+    { "id": "k8", "type": "chart", "headline": "Counting the red flags",
+      "sentences": [
+        { "t": "For equal amounts of code, the scanner raised 12.81 flags on AI code and 11.58 on human code.", "factual": true, "claims": ["total"] },
+        { "t": "Critical flags were rarer in AI code: 0.042 against 0.052.", "factual": true, "claims": ["crit"] }
+      ],
+      "visual": { "kind": "bars", "title": "Scanner flags for equal amounts of code", "series": ["AI code", "Human code"],
+        "items": [
+          { "label": "All flags", "claim": "total", "values": ["12.81", "11.58"] },
+          { "label": "Critical", "claim": "crit", "values": ["0.042", "0.052"] },
+          { "label": "High risk", "claim": "high", "values": ["0.934", "0.464"] },
+          { "label": "Medium risk", "claim": "med", "values": ["0.282", "0.182"] } ],
+        "alt": "Four pairs of bars. For all flags the two are close. For critical, AI is slightly lower. For high risk and medium risk, AI is higher.",
+        "caption": "Each pair has its own scale. Rebuilt from the paper's numbers." } },
+    { "id": "k9", "type": "climax", "headline": "High-risk flags double",
+      "sentences": [
+        { "t": "High-risk flags show up 2.01 times as often in AI code.", "factual": true, "claims": ["highx"] },
+        { "t": "Medium-risk flags also rise, from 0.182 to 0.282.", "factual": true, "claims": ["med"] },
+        { "t": "Only the critical flags go the other way.", "factual": true, "claims": ["crit"] }
+      ] },
+    { "id": "k10", "type": "question", "headline": "Does that hold for every language?",
+      "sentences": [
+        { "t": "An average can hide a split.", "factual": false },
+        { "t": "Let us look inside the average.", "factual": false }
+      ] },
+    { "id": "k11", "type": "contested", "headline": "Contested: the average hides a split",
+      "sentences": [
+        { "t": "Headline: AI code has 2.01 times the high-risk flags.", "factual": true, "claims": ["highx"] },
+        { "t": "In JavaScript it is 4.02 against 1.14 for people.", "factual": true, "claims": ["js"] },
+        { "t": "In TypeScript it flips: 0.078 against 0.794.", "factual": true, "claims": ["ts"] },
+        { "t": "The paper itself calls the effect language-dependent.", "factual": true, "claims": ["lang"] }
+      ],
+      "contested": { "headline_claim": "highx", "table_claims": ["js", "ts", "lang"],
+        "explain": "The single headline number mixes languages that move in opposite directions. Read it as a pattern in some languages, not a law." } },
+    { "id": "k12", "type": "chart", "headline": "Smaller saves, bigger rewrites",
+      "sentences": [
+        { "t": "The average AI commit changes 24.70 lines. A human commit changes 152.02.", "factual": true, "claims": ["lines"] },
+        { "t": "But within 90 days, AI commits see 3.19 lines changed again, against 0.275 for human commits.", "factual": true, "claims": ["window", "again"] },
+        { "t": "That is 11.6 times as much.", "factual": true, "claims": ["againx"] }
+      ],
+      "visual": { "kind": "bars", "title": "Lines changed per commit, average", "series": ["AI commits", "Human commits"],
+        "items": [
+          { "label": "In the commit", "claim": "lines", "values": ["24.70", "152.02"] },
+          { "label": "Changed again within 90 days", "claim": "again", "values": ["3.19", "0.275"] } ],
+        "alt": "Two pairs of bars. In the commit, AI changes far fewer lines than people. Changed again later, AI is far higher.",
+        "caption": "Each pair has its own scale. Rebuilt from the paper's numbers." } },
+    { "id": "k13", "type": "anim", "headline": "Code that gets touched again",
+      "sentences": [
+        { "t": "Picture each save as a stone dropped in a pond.", "factual": false },
+        { "t": "The ripples are the later edits that follow.", "factual": false }
+      ],
+      "visual": { "kind": "anim", "name": "ripple-after-commit", "title": "Ripples after a save",
+        "alt": "A small stone drops into water and rings spread outward, showing later edits that follow a save.",
+        "caption": "Animation, no numbers. Small drop with big ripples stands for the AI pattern in the last card." } },
+    { "id": "k14", "type": "point", "headline": "Different slip-ups with secrets",
+      "sentences": [
+        { "t": "Secrets like API keys should never sit inside code.", "factual": false },
+        { "t": "For equal amounts of code, AI code hard-codes keys or tokens at a rate of 0.194, against 0.098 for people.", "factual": true, "claims": ["key"] },
+        { "t": "That is 1.98 times as often.", "factual": true, "claims": ["keyx"] },
+        { "t": "People hard-code more passwords: 1.02 against 0.703.", "factual": true, "claims": ["pw"] }
+      ] },
+    { "id": "k15", "type": "payoff", "headline": "What this changes",
+      "sentences": [
+        { "t": "Treat AI code like a fast helper's first draft.", "factual": false },
+        { "t": "Expect more length, a closer security read, and more rewrites.", "factual": true, "claims": ["high", "again"] },
+        { "t": "This is a preprint, so other experts have not yet reviewed it.", "factual": false },
+        { "t": "It shows patterns across many projects. It does not prove that AI caused them.", "factual": false }
+      ] }
+  ]
+}

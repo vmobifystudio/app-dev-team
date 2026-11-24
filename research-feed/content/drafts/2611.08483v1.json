@@ -1,0 +1,157 @@
+{
+  "schema": "vizmaya-story/1",
+  "title": "A swarm of small AIs that think without words",
+  "deck": "A new method lets hundreds of small AIs share ideas as numbers, not sentences. It is fast. It does not win every puzzle.",
+  "slug": "ai-swarm-that-thinks-without-words",
+  "editor_notes": [
+    "Figure 4 lists 65 minutes for three puzzles. The run lasts 60 minutes, so this story reads 65 as 'not reached'. The caption on Figure 4 says hollow circles mark that case. Confirm which puzzles have hollow circles.",
+    "Paper is 5 days old. The score is withheld by rule (under 90 days).",
+    "License is CC BY-NC-ND: ideas and facts only. Copy check must pass against the full paper text before approval."
+  ],
+  "reuse": [],
+  "claims": {
+    "textnote": { "kind": "quote", "display": "text reasoning", "numbers": [], "locator": "Sec. 4.1" },
+    "texttime": { "kind": "quote", "display": "20 to 35", "numbers": ["20", "35"], "locator": "Sec. 4.1" },
+    "agents":   { "kind": "quote", "display": "450", "numbers": ["450"], "locator": "Sec. 4.1" },
+    "latent":   { "kind": "quote", "display": "latent agents", "numbers": [], "locator": "Sec. 1" },
+    "share":    { "kind": "quote", "display": "pass memory", "numbers": [], "locator": "Sec. 1" },
+    "filter":   { "kind": "quote", "display": "novelty filter", "numbers": [], "locator": "Sec. 1" },
+    "n21":      { "kind": "quote", "display": "21", "numbers": ["21"], "locator": "Sec. 4" },
+    "n60":      { "kind": "quote", "display": "60", "numbers": ["60"], "locator": "Sec. 4" },
+    "rivals":   { "kind": "quote", "display": "three rivals", "numbers": ["3"], "locator": "Sec. 4" },
+    "avg":      { "kind": "quote", "display": "0.804, 0.693, 0.642, 0.700", "numbers": ["0.804", "0.693", "0.642", "0.700"], "locator": "Table 1", "row": "Average", "cols": [0, 1, 2, 3] },
+    "avgbig":   { "kind": "quote", "display": "0.804, 0.774, 0.733, 0.731", "numbers": ["0.804", "0.774", "0.733", "0.731"], "locator": "Table 1", "row": "Average", "cols": [0, 9, 10, 11] },
+    "speed":    { "kind": "quote", "display": "5 to 13", "numbers": ["5", "13"], "locator": "Sec. 4.1" },
+    "median":   { "kind": "quote", "display": "3 to 8", "numbers": ["3", "8"], "locator": "Sec. 1" },
+    "f_dist":   { "kind": "quote", "display": "2", "numbers": ["2"], "locator": "Figure 4, target OpenEvolve", "row": "Distance ratio, plane", "cols": [0] },
+    "f_auto":   { "kind": "quote", "display": "2", "numbers": ["2"], "locator": "Figure 4, target OpenEvolve", "row": "Autocorrelation III", "cols": [0] },
+    "f_helm":   { "kind": "quote", "display": "2", "numbers": ["2"], "locator": "Figure 4, target OpenEvolve", "row": "Helmholtz equation", "cols": [0] },
+    "f_heil":   { "kind": "quote", "display": "3", "numbers": ["3"], "locator": "Figure 4, target OpenEvolve", "row": "Heilbronn, triangle", "cols": [0] },
+    "f_conv":   { "kind": "quote", "display": "3", "numbers": ["3"], "locator": "Figure 4, target OpenEvolve", "row": "Convection-diffusion", "cols": [0] },
+    "f_rect":   { "kind": "quote", "display": "65", "numbers": ["65"], "locator": "Figure 4, target OpenEvolve", "row": "Circles in a rectangle", "cols": [0] },
+    "f_kiss":   { "kind": "quote", "display": "65", "numbers": ["65"], "locator": "Figure 4, target OpenEvolve", "row": "Kissing number, d = 11", "cols": [0] },
+    "f_eig":    { "kind": "quote", "display": "65", "numbers": ["65"], "locator": "Figure 4, target OpenEvolve", "row": "Eigenvalues", "cols": [0] },
+    "hollow":   { "kind": "quote", "display": "not reached", "numbers": ["60"], "locator": "Sec. 4.1" },
+    "t_rect":   { "kind": "quote", "display": "0.888, 0.969, 0.958, 0.987", "numbers": ["0.888", "0.969", "0.958", "0.987"], "locator": "Table 1", "row": "Packing / Circles in a rectangle", "cols": [0, 1, 2, 3] },
+    "t_kiss":   { "kind": "quote", "display": "0.309, 0.481, 0.508, 0.371", "numbers": ["0.309", "0.481", "0.508", "0.371"], "locator": "Table 1", "row": "Combinatorics / Kissing number, d = 11", "cols": [0, 1, 2, 3] },
+    "t_eig":    { "kind": "quote", "display": "0.700, 0.723", "numbers": ["0.700", "0.723"], "locator": "Table 1", "row": "Scientific computing / Eigenvalues", "cols": [0, 1] },
+    "alpha":    { "kind": "quote", "display": "three puzzles", "numbers": ["3"], "locator": "Sec. 4.1" },
+    "c26":      { "kind": "quote", "display": "26 circles, 2.635983", "numbers": ["26", "2.635983"], "locator": "Sec. 4.1" },
+    "frontier": { "kind": "quote", "display": "frontier models", "numbers": [], "locator": "Sec. 4.1" },
+    "sw_early": { "kind": "quote", "display": "50 tries: 0.64 and 0.68", "numbers": ["50", "0.64", "0.68"], "locator": "Table in Sec. A.2" },
+    "sw_size":  { "kind": "quote", "display": "45 and 75", "numbers": ["45", "75"], "locator": "Sec. A.2" },
+    "sw_end":   { "kind": "quote", "display": "600 tries: 0.90", "numbers": ["600", "0.90"], "locator": "Table in Sec. A.2" }
+  },
+  "cards": [
+    { "id": "s1", "type": "hook", "headline": "What if an AI could think without words?",
+      "sentences": [
+        { "t": "You solve a hard puzzle in your head.", "factual": false },
+        { "t": "You do not say each step out loud.", "factual": false },
+        { "t": "What if an AI could work the same way?", "factual": false }
+      ] },
+    { "id": "s2", "type": "point", "headline": "Today's AI helpers write out every thought",
+      "sentences": [
+        { "t": "Search tools today let an AI write long notes to itself before each try.", "factual": true, "claims": ["textnote"] },
+        { "t": "Each try is a small program that attacks a math puzzle.", "factual": false },
+        { "t": "Writing those notes eats 20 to 35 seconds for every program tried.", "factual": true, "claims": ["texttime"] }
+      ] },
+    { "id": "s3", "type": "question", "headline": "What if the AI skipped the words?",
+      "sentences": [
+        { "t": "Words are slow. Numbers inside the AI are fast.", "factual": false },
+        { "t": "Could many tiny thinkers work in that fast, wordless space?", "factual": false }
+      ] },
+    { "id": "s4", "type": "anim", "headline": "One writer against a swarm",
+      "sentences": [
+        { "t": "On the left, one thinker writes every step.", "factual": false },
+        { "t": "On the right, a crowd thinks at once and shares what it learns.", "factual": false }
+      ],
+      "visual": { "kind": "anim", "name": "swarm-vs-text", "title": "One writer against a swarm",
+        "alt": "Left side: one dot slowly fills a line of text. Right side: many dots pulse together and send glowing links to one center dot.",
+        "caption": "Animation, no numbers. It shows the idea, not the paper's data." } },
+    { "id": "s5", "type": "point", "headline": "A swarm that thinks in numbers",
+      "sentences": [
+        { "t": "SwarmEvolve runs 450 small agents in each round.", "factual": true, "claims": ["agents"] },
+        { "t": "Each agent thinks inside the AI's hidden numbers, without writing words.", "factual": true, "claims": ["latent"] },
+        { "t": "They pass the AI's short-term memory to each other.", "factual": true, "claims": ["share"] },
+        { "t": "A filter keeps the ideas that sit furthest apart.", "factual": true, "claims": ["filter"] },
+        { "t": "One summarizer reads all those notes and produces a fresh program.", "factual": true, "claims": ["share"] }
+      ] },
+    { "id": "s6", "type": "point", "headline": "The test",
+      "sentences": [
+        { "t": "The team set 21 puzzles in maths and science.", "factual": true, "claims": ["n21"] },
+        { "t": "Each method got 60 minutes on one graphics card.", "factual": true, "claims": ["n60"] },
+        { "t": "Three rival methods competed, all using small open AI models.", "factual": true, "claims": ["rivals"] }
+      ] },
+    { "id": "s7", "type": "chart", "headline": "Higher scores across the board",
+      "sentences": [
+        { "t": "With the same small model, SwarmEvolve averaged 0.804. The rivals got 0.693, 0.642 and 0.700.", "factual": true, "claims": ["avg", "n21"] },
+        { "t": "Its small-model average also beat all three rivals on a larger model: 0.804 against 0.774, 0.733 and 0.731.", "factual": true, "claims": ["avgbig", "rivals"] }
+      ],
+      "visual": { "kind": "bars", "title": "Average score over the 21 puzzles, small model",
+        "items": [
+          { "label": "SwarmEvolve", "claim": "avg", "values": ["0.804"] },
+          { "label": "OpenEvolve", "claim": "avg", "values": ["0.693"] },
+          { "label": "ShinkaEvolve", "claim": "avg", "values": ["0.642"] },
+          { "label": "CodeEvolve", "claim": "avg", "values": ["0.700"] } ],
+        "alt": "Four bars. SwarmEvolve, 0.804, is the longest. The three rivals are shorter, between 0.642 and 0.700.",
+        "caption": "Rebuilt from the paper's numbers. Higher is better. Not a copy of any paper figure." } },
+    { "id": "s8", "type": "chart", "headline": "Minutes, not hours",
+      "sentences": [
+        { "t": "On some puzzles it matched what OpenEvolve reached in 60 minutes in just 2 or 3 minutes.", "factual": true, "claims": ["n60", "f_dist", "f_heil"] },
+        { "t": "The striped bars are puzzles where it did not get there.", "factual": true, "claims": ["hollow"] }
+      ],
+      "visual": { "kind": "bars", "title": "Minutes to match OpenEvolve's hour",
+        "items": [
+          { "label": "Distance ratio, plane", "claim": "f_dist", "values": ["2"] },
+          { "label": "Autocorrelation III", "claim": "f_auto", "values": ["2"] },
+          { "label": "Helmholtz equation", "claim": "f_helm", "values": ["2"] },
+          { "label": "Heilbronn, triangle", "claim": "f_heil", "values": ["3"] },
+          { "label": "Convection-diffusion", "claim": "f_conv", "values": ["3"] },
+          { "label": "Circles in a rectangle", "claim": "f_rect", "values": ["65"], "flag": "not_reached" },
+          { "label": "Kissing number", "claim": "f_kiss", "values": ["65"], "flag": "not_reached" },
+          { "label": "Eigenvalues", "claim": "f_eig", "values": ["65"], "flag": "not_reached" } ],
+        "alt": "Eight bars. Five short bars show 2 or 3 minutes. Three striped bars at the end mean the target was not reached in the run.",
+        "caption": "Rebuilt from the paper's numbers. Striped means not reached within the run." } },
+    { "id": "s9", "type": "climax", "headline": "Many more tries per hour",
+      "sentences": [
+        { "t": "In one hour it tests between 5 and 13 times as many programs as its rivals.", "factual": true, "claims": ["speed"] },
+        { "t": "For the middle puzzle, matching a rival's best 60 minutes took just 3 to 8 minutes.", "factual": true, "claims": ["n60", "median"] },
+        { "t": "More tries means more ideas checked.", "factual": false }
+      ] },
+    { "id": "s10", "type": "question", "headline": "Does a median tell the whole story?",
+      "sentences": [
+        { "t": "A median is the middle value of a list.", "factual": false },
+        { "t": "It can hide the worst cases.", "factual": false }
+      ] },
+    { "id": "s11", "type": "contested", "headline": "Contested: the median hides some losses",
+      "sentences": [
+        { "t": "Headline: the middle puzzle takes 3 to 8 minutes.", "factual": true, "claims": ["median"] },
+        { "t": "For rectangle packing, kissing numbers and eigenvalues, the paper lists 65 minutes.", "factual": true, "claims": ["f_rect", "f_kiss", "f_eig"] },
+        { "t": "That is longer than the 60 minutes it was given, so it reads as not reached.", "factual": true, "claims": ["hollow"] },
+        { "t": "On kissing numbers it scored 0.309. The rivals scored 0.481, 0.508 and 0.371.", "factual": true, "claims": ["t_kiss"] },
+        { "t": "Rectangle packing with circles: 0.888 against 0.969, 0.958 and 0.987.", "factual": true, "claims": ["t_rect"] },
+        { "t": "On eigenvalues: 0.700 against 0.723 for each rival.", "factual": true, "claims": ["t_eig"] }
+      ],
+      "contested": { "headline_claim": "median", "table_claims": ["f_rect", "f_kiss", "f_eig", "t_kiss", "t_rect", "t_eig"],
+        "explain": "The median is true, but it sits next to three puzzles where the method scored below every rival. Read it as fast on most puzzles, not all." } },
+    { "id": "s12", "type": "point", "headline": "A small model tops a famous result",
+      "sentences": [
+        { "t": "With a small model, SwarmEvolve beat AlphaEvolve's published answers on three puzzles.", "factual": true, "claims": ["alpha"] },
+        { "t": "One example is packing 26 circles in a square, at 2.635983.", "factual": true, "claims": ["c26"] },
+        { "t": "AlphaEvolve itself used much larger frontier models.", "factual": true, "claims": ["frontier"] }
+      ] },
+    { "id": "s13", "type": "point", "headline": "More helpers help early, then fade",
+      "sentences": [
+        { "t": "The team tried swarms of different sizes, including 45 and 75 agents.", "factual": true, "claims": ["sw_size"] },
+        { "t": "After 50 tries, they scored 0.64 and 0.68.", "factual": true, "claims": ["sw_early"] },
+        { "t": "After 600 tries, every size scored 0.90.", "factual": true, "claims": ["sw_end"] }
+      ] },
+    { "id": "s14", "type": "payoff", "headline": "What this changes",
+      "sentences": [
+        { "t": "Smart search may come from many cheap minds that share memory.", "factual": false },
+        { "t": "One big mind writing long essays may not be the only path.", "factual": false },
+        { "t": "The proof so far is 21 puzzles, one preprint, and a fixed time limit.", "factual": true, "claims": ["n21"] },
+        { "t": "Other teams must repeat it before we trust it.", "factual": false }
+      ] }
+  ]
+}

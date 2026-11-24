@@ -1,0 +1,19 @@
+{
+  "note": "Outside signals only. Nothing here can be edited by the authors. Collected 2026-11-10.",
+  "citations": { "status": "ok", "citations": 7,
+    "source": { "name": "OpenAlex", "url": "https://api.openalex.org/works/https://doi.org/10.48550/arxiv.2603.27130", "fetched_at": "2026-11-10", "line": "cited_by_count = 7" } },
+  "patents": { "status": "unavailable", "note": "Lens.org patent-citation lookup needs an API key. Not collected in this demo. Not counted as zero.",
+    "source": { "name": "Lens.org", "url": "https://www.lens.org", "fetched_at": null } },
+  "code_data": { "status": "ok", "code_released": false, "data_released": false, "promised": true,
+    "source": { "name": "Paper text", "locator": "Sec. 1", "line": "The paper says the dataset will be made public. No link found on 2026-11-10." } },
+  "industry": { "status": "ok", "industry_authors": 0, "total_authors": 5,
+    "source": { "name": "OpenAlex institution types", "url": "https://api.openalex.org/works/https://doi.org/10.48550/arxiv.2603.27130", "fetched_at": "2026-11-10", "line": "all 5 authorships: institution type = education" } },
+  "funder": { "status": "unavailable", "note": "No funder is named in the paper text we read.",
+    "source": { "name": "Paper text", "locator": "Sec. 6" } },
+  "readiness": { "status": "ok", "cues": [
+      { "cue": "validation_sample", "locator": "Sec. 3.1", "note": "hand check of 100 sampled labels" },
+      { "cue": "matched_controls", "locator": "Sec. 3.1", "note": "human files matched to AI files" },
+      { "cue": "significance_tests", "locator": "Sec. 3.3", "note": "paired and group tests with q-values" },
+      { "cue": "real_world_data", "locator": "Sec. 3.1", "note": "commits from public repositories" } ],
+    "source": { "name": "Paper text (AI-extracted, rule-checked against closed list)", "locator": "Sec. 3" } }
+}

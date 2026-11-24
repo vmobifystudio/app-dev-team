@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "label": "Automated opinion. Research signal. Not investment advice.",
+  "min_age_days_to_score": 90,
+  "min_age_days_note": "assumption: 90 days is long enough for first citations to show. Test: plot citations vs age for 200 papers per field and pick the age where 80% have at least 1.",
+  "full_points_at_multiple_of_field_average": 2,
+  "field_average_citations_per_month": {
+    "cs.SE": 1.0,
+    "cs.AI": 2.0,
+    "default": 1.0,
+    "note": "assumption: placeholders. Test: sample 200 same-field papers aged 6 to 12 months from OpenAlex and use the mean."
+  },
+  "components": [
+    { "id": "citations", "max": 30, "title": "Citations per month vs field average",
+      "formula": "points = 30 x min(1, (citations_per_month / field_average) / 2)" },
+    { "id": "patents", "max": 15, "title": "Patent citations (Lens.org)",
+      "formula": "0 patents = 0, 1 or 2 = 8, 3 or more = 15" },
+    { "id": "code_data", "max": 15, "title": "Code or data released",
+      "formula": "code released = 10, dataset released = 5, promised only = 0 (cap 15)" },
+    { "id": "industry", "max": 15, "title": "Industry co-authors",
+      "formula": "none = 0, at least 1 = 8, at least 25% of authors = 15" },
+    { "id": "funder", "max": 10, "title": "Funder type (stated in the paper)",
+      "formula": "government or nonprofit = 10, industry = 6, none stated = not counted" },
+    { "id": "readiness", "max": 15, "title": "Readiness cues found in the paper",
+      "formula": "3 points per cue from a closed list, up to 5 cues. Each cue needs a source locator.",
+      "closed_list": ["validation_sample", "matched_controls", "significance_tests", "real_world_data", "public_benchmark", "ablation_study", "limitations_stated", "baseline_comparison"] }
+  ],
+  "excluded_signals": [
+    "anything an author or creator can edit (bio, website, self-reported traction)",
+    "payment or sponsorship status",
+    "author identity or reputation"
+  ],
+  "confidence": {
+    "high": "available weight >= 90 and age >= 180 days",
+    "medium": "available weight >= 60 and age >= 90 days",
+    "low": "anything else"
+  }
+}

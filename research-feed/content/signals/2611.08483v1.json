@@ -1,0 +1,18 @@
+{
+  "note": "Outside signals only. Paper is 5 days old, so the score is withheld.",
+  "citations": { "status": "unavailable", "note": "Semantic Scholar rate-limited the lookup on 2026-11-10. Too new for citations to mean much.",
+    "source": { "name": "Semantic Scholar", "url": "https://api.semanticscholar.org", "fetched_at": null } },
+  "patents": { "status": "unavailable", "note": "Lens.org needs an API key.", "source": { "name": "Lens.org", "fetched_at": null } },
+  "code_data": { "status": "ok", "code_released": false, "data_released": false, "promised": false,
+    "source": { "name": "Paper text", "locator": "Whole paper", "line": "No code link found in the paper text on 2026-11-10." } },
+  "industry": { "status": "ok", "industry_authors": 0, "total_authors": 2,
+    "source": { "name": "arXiv page", "line": "Both authors list Brown University (Division of Applied Mathematics)." } },
+  "funder": { "status": "ok", "type": "government",
+    "source": { "name": "Paper text", "locator": "Sec. 6", "line": "Supported by a DARPA MATHBAC grant." } },
+  "readiness": { "status": "ok", "cues": [
+      { "cue": "baseline_comparison", "locator": "Table 1" },
+      { "cue": "ablation_study", "locator": "Sec. A.2" },
+      { "cue": "public_benchmark", "locator": "Sec. 4" },
+      { "cue": "limitations_stated", "locator": "Sec. 5" } ],
+    "source": { "name": "Paper text (AI-extracted, rule-checked against closed list)", "locator": "Sec. 4" } }
+}

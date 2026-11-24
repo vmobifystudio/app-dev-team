@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Editor console · Research Feed</title><link rel="stylesheet" href="/assets/app.css">
+<style>table{width:100%;border-collapse:collapse;font-size:14px}td,th{border-top:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}.ok{color:var(--ok)}.no{color:#b3261e}pre{white-space:pre-wrap;font-size:12px}</style></head>
+<body class="feed"><header class="top"><a href="/" class="back">← Feed</a><span class="brand">Editor console</span></header>
+<main style="max-width:980px"><p>Editors only. Paste the editor token. Nothing here is public.</p>
+<p><input id="tok" type="password" placeholder="editor token" style="font:inherit;padding:8px"> <input id="who" placeholder="your name" style="font:inherit;padding:8px"> <button id="go" class="primary">Load</button></p>
+<h2>Stories</h2><table id="st"></table>
+<h2>Reports</h2><table id="rp"></table>
+<h2>License and asset log</h2><pre id="lg"></pre>
+<p><button id="jobs">Run jobs now (alerts, renewal reminders)</button> <button id="recheck">Re-check papers (withdrawn / new version)</button></p><pre id="msg"></pre></main>
+<script>
+var $=function(i){return document.getElementById(i)};
+function api(p,body){return fetch(p,{method:body?'POST':'GET',headers:{'content-type':'application/json',authorization:'Bearer '+$('tok').value},body:body?JSON.stringify(body):undefined}).then(function(r){return r.json()})}
+function esc(s){return String(s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
+function load(){
+ api('/api/admin/stories').then(function(j){ if(j.error){$('msg').textContent=j.error;return}
+  $('st').innerHTML='<tr><th>Story</th><th>Status</th><th>Checker</th><th>Score</th><th></th></tr>'+j.stories.map(function(s){
+   var c=s.checker;
+   return '<tr><td><a href="/s/'+esc(s.slug)+'/">'+esc(s.slug)+'</a><br><small>'+esc(s.paper)+' · '+esc(s.field)+' · flags: '+esc(s.flags.join(',')||'none')+'</small></td><td>'+esc(s.status)+(s.approved_by?'<br><small>by '+esc(s.approved_by)+'</small>':'')+'</td><td>'+(c?'<span class="'+(c.ok?'ok':'no')+'">'+(c.ok?'green':'red')+'</span> · '+c.claims+' claims · copy check '+esc(c.copycheck)+(c.errors.length?'<pre>'+esc(c.errors.join('\n'))+'</pre>':'')+(c.warnings.length?'<br><small>warn: '+esc(c.warnings.join(' | '))+'</small>':''):'-')+(s.cut?'<br><small>'+s.cut+' claim(s) auto-cut</small>':'')+'</td><td>'+esc(s.score==null?'-':s.score)+'</td><td>'+
+   (s.status==='checked'?'<button data-a="approve" data-id="'+s.id+'">Approve</button>':'')+(s.status==='approved'?'<button data-a="publish" data-id="'+s.id+'">Publish</button>':'')+(s.status==='published'||s.status==='under_review'?'<button data-a="pull" data-id="'+s.id+'">Pull</button>':'')+'</td></tr>'}).join('')});
+ api('/api/admin/reports').then(function(j){ if(!j.reports)return;
+  $('rp').innerHTML='<tr><th>#</th><th>Story</th><th>Type</th><th>Due</th><th>Text</th><th></th></tr>'+j.reports.map(function(r){return '<tr><td>'+r.id+'</td><td>'+esc(r.slug)+'</td><td>'+esc(r.kind)+'</td><td>'+esc(r.due_at.slice(0,16))+(r.resolved_at?' (done)':'')+'</td><td>'+esc(r.body)+'<br><small>'+esc(r.contact||'')+'</small></td><td>'+(r.resolved_at?'':'<button data-a="resolve" data-id="'+r.id+'" data-r="1">Resolve, restore story</button> <button data-a="resolve" data-id="'+r.id+'">Resolve, keep down</button>')+'</td></tr>'}).join('')});
+ api('/api/admin/licenselog').then(function(j){ if(j.log)$('lg').textContent=j.log.map(function(l){return l.checked_at+'  '+l.arxiv_id+l.version+'  '+l.license_code+'  '+l.tier+'  '+l.decision+'  '+l.evidence}).join('\n')+'\n\nAssets\n'+j.assets.map(function(a){return a.story_id+' '+a.kind+' '+a.source+' ['+(a.license||'')+']'}).join('\n')});
+}
+$('go').onclick=load;
+document.body.addEventListener('click',function(e){var b=e.target; if(!b.dataset||!b.dataset.a)return; var id=Number(b.dataset.id), a=b.dataset.a, who=$('who').value||'editor';
+ var p={approve:['/api/admin/approve',{id:id,editor:who}],publish:['/api/admin/publish',{id:id}],pull:['/api/admin/pull',{id:id,reason:'editor'}],resolve:['/api/admin/resolve',{report_id:id,editor:who,resolution:'resolved by '+who,restore:!!b.dataset.r}]}[a];
+ api(p[0],p[1]).then(function(j){$('msg').textContent=JSON.stringify(j);load()})});
+$('jobs').onclick=function(){api('/api/admin/jobs',{}).then(function(j){$('msg').textContent=JSON.stringify(j)})};
+$('recheck').onclick=function(){api('/api/admin/recheck',{}).then(function(j){$('msg').textContent=JSON.stringify(j);load()})};
+</script></body></html>
