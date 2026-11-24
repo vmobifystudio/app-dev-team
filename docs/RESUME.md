@@ -3,8 +3,22 @@
 *Written to survive a context reset. If you are an agent or a person starting cold, read this file
 first and nothing else until you have.*
 
-**Last updated:** 2026-11-22 · **Branch:** `main` (3.2.2)
+**Last updated:** 2026-11-23 · **Branch:** `main` (3.2.2)
 **Suite:** 2667 passed on macOS, 0 failed (Linux CI runs 2662: 4 assertions are macOS-only, 1 more Linux-skip not yet identified) · **Invariants:** 12/12 · **Version:** 3.2.2 · 29 roles · 26 skills · 21 commands
+
+## 2026-11-23 — PR #52 merged (`36dbbdb`), 3.2.2 reinstalled
+
+PR #52 merged on 2026-11-23 as `36dbbdb` at head `b5d2bbe`: Codex clean, `mutation-full` green
+(60/601 sampled, 0 survivors), suite 2667 macOS. **Merged on AMOL's instruction before Leo had
+re-reviewed `b5d2bbe`** (his last review was at `20fbf46`); Leo's post-merge review of that head is
+owed. 3.2.2 reinstalled the same day (`claude plugin marketplace update mobify-studio && claude plugin
+update app-dev-team@mobify-studio`, 3.2.1 → 3.2.2): the installed copy carries 29 agents, 21
+commands, 26 skills; `plugin.json` and `marketplace.json` on main both say 3.2.2, and the CHANGELOG
+has the 3.2.2 and backfilled 3.2.1 sections. A Claude Code restart applies it.
+
+Next: E2E run 2 (Leo's 23 Nov brief, Job 3) — Photo Resizer (`com.mobifystudio.photoresizer`) is the
+default candidate, brownfield, Android-first, to a submission-ready signed AAB. **Do not start until
+the founder confirms the app.**
 
 ## 2026-11-22 — first real `/app-ship` run, 3.2.2
 
